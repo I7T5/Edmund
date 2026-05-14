@@ -355,3 +355,90 @@ struct BlockTransitionTests {
         #expect(displayText(for: 2, in: editor) == "c")
     }
 }
+
+// ============================================================================
+// MARK: - Thematic Break
+// ============================================================================
+
+@Suite("Integration — Thematic Break (Active Block)")
+struct ThematicBreakActiveTests {
+
+    @Test("Active --- is dimmed")
+    @MainActor func activeDashDimmed() {
+        let editor = makeEditor()
+        editor.loadContent("---")
+        activateBlock(0, in: editor)
+
+        let color = fgColor(at: 0, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+
+    @Test("Active *** is dimmed")
+    @MainActor func activeAsteriskDimmed() {
+        let editor = makeEditor()
+        editor.loadContent("***")
+        activateBlock(0, in: editor)
+
+        let color = fgColor(at: 0, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+
+    @Test("Active --- shows raw markdown text")
+    @MainActor func activeShowsRaw() {
+        let editor = makeEditor()
+        editor.loadContent("---")
+        activateBlock(0, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text == "---")
+    }
+}
+
+@Suite("Integration — Thematic Break (Inactive Block)")
+struct ThematicBreakInactiveTests {
+
+    @Test("Inactive --- renders as visual divider")
+    @MainActor func inactiveDashDivider() {
+        let editor = makeEditor()
+        editor.loadContent("---\nother")
+        activateBlock(1, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        // The divider is 20× ─ (U+2500)
+        let expectedDivider = String(repeating: "\u{2500}", count: 20)
+        #expect(text == expectedDivider)
+    }
+
+    @Test("Inactive --- divider has dimmed color")
+    @MainActor func inactiveDividerDimmed() {
+        let editor = makeEditor()
+        editor.loadContent("---\nother")
+        activateBlock(1, in: editor)
+
+        let color = fgColor(at: editor.displayRanges[0].location, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+
+    @Test("Inactive *** renders as visual divider")
+    @MainActor func inactiveAsteriskDivider() {
+        let editor = makeEditor()
+        editor.loadContent("***\nother")
+        activateBlock(1, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        let expectedDivider = String(repeating: "\u{2500}", count: 20)
+        #expect(text == expectedDivider)
+    }
+
+    @Test("Thematic break between content blocks renders correctly")
+    @MainActor func betweenBlocks() {
+        let editor = makeEditor()
+        editor.loadContent("above\n\n---\n\nbelow")
+        activateBlock(4, in: editor)  // activate "below"
+
+        // Block 2 is "---", should be rendered as divider
+        let text = displayText(for: 2, in: editor)
+        let expectedDivider = String(repeating: "\u{2500}", count: 20)
+        #expect(text == expectedDivider)
+    }
+}

@@ -465,3 +465,50 @@ struct ListItemTests {
         }
     }
 }
+
+// MARK: - Thematic Break
+
+@Suite("SyntaxHighlighter — Thematic Break")
+struct ThematicBreakTests {
+
+    @Test("--- produces a thematicBreak span")
+    func tripleDash() {
+        let spans = SyntaxHighlighter.parse("---")
+        #expect(spans.count == 1)
+        let s = spans[0]
+        #expect(s.kind == .thematicBreak)
+        #expect(s.fullRange == NSRange(location: 0, length: 3))
+        #expect(s.contentRange == s.fullRange)
+        #expect(s.delimiterRanges == [s.fullRange])
+    }
+
+    @Test("*** produces a thematicBreak span")
+    func tripleAsterisk() {
+        let spans = SyntaxHighlighter.parse("***")
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .thematicBreak)
+    }
+
+    @Test("___ produces a thematicBreak span")
+    func tripleUnderscore() {
+        let spans = SyntaxHighlighter.parse("___")
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .thematicBreak)
+    }
+
+    @Test("Thematic break with extra dashes")
+    func extraDashes() {
+        let spans = SyntaxHighlighter.parse("-----")
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .thematicBreak)
+        #expect(spans[0].fullRange == NSRange(location: 0, length: 5))
+    }
+
+    @Test("Thematic break between paragraphs")
+    func betweenParagraphs() {
+        let text = "above\n\n---\n\nbelow"
+        let spans = SyntaxHighlighter.parse(text)
+        let breaks = spans.filter { $0.kind == .thematicBreak }
+        #expect(breaks.count == 1)
+    }
+}

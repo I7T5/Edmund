@@ -104,6 +104,10 @@ extension EditorTextView {
             case .listItem:
                 guard span.fullRange.upperBound <= result.length else { continue }
                 result.addAttribute(.paragraphStyle, value: listParagraphStyle(), range: span.fullRange)
+
+            case .thematicBreak:
+                guard span.fullRange.upperBound <= result.length else { continue }
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
             }
         }
 
@@ -168,6 +172,8 @@ extension EditorTextView {
             return span.delimiterRanges
         case .listItem(let ordered, _):
             return ordered ? [] : span.delimiterRanges
+        case .thematicBreak:
+            return span.delimiterRanges
         }
     }
 
@@ -192,6 +198,16 @@ extension EditorTextView {
             removals.append((location: dr.location, length: dr.length))
         }
         removals.reverse()
+
+        // For thematic breaks, insert a visual divider line.
+        let thematicBreakSpans = spans.filter { $0.kind == .thematicBreak }
+        for span in thematicBreakSpans.reversed() {
+            let insertPos = mappedOffset(span.fullRange.location, removals: removals)
+            let idx = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: insertPos)
+            let divider = "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}"  // 20× ─
+            stripped.insert(contentsOf: divider, at: idx)
+            removals.append((location: span.fullRange.location, length: -(divider as NSString).length))
+        }
 
         // For unordered list items, insert bullet/checkbox replacement at the start.
         let unorderedListSpans = spans.filter {
@@ -291,6 +307,14 @@ extension EditorTextView {
                             result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedDR)
                         }
                     }
+                }
+            case .thematicBreak:
+                // The divider text was inserted earlier; apply dim color to it.
+                let fullStart = mappedOffset(span.fullRange.location, removals: removals)
+                let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
+                let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
+                if mappedFull.upperBound <= result.length {
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedFull)
                 }
             }
         }

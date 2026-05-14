@@ -28,6 +28,7 @@ public enum SyntaxHighlighter {
             case link(destination: String)
             case blockquote
             case listItem(ordered: Bool, checkbox: CheckboxState? = nil)
+            case thematicBreak
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -389,6 +390,20 @@ public enum SyntaxHighlighter {
                 delimiterRanges: delims
             ))
             descendInto(listItem)
+        }
+
+        // MARK: - Thematic Break
+
+        mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) {
+            guard let range = thematicBreak.range else { return }
+            let full = nsRange(for: range)
+
+            spans.append(Span(
+                kind: .thematicBreak,
+                fullRange: full,
+                contentRange: full,
+                delimiterRanges: [full]
+            ))
         }
     }
 }
