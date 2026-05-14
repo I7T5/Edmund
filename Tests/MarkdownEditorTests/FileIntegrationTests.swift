@@ -11,40 +11,7 @@ import Foundation
 // Document.read(from:ofType:) and Document.data(ofType:) do nothing more
 // than the above, so these tests cover the real I/O contract.
 
-// MARK: - Helpers
-
-@MainActor
-private func makeEditor() -> EditorTextView {
-    let textStorage = NSTextStorage()
-    let layoutManager = NSLayoutManager()
-    textStorage.addLayoutManager(layoutManager)
-    let textContainer = NSTextContainer(
-        size: NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
-    )
-    textContainer.widthTracksTextView = true
-    layoutManager.addTextContainer(textContainer)
-    return EditorTextView(
-        frame: NSRect(x: 0, y: 0, width: 500, height: 300),
-        textContainer: textContainer
-    )
-}
-
-@MainActor
-private func type(_ text: String, into editor: EditorTextView) {
-    for ch in text {
-        editor.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0))
-    }
-}
-
-@MainActor
-private func paste(_ text: String, into editor: EditorTextView) {
-    editor.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
-}
-
-@MainActor
-private func pressEnter(in editor: EditorTextView) {
-    editor.insertText("\n", replacementRange: NSRange(location: NSNotFound, length: 0))
-}
+// MARK: - File I/O Helpers
 
 /// Simulates Document.read(from:ofType:) → showWindows() pipeline.
 /// Reads a file from disk, decodes as UTF-8, and loads into the editor.
