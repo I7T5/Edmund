@@ -302,6 +302,81 @@ struct BlockStylingInactiveTests {
 }
 
 // ============================================================================
+// MARK: - Code Block
+// ============================================================================
+
+@Suite("Integration — Code Block (Active Block)")
+struct CodeBlockActiveTests {
+
+    @Test("Active code block shows raw markdown with fences")
+    @MainActor func activeShowsRaw() {
+        let editor = makeEditor()
+        editor.loadContent("```\nhello\n```\nother")
+        activateBlock(0, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text == "```\nhello\n```")
+    }
+
+    @Test("Active code block fences are dimmed")
+    @MainActor func activeFencesDimmed() {
+        let editor = makeEditor()
+        editor.loadContent("```\nhello\n```\nother")
+        activateBlock(0, in: editor)
+
+        // First character of opening fence
+        let color = fgColor(at: 0, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+
+    @Test("Active code block content has monospace font")
+    @MainActor func activeContentMonospace() {
+        let editor = makeEditor()
+        editor.loadContent("```\nhello\n```\nother")
+        activateBlock(0, in: editor)
+
+        // "hello" starts at offset 4 (after "```\n")
+        let f = font(at: 4, in: editor)!
+        #expect(f.isFixedPitch)
+    }
+}
+
+@Suite("Integration — Code Block (Inactive Block)")
+struct CodeBlockInactiveTests {
+
+    @Test("Inactive code block strips fences, shows content only")
+    @MainActor func inactiveStripsDelimiters() {
+        let editor = makeEditor()
+        editor.loadContent("```\nhello\n```\nother")
+        activateBlock(1, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text.contains("hello"))
+        #expect(!text.contains("```"))
+    }
+
+    @Test("Inactive code block has monospace font")
+    @MainActor func inactiveMonospace() {
+        let editor = makeEditor()
+        editor.loadContent("```\nhello\n```\nother")
+        activateBlock(1, in: editor)
+
+        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(f.isFixedPitch)
+    }
+
+    @Test("Inactive code block has code color")
+    @MainActor func inactiveCodeColor() {
+        let editor = makeEditor()
+        editor.loadContent("```\nhello\n```\nother")
+        activateBlock(1, in: editor)
+
+        let color = fgColor(at: editor.displayRanges[0].location, in: editor)
+        #expect(color != nil)
+    }
+}
+
+// ============================================================================
 // MARK: - Block Transition (Active ↔ Inactive)
 // ============================================================================
 

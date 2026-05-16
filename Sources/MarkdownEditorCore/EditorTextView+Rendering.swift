@@ -10,6 +10,11 @@ extension EditorTextView {
     /// Color for inline code spans.
     var codeColor: NSColor { NSColor(calibratedRed: 0.541, green: 0.141, blue: 0.145, alpha: 1.0) }
 
+    /// Monospaced font for code blocks.
+    var codeBlockFont: NSFont {
+        NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
+    }
+
     /// Indentation amount for list items (active and inactive).
     var listIndent: CGFloat { 16 }
 
@@ -73,6 +78,16 @@ extension EditorTextView {
             case .code:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
+
+            case .codeBlock:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.font, value: codeBlockFont, range: span.contentRange)
+                result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
+                // Dim the fence lines
+                for dr in span.delimiterRanges {
+                    guard dr.upperBound <= result.length else { continue }
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                }
 
             case .strikethrough:
                 guard span.contentRange.upperBound <= result.length else { continue }
@@ -164,7 +179,7 @@ extension EditorTextView {
                 NSRange(location: span.contentRange.location - 2, length: 2),
                 NSRange(location: span.contentRange.upperBound, length: 2),
             ]
-        case .code, .heading, .link, .blockquote:
+        case .code, .codeBlock, .heading, .link, .blockquote:
             return span.delimiterRanges
         case .listItem(let ordered, _):
             return ordered ? [] : span.delimiterRanges
@@ -236,6 +251,9 @@ extension EditorTextView {
                 let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
                 result.addAttribute(.font, value: bi, range: mappedRange)
             case .code:
+                result.addAttribute(.foregroundColor, value: codeColor, range: mappedRange)
+            case .codeBlock:
+                result.addAttribute(.font, value: codeBlockFont, range: mappedRange)
                 result.addAttribute(.foregroundColor, value: codeColor, range: mappedRange)
             case .strikethrough:
                 result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)

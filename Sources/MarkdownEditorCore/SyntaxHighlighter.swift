@@ -22,6 +22,7 @@ public enum SyntaxHighlighter {
             case italic
             case boldItalic
             case code
+            case codeBlock(language: String?)
             case strikethrough
             case highlight
             case heading(Int)
@@ -295,6 +296,56 @@ public enum SyntaxHighlighter {
                 fullRange: full,
                 contentRange: content,
                 delimiterRanges: [openDelim, closeDelim]
+            ))
+        }
+
+        // MARK: - Code Blocks
+
+        mutating func visitCodeBlock(_ codeBlock: CodeBlock) {
+            guard let range = codeBlock.range else { return }
+            let full = nsRange(for: range)
+            guard full.length > 0 else { return }
+
+            let nsSource = source as NSString
+            let blockText = nsSource.substring(with: full) as NSString
+            var delims: [NSRange] = []
+            var cStart = full.location
+            var cEnd = full.upperBound
+
+            let firstNL = blockText.range(of: "\n")
+            if firstNL.location != NSNotFound {
+                // Opening fence line (including newline)
+                let openLen = firstNL.location + 1
+                delims.append(NSRange(location: full.location, length: openLen))
+                cStart = full.location + openLen
+
+                // Look for closing fence line
+                let lastNL = blockText.range(of: "\n", options: .backwards)
+                if lastNL.location != NSNotFound && lastNL.location != firstNL.location {
+                    let lastLineStart = lastNL.location + 1
+                    if lastLineStart < blockText.length {
+                        let lastLine = blockText.substring(from: lastLineStart)
+                            .trimmingCharacters(in: .whitespaces)
+                        if lastLine.hasPrefix("```") || lastLine.hasPrefix("~~~") {
+                            let closeStart = full.location + lastNL.location
+                            delims.append(NSRange(location: closeStart,
+                                                  length: full.upperBound - closeStart))
+                            cEnd = closeStart
+                        }
+                    }
+                }
+            } else {
+                // Single line (shouldn't normally happen with fenced code blocks)
+                delims.append(full)
+                cStart = full.upperBound
+            }
+
+            let content = NSRange(location: cStart, length: max(0, cEnd - cStart))
+            spans.append(Span(
+                kind: .codeBlock(language: codeBlock.language),
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: delims
             ))
         }
 

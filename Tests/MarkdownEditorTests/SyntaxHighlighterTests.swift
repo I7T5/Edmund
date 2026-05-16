@@ -465,3 +465,88 @@ struct ListItemTests {
         }
     }
 }
+
+// MARK: - Code Blocks
+
+@Suite("SyntaxHighlighter — Code Blocks")
+struct CodeBlockTests {
+
+    @Test("Fenced code block with backticks produces codeBlock span")
+    func backtickFence() {
+        let text = "```\nhello\n```"
+        let spans = SyntaxHighlighter.parse(text)
+        let codeBlocks = spans.filter {
+            if case .codeBlock = $0.kind { return true }
+            return false
+        }
+        #expect(codeBlocks.count == 1)
+    }
+
+    @Test("Fenced code block with language annotation")
+    func languageAnnotation() {
+        let text = "```swift\nlet x = 1\n```"
+        let spans = SyntaxHighlighter.parse(text)
+        let codeBlocks = spans.filter {
+            if case .codeBlock = $0.kind { return true }
+            return false
+        }
+        #expect(codeBlocks.count == 1)
+        if case .codeBlock(let lang) = codeBlocks[0].kind {
+            #expect(lang == "swift")
+        }
+    }
+
+    @Test("Code block content range excludes fence lines")
+    func contentExcludesFences() {
+        let text = "```\nhello\n```"
+        let spans = SyntaxHighlighter.parse(text)
+        let codeBlocks = spans.filter {
+            if case .codeBlock = $0.kind { return true }
+            return false
+        }
+        #expect(codeBlocks.count == 1)
+        let content = (text as NSString).substring(with: codeBlocks[0].contentRange)
+        #expect(content == "hello")
+    }
+
+    @Test("Code block with tilde fences")
+    func tildeFence() {
+        let text = "~~~\ncode\n~~~"
+        let spans = SyntaxHighlighter.parse(text)
+        let codeBlocks = spans.filter {
+            if case .codeBlock = $0.kind { return true }
+            return false
+        }
+        #expect(codeBlocks.count == 1)
+    }
+
+    @Test("Code block with multiple lines of content")
+    func multipleLines() {
+        let text = "```\nline1\nline2\nline3\n```"
+        let spans = SyntaxHighlighter.parse(text)
+        let codeBlocks = spans.filter {
+            if case .codeBlock = $0.kind { return true }
+            return false
+        }
+        #expect(codeBlocks.count == 1)
+        let content = (text as NSString).substring(with: codeBlocks[0].contentRange)
+        #expect(content.contains("line1"))
+        #expect(content.contains("line2"))
+        #expect(content.contains("line3"))
+    }
+
+    @Test("Code block delimiter ranges cover fence lines")
+    func delimiterRanges() {
+        let text = "```\nhello\n```"
+        let spans = SyntaxHighlighter.parse(text)
+        let codeBlocks = spans.filter {
+            if case .codeBlock = $0.kind { return true }
+            return false
+        }
+        #expect(codeBlocks.count == 1)
+        #expect(codeBlocks[0].delimiterRanges.count == 2)
+        // Opening: "```\n"
+        let openDelim = (text as NSString).substring(with: codeBlocks[0].delimiterRanges[0])
+        #expect(openDelim == "```\n")
+    }
+}
