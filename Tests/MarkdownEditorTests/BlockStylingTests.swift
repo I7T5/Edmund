@@ -442,3 +442,160 @@ struct ThematicBreakInactiveTests {
         #expect(text == expectedDivider)
     }
 }
+
+// ============================================================================
+// MARK: - Image
+// ============================================================================
+
+@Suite("Integration — Image (Active Block)")
+struct ImageActiveTests {
+
+    @Test("Active ![alt](url) shows raw markdown")
+    @MainActor func activeShowsRaw() {
+        let editor = makeEditor()
+        editor.loadContent("![photo](https://example.com/img.png)")
+        activateBlock(0, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text == "![photo](https://example.com/img.png)")
+    }
+
+    @Test("Active image alt text has accent color")
+    @MainActor func activeImageAccentColor() {
+        let editor = makeEditor()
+        editor.loadContent("![alt](url)")
+        activateBlock(0, in: editor)
+
+        // "alt" starts at offset 2
+        let color = fgColor(at: 2, in: editor)
+        #expect(color != nil)
+    }
+
+    @Test("Active image delimiters are dimmed")
+    @MainActor func activeImageDimmedDelimiters() {
+        let editor = makeEditor()
+        editor.loadContent("![alt](url)")
+        activateBlock(0, in: editor)
+
+        // "![" at offset 0
+        let delimColor = fgColor(at: 0, in: editor)
+        #expect(delimColor == NSColor.tertiaryLabelColor)
+    }
+}
+
+@Suite("Integration — Image (Inactive Block)")
+struct ImageInactiveTests {
+
+    @Test("Inactive ![alt](url) strips delimiters, shows alt text only")
+    @MainActor func inactiveImageStripsDelimiters() {
+        let editor = makeEditor()
+        editor.loadContent("![photo](https://example.com/img.png)\nother")
+        activateBlock(1, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text == "photo")
+    }
+
+    @Test("Inactive image has italic font")
+    @MainActor func inactiveImageItalic() {
+        let editor = makeEditor()
+        editor.loadContent("![photo](url)\nother")
+        activateBlock(1, in: editor)
+
+        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(NSFontManager.shared.traits(of: f).contains(.italicFontMask))
+    }
+
+    @Test("Inactive image has accent color")
+    @MainActor func inactiveImageAccentColor() {
+        let editor = makeEditor()
+        editor.loadContent("![photo](url)\nother")
+        activateBlock(1, in: editor)
+
+        let color = fgColor(at: editor.displayRanges[0].location, in: editor)
+        #expect(color != nil)
+    }
+}
+
+// ============================================================================
+// MARK: - Line Break
+// ============================================================================
+
+@Suite("Integration — Line Break (Active Block)")
+struct LineBreakActiveTests {
+
+    @Test("Active trailing backslash shows raw markdown")
+    @MainActor func activeShowsRaw() {
+        let editor = makeEditor()
+        editor.loadContent("hello\\")
+        activateBlock(0, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text == "hello\\")
+    }
+
+    @Test("Active trailing backslash is dimmed")
+    @MainActor func activeBackslashDimmed() {
+        let editor = makeEditor()
+        editor.loadContent("hello\\")
+        activateBlock(0, in: editor)
+
+        let color = fgColor(at: 5, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+}
+
+@Suite("Integration — Line Break (Inactive Block)")
+struct LineBreakInactiveTests {
+
+    @Test("Inactive trailing backslash is stripped")
+    @MainActor func inactiveStripsBackslash() {
+        let editor = makeEditor()
+        editor.loadContent("hello\\\nother")
+        activateBlock(1, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text == "hello")
+    }
+
+    @Test("Text without backslash renders unchanged when inactive")
+    @MainActor func noBackslashUnchanged() {
+        let editor = makeEditor()
+        editor.loadContent("plain text\nother")
+        activateBlock(1, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text == "plain text")
+    }
+}
+
+// ============================================================================
+// MARK: - SoftBreak
+// ============================================================================
+
+@Suite("Integration — SoftBreak")
+struct SoftBreakTests {
+
+    @Test("Each line is a separate block (inherent soft break)")
+    @MainActor func linesAreSeparateBlocks() {
+        let editor = makeEditor()
+        editor.loadContent("first\nsecond\nthird")
+
+        #expect(editor.blocks.count == 3)
+        #expect(editor.blocks[0].content == "first")
+        #expect(editor.blocks[1].content == "second")
+        #expect(editor.blocks[2].content == "third")
+    }
+
+    @Test("Pressing Enter creates a new block (soft break)")
+    @MainActor func enterCreatesNewBlock() {
+        let editor = makeEditor()
+        type("hello", into: editor)
+        pressEnter(in: editor)
+        type("world", into: editor)
+
+        #expect(editor.blocks.count == 2)
+        #expect(editor.blocks[0].content == "hello")
+        #expect(editor.blocks[1].content == "world")
+    }
+}

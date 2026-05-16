@@ -512,3 +512,116 @@ struct ThematicBreakTests {
         #expect(breaks.count == 1)
     }
 }
+
+// MARK: - Images
+
+@Suite("SyntaxHighlighter — Images")
+struct ImageTests {
+
+    @Test("![alt](url) produces an image span")
+    func basicImage() {
+        let spans = SyntaxHighlighter.parse("![alt text](https://example.com/img.png)")
+        let images = spans.filter {
+            if case .image = $0.kind { return true }
+            return false
+        }
+        #expect(images.count == 1)
+        if case .image(let dest) = images[0].kind {
+            #expect(dest == "https://example.com/img.png")
+        }
+    }
+
+    @Test("Image content range covers alt text")
+    func imageContentRange() {
+        let text = "![alt](url)"
+        let spans = SyntaxHighlighter.parse(text)
+        let images = spans.filter {
+            if case .image = $0.kind { return true }
+            return false
+        }
+        #expect(images.count == 1)
+        let content = (text as NSString).substring(with: images[0].contentRange)
+        #expect(content == "alt")
+    }
+
+    @Test("Image delimiter ranges cover ![ and ](url)")
+    func imageDelimiterRanges() {
+        let text = "![alt](url)"
+        let spans = SyntaxHighlighter.parse(text)
+        let images = spans.filter {
+            if case .image = $0.kind { return true }
+            return false
+        }
+        #expect(images.count == 1)
+        #expect(images[0].delimiterRanges.count == 2)
+        // Opening delimiter: "!["
+        let openDelim = (text as NSString).substring(with: images[0].delimiterRanges[0])
+        #expect(openDelim == "![")
+        // Closing delimiter: "](url)"
+        let closeDelim = (text as NSString).substring(with: images[0].delimiterRanges[1])
+        #expect(closeDelim == "](url)")
+    }
+
+    @Test("Image with empty alt text")
+    func emptyAlt() {
+        let spans = SyntaxHighlighter.parse("![](url)")
+        let images = spans.filter {
+            if case .image = $0.kind { return true }
+            return false
+        }
+        #expect(images.count == 1)
+    }
+
+    @Test("Image mixed with text")
+    func imageInText() {
+        let spans = SyntaxHighlighter.parse("see ![pic](url) here")
+        let images = spans.filter {
+            if case .image = $0.kind { return true }
+            return false
+        }
+        #expect(images.count == 1)
+    }
+}
+
+// MARK: - Line Break
+
+@Suite("SyntaxHighlighter — Line Break")
+struct LineBreakTests {
+
+    @Test("Trailing backslash produces lineBreak span")
+    func trailingBackslash() {
+        let spans = SyntaxHighlighter.parse("hello\\")
+        let breaks = spans.filter { $0.kind == .lineBreak }
+        #expect(breaks.count == 1)
+        #expect(breaks[0].fullRange == NSRange(location: 5, length: 1))
+    }
+
+    @Test("No trailing backslash means no lineBreak")
+    func noBackslash() {
+        let spans = SyntaxHighlighter.parse("hello")
+        let breaks = spans.filter { $0.kind == .lineBreak }
+        #expect(breaks.count == 0)
+    }
+
+    @Test("Double backslash is escaped, not a lineBreak")
+    func escapedBackslash() {
+        let spans = SyntaxHighlighter.parse("hello\\\\")
+        let breaks = spans.filter { $0.kind == .lineBreak }
+        #expect(breaks.count == 0)
+    }
+
+    @Test("Multi-line text does not produce lineBreak")
+    func multiLine() {
+        let spans = SyntaxHighlighter.parse("hello\\\nworld")
+        let breaks = spans.filter { $0.kind == .lineBreak }
+        #expect(breaks.count == 0)
+    }
+
+    @Test("LineBreak delimiter range is the backslash")
+    func delimiterRange() {
+        let spans = SyntaxHighlighter.parse("text\\")
+        let breaks = spans.filter { $0.kind == .lineBreak }
+        #expect(breaks.count == 1)
+        #expect(breaks[0].delimiterRanges == [NSRange(location: 4, length: 1)])
+    }
+}

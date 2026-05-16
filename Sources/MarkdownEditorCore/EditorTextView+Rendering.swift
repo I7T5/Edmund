@@ -98,6 +98,10 @@ extension EditorTextView {
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
 
+            case .image:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+
             case .blockquote:
                 break  // Just dim the "> " prefix (handled by generic delimiter loop)
 
@@ -108,6 +112,9 @@ extension EditorTextView {
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
+
+            case .lineBreak:
+                break  // Delimiter dimming handled by generic loop
             }
         }
 
@@ -168,11 +175,11 @@ extension EditorTextView {
                 NSRange(location: span.contentRange.location - 2, length: 2),
                 NSRange(location: span.contentRange.upperBound, length: 2),
             ]
-        case .code, .heading, .link, .blockquote:
+        case .code, .heading, .link, .image, .blockquote:
             return span.delimiterRanges
         case .listItem(let ordered, _):
             return ordered ? [] : span.delimiterRanges
-        case .thematicBreak:
+        case .thematicBreak, .lineBreak:
             return span.delimiterRanges
         }
     }
@@ -308,6 +315,10 @@ extension EditorTextView {
                         }
                     }
                 }
+            case .image:
+                result.addAttribute(.foregroundColor, value: accentColor, range: mappedRange)
+                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+                result.addAttribute(.font, value: italic, range: mappedRange)
             case .thematicBreak:
                 // The divider text was inserted earlier; apply dim color to it.
                 let fullStart = mappedOffset(span.fullRange.location, removals: removals)
@@ -316,6 +327,8 @@ extension EditorTextView {
                 if mappedFull.upperBound <= result.length {
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedFull)
                 }
+            case .lineBreak:
+                break
             }
         }
 
