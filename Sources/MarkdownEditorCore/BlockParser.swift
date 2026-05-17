@@ -45,16 +45,44 @@ public enum BlockParser {
 
     // MARK: - Helpers
 
-    /// Splits text into paragraphs on single newlines.
+    /// Splits text into paragraphs on single newlines, merging table rows
+    /// into single multi-line blocks.
     private static func splitParagraphs(_ text: String) -> [String] {
         if text.isEmpty { return [""] }
 
-        // Split on each \n.  This gives us one block per line.
-        let parts = text.components(separatedBy: "\n")
+        let lines = text.components(separatedBy: "\n")
+        var result: [String] = []
+        var i = 0
 
-        // If the text ends with \n, components(separatedBy:) produces a
-        // trailing empty string.  Keep it — it represents the new empty
-        // block the user just created by pressing Enter.
-        return parts
+        while i < lines.count {
+            // Detect table: header row followed by separator row
+            if i + 1 < lines.count && isTableRow(lines[i]) && isTableSeparator(lines[i + 1]) {
+                var merged = [lines[i]]
+                i += 1
+                while i < lines.count && (isTableRow(lines[i]) || isTableSeparator(lines[i])) {
+                    merged.append(lines[i])
+                    i += 1
+                }
+                result.append(merged.joined(separator: "\n"))
+                continue
+            }
+
+            result.append(lines[i])
+            i += 1
+        }
+
+        return result
+    }
+
+    /// Returns true if the line contains a pipe character (potential table row).
+    private static func isTableRow(_ line: String) -> Bool {
+        return line.contains("|")
+    }
+
+    /// Returns true if the line is a table separator (e.g., "| --- | --- |").
+    private static func isTableSeparator(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("|") && trimmed.contains("---") else { return false }
+        return trimmed.allSatisfy { "|:- \t".contains($0) }
     }
 }

@@ -28,6 +28,7 @@ public enum SyntaxHighlighter {
             case link(destination: String)
             case blockquote
             case listItem(ordered: Bool, checkbox: CheckboxState? = nil)
+            case table
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -356,6 +357,50 @@ public enum SyntaxHighlighter {
                 delimiterRanges: delims
             ))
             descendInto(blockQuote)
+        }
+
+        // MARK: - Tables
+
+        mutating func visitTable(_ table: Table) {
+            guard let range = table.range else {
+                descendInto(table)
+                return
+            }
+            let full = nsRange(for: range)
+
+            // Compute gaps between child rows (head/body) as delimiters
+            // (this captures the separator row between head and body)
+            var childRanges: [NSRange] = []
+            for child in table.children {
+                if let cr = child.range {
+                    childRanges.append(nsRange(for: cr))
+                }
+            }
+
+            var delims: [NSRange] = []
+            if let first = childRanges.first, first.location > full.location {
+                delims.append(NSRange(location: full.location,
+                                      length: first.location - full.location))
+            }
+            for i in 0..<(childRanges.count - 1) {
+                let gapStart = childRanges[i].upperBound
+                let gapEnd = childRanges[i + 1].location
+                if gapEnd > gapStart {
+                    delims.append(NSRange(location: gapStart,
+                                          length: gapEnd - gapStart))
+                }
+            }
+            if let last = childRanges.last, last.upperBound < full.upperBound {
+                delims.append(NSRange(location: last.upperBound,
+                                      length: full.upperBound - last.upperBound))
+            }
+
+            spans.append(Span(
+                kind: .table,
+                fullRange: full,
+                contentRange: full,
+                delimiterRanges: delims
+            ))
         }
 
         // MARK: - Lists

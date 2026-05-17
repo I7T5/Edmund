@@ -465,3 +465,44 @@ struct ListItemTests {
         }
     }
 }
+
+// MARK: - Tables
+
+@Suite("SyntaxHighlighter — Tables")
+struct TableTests {
+
+    @Test("Table produces a table span")
+    func basicTable() {
+        let text = "| A | B |\n| --- | --- |\n| 1 | 2 |"
+        let spans = SyntaxHighlighter.parse(text)
+        let tables = spans.filter { $0.kind == .table }
+        #expect(tables.count == 1)
+    }
+
+    @Test("Table full range covers entire table text")
+    func tableFullRange() {
+        let text = "| A | B |\n| --- | --- |\n| 1 | 2 |"
+        let spans = SyntaxHighlighter.parse(text)
+        let tables = spans.filter { $0.kind == .table }
+        #expect(tables.count == 1)
+        #expect(tables[0].fullRange == NSRange(location: 0, length: (text as NSString).length))
+    }
+
+    @Test("Table with single column")
+    func singleColumn() {
+        let text = "| H |\n| --- |\n| V |"
+        let spans = SyntaxHighlighter.parse(text)
+        let tables = spans.filter { $0.kind == .table }
+        #expect(tables.count == 1)
+    }
+
+    @Test("Table delimiter ranges capture separator row")
+    func tableSeparatorInDelimiters() {
+        let text = "| A |\n| --- |\n| 1 |"
+        let spans = SyntaxHighlighter.parse(text)
+        let tables = spans.filter { $0.kind == .table }
+        #expect(tables.count == 1)
+        // There should be delimiter ranges between head and body (the separator)
+        #expect(!tables[0].delimiterRanges.isEmpty)
+    }
+}
