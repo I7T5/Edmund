@@ -46,7 +46,7 @@ public enum BlockParser {
     // MARK: - Helpers
 
     /// Splits text into paragraphs on single newlines, merging fenced code blocks
-    /// into single multi-line blocks.
+    /// and table rows into single multi-line blocks.
     private static func splitParagraphs(_ text: String) -> [String] {
         if text.isEmpty { return [""] }
 
@@ -71,11 +71,35 @@ public enum BlockParser {
                 continue
             }
 
+            // Detect table: header row followed by separator row
+            if i + 1 < lines.count && isTableRow(lines[i]) && isTableSeparator(lines[i + 1]) {
+                var merged = [lines[i]]
+                i += 1
+                while i < lines.count && (isTableRow(lines[i]) || isTableSeparator(lines[i])) {
+                    merged.append(lines[i])
+                    i += 1
+                }
+                result.append(merged.joined(separator: "\n"))
+                continue
+            }
+
             result.append(lines[i])
             i += 1
         }
 
         return result
+    }
+
+    /// Returns true if the line contains a pipe character (potential table row).
+    private static func isTableRow(_ line: String) -> Bool {
+        return line.contains("|")
+    }
+
+    /// Returns true if the line is a table separator (e.g., "| --- | --- |").
+    private static func isTableSeparator(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("|") && trimmed.contains("---") else { return false }
+        return trimmed.allSatisfy { "|:- \t".contains($0) }
     }
 
     /// Returns fence info (character and count) if the line is an opening code fence.

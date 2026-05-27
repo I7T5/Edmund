@@ -10,6 +10,11 @@ extension EditorTextView {
     /// Color for inline code spans.
     var codeColor: NSColor { NSColor(calibratedRed: 0.541, green: 0.141, blue: 0.145, alpha: 1.0) }
 
+    /// Monospaced font for tables.
+    var tableFont: NSFont {
+        NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
+    }
+
     /// Monospaced font for code blocks.
     var codeBlockFont: NSFont {
         NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
@@ -124,6 +129,19 @@ extension EditorTextView {
                 guard span.fullRange.upperBound <= result.length else { continue }
                 result.addAttribute(.paragraphStyle, value: listParagraphStyle(), range: span.fullRange)
 
+            case .table:
+                guard span.fullRange.upperBound <= result.length else { continue }
+                result.addAttribute(.font, value: tableFont, range: span.fullRange)
+                // Dim all pipe characters
+                let nsStr = (result.string as NSString)
+                var searchRange = span.fullRange
+                while searchRange.length > 0 {
+                    let pipeRange = nsStr.range(of: "|", options: [], range: searchRange)
+                    guard pipeRange.location != NSNotFound else { break }
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pipeRange)
+                    let newStart = pipeRange.upperBound
+                    searchRange = NSRange(location: newStart, length: max(0, span.fullRange.upperBound - newStart))
+                }
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
@@ -194,7 +212,7 @@ extension EditorTextView {
             return span.delimiterRanges
         case .listItem(let ordered, _):
             return ordered ? [] : span.delimiterRanges
-        case .thematicBreak, .lineBreak:
+        case .table, .thematicBreak, .lineBreak:
             return span.delimiterRanges
         }
     }
@@ -332,6 +350,23 @@ extension EditorTextView {
                             result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedDR)
                         }
                     }
+                }
+            case .table:
+                // Apply monospace font to full range
+                let fullStart = mappedOffset(span.fullRange.location, removals: removals)
+                let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
+                let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
+                guard mappedFull.upperBound <= result.length else { continue }
+                result.addAttribute(.font, value: tableFont, range: mappedFull)
+                // Dim pipe characters and separator row
+                let nsStr = (result.string as NSString)
+                var searchRange = mappedFull
+                while searchRange.length > 0 {
+                    let pipeRange = nsStr.range(of: "|", options: [], range: searchRange)
+                    guard pipeRange.location != NSNotFound else { break }
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pipeRange)
+                    let newStart = pipeRange.upperBound
+                    searchRange = NSRange(location: newStart, length: max(0, mappedFull.upperBound - newStart))
                 }
             case .image:
                 result.addAttribute(.foregroundColor, value: accentColor, range: mappedRange)

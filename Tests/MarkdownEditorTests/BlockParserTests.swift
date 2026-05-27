@@ -195,6 +195,49 @@ struct BlockParserTests {
         #expect(blocks[1].content == "hi")
     }
 
+    // MARK: - Table Merging
+
+    @Test("Table with header and separator merges into single block")
+    func tableMerge() {
+        let text = "| A | B |\n| --- | --- |\n| 1 | 2 |"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == text)
+    }
+
+    @Test("Table between paragraphs")
+    func tableBetweenParagraphs() {
+        let text = "above\n| A | B |\n| --- | --- |\n| 1 | 2 |\nbelow"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 3)
+        #expect(blocks[0].content == "above")
+        #expect(blocks[1].content == "| A | B |\n| --- | --- |\n| 1 | 2 |")
+        #expect(blocks[2].content == "below")
+    }
+
+    @Test("Table with multiple data rows")
+    func tableMultipleRows() {
+        let text = "| H1 | H2 |\n| --- | --- |\n| a | b |\n| c | d |"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == text)
+    }
+
+    @Test("Single pipe line without separator is not a table")
+    func singlePipeNotTable() {
+        let text = "| not a table |"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "| not a table |")
+    }
+
+    @Test("Table range covers full text")
+    func tableRange() {
+        let text = "| A |\n| --- |\n| 1 |"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks[0].range == NSRange(location: 0, length: (text as NSString).length))
+    }
+
     // MARK: - Code Fence Merging
 
     @Test("Fenced code block merges into single block")

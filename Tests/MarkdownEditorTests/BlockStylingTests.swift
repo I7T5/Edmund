@@ -302,6 +302,70 @@ struct BlockStylingInactiveTests {
 }
 
 // ============================================================================
+// MARK: - Table
+// ============================================================================
+
+@Suite("Integration — Table (Active Block)")
+struct TableActiveTests {
+
+    @Test("Active table shows raw markdown")
+    @MainActor func activeShowsRaw() {
+        let editor = makeEditor()
+        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
+        activateBlock(0, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text.contains("| A | B |"))
+        #expect(text.contains("| --- | --- |"))
+    }
+
+    @Test("Active table has monospace font")
+    @MainActor func activeMonospace() {
+        let editor = makeEditor()
+        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
+        activateBlock(0, in: editor)
+
+        let f = font(at: 2, in: editor)!
+        #expect(f.isFixedPitch)
+    }
+
+    @Test("Active table pipes are dimmed")
+    @MainActor func activePipesDimmed() {
+        let editor = makeEditor()
+        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
+        activateBlock(0, in: editor)
+
+        let color = fgColor(at: 0, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+}
+
+@Suite("Integration — Table (Inactive Block)")
+struct TableInactiveTests {
+
+    @Test("Inactive table has monospace font")
+    @MainActor func inactiveMonospace() {
+        let editor = makeEditor()
+        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
+        activateBlock(1, in: editor)
+
+        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(f.isFixedPitch)
+    }
+
+    @Test("Inactive table pipes are dimmed")
+    @MainActor func inactivePipesDimmed() {
+        let editor = makeEditor()
+        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
+        activateBlock(1, in: editor)
+
+        let base = editor.displayRanges[0].location
+        let color = fgColor(at: base, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+}
+
+// ============================================================================
 // MARK: - Code Block
 // ============================================================================
 

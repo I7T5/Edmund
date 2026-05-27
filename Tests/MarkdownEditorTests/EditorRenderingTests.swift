@@ -341,6 +341,41 @@ struct EditorMarkdownTests {
         #expect(hasTextBlock)
     }
 
+    @Test("Table rendered text has monospace font")
+    @MainActor func tableMonospace() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("| A | B |\n| --- | --- |\n| 1 | 2 |")
+        var hasMonospace = false
+        rendered.enumerateAttribute(.font, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if let f = val as? NSFont, f.isFixedPitch {
+                hasMonospace = true
+            }
+        }
+        #expect(hasMonospace)
+    }
+
+    @Test("Active table has monospace font")
+    @MainActor func activeTableMonospace() {
+        let editor = makeEditor()
+        let highlighted = editor.highlightSyntax("| A | B |\n| --- | --- |\n| 1 | 2 |")
+        var hasMonospace = false
+        highlighted.enumerateAttribute(.font, in: NSRange(location: 0, length: highlighted.length)) { val, _, _ in
+            if let f = val as? NSFont, f.isFixedPitch {
+                hasMonospace = true
+            }
+        }
+        #expect(hasMonospace)
+    }
+
+    @Test("Active table pipes are dimmed")
+    @MainActor func activeTablePipesDimmed() {
+        let editor = makeEditor()
+        let highlighted = editor.highlightSyntax("| A | B |\n| --- | --- |\n| 1 | 2 |")
+        // First character is "|"
+        let color = highlighted.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+
     @Test("Code block renders without fence lines")
     @MainActor func codeBlockRendering() {
         let editor = makeEditor()
