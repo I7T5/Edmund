@@ -118,6 +118,17 @@ struct BlockStylingActiveTests {
         let delimColor = fgColor(at: 0, in: editor)
         #expect(delimColor == NSColor.tertiaryLabelColor)
     }
+
+    @Test("Active multi-line blockquote shows all raw lines")
+    @MainActor func activeMultiLineBlockquote() {
+        let editor = makeEditor()
+        editor.loadContent("> line1\n> line2\nother")
+        activateBlock(0, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(text.contains("> line1"))
+        #expect(text.contains("> line2"))
+    }
 }
 
 // ============================================================================
@@ -277,6 +288,30 @@ struct BlockStylingInactiveTests {
     @MainActor func inactiveBlockquoteParagraphStyle() {
         let editor = makeEditor()
         editor.loadContent("> wise words\nother")
+        activateBlock(1, in: editor)
+
+        let a = attrs(at: editor.displayRanges[0].location, in: editor)
+        let ps = a[.paragraphStyle] as? NSParagraphStyle
+        #expect(ps != nil)
+        #expect(!ps!.textBlocks.isEmpty)
+    }
+
+    @Test("Inactive multi-line blockquote strips all > prefixes")
+    @MainActor func inactiveMultiLineBlockquote() {
+        let editor = makeEditor()
+        editor.loadContent("> line1\n> line2\nother")
+        activateBlock(1, in: editor)
+
+        let text = displayText(for: 0, in: editor)
+        #expect(!text.contains(">"))
+        #expect(text.contains("line1"))
+        #expect(text.contains("line2"))
+    }
+
+    @Test("Inactive multi-line blockquote has text block style")
+    @MainActor func inactiveMultiLineBlockquoteParagraphStyle() {
+        let editor = makeEditor()
+        editor.loadContent("> line1\n> line2\nother")
         activateBlock(1, in: editor)
 
         let a = attrs(at: editor.displayRanges[0].location, in: editor)
