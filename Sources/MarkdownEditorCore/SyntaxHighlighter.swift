@@ -22,13 +22,17 @@ public enum SyntaxHighlighter {
             case italic
             case boldItalic
             case code
+            case codeBlock(language: String?)
             case strikethrough
             case highlight
             case heading(Int)
             case link(destination: String)
+            case image(destination: String)
             case blockquote
             case listItem(ordered: Bool, checkbox: CheckboxState? = nil)
             case table
+            case thematicBreak
+            case lineBreak
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -48,6 +52,9 @@ public enum SyntaxHighlighter {
 
         // ==highlight== is not supported by swift-markdown; parse with regex.
         parseHighlight(text, into: &walker.spans)
+
+        // Trailing backslash line break (single-line blocks only).
+        parseLineBreak(text, into: &walker.spans)
 
         return walker.spans.sorted { $0.fullRange.location < $1.fullRange.location }
     }
@@ -78,6 +85,26 @@ public enum SyntaxHighlighter {
                 delimiterRanges: [openDelim, closeDelim]
             ))
         }
+    }
+
+    /// Parses trailing `\` as a line break indicator.
+    private static func parseLineBreak(_ text: String, into spans: inout [Span]) {
+        let nsText = text as NSString
+        let len = nsText.length
+        guard len > 0 else { return }
+        // Must not contain \n (only applies to single-line blocks)
+        guard !text.contains("\n") else { return }
+        let lastChar = nsText.character(at: len - 1)
+        guard lastChar == 0x5C else { return }  // backslash
+        // Not an escaped backslash (\\)
+        if len >= 2 && nsText.character(at: len - 2) == 0x5C { return }
+        let range = NSRange(location: len - 1, length: 1)
+        spans.append(Span(
+            kind: .lineBreak,
+            fullRange: range,
+            contentRange: NSRange(location: len - 1, length: 0),
+            delimiterRanges: [range]
+        ))
     }
 
     // MARK: - AST Walker
@@ -299,6 +326,56 @@ public enum SyntaxHighlighter {
             ))
         }
 
+        // MARK: - Code Blocks
+
+        mutating func visitCodeBlock(_ codeBlock: CodeBlock) {
+            guard let range = codeBlock.range else { return }
+            let full = nsRange(for: range)
+            guard full.length > 0 else { return }
+
+            let nsSource = source as NSString
+            let blockText = nsSource.substring(with: full) as NSString
+            var delims: [NSRange] = []
+            var cStart = full.location
+            var cEnd = full.upperBound
+
+            let firstNL = blockText.range(of: "\n")
+            if firstNL.location != NSNotFound {
+                // Opening fence line (including newline)
+                let openLen = firstNL.location + 1
+                delims.append(NSRange(location: full.location, length: openLen))
+                cStart = full.location + openLen
+
+                // Look for closing fence line
+                let lastNL = blockText.range(of: "\n", options: .backwards)
+                if lastNL.location != NSNotFound && lastNL.location != firstNL.location {
+                    let lastLineStart = lastNL.location + 1
+                    if lastLineStart < blockText.length {
+                        let lastLine = blockText.substring(from: lastLineStart)
+                            .trimmingCharacters(in: .whitespaces)
+                        if lastLine.hasPrefix("```") || lastLine.hasPrefix("~~~") {
+                            let closeStart = full.location + lastNL.location
+                            delims.append(NSRange(location: closeStart,
+                                                  length: full.upperBound - closeStart))
+                            cEnd = closeStart
+                        }
+                    }
+                }
+            } else {
+                // Single line (shouldn't normally happen with fenced code blocks)
+                delims.append(full)
+                cStart = full.upperBound
+            }
+
+            let content = NSRange(location: cStart, length: max(0, cEnd - cStart))
+            spans.append(Span(
+                kind: .codeBlock(language: codeBlock.language),
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: delims
+            ))
+        }
+
         // MARK: - Strikethrough
 
         mutating func visitStrikethrough(_ strikethrough: Strikethrough) {
@@ -337,6 +414,26 @@ public enum SyntaxHighlighter {
                 delimiterRanges: delims
             ))
             descendInto(link)
+        }
+
+        // MARK: - Images
+
+        mutating func visitImage(_ image: Image) {
+            guard let range = image.range else {
+                descendInto(image)
+                return
+            }
+            let full = nsRange(for: range)
+            let delims = delimiterRanges(parent: full, children: image.children)
+            let content = contentRange(full: full, delims: delims)
+
+            spans.append(Span(
+                kind: .image(destination: image.source ?? ""),
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: delims
+            ))
+            descendInto(image)
         }
 
         // MARK: - Block Quotes
@@ -434,6 +531,20 @@ public enum SyntaxHighlighter {
                 delimiterRanges: delims
             ))
             descendInto(listItem)
+        }
+
+        // MARK: - Thematic Break
+
+        mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) {
+            guard let range = thematicBreak.range else { return }
+            let full = nsRange(for: range)
+
+            spans.append(Span(
+                kind: .thematicBreak,
+                fullRange: full,
+                contentRange: full,
+                delimiterRanges: [full]
+            ))
         }
     }
 }

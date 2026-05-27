@@ -15,6 +15,11 @@ extension EditorTextView {
         NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
     }
 
+    /// Monospaced font for code blocks.
+    var codeBlockFont: NSFont {
+        NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
+    }
+
     /// Indentation amount for list items (active and inactive).
     var listIndent: CGFloat { 16 }
 
@@ -79,6 +84,16 @@ extension EditorTextView {
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
 
+            case .codeBlock:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.font, value: codeBlockFont, range: span.contentRange)
+                result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
+                // Dim the fence lines
+                for dr in span.delimiterRanges {
+                    guard dr.upperBound <= result.length else { continue }
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                }
+
             case .strikethrough:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
@@ -103,6 +118,10 @@ extension EditorTextView {
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
 
+            case .image:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+
             case .blockquote:
                 break  // Just dim the "> " prefix (handled by generic delimiter loop)
 
@@ -123,6 +142,12 @@ extension EditorTextView {
                     let newStart = pipeRange.upperBound
                     searchRange = NSRange(location: newStart, length: max(0, span.fullRange.upperBound - newStart))
                 }
+            case .thematicBreak:
+                guard span.fullRange.upperBound <= result.length else { continue }
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
+
+            case .lineBreak:
+                break  // Delimiter dimming handled by generic loop
             }
         }
 
@@ -183,11 +208,11 @@ extension EditorTextView {
                 NSRange(location: span.contentRange.location - 2, length: 2),
                 NSRange(location: span.contentRange.upperBound, length: 2),
             ]
-        case .code, .heading, .link, .blockquote:
+        case .code, .codeBlock, .heading, .link, .image, .blockquote:
             return span.delimiterRanges
         case .listItem(let ordered, _):
             return ordered ? [] : span.delimiterRanges
-        case .table:
+        case .table, .thematicBreak, .lineBreak:
             return span.delimiterRanges
         }
     }
@@ -213,6 +238,16 @@ extension EditorTextView {
             removals.append((location: dr.location, length: dr.length))
         }
         removals.reverse()
+
+        // For thematic breaks, insert a visual divider line.
+        let thematicBreakSpans = spans.filter { $0.kind == .thematicBreak }
+        for span in thematicBreakSpans.reversed() {
+            let insertPos = mappedOffset(span.fullRange.location, removals: removals)
+            let idx = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: insertPos)
+            let divider = "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}"  // 20× ─
+            stripped.insert(contentsOf: divider, at: idx)
+            removals.append((location: span.fullRange.location, length: -(divider as NSString).length))
+        }
 
         // For unordered list items, insert bullet/checkbox replacement at the start.
         let unorderedListSpans = spans.filter {
@@ -257,6 +292,9 @@ extension EditorTextView {
                 let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
                 result.addAttribute(.font, value: bi, range: mappedRange)
             case .code:
+                result.addAttribute(.foregroundColor, value: codeColor, range: mappedRange)
+            case .codeBlock:
+                result.addAttribute(.font, value: codeBlockFont, range: mappedRange)
                 result.addAttribute(.foregroundColor, value: codeColor, range: mappedRange)
             case .strikethrough:
                 result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)
@@ -330,6 +368,20 @@ extension EditorTextView {
                     let newStart = pipeRange.upperBound
                     searchRange = NSRange(location: newStart, length: max(0, mappedFull.upperBound - newStart))
                 }
+            case .image:
+                result.addAttribute(.foregroundColor, value: accentColor, range: mappedRange)
+                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+                result.addAttribute(.font, value: italic, range: mappedRange)
+            case .thematicBreak:
+                // The divider text was inserted earlier; apply dim color to it.
+                let fullStart = mappedOffset(span.fullRange.location, removals: removals)
+                let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
+                let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
+                if mappedFull.upperBound <= result.length {
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedFull)
+                }
+            case .lineBreak:
+                break
             }
         }
 

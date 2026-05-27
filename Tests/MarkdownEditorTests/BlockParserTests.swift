@@ -237,4 +237,63 @@ struct BlockParserTests {
         let blocks = BlockParser.parse(text)
         #expect(blocks[0].range == NSRange(location: 0, length: (text as NSString).length))
     }
+
+    // MARK: - Code Fence Merging
+
+    @Test("Fenced code block merges into single block")
+    func codeFenceMerge() {
+        let text = "```\nhello\n```"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "```\nhello\n```")
+    }
+
+    @Test("Code fence with language merges into single block")
+    func codeFenceWithLanguage() {
+        let text = "```swift\nlet x = 1\n```"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "```swift\nlet x = 1\n```")
+    }
+
+    @Test("Tilde code fence merges into single block")
+    func tildeFenceMerge() {
+        let text = "~~~\ncode\n~~~"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "~~~\ncode\n~~~")
+    }
+
+    @Test("Code fence between paragraphs")
+    func codeFenceBetweenParagraphs() {
+        let text = "above\n```\ncode\n```\nbelow"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 3)
+        #expect(blocks[0].content == "above")
+        #expect(blocks[1].content == "```\ncode\n```")
+        #expect(blocks[2].content == "below")
+    }
+
+    @Test("Unclosed code fence merges to end of document")
+    func unclosedFence() {
+        let text = "```\nline1\nline2"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "```\nline1\nline2")
+    }
+
+    @Test("Code fence with multiple content lines")
+    func multiLineFence() {
+        let text = "```\na\nb\nc\n```"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content.contains("a\nb\nc"))
+    }
+
+    @Test("Code fence range covers full text")
+    func codeFenceRange() {
+        let text = "```\nhello\n```"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks[0].range == NSRange(location: 0, length: (text as NSString).length))
+    }
 }
