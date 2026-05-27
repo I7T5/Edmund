@@ -242,6 +242,15 @@ struct EditorMarkdownTests {
         #expect(hasSecondaryColor)
     }
 
+    @Test("Multi-line blockquote strips all > prefixes")
+    @MainActor func multiLineBlockquoteRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("> line1\n> line2")
+        #expect(!rendered.string.contains(">"))
+        #expect(rendered.string.contains("line1"))
+        #expect(rendered.string.contains("line2"))
+    }
+
     @Test("List items have indented paragraph style")
     @MainActor func listIndentation() {
         let editor = makeEditor()

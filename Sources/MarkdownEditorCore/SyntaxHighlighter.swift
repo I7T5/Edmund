@@ -444,7 +444,30 @@ public enum SyntaxHighlighter {
                 return
             }
             let full = nsRange(for: range)
-            let delims = delimiterRanges(parent: full, children: blockQuote.children)
+            let nsSource = source as NSString
+
+            // Scan each line within the blockquote for "> " prefixes
+            var delims: [NSRange] = []
+            var cursor = full.location
+            while cursor < full.upperBound {
+                // Find the end of this line
+                let remaining = NSRange(location: cursor, length: full.upperBound - cursor)
+                let nlRange = nsSource.range(of: "\n", options: [], range: remaining)
+                let lineEnd = nlRange.location != NSNotFound ? nlRange.location : full.upperBound
+
+                // Check if line starts with optional spaces then ">"
+                let lineRange = NSRange(location: cursor, length: lineEnd - cursor)
+                let line = nsSource.substring(with: lineRange)
+                let stripped = line.drop(while: { $0 == " " })
+                if stripped.first == ">" {
+                    let prefixLen = line.count - stripped.count + 1  // spaces + ">"
+                    let delimLen = prefixLen + (stripped.dropFirst().first == " " ? 1 : 0)  // include trailing space
+                    delims.append(NSRange(location: cursor, length: delimLen))
+                }
+
+                cursor = nlRange.location != NSNotFound ? nlRange.location + 1 : full.upperBound
+            }
+
             let content = contentRange(full: full, delims: delims)
 
             spans.append(Span(
