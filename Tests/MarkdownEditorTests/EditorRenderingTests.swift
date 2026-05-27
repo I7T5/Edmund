@@ -341,6 +341,66 @@ struct EditorMarkdownTests {
         #expect(hasTextBlock)
     }
 
+    @Test("Code block renders without fence lines")
+    @MainActor func codeBlockRendering() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("```\nhello\n```")
+        // Fence lines should be stripped, only content remains
+        #expect(rendered.string.contains("hello"))
+        #expect(!rendered.string.contains("```"))
+    }
+
+    @Test("Code block rendered content has monospace font")
+    @MainActor func codeBlockFont() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("```\nhello\n```")
+        var hasMonospace = false
+        rendered.enumerateAttribute(.font, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if let f = val as? NSFont, f.isFixedPitch {
+                hasMonospace = true
+            }
+        }
+        #expect(hasMonospace)
+    }
+
+    @Test("Code block rendered content has code color")
+    @MainActor func codeBlockColor() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("```\nhello\n```")
+        var hasCodeColor = false
+        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+            if let color = val as? NSColor {
+                if color.redComponent > 0.5 && color.greenComponent < 0.2 && color.blueComponent < 0.2 {
+                    hasCodeColor = true
+                }
+            }
+        }
+        #expect(hasCodeColor)
+    }
+
+    @Test("Active code block content has monospace font")
+    @MainActor func activeCodeBlockFont() {
+        let editor = makeEditor()
+        let highlighted = editor.highlightSyntax("```\nhello\n```")
+        // Content "hello\n" starts at offset 4
+        var hasMonospace = false
+        highlighted.enumerateAttribute(.font, in: NSRange(location: 4, length: 6)) { val, _, _ in
+            if let f = val as? NSFont, f.isFixedPitch {
+                hasMonospace = true
+            }
+        }
+        #expect(hasMonospace)
+    }
+
+    @Test("Active code block fences are dimmed")
+    @MainActor func activeCodeBlockDimmedFences() {
+        let editor = makeEditor()
+        let highlighted = editor.highlightSyntax("```\nhello\n```")
+        // Opening "```\n" is at offset 0
+        let color = highlighted.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        #expect(color == NSColor.tertiaryLabelColor)
+    }
+
     @Test("Image renders as alt text only (delimiters stripped)")
     @MainActor func imageRendering() {
         let editor = makeEditor()
