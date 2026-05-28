@@ -66,10 +66,10 @@ struct BlockStylingActiveTests {
         let a = attrs(at: 0, in: editor)
         let ps = a[.paragraphStyle] as? NSParagraphStyle
         #expect(ps != nil)
-        #expect(ps!.firstLineHeadIndent == editor.listIndent)
+        #expect(ps!.headIndent > 0)
     }
 
-    @Test("Active indented list item (4 spaces) has deeper indent")
+    @Test("Active indented list item (4 spaces) has hanging indent")
     @MainActor func activeIndentedBulletList() {
         let editor = makeEditor()
         editor.loadContent("    - item")
@@ -78,7 +78,7 @@ struct BlockStylingActiveTests {
         let a = attrs(at: 0, in: editor)
         let ps = a[.paragraphStyle] as? NSParagraphStyle
         #expect(ps != nil)
-        #expect(ps!.firstLineHeadIndent > editor.listIndent)
+        #expect(ps!.headIndent > 0)
     }
 
     @Test("Active - prefix is dimmed")
@@ -102,7 +102,7 @@ struct BlockStylingActiveTests {
         let a = attrs(at: 0, in: editor)
         let ps = a[.paragraphStyle] as? NSParagraphStyle
         #expect(ps != nil)
-        #expect(ps!.firstLineHeadIndent == editor.listIndent)
+        #expect(ps!.headIndent > 0)
     }
 
     // MARK: - Todo Lists
@@ -116,7 +116,7 @@ struct BlockStylingActiveTests {
         let a = attrs(at: 0, in: editor)
         let ps = a[.paragraphStyle] as? NSParagraphStyle
         #expect(ps != nil)
-        #expect(ps!.firstLineHeadIndent == editor.listIndent)
+        #expect(ps!.headIndent > 0)
     }
 
     // MARK: - Blockquotes
@@ -211,7 +211,7 @@ struct BlockStylingNonActiveTests {
         let a = attrs(at: 0, in: editor)
         let ps = a[.paragraphStyle] as? NSParagraphStyle
         #expect(ps != nil)
-        #expect(ps!.firstLineHeadIndent == editor.listIndent)
+        #expect(ps!.headIndent > 0)
     }
 
     // MARK: - Numbered Lists

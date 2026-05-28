@@ -30,49 +30,20 @@ extension EditorTextView {
     /// Near-zero size makes them effectively invisible and zero-width.
     var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
 
-    /// Indentation amount for list items.
-    var listIndent: CGFloat { 16 }
+    /// Fixed padding before the bullet/number marker for all list items.
+    var listPadding: CGFloat { 16 }
 
-    /// Paragraph style with hanging indentation for list items.
-    /// The first line starts at `listIndent`; wrapped lines align with the
-    /// content after the marker (bullet / number / checkbox).
-    private func listParagraphStyle(nestingLevel: Int = 0, markerWidth: CGFloat = 0) -> NSParagraphStyle {
+    /// Paragraph style for list items. A fixed padding pushes the marker
+    /// away from the left edge. Nesting beyond level 1 comes from raw
+    /// whitespace characters (deletable by the user). Wrapped lines use
+    /// `headIndent` to align with content after the marker.
+    private func listParagraphStyle(markerWidth: CGFloat = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
-        let indent = listIndent * CGFloat(1 + nestingLevel)
-        ps.firstLineHeadIndent = indent
-        ps.headIndent = indent + markerWidth
+        ps.firstLineHeadIndent = listPadding
+        ps.headIndent = listPadding + markerWidth
         return ps
-    }
-
-    /// Computes list nesting level from leading whitespace in raw markdown.
-    /// Each tab or 2 spaces counts as one nesting level.
-    /// Scans from the start of the line (position 0 in the block) since
-    /// swift-markdown's span range may exclude leading whitespace.
-    private func listNestingLevel(for markdown: String, span: SyntaxHighlighter.Span) -> Int {
-        let nsMarkdown = markdown as NSString
-        var level = 0
-        var col = 0
-        var i = 0
-        let end = span.fullRange.location + span.fullRange.length
-        while i < end {
-            let ch = nsMarkdown.character(at: i)
-            if ch == 0x09 {        // tab
-                level += 1
-                col = 0
-            } else if ch == 0x20 { // space
-                col += 1
-                if col == 2 {
-                    level += 1
-                    col = 0
-                }
-            } else {
-                break
-            }
-            i += 1
-        }
-        return level
     }
 
     /// Paragraph style with a left border for blockquotes.
@@ -189,12 +160,13 @@ extension EditorTextView {
 
             case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                let nesting = listNestingLevel(for: markdown, span: span)
-                // Measure marker width for hanging indent on wrapped lines
-                let markerLen = span.contentRange.location - span.fullRange.location
-                let markerStr = (markdown as NSString).substring(with: NSRange(location: span.fullRange.location, length: markerLen))
+                // Measure marker width (including leading whitespace) for hanging indent.
+                // Everything from position 0 to content start is the "marker" area.
+                let markerStr = (markdown as NSString).substring(to: span.contentRange.location)
                 let markerWidth = (markerStr as NSString).size(withAttributes: [.font: bodyFont]).width
-                result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting, markerWidth: markerWidth), range: span.fullRange)
+                // Apply paragraph style from position 0 — NSTextView uses the paragraph
+                // style from the first character of a paragraph.
+                result.addAttribute(.paragraphStyle, value: listParagraphStyle(markerWidth: markerWidth), range: NSRange(location: 0, length: result.length))
                 // Strikethrough checked items
                 if !ordered, checkbox == .checked {
                     result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)

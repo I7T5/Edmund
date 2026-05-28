@@ -487,6 +487,17 @@ struct ListItemTests {
         let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
         #expect(items.count == 1)
     }
+
+    @Test("Indented list item preserves inline formatting")
+    func indentedListInlineFormatting() {
+        let spans = SyntaxHighlighter.parse("    - *italic* and **bold**")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        let italics = spans.filter { $0.kind == .italic }
+        #expect(italics.count == 1)
+        let bolds = spans.filter { $0.kind == .bold }
+        #expect(bolds.count == 1)
+    }
 }
 
 // MARK: - Tables
