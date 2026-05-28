@@ -214,157 +214,196 @@ struct InlineStylingActiveTests {
 }
 
 // ============================================================================
-// MARK: - Inline Styling: Inactive Block
+// MARK: - Inline Styling: Non-Active Block
 // ============================================================================
 
-@Suite("Integration — Inline Styling (Inactive Block)")
+@Suite("Integration — Inline Styling (Non-Active Block)")
 struct InlineStylingInactiveTests {
 
-    @Test("Inactive **bold** strips delimiters and applies bold font")
-    @MainActor func inactiveBold() {
+    @Test("Non-active **bold** preserves raw text, hides delimiters, applies bold font")
+    @MainActor func nonActiveBold() {
         let editor = makeEditor()
         editor.loadContent("**bold**\nother")
-        activateBlock(1, in: editor)  // Make block 0 inactive
+        activateBlock(1, in: editor)
 
+        // Raw text preserved
         let text = displayText(for: 0, in: editor)
-        #expect(text == "bold")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(text == "**bold**")
+
+        let base = editor.displayRanges[0].location
+        // Delimiters hidden
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        #expect(fgColor(at: base, in: editor) == NSColor.clear)
+        // Content has bold font
+        let f = font(at: base + 2, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.boldFontMask))
     }
 
-    @Test("Inactive __bold__ with underscores strips and applies bold")
-    @MainActor func inactiveBoldUnderscores() {
+    @Test("Non-active __bold__ with underscores hides delimiters and applies bold")
+    @MainActor func nonActiveBoldUnderscores() {
         let editor = makeEditor()
         editor.loadContent("__bold__\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "bold")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(text == "__bold__")
+
+        let base = editor.displayRanges[0].location
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        let f = font(at: base + 2, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.boldFontMask))
     }
 
-    @Test("Inactive *italic* strips delimiters and applies italic font")
-    @MainActor func inactiveItalic() {
+    @Test("Non-active *italic* hides delimiters and applies italic font")
+    @MainActor func nonActiveItalic() {
         let editor = makeEditor()
         editor.loadContent("*italic*\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "italic")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(text == "*italic*")
+
+        let base = editor.displayRanges[0].location
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        let f = font(at: base + 1, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.italicFontMask))
     }
 
-    @Test("Inactive _italic_ with underscores strips and applies italic")
-    @MainActor func inactiveItalicUnderscores() {
+    @Test("Non-active _italic_ with underscores hides delimiters and applies italic")
+    @MainActor func nonActiveItalicUnderscores() {
         let editor = makeEditor()
         editor.loadContent("_italic_\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "italic")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(text == "_italic_")
+
+        let base = editor.displayRanges[0].location
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        let f = font(at: base + 1, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.italicFontMask))
     }
 
-    @Test("Inactive ***bolditalic*** strips delimiters and applies both traits")
-    @MainActor func inactiveBoldItalic() {
+    @Test("Non-active ***bolditalic*** hides delimiters and applies both traits")
+    @MainActor func nonActiveBoldItalic() {
         let editor = makeEditor()
         editor.loadContent("***both***\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "both")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(text == "***both***")
+
+        let base = editor.displayRanges[0].location
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        let f = font(at: base + 3, in: editor)!
         let traits = NSFontManager.shared.traits(of: f)
         #expect(traits.contains(.boldFontMask))
         #expect(traits.contains(.italicFontMask))
     }
 
-    @Test("Inactive `code` strips backticks and applies code color")
-    @MainActor func inactiveCode() {
+    @Test("Non-active `code` hides backticks and applies code color")
+    @MainActor func nonActiveCode() {
         let editor = makeEditor()
         editor.loadContent("`code`\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "code")
-        let color = fgColor(at: editor.displayRanges[0].location, in: editor)
+        #expect(text == "`code`")
+
+        let base = editor.displayRanges[0].location
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        let color = fgColor(at: base + 1, in: editor)
         #expect(color == editor.codeColor)
     }
 
-    @Test("Inactive ~~strikethrough~~ strips delimiters and applies strikethrough")
-    @MainActor func inactiveStrikethrough() {
+    @Test("Non-active ~~strikethrough~~ hides delimiters and applies strikethrough")
+    @MainActor func nonActiveStrikethrough() {
         let editor = makeEditor()
         editor.loadContent("~~struck~~\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "struck")
-        let a = attrs(at: editor.displayRanges[0].location, in: editor)
+        #expect(text == "~~struck~~")
+
+        let base = editor.displayRanges[0].location
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        let a = attrs(at: base + 2, in: editor)
         #expect(a[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
     }
 
-    @Test("Inactive ==highlight== strips delimiters and applies background color")
-    @MainActor func inactiveHighlight() {
+    @Test("Non-active ==highlight== hides delimiters and applies background color")
+    @MainActor func nonActiveHighlight() {
         let editor = makeEditor()
         editor.loadContent("==marked==\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "marked")
-        let a = attrs(at: editor.displayRanges[0].location, in: editor)
+        #expect(text == "==marked==")
+
+        let base = editor.displayRanges[0].location
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        let a = attrs(at: base + 2, in: editor)
         #expect(a[.backgroundColor] != nil)
     }
 
-    @Test("Inactive [link](url) strips syntax, shows text with underline and accent color")
-    @MainActor func inactiveLink() {
+    @Test("Non-active [link](url) hides syntax, link text has underline and accent color")
+    @MainActor func nonActiveLink() {
         let editor = makeEditor()
         editor.loadContent("[click](https://example.com)\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "click")
-        let offset = editor.displayRanges[0].location
-        let color = fgColor(at: offset, in: editor)
+        #expect(text == "[click](https://example.com)")
+
+        let base = editor.displayRanges[0].location
+        // "[" delimiter hidden
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        // "click" content has accent color and underline
+        let color = fgColor(at: base + 1, in: editor)
         #expect(color == editor.accentColor)
-        let a = attrs(at: offset, in: editor)
+        let a = attrs(at: base + 1, in: editor)
         #expect(a[.underlineStyle] as? Int == NSUnderlineStyle.single.rawValue)
     }
 
-    @Test("Inactive mixed bold + italic + code all rendered correctly")
-    @MainActor func inactiveMixed() {
+    @Test("Non-active mixed bold + italic + code all rendered correctly")
+    @MainActor func nonActiveMixed() {
         let editor = makeEditor()
+        // "**bold** *italic* `code`"
+        //  0123456789012345678901234
         editor.loadContent("**bold** *italic* `code`\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        // Delimiters stripped: "bold italic code"
-        #expect(text == "bold italic code")
+        #expect(text == "**bold** *italic* `code`")
 
         let base = editor.displayRanges[0].location
-        // "bold" starts at base+0
-        let bf = font(at: base, in: editor)!
+        // ** delimiters hidden
+        #expect(font(at: base, in: editor)!.pointSize < 1.0)
+        // "bold" at base+2 has bold font
+        let bf = font(at: base + 2, in: editor)!
         #expect(NSFontManager.shared.traits(of: bf).contains(.boldFontMask))
 
-        // "italic" starts at base+5
-        let itf = font(at: base + 5, in: editor)!
+        // * delimiters at 9 hidden
+        #expect(font(at: base + 9, in: editor)!.pointSize < 1.0)
+        // "italic" at base+10 has italic font
+        let itf = font(at: base + 10, in: editor)!
         #expect(NSFontManager.shared.traits(of: itf).contains(.italicFontMask))
 
-        // "code" starts at base+12
-        let cc = fgColor(at: base + 12, in: editor)
+        // ` delimiter at 18 hidden
+        #expect(font(at: base + 18, in: editor)!.pointSize < 1.0)
+        // "code" at base+19 has code color
+        let cc = fgColor(at: base + 19, in: editor)
         #expect(cc == editor.codeColor)
     }
 
-    @Test("Inactive *hi** renders correctly (uneven delimiters)")
-    @MainActor func inactiveUnevenDelimiters() {
+    @Test("Non-active *hi** preserves raw text (uneven delimiters)")
+    @MainActor func nonActiveUnevenDelimiters() {
         let editor = makeEditor()
         editor.loadContent("*hi**\nother")
         activateBlock(1, in: editor)
 
-        // swift-markdown: "*hi*" matches italic, trailing "*" is literal
+        // Raw text always preserved
         let text = displayText(for: 0, in: editor)
-        #expect(text == "hi*")
+        #expect(text == "*hi**")
     }
 }

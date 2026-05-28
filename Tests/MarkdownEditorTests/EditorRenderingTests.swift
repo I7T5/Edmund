@@ -7,8 +7,8 @@ import AppKit
 @Suite("EditorTextView — Coordinate Mapping")
 struct EditorCoordinateTests {
 
-    @Test("Single block: display offset equals raw offset")
-    @MainActor func singleBlockIdentity() {
+    @Test("Display offset equals raw offset (identity mapping)")
+    @MainActor func identityMapping() {
         let editor = makeEditor()
         type("hello", into: editor)
 
@@ -24,16 +24,15 @@ struct EditorCoordinateTests {
     @Test("blockIndexForRawOffset returns correct index")
     @MainActor func blockIndexMapping() {
         let editor = makeEditor()
-        // Set up multi-block state directly
         editor.rawSource = "hello\nworld"
         editor.blocks = BlockParser.parse(editor.rawSource)
         editor.recompose(cursorInRaw: 0)
 
-        #expect(editor.blockIndexForRawOffset(0) == 0)   // start of "hello"
-        #expect(editor.blockIndexForRawOffset(3) == 0)   // middle of "hello"
-        #expect(editor.blockIndexForRawOffset(5) == 0)   // end of "hello"
-        #expect(editor.blockIndexForRawOffset(6) == 1)   // start of "world"
-        #expect(editor.blockIndexForRawOffset(11) == 1)  // end of "world"
+        #expect(editor.blockIndexForRawOffset(0) == 0)
+        #expect(editor.blockIndexForRawOffset(3) == 0)
+        #expect(editor.blockIndexForRawOffset(5) == 0)
+        #expect(editor.blockIndexForRawOffset(6) == 1)
+        #expect(editor.blockIndexForRawOffset(11) == 1)
     }
 
     @Test("blockIndexForRawOffset clamps to last block")
@@ -47,216 +46,268 @@ struct EditorCoordinateTests {
     }
 }
 
-// MARK: - Markdown Rendering
+// MARK: - Word-Level Styling
 
-@Suite("EditorTextView — Markdown Rendering")
-struct EditorMarkdownTests {
+@Suite("EditorTextView — Word-Level Styling")
+struct EditorStylingTests {
 
-    @Test("Bold markdown renders to shorter text (removes **)")
-    @MainActor func boldRendering() {
+    // MARK: - String Preservation
+
+    @Test("styleBlock preserves raw text (no stripping)")
+    @MainActor func preservesRawText() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("**bold**")
-        #expect(rendered.string == "bold")
-    }
-
-    @Test("Italic markdown renders to shorter text (removes *)")
-    @MainActor func italicRendering() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("*italic*")
-        #expect(rendered.string == "italic")
+        #expect(editor.styleBlock("**bold**").string == "**bold**")
+        #expect(editor.styleBlock("*italic*").string == "*italic*")
+        #expect(editor.styleBlock("`code`").string == "`code`")
+        #expect(editor.styleBlock("# Heading").string == "# Heading")
+        #expect(editor.styleBlock("> quote").string == "> quote")
+        #expect(editor.styleBlock("- item").string == "- item")
     }
 
     @Test("Plain text renders unchanged")
-    @MainActor func plainRendering() {
+    @MainActor func plainText() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("just plain text")
-        #expect(rendered.string == "just plain text")
+        let styled = editor.styleBlock("just plain text")
+        #expect(styled.string == "just plain text")
     }
 
-    @Test("Inline code renders without backticks")
-    @MainActor func codeRendering() {
+    @Test("Empty string produces empty attributed string")
+    @MainActor func emptyString() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("`code`")
-        #expect(rendered.string == "code")
+        #expect(editor.styleBlock("").string == "")
     }
 
-    @Test("Bold text is rendered (syntax stripped) and has font attribute")
-    @MainActor func boldFontTrait() {
+    // MARK: - Inline Delimiter Hiding (no cursor)
+
+    @Test("Bold delimiters are hidden when cursor is outside")
+    @MainActor func boldDelimitersHidden() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("**bold**")
-        // The markdown syntax ** should be stripped
-        #expect(rendered.string.contains("bold"))
-        #expect(!rendered.string.contains("**"))
-        // Font attribute should be present (trait may vary by environment)
-        var hasFont = false
-        rendered.enumerateAttribute(.font, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if val is NSFont { hasFont = true }
-        }
-        #expect(hasFont)
+        let styled = editor.styleBlock("**bold**")
+        // ** at positions 0,1 and 6,7 should be hidden
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 1, in: styled))
+        #expect(isHidden(at: 6, in: styled))
+        #expect(isHidden(at: 7, in: styled))
     }
 
-    @Test("Italic text is rendered (syntax stripped) and has font attribute")
-    @MainActor func italicFontTrait() {
+    @Test("Bold content has bold font")
+    @MainActor func boldContentFont() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("*italic*")
-        // The markdown syntax * should be stripped
-        #expect(rendered.string.contains("italic"))
-        // Check that the wrapping *s are gone (the word itself doesn't start/end with *)
-        let trimmed = rendered.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        #expect(!trimmed.hasPrefix("*"))
-        #expect(!trimmed.hasSuffix("*"))
-        // Font attribute should be present
-        var hasFont = false
-        rendered.enumerateAttribute(.font, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if val is NSFont { hasFont = true }
-        }
-        #expect(hasFont)
+        let styled = editor.styleBlock("**bold**")
+        let f = styled.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(NSFontManager.shared.traits(of: f!).contains(.boldFontMask))
     }
 
-    @Test("Empty string renders to empty attributed string")
-    @MainActor func emptyRendering() {
+    @Test("Italic delimiters are hidden when cursor is outside")
+    @MainActor func italicDelimitersHidden() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("")
-        #expect(rendered.string == "")
+        let styled = editor.styleBlock("*italic*")
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 7, in: styled))
     }
 
-    @Test("Heading renders without # prefix")
-    @MainActor func headingRendering() {
+    @Test("Italic content has italic font")
+    @MainActor func italicContentFont() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("# Hello")
-        #expect(rendered.string == "Hello")
+        let styled = editor.styleBlock("*italic*")
+        let f = styled.attribute(.font, at: 1, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(NSFontManager.shared.traits(of: f!).contains(.italicFontMask))
     }
 
-    @Test("Bold italic renders without delimiters")
-    @MainActor func boldItalicRendering() {
+    @Test("Bold-italic delimiters are hidden when cursor is outside")
+    @MainActor func boldItalicDelimitersHidden() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("***both***")
-        #expect(rendered.string == "both")
+        let styled = editor.styleBlock("***both***")
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 1, in: styled))
+        #expect(isHidden(at: 2, in: styled))
+        #expect(isHidden(at: 7, in: styled))
     }
 
-    @Test("**hi* renders as *hi (extra * stays, matched delimiters stripped)")
-    @MainActor func mismatchedDoubleOpenSingleClose() {
+    @Test("Strikethrough delimiters are hidden when cursor is outside")
+    @MainActor func strikethroughDelimitersHidden() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("**hi*")
-        #expect(rendered.string == "*hi")
+        let styled = editor.styleBlock("~~deleted~~")
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 1, in: styled))
+        #expect(isHidden(at: 9, in: styled))
+        #expect(isHidden(at: 10, in: styled))
     }
 
-    @Test("*hi** renders as hi* (extra * stays, matched delimiters stripped)")
-    @MainActor func mismatchedSingleOpenDoubleClose() {
+    @Test("Strikethrough content has strikethrough attribute")
+    @MainActor func strikethroughAttribute() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("*hi**")
-        #expect(rendered.string == "hi*")
+        let styled = editor.styleBlock("~~deleted~~")
+        let val = styled.attribute(.strikethroughStyle, at: 2, effectiveRange: nil)
+        #expect(val != nil)
     }
 
-    @Test("***hi** renders as *hi (extra * stays, bold delimiters stripped)")
-    @MainActor func mismatchedTripleOpenDoubleClose() {
+    @Test("Highlight delimiters are hidden when cursor is outside")
+    @MainActor func highlightDelimitersHidden() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("***hi**")
-        #expect(rendered.string == "*hi")
+        let styled = editor.styleBlock("==important==")
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 1, in: styled))
+        #expect(isHidden(at: 11, in: styled))
+        #expect(isHidden(at: 12, in: styled))
     }
 
-    @Test("Link renders as text only (delimiters stripped)")
-    @MainActor func linkRendering() {
+    @Test("Highlight content has background color")
+    @MainActor func highlightBackground() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("[click here](https://example.com)")
-        #expect(rendered.string == "click here")
+        let styled = editor.styleBlock("==important==")
+        let val = styled.attribute(.backgroundColor, at: 2, effectiveRange: nil)
+        #expect(val != nil)
     }
 
-    @Test("Blockquote renders without > prefix")
-    @MainActor func blockquoteRendering() {
+    @Test("Code delimiters are hidden when cursor is outside")
+    @MainActor func codeDelimitersHidden() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("> hello world")
-        #expect(rendered.string == "hello world")
+        let styled = editor.styleBlock("`code`")
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 5, in: styled))
     }
 
-    @Test("Unordered list item renders with bullet")
-    @MainActor func unorderedListRendering() {
+    @Test("Inline code content has code color")
+    @MainActor func codeColor() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("- hello")
-        #expect(rendered.string == "\u{2022} hello")
+        let styled = editor.styleBlock("`code`")
+        let color = styled.attribute(.foregroundColor, at: 1, effectiveRange: nil) as? NSColor
+        #expect(color != nil)
+        #expect(color!.redComponent > 0.5 && color!.greenComponent < 0.2)
     }
 
-    @Test("Ordered list item keeps its number")
-    @MainActor func orderedListRendering() {
+    @Test("Link delimiters are hidden when cursor is outside")
+    @MainActor func linkDelimitersHidden() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("1. hello")
-        #expect(rendered.string == "1. hello")
+        let styled = editor.styleBlock("[text](url)")
+        // "[" at 0 should be hidden
+        #expect(isHidden(at: 0, in: styled))
+        // "](url)" at 5-10 should be hidden
+        #expect(isHidden(at: 5, in: styled))
     }
 
-    @Test("Inline code renders in dark red")
-    @MainActor func inlineCodeColor() {
+    @Test("Link content has accent color and underline")
+    @MainActor func linkStyling() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("`code`")
-        #expect(rendered.string == "code")
-        var foundCodeColor = false
-        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if let color = val as? NSColor {
-                // Check it's approximately #8a2425
-                if color.redComponent > 0.5 && color.greenComponent < 0.2 && color.blueComponent < 0.2 {
-                    foundCodeColor = true
-                }
-            }
-        }
-        #expect(foundCodeColor)
+        let styled = editor.styleBlock("[text](url)")
+        // "text" is at positions 1-4
+        let color = styled.attribute(.foregroundColor, at: 1, effectiveRange: nil) as? NSColor
+        #expect(color != nil)
+        let underline = styled.attribute(.underlineStyle, at: 1, effectiveRange: nil)
+        #expect(underline != nil)
     }
 
-    @Test("Active block inline code has dark red content")
-    @MainActor func activeCodeColor() {
+    @Test("Image delimiters are hidden when cursor is outside")
+    @MainActor func imageDelimitersHidden() {
         let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("`code`")
-        #expect(highlighted.string == "`code`")
-        // Check the content range (chars 1-4) has the code color
-        var foundCodeColor = false
-        highlighted.enumerateAttribute(.foregroundColor, in: NSRange(location: 1, length: 4)) { val, _, _ in
-            if let color = val as? NSColor {
-                if color.redComponent > 0.5 && color.greenComponent < 0.2 && color.blueComponent < 0.2 {
-                    foundCodeColor = true
-                }
-            }
-        }
-        #expect(foundCodeColor)
+        let styled = editor.styleBlock("![alt](url)")
+        // "![" at 0-1 should be hidden
+        #expect(isHidden(at: 0, in: styled))
     }
 
-    @Test("Link rendered text has underline attribute")
-    @MainActor func linkUnderline() {
+    @Test("Image content has accent color and italic font")
+    @MainActor func imageStyling() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("[text](url)")
-        #expect(rendered.string == "text")
-        var hasUnderline = false
-        rendered.enumerateAttribute(.underlineStyle, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if val != nil { hasUnderline = true }
-        }
-        #expect(hasUnderline)
+        let styled = editor.styleBlock("![photo](url)")
+        // "photo" is at positions 2-6
+        let color = styled.attribute(.foregroundColor, at: 2, effectiveRange: nil) as? NSColor
+        #expect(color != nil)
+        let f = styled.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(NSFontManager.shared.traits(of: f!).contains(.italicFontMask))
     }
 
-    @Test("Blockquote rendered text has secondary label color")
+    @Test("Line break backslash is hidden when cursor is outside")
+    @MainActor func lineBreakHidden() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("hello\\")
+        #expect(isHidden(at: 5, in: styled))
+    }
+
+    // MARK: - Heading & Blockquote Markers (hidden when no cursor, dimmed when active)
+
+    @Test("Heading # is hidden when cursor is outside")
+    @MainActor func headingMarkerHidden() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("# Hello")
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 1, in: styled))  // space after #
+    }
+
+    @Test("Heading # is dimmed when cursor is inside")
+    @MainActor func headingMarkerDimmedActive() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("# Hello", cursorPosition: 3)
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
+    }
+
+    @Test("Heading content has bold scaled font")
+    @MainActor func headingContentFont() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("# Hello")
+        let f = styled.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(NSFontManager.shared.traits(of: f!).contains(.boldFontMask))
+        #expect(f!.pointSize > editor.bodyFont.pointSize)
+    }
+
+    @Test("Blockquote > is invisible (color-only) when cursor is outside")
+    @MainActor func blockquoteMarkerHidden() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("> text")
+        // Blockquote delimiters preserve width (font not shrunk), only color is clear
+        #expect(isInvisible(at: 0, in: styled))
+        #expect(isInvisible(at: 1, in: styled))  // space after >
+    }
+
+    @Test("Blockquote > is dimmed when cursor is inside")
+    @MainActor func blockquoteMarkerDimmedActive() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("> text", cursorPosition: 3)
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
+    }
+
+    @Test("Blockquote content has secondary label color")
     @MainActor func blockquoteColor() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("> text")
-        var hasSecondaryColor = false
-        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if let color = val as? NSColor, color == NSColor.secondaryLabelColor {
-                hasSecondaryColor = true
-            }
-        }
-        #expect(hasSecondaryColor)
+        let styled = editor.styleBlock("> text")
+        // Content starts after "> " (position 2)
+        let color = styled.attribute(.foregroundColor, at: 2, effectiveRange: nil) as? NSColor
+        #expect(color == NSColor.secondaryLabelColor)
     }
 
-    @Test("Multi-line blockquote strips all > prefixes")
-    @MainActor func multiLineBlockquoteRendering() {
+    @Test("Blockquote has paragraph style with text block")
+    @MainActor func blockquoteTextBlock() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("> line1\n> line2")
-        #expect(!rendered.string.contains(">"))
-        #expect(rendered.string.contains("line1"))
-        #expect(rendered.string.contains("line2"))
+        let styled = editor.styleBlock("> text")
+        var hasTextBlock = false
+        styled.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: styled.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle, !ps.textBlocks.isEmpty {
+                hasTextBlock = true
+            }
+        }
+        #expect(hasTextBlock)
+    }
+
+    @Test("List marker is dimmed, never hidden")
+    @MainActor func listMarkerDimmed() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("- hello")
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
     }
 
     @Test("List items have indented paragraph style")
     @MainActor func listIndentation() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("- hello")
+        let styled = editor.styleBlock("- hello")
         var hasIndent = false
-        rendered.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
+        styled.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: styled.length)) { val, _, _ in
             if let ps = val as? NSParagraphStyle, ps.firstLineHeadIndent > 0 {
                 hasIndent = true
             }
@@ -264,24 +315,19 @@ struct EditorMarkdownTests {
         #expect(hasIndent)
     }
 
-    @Test("Active list items have indented paragraph style")
-    @MainActor func activeListIndentation() {
+    @Test("Ordered list keeps its number and dims it")
+    @MainActor func orderedListDimmed() {
         let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("- hello")
-        var hasIndent = false
-        highlighted.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: highlighted.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle, ps.firstLineHeadIndent > 0 {
-                hasIndent = true
-            }
-        }
-        #expect(hasIndent)
+        let styled = editor.styleBlock("1. hello")
+        #expect(styled.string == "1. hello")
+        #expect(isDimmed(at: 0, in: styled))
     }
 
-    @Test("Indented list item (4 spaces) renders with more indent than top-level")
-    @MainActor func indentedListRendering() {
+    @Test("Indented list (4 spaces) has deeper indent than top-level")
+    @MainActor func indentedListDeeper() {
         let editor = makeEditor()
-        let topLevel = editor.renderMarkdown("- hello")
-        let indented = editor.renderMarkdown("    - hello")
+        let topLevel = editor.styleBlock("- hello")
+        let indented = editor.styleBlock("    - hello")
 
         var topIndent: CGFloat = 0
         topLevel.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: topLevel.length)) { val, _, _ in
@@ -296,257 +342,121 @@ struct EditorMarkdownTests {
         #expect(subIndent > topIndent)
     }
 
-    @Test("Indented list item (4 spaces) renders with bullet, not as code")
-    @MainActor func indentedListBullet() {
+    @Test("Table has monospace font and dimmed pipes")
+    @MainActor func tableStyling() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("    - hello")
-        #expect(rendered.string.contains("\u{2022}"))  // bullet •
-        #expect(rendered.string.contains("hello"))
+        let styled = editor.styleBlock("| A | B |\n| --- | --- |\n| 1 | 2 |")
+        // Monospace font on content
+        let f = styled.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(f!.isFixedPitch)
+        // Pipes are dimmed
+        #expect(isDimmed(at: 0, in: styled))
     }
 
-    @Test("Ordered list number is dimmed")
-    @MainActor func orderedListNumberDimmed() {
+    @Test("Thematic break is dimmed, never hidden")
+    @MainActor func thematicBreakDimmed() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("1. hello")
-        // The "1. " should have the dim color
-        var hasDimColor = false
-        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: 3)) { val, _, _ in
-            if val is NSColor { hasDimColor = true }
-        }
-        #expect(hasDimColor)
+        let styled = editor.styleBlock("---")
+        #expect(styled.string == "---")
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
     }
 
-    @Test("Strikethrough renders without ~~ delimiters")
-    @MainActor func strikethroughRendering() {
+    @Test("Code block fences are dimmed, content has monospace+code color")
+    @MainActor func codeBlockStyling() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("~~deleted~~")
-        #expect(rendered.string == "deleted")
-        var hasStrikethrough = false
-        rendered.enumerateAttribute(.strikethroughStyle, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if val != nil { hasStrikethrough = true }
-        }
-        #expect(hasStrikethrough)
+        let styled = editor.styleBlock("```\nhello\n```")
+        #expect(styled.string == "```\nhello\n```")
+        // Fences dimmed
+        #expect(isDimmed(at: 0, in: styled))
+        // Content "hello" at offset 4 has code color and monospace
+        let f = styled.attribute(.font, at: 4, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(f!.isFixedPitch)
+        let color = styled.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor
+        #expect(color != nil)
+        #expect(color!.redComponent > 0.5 && color!.greenComponent < 0.2)
     }
 
-    @Test("Active block strikethrough has strikethrough attribute")
-    @MainActor func activeStrikethrough() {
+    // MARK: - Active Token (cursor inside)
+
+    @Test("Bold delimiters are dimmed (not hidden) when cursor is inside")
+    @MainActor func boldDelimitersDimmedWhenActive() {
         let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("~~deleted~~")
-        #expect(highlighted.string == "~~deleted~~")
-        var hasStrikethrough = false
-        highlighted.enumerateAttribute(.strikethroughStyle, in: NSRange(location: 2, length: 7)) { val, _, _ in
-            if val != nil { hasStrikethrough = true }
-        }
-        #expect(hasStrikethrough)
+        // Cursor at position 3 = inside "**bold**"
+        let styled = editor.styleBlock("**bold**", cursorPosition: 3)
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(isDimmed(at: 1, in: styled))
+        #expect(isDimmed(at: 6, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
     }
 
-    @Test("Highlight renders without == delimiters")
-    @MainActor func highlightRendering() {
+    @Test("Code delimiters are dimmed when cursor is inside")
+    @MainActor func codeDelimitersDimmedWhenActive() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("==important==")
-        #expect(rendered.string == "important")
-        var hasBackground = false
-        rendered.enumerateAttribute(.backgroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if val != nil { hasBackground = true }
-        }
-        #expect(hasBackground)
+        let styled = editor.styleBlock("`code`", cursorPosition: 2)
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(isDimmed(at: 5, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
     }
 
-    @Test("Active block highlight has background color")
-    @MainActor func activeHighlight() {
+    @Test("Line break backslash is dimmed when cursor is inside")
+    @MainActor func lineBreakDimmedWhenActive() {
         let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("==important==")
-        #expect(highlighted.string == "==important==")
-        var hasBackground = false
-        highlighted.enumerateAttribute(.backgroundColor, in: NSRange(location: 2, length: 9)) { val, _, _ in
-            if val != nil { hasBackground = true }
-        }
-        #expect(hasBackground)
+        let styled = editor.styleBlock("hello\\", cursorPosition: 5)
+        #expect(isDimmed(at: 5, in: styled))
+        #expect(!isHidden(at: 5, in: styled))
     }
 
-    @Test("Blockquote has paragraph style with text block")
-    @MainActor func blockquoteTextBlock() {
+    @Test("Heading markers: hidden without cursor, dimmed with cursor")
+    @MainActor func headingMarkerVisibility() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("> text")
-        var hasTextBlock = false
-        rendered.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle, !ps.textBlocks.isEmpty {
-                hasTextBlock = true
-            }
-        }
-        #expect(hasTextBlock)
+        // Without cursor → hidden
+        let noActive = editor.styleBlock("# Hello")
+        #expect(isHidden(at: 0, in: noActive))
+        // With cursor inside → dimmed
+        let active = editor.styleBlock("# Hello", cursorPosition: 3)
+        #expect(isDimmed(at: 0, in: active))
     }
 
-    @Test("Table rendered text has monospace font")
-    @MainActor func tableMonospace() {
+    // MARK: - Edge Cases
+
+    @Test("**hi* mismatched: italic delimiters hidden, extra * stays visible")
+    @MainActor func mismatchedBoldItalic() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("| A | B |\n| --- | --- |\n| 1 | 2 |")
-        var hasMonospace = false
-        rendered.enumerateAttribute(.font, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if let f = val as? NSFont, f.isFixedPitch {
-                hasMonospace = true
-            }
-        }
-        #expect(hasMonospace)
+        let styled = editor.styleBlock("**hi*")
+        // cmark parses this as: literal *, then italic *hi*
+        // The first * at position 0 is literal (no span), the * at 1 is italic open, * at 4 is italic close
+        // Content "hi" at 2-3 should have italic font
+        let f = styled.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(NSFontManager.shared.traits(of: f!).contains(.italicFontMask))
     }
 
-    @Test("Active table has monospace font")
-    @MainActor func activeTableMonospace() {
+    @Test("Single-line blockquote: > invisible (color-only) when no cursor")
+    @MainActor func singleLineBlockquoteHidden() {
         let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("| A | B |\n| --- | --- |\n| 1 | 2 |")
-        var hasMonospace = false
-        highlighted.enumerateAttribute(.font, in: NSRange(location: 0, length: highlighted.length)) { val, _, _ in
-            if let f = val as? NSFont, f.isFixedPitch {
-                hasMonospace = true
-            }
-        }
-        #expect(hasMonospace)
+        let styled = editor.styleBlock("> some quote")
+        // Blockquote delimiters preserve width, only color is clear
+        #expect(isInvisible(at: 0, in: styled))
+        #expect(isInvisible(at: 1, in: styled))
     }
 
-    @Test("Active table pipes are dimmed")
-    @MainActor func activeTablePipesDimmed() {
+    @Test("Single-line blockquote: > dimmed when cursor inside")
+    @MainActor func singleLineBlockquoteDimmed() {
         let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("| A | B |\n| --- | --- |\n| 1 | 2 |")
-        // First character is "|"
-        let color = highlighted.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
-        #expect(color == NSColor.tertiaryLabelColor)
+        let styled = editor.styleBlock("> some quote", cursorPosition: 3)
+        #expect(isDimmed(at: 0, in: styled))
+        #expect(!isHidden(at: 0, in: styled))
     }
 
-    @Test("Code block renders without fence lines")
-    @MainActor func codeBlockRendering() {
+    @Test("Checked task item has strikethrough on content")
+    @MainActor func checkedTaskStrikethrough() {
         let editor = makeEditor()
-        let rendered = editor.renderMarkdown("```\nhello\n```")
-        // Fence lines should be stripped, only content remains
-        #expect(rendered.string.contains("hello"))
-        #expect(!rendered.string.contains("```"))
-    }
-
-    @Test("Code block rendered content has monospace font")
-    @MainActor func codeBlockFont() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("```\nhello\n```")
-        var hasMonospace = false
-        rendered.enumerateAttribute(.font, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if let f = val as? NSFont, f.isFixedPitch {
-                hasMonospace = true
-            }
-        }
-        #expect(hasMonospace)
-    }
-
-    @Test("Code block rendered content has code color")
-    @MainActor func codeBlockColor() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("```\nhello\n```")
-        var hasCodeColor = false
-        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if let color = val as? NSColor {
-                if color.redComponent > 0.5 && color.greenComponent < 0.2 && color.blueComponent < 0.2 {
-                    hasCodeColor = true
-                }
-            }
-        }
-        #expect(hasCodeColor)
-    }
-
-    @Test("Active code block content has monospace font")
-    @MainActor func activeCodeBlockFont() {
-        let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("```\nhello\n```")
-        // Content "hello\n" starts at offset 4
-        var hasMonospace = false
-        highlighted.enumerateAttribute(.font, in: NSRange(location: 4, length: 6)) { val, _, _ in
-            if let f = val as? NSFont, f.isFixedPitch {
-                hasMonospace = true
-            }
-        }
-        #expect(hasMonospace)
-    }
-
-    @Test("Active code block fences are dimmed")
-    @MainActor func activeCodeBlockDimmedFences() {
-        let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("```\nhello\n```")
-        // Opening "```\n" is at offset 0
-        let color = highlighted.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
-        #expect(color == NSColor.tertiaryLabelColor)
-    }
-
-    @Test("Image renders as alt text only (delimiters stripped)")
-    @MainActor func imageRendering() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("![photo](https://example.com/img.png)")
-        #expect(rendered.string == "photo")
-    }
-
-    @Test("Image rendered text has accent color")
-    @MainActor func imageColor() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("![photo](url)")
-        var hasAccentColor = false
-        rendered.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if val is NSColor { hasAccentColor = true }
-        }
-        #expect(hasAccentColor)
-    }
-
-    @Test("Image rendered text has italic font")
-    @MainActor func imageItalic() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("![photo](url)")
-        var hasItalic = false
-        rendered.enumerateAttribute(.font, in: NSRange(location: 0, length: rendered.length)) { val, _, _ in
-            if let f = val as? NSFont {
-                if NSFontManager.shared.traits(of: f).contains(.italicFontMask) {
-                    hasItalic = true
-                }
-            }
-        }
-        #expect(hasItalic)
-    }
-
-    @Test("Image with empty alt is not parsed (stays as raw text)")
-    @MainActor func imageEmptyAlt() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("![](url)")
-        // swift-markdown doesn't produce an image node for empty alt text
-        #expect(rendered.string == "![](url)")
-    }
-
-    @Test("Active block image has accent color on alt text")
-    @MainActor func activeImageColor() {
-        let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("![alt](url)")
-        #expect(highlighted.string == "![alt](url)")
-        var hasAccentColor = false
-        // "alt" is at positions 2-4
-        highlighted.enumerateAttribute(.foregroundColor, in: NSRange(location: 2, length: 3)) { val, _, _ in
-            if val is NSColor { hasAccentColor = true }
-        }
-        #expect(hasAccentColor)
-    }
-
-    @Test("Line break trailing backslash is stripped in rendered output")
-    @MainActor func lineBreakRendering() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("hello\\")
-        #expect(rendered.string == "hello")
-    }
-
-    @Test("Active block trailing backslash is dimmed")
-    @MainActor func activeLineBreakDimmed() {
-        let editor = makeEditor()
-        let highlighted = editor.highlightSyntax("hello\\")
-        #expect(highlighted.string == "hello\\")
-        let color = highlighted.attribute(.foregroundColor, at: 5, effectiveRange: nil) as? NSColor
-        #expect(color == NSColor.tertiaryLabelColor)
-    }
-
-    @Test("Text without trailing backslash renders unchanged")
-    @MainActor func noLineBreakRendering() {
-        let editor = makeEditor()
-        let rendered = editor.renderMarkdown("hello")
-        #expect(rendered.string == "hello")
+        let styled = editor.styleBlock("- [x] done")
+        let val = styled.attribute(.strikethroughStyle, at: 6, effectiveRange: nil)
+        #expect(val != nil)
     }
 }
 
@@ -555,44 +465,31 @@ struct EditorMarkdownTests {
 @Suite("EditorTextView — Recompose")
 struct EditorRecomposeTests {
 
-    @Test("Active block shows raw markdown in text storage")
-    @MainActor func activeBlockShowsRaw() {
+    @Test("Text storage always contains raw markdown")
+    @MainActor func textStorageIsRaw() {
         let editor = makeEditor()
         editor.rawSource = "**bold**\nplain"
         editor.blocks = BlockParser.parse(editor.rawSource)
-        // Cursor in block 0 — block 0 stays raw
+
+        // Cursor in block 0
+        editor.recompose(cursorInRaw: 0)
+        #expect(editor.textStorage!.string == "**bold**\nplain")
+
+        // Cursor in block 1
+        editor.recompose(cursorInRaw: 9)
+        #expect(editor.textStorage!.string == "**bold**\nplain")
+    }
+
+    @Test("Display ranges equal block ranges (identity)")
+    @MainActor func displayRangesAreBlockRanges() {
+        let editor = makeEditor()
+        editor.rawSource = "**bold**\nplain"
+        editor.blocks = BlockParser.parse(editor.rawSource)
         editor.recompose(cursorInRaw: 0)
 
-        let display = editor.textStorage!.string
-        #expect(display.hasPrefix("**bold**"))
-    }
-
-    @Test("Non-active block shows rendered markdown in text storage")
-    @MainActor func nonActiveBlockRendered() {
-        let editor = makeEditor()
-        editor.rawSource = "**bold**\nplain"
-        editor.blocks = BlockParser.parse(editor.rawSource)
-        // Cursor in block 1 — block 0 gets rendered
-        editor.recompose(cursorInRaw: 9)  // offset 9 = start of "plain"
-
-        let display = editor.textStorage!.string
-        // Block 0 should be rendered: "**bold**" → "bold"
-        #expect(display.hasPrefix("bold"))
-        #expect(display.hasSuffix("plain"))
-    }
-
-    @Test("Display ranges are computed correctly after recompose")
-    @MainActor func displayRangesCorrect() {
-        let editor = makeEditor()
-        editor.rawSource = "**bold**\nplain"
-        editor.blocks = BlockParser.parse(editor.rawSource)
-        editor.recompose(cursorInRaw: 9)
-
         #expect(editor.displayRanges.count == 2)
-        // Block 0 rendered: "bold" = 4 chars
-        #expect(editor.displayRanges[0].length == 4)
-        // Block 1 active: "plain" = 5 chars
-        #expect(editor.displayRanges[1].length == 5)
+        #expect(editor.displayRanges[0].length == 8)  // "**bold**"
+        #expect(editor.displayRanges[1].length == 5)  // "plain"
     }
 
     @Test("activeBlockIndex is set correctly")
@@ -609,5 +506,37 @@ struct EditorRecomposeTests {
 
         editor.recompose(cursorInRaw: 8)
         #expect(editor.activeBlockIndex == 2)
+    }
+
+    @Test("Non-active block has inline delimiters hidden")
+    @MainActor func nonActiveBlockDelimitersHidden() {
+        let editor = makeEditor()
+        editor.rawSource = "**bold**\nplain"
+        editor.blocks = BlockParser.parse(editor.rawSource)
+        // Cursor in block 1 — block 0 should have hidden ** delimiters
+        editor.recompose(cursorInRaw: 9)
+
+        let ts = editor.textStorage!
+        // ** at positions 0,1 should be hidden
+        let f = ts.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(f!.pointSize < 1.0)
+    }
+
+    @Test("Active block with cursor in token shows delimiters")
+    @MainActor func activeBlockTokenDelimitersVisible() {
+        let editor = makeEditor()
+        editor.rawSource = "**bold**\nplain"
+        editor.blocks = BlockParser.parse(editor.rawSource)
+        // Cursor at position 3 = inside "**bold**"
+        editor.recompose(cursorInRaw: 3)
+
+        let ts = editor.textStorage!
+        // ** at position 0 should be dimmed (visible), not hidden
+        let color = ts.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        #expect(color == NSColor.tertiaryLabelColor)
+        let f = ts.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(f!.pointSize > 1.0)  // Not hidden
     }
 }

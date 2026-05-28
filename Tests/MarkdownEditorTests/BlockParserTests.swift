@@ -297,24 +297,27 @@ struct BlockParserTests {
         #expect(blocks[0].range == NSRange(location: 0, length: (text as NSString).length))
     }
 
-    // MARK: - Blockquote Merging
+    // MARK: - Blockquotes (each line is its own block)
 
-    @Test("Consecutive blockquote lines merge into single block")
-    func blockquoteMerge() {
+    @Test("Consecutive blockquote lines are separate blocks")
+    func blockquoteSeparateBlocks() {
         let text = "> line1\n> line2\n> line3"
         let blocks = BlockParser.parse(text)
-        #expect(blocks.count == 1)
-        #expect(blocks[0].content == text)
+        #expect(blocks.count == 3)
+        #expect(blocks[0].content == "> line1")
+        #expect(blocks[1].content == "> line2")
+        #expect(blocks[2].content == "> line3")
     }
 
     @Test("Blockquote between paragraphs")
     func blockquoteBetweenParagraphs() {
         let text = "above\n> line1\n> line2\nbelow"
         let blocks = BlockParser.parse(text)
-        #expect(blocks.count == 3)
+        #expect(blocks.count == 4)
         #expect(blocks[0].content == "above")
-        #expect(blocks[1].content == "> line1\n> line2")
-        #expect(blocks[2].content == "below")
+        #expect(blocks[1].content == "> line1")
+        #expect(blocks[2].content == "> line2")
+        #expect(blocks[3].content == "below")
     }
 
     @Test("Single blockquote line is one block")
@@ -325,11 +328,12 @@ struct BlockParserTests {
         #expect(blocks[0].content == "> just one")
     }
 
-    @Test("Blockquote range covers full text")
+    @Test("Blockquote line range covers single line")
     func blockquoteRange() {
         let text = "> a\n> b"
         let blocks = BlockParser.parse(text)
-        #expect(blocks[0].range == NSRange(location: 0, length: (text as NSString).length))
+        #expect(blocks[0].range == NSRange(location: 0, length: 3))
+        #expect(blocks[1].range == NSRange(location: 4, length: 3))
     }
 
     @Test("Non-consecutive blockquotes are separate blocks")

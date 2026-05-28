@@ -4,33 +4,44 @@ import AppKit
 
 extension EditorTextView {
 
-    // MARK: - Display Composition (full recompose)
+    // MARK: - Display Composition
     //
-    // Called when the active block changes.  Replaces the entire text storage.
+    // Text storage content = rawSource, always.
+    // Styling is attribute-only; the string never changes during recompose.
 
     func recompose(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
         isUpdating = true
 
         activeBlockIndex = blockIndexForRawOffset(cursorInRaw)
 
-        let composed = NSMutableAttributedString()
-        displayRanges = []
+        // Build styled attributed string from rawSource.
+        // The string content IS rawSource — no delimiter stripping.
+        let composed = NSMutableAttributedString(string: rawSource, attributes: baseAttributes)
 
         for (i, block) in blocks.enumerated() {
-            if i > 0 {
-                composed.append(NSAttributedString(string: blockSeparator, attributes: baseAttributes))
-            }
+            guard block.range.upperBound <= composed.length else { continue }
 
-            let blockDisplayStart = composed.length
-
+            // Cursor position within this block (nil for non-active blocks)
+            let cursorInBlock: Int?
             if i == activeBlockIndex {
-                composed.append(highlightSyntax(block.content))
+                cursorInBlock = max(0, cursorInRaw - block.range.location)
             } else {
-                composed.append(renderMarkdown(block.content))
+                cursorInBlock = nil
             }
 
-            let blockDisplayLength = composed.length - blockDisplayStart
-            displayRanges.append(NSRange(location: blockDisplayStart, length: blockDisplayLength))
+            let styled = styleBlock(block.content, cursorPosition: cursorInBlock)
+
+            // Apply attributes from the styled block onto the composed string
+            styled.enumerateAttributes(
+                in: NSRange(location: 0, length: styled.length), options: []
+            ) { attrs, range, _ in
+                let tsRange = NSRange(
+                    location: range.location + block.range.location,
+                    length: range.length
+                )
+                guard tsRange.upperBound <= composed.length else { return }
+                composed.setAttributes(attrs, range: tsRange)
+            }
         }
 
         let fullRange = NSRange(location: 0, length: textStorage!.length)
@@ -38,18 +49,19 @@ extension EditorTextView {
         textStorage?.replaceCharacters(in: fullRange, with: composed)
         textStorage?.endEditing()
 
+        // displayRanges = block ranges (identity mapping)
+        displayRanges = blocks.map { $0.range }
+
+        // Cursor placement: display offset = raw offset (identity)
         if let rawSel = selectionInRaw, rawSel.length > 0 {
-            let displayStart = rawOffsetToDisplayOffset(rawSel.location)
-            let displayEnd = rawOffsetToDisplayOffset(rawSel.location + rawSel.length)
             let len = textStorage!.length
             let displaySel = NSRange(
-                location: min(displayStart, len),
-                length: max(0, min(displayEnd, len) - min(displayStart, len))
+                location: min(rawSel.location, len),
+                length: max(0, min(rawSel.upperBound, len) - min(rawSel.location, len))
             )
             setSelectedRange(displaySel)
         } else {
-            let displayCursor = rawOffsetToDisplayOffset(cursorInRaw)
-            let clamped = min(displayCursor, textStorage!.length)
+            let clamped = min(cursorInRaw, textStorage!.length)
             setSelectedRange(NSRange(location: clamped, length: 0))
         }
 
@@ -58,27 +70,15 @@ extension EditorTextView {
         isUpdating = false
     }
 
-    /// Recalculates displayRanges from current blocks without touching textStorage.
+    /// Recalculates displayRanges from current blocks.
+    /// With word-level rendering, display ranges = raw block ranges.
     func recalcDisplayRanges() {
-        displayRanges = []
-        var offset = 0
-        for (i, block) in blocks.enumerated() {
-            if i > 0 {
-                offset += separatorLength
-            }
-            let displayLen: Int
-            if i == activeBlockIndex {
-                displayLen = (block.content as NSString).length
-            } else {
-                let rendered = renderMarkdown(block.content)
-                displayLen = rendered.length
-            }
-            displayRanges.append(NSRange(location: offset, length: displayLen))
-            offset += displayLen
-        }
+        displayRanges = blocks.map { $0.range }
     }
 
     // MARK: - Coordinate Mapping
+    //
+    // With text storage = rawSource, display offset = raw offset (identity).
 
     func blockIndexForRawOffset(_ rawOffset: Int) -> Int? {
         for (i, block) in blocks.enumerated() {
@@ -90,76 +90,14 @@ extension EditorTextView {
     }
 
     func displayOffsetToRawOffset(_ displayOffset: Int) -> Int {
-        for (i, displayRange) in displayRanges.enumerated() {
-            guard i < blocks.count else { break }
-            let block = blocks[i]
-
-            if displayOffset <= displayRange.upperBound {
-                let offsetInBlock = max(0, displayOffset - displayRange.location)
-
-                if i == activeBlockIndex {
-                    let clampedOffset = min(offsetInBlock, (block.content as NSString).length)
-                    return block.range.location + clampedOffset
-                } else {
-                    let displayLen = displayRange.length
-                    let rawLen = (block.content as NSString).length
-                    if displayLen > 0 {
-                        let proportion = Double(offsetInBlock) / Double(displayLen)
-                        let mapped = Int(proportion * Double(rawLen))
-                        return block.range.location + min(mapped, rawLen)
-                    }
-                    return block.range.location
-                }
-            }
-
-            let separatorEnd = (i + 1 < displayRanges.count)
-                ? displayRanges[i + 1].location
-                : (textStorage?.length ?? displayRange.upperBound)
-            if displayOffset < separatorEnd {
-                let sepOffset = displayOffset - displayRange.upperBound
-                return block.range.upperBound + sepOffset
-            }
-        }
-
-        return (rawSource as NSString).length
+        return displayOffset
     }
 
     func rawOffsetToDisplayOffset(_ rawOffset: Int) -> Int {
-        for (i, block) in blocks.enumerated() {
-            guard i < displayRanges.count else { break }
-            let displayRange = displayRanges[i]
-
-            if rawOffset <= block.range.upperBound {
-                let offsetInBlock = max(0, rawOffset - block.range.location)
-
-                if i == activeBlockIndex {
-                    return displayRange.location + min(offsetInBlock, displayRange.length)
-                } else {
-                    let rawLen = (block.content as NSString).length
-                    if rawLen > 0 {
-                        let proportion = Double(offsetInBlock) / Double(rawLen)
-                        let mapped = Int(proportion * Double(displayRange.length))
-                        return displayRange.location + min(mapped, displayRange.length)
-                    }
-                    return displayRange.location
-                }
-            }
-
-            let nextRawStart = (i + 1 < blocks.count)
-                ? blocks[i + 1].range.location
-                : (rawSource as NSString).length
-            if rawOffset < nextRawStart {
-                let sepOffset = rawOffset - block.range.upperBound
-                return displayRange.upperBound + sepOffset
-            }
-        }
-
-        return textStorage?.length ?? 0
+        return rawOffset
     }
 
     func displayRangeToRawRange(_ displayRange: NSRange) -> NSRange {
-        let rawStart = displayOffsetToRawOffset(displayRange.location)
-        let rawEnd = displayOffsetToRawOffset(displayRange.location + displayRange.length)
-        return NSRange(location: rawStart, length: max(0, rawEnd - rawStart))
+        return displayRange
     }
 }
