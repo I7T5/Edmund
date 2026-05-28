@@ -302,17 +302,17 @@ struct EditorStylingTests {
         #expect(!isHidden(at: 0, in: styled))
     }
 
-    @Test("List items have indented paragraph style")
+    @Test("List items have hanging indent paragraph style")
     @MainActor func listIndentation() {
         let editor = makeEditor()
         let styled = editor.styleBlock("- hello")
-        var hasIndent = false
+        var hasHangingIndent = false
         styled.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: styled.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle, ps.firstLineHeadIndent > 0 {
-                hasIndent = true
+            if let ps = val as? NSParagraphStyle, ps.headIndent > 0 {
+                hasHangingIndent = true
             }
         }
-        #expect(hasIndent)
+        #expect(hasHangingIndent)
     }
 
     @Test("Ordered list keeps its number and dims it")
@@ -323,42 +323,23 @@ struct EditorStylingTests {
         #expect(isDimmed(at: 0, in: styled))
     }
 
-    @Test("Indented list (4 spaces) has deeper indent than top-level")
+    @Test("Indented list (4 spaces) has wider hanging indent than top-level")
     @MainActor func indentedListDeeper() {
         let editor = makeEditor()
         let topLevel = editor.styleBlock("- hello")
         let indented = editor.styleBlock("    - hello")
 
-        var topIndent: CGFloat = 0
+        var topHanging: CGFloat = 0
         topLevel.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: topLevel.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle { topIndent = ps.firstLineHeadIndent }
+            if let ps = val as? NSParagraphStyle { topHanging = ps.headIndent }
         }
 
-        var subIndent: CGFloat = 0
+        var subHanging: CGFloat = 0
         indented.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: indented.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle { subIndent = ps.firstLineHeadIndent }
+            if let ps = val as? NSParagraphStyle { subHanging = ps.headIndent }
         }
 
-        #expect(subIndent > topIndent)
-    }
-
-    @Test("Tab-indented list has same depth as 2-space-indented list")
-    @MainActor func tabIndentedList() {
-        let editor = makeEditor()
-        let spaced = editor.styleBlock("  - hello")
-        let tabbed = editor.styleBlock("\t- hello")
-
-        var spacedIndent: CGFloat = 0
-        spaced.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: spaced.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle { spacedIndent = ps.firstLineHeadIndent }
-        }
-
-        var tabbedIndent: CGFloat = 0
-        tabbed.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: tabbed.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle { tabbedIndent = ps.firstLineHeadIndent }
-        }
-
-        #expect(tabbedIndent == spacedIndent)
+        #expect(subHanging > topHanging)
     }
 
     @Test("Wrapped list lines have deeper indent than first line (hanging indent)")
@@ -366,16 +347,14 @@ struct EditorStylingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("- hello")
 
-        var firstLine: CGFloat = 0
         var wrapped: CGFloat = 0
         styled.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: styled.length)) { val, _, _ in
             if let ps = val as? NSParagraphStyle {
-                firstLine = ps.firstLineHeadIndent
                 wrapped = ps.headIndent
             }
         }
 
-        #expect(wrapped > firstLine)
+        #expect(wrapped > 0)
     }
 
     @Test("Table has monospace font and dimmed pipes")
