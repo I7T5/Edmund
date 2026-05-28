@@ -27,7 +27,7 @@ class Document: NSDocument {
     }
 
     override class var writableTypes: [String] {
-        ["public.plain-text", "net.daringfireball.markdown"]
+        ["net.daringfireball.markdown"]
     }
 
     override class func isNativeType(_ name: String) -> Bool {
@@ -35,7 +35,7 @@ class Document: NSDocument {
     }
 
     override func writableTypes(for saveOperation: NSDocument.SaveOperationType) -> [String] {
-        ["public.plain-text", "net.daringfireball.markdown"]
+        ["net.daringfireball.markdown"]
     }
 
     // MARK: - Window Setup
