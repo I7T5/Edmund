@@ -148,6 +148,26 @@ public enum SyntaxHighlighter {
             contentRange: content,
             delimiterRanges: [delim]
         ))
+
+        // Re-parse the content for inline formatting (bold, italic, code, etc.)
+        // since swift-markdown treated the whole line as code and skipped them.
+        let contentStr = nsText.substring(with: content)
+        let inlineSpans = parse(contentStr)
+        for s in inlineSpans {
+            // Skip any listItem spans from the recursive parse
+            if case .listItem = s.kind { continue }
+            // Offset ranges by the content start position
+            let offsetFull = NSRange(location: s.fullRange.location + content.location,
+                                     length: s.fullRange.length)
+            let offsetContent = NSRange(location: s.contentRange.location + content.location,
+                                        length: s.contentRange.length)
+            let offsetDelims = s.delimiterRanges.map {
+                NSRange(location: $0.location + content.location, length: $0.length)
+            }
+            spans.append(Span(kind: s.kind, fullRange: offsetFull,
+                              contentRange: offsetContent,
+                              delimiterRanges: offsetDelims))
+        }
     }
 
     // MARK: - AST Walker
