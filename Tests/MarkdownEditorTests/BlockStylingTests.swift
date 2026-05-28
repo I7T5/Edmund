@@ -69,6 +69,18 @@ struct BlockStylingActiveTests {
         #expect(ps!.firstLineHeadIndent == editor.listIndent)
     }
 
+    @Test("Active indented list item (4 spaces) has deeper indent")
+    @MainActor func activeIndentedBulletList() {
+        let editor = makeEditor()
+        editor.loadContent("    - item")
+        activateBlock(0, in: editor)
+
+        let a = attrs(at: 0, in: editor)
+        let ps = a[.paragraphStyle] as? NSParagraphStyle
+        #expect(ps != nil)
+        #expect(ps!.firstLineHeadIndent > editor.listIndent)
+    }
+
     @Test("Active - prefix is dimmed")
     @MainActor func activeBulletDimmed() {
         let editor = makeEditor()
