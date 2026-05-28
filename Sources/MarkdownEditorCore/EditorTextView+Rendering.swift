@@ -190,11 +190,14 @@ extension EditorTextView {
             case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }
                 let nesting = listNestingLevel(for: markdown, span: span)
-                // Measure marker width for hanging indent on wrapped lines
-                let markerLen = span.contentRange.location - span.fullRange.location
-                let markerStr = (markdown as NSString).substring(with: NSRange(location: span.fullRange.location, length: markerLen))
+                // Measure marker width (including leading whitespace) for hanging indent.
+                // Everything from position 0 to content start is the "marker" area.
+                let markerStr = (markdown as NSString).substring(to: span.contentRange.location)
                 let markerWidth = (markerStr as NSString).size(withAttributes: [.font: bodyFont]).width
-                result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting, markerWidth: markerWidth), range: span.fullRange)
+                // Apply paragraph style from position 0 — NSTextView uses the paragraph
+                // style from the first character of a paragraph. If leading whitespace
+                // at position 0 has the default style, the list indent is ignored.
+                result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting, markerWidth: markerWidth), range: NSRange(location: 0, length: result.length))
                 // Strikethrough checked items
                 if !ordered, checkbox == .checked {
                     result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
