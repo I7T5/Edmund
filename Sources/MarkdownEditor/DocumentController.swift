@@ -16,7 +16,7 @@ class DocumentController: NSDocumentController {
     }
 
     override var defaultType: String? {
-        "public.plain-text"
+        "net.daringfireball.markdown"
     }
 
     override func documentClass(forType typeName: String) -> AnyClass? {
