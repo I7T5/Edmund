@@ -342,6 +342,42 @@ struct EditorStylingTests {
         #expect(subIndent > topIndent)
     }
 
+    @Test("Tab-indented list has same depth as 2-space-indented list")
+    @MainActor func tabIndentedList() {
+        let editor = makeEditor()
+        let spaced = editor.styleBlock("  - hello")
+        let tabbed = editor.styleBlock("\t- hello")
+
+        var spacedIndent: CGFloat = 0
+        spaced.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: spaced.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle { spacedIndent = ps.firstLineHeadIndent }
+        }
+
+        var tabbedIndent: CGFloat = 0
+        tabbed.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: tabbed.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle { tabbedIndent = ps.firstLineHeadIndent }
+        }
+
+        #expect(tabbedIndent == spacedIndent)
+    }
+
+    @Test("Wrapped list lines have deeper indent than first line (hanging indent)")
+    @MainActor func hangingIndent() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("- hello")
+
+        var firstLine: CGFloat = 0
+        var wrapped: CGFloat = 0
+        styled.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: styled.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle {
+                firstLine = ps.firstLineHeadIndent
+                wrapped = ps.headIndent
+            }
+        }
+
+        #expect(wrapped > firstLine)
+    }
+
     @Test("Table has monospace font and dimmed pipes")
     @MainActor func tableStyling() {
         let editor = makeEditor()
