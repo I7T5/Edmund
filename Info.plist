@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>md</string>
+    <key>CFBundleDisplayName</key>
+    <string>md</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.inatang.md</string>
+    <key>CFBundleExecutable</key>
+    <string>MarkdownEditor</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticTermination</key>
+    <false/>
+    <key>NSSupportsSuddenTermination</key>
+    <false/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Markdown Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>net.daringfireball.markdown</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>md</string>
+                <string>markdown</string>
+                <string>mdown</string>
+                <string>mkd</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Plain Text</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.plain-text</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
