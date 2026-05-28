@@ -1,27 +1,29 @@
 import AppKit
 
-/// A single NSTextView that renders each paragraph block as either:
-///   - **Rich text** (rendered markdown) — for non-active blocks
-///   - **Raw markdown** — for the block containing the cursor
+/// A single NSTextView with word-level inline preview.
 ///
 /// ## Architecture
 ///
-/// `rawSource` is the **sole source of truth** for the document content.
-/// The text storage is a display output rebuilt from rawSource.
+/// `rawSource` is the **sole source of truth** for document content.
+/// The text storage always contains rawSource — no delimiter stripping.
+/// All formatting is achieved through NSAttributedString attributes:
+///   - Inline delimiters (`**`, `*`, `` ` ``, etc.) are hidden via near-zero
+///     font size when the cursor is not inside the token.
+///   - Block-level markers (`#`, `>`, `-`, etc.) are always visible and dimmed.
+///   - Content gets rich text styling (bold, italic, colors, etc.).
 ///
 /// **Edits** flow through NSTextView's normal path:
 ///   1. `shouldChangeText` records an undo snapshot (coalesced), returns `true`
 ///   2. NSTextView applies the edit to the text storage
-///   3. `didChangeText` fires — we sync `rawSource` from the text storage
+///   3. `didChangeText` fires — we sync `rawSource` and re-style the block
 ///
 /// **Cursor movement** is detected via `didChangeSelectionNotification`.
-/// When the cursor moves to a different block, we do a full recompose
-/// (async, after the event finishes) to render/unrender blocks.
+/// When the cursor moves to a different block, we restyle both blocks.
+/// When it moves within a block, we update which token's delimiters
+/// are visible (the "active token").
 ///
 /// **Undo/Redo** uses custom stacks of `rawSource` snapshots, completely
-/// bypassing NSTextView's built-in undo.  This avoids the fundamental
-/// problem where `recompose` (which replaces the entire text storage)
-/// invalidates NSUndoManager's position-based undo actions.
+/// bypassing NSTextView's built-in undo.
 public class EditorTextView: NSTextView {
 
     // MARK: - Document Link
@@ -190,113 +192,33 @@ public class EditorTextView: NSTextView {
             if !isUndoRedoing {
                 recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
             }
-            if editTouchesSeparator(range: affectedCharRange) {
-                handleSeparatorEdit(displayRange: affectedCharRange, replacement: replacement)
-                return false
-            }
         }
         return true
-    }
-
-    /// Returns true if the edit range overlaps a separator gap between blocks.
-    private func editTouchesSeparator(range: NSRange) -> Bool {
-        guard displayRanges.count > 1 else { return false }
-        for i in 0..<(displayRanges.count - 1) {
-            let gapStart = displayRanges[i].upperBound
-            let gapEnd = displayRanges[i + 1].location
-            if range.location < gapEnd && range.upperBound > gapStart {
-                return true
-            }
-        }
-        return false
-    }
-
-    /// Applies an edit that crosses a block separator directly to rawSource,
-    /// then re-parses and recomposes.
-    private func handleSeparatorEdit(displayRange editRange: NSRange, replacement: String) {
-        let rawStart = displayOffsetToRawOffset(editRange.location)
-        let rawEnd = displayOffsetToRawOffset(editRange.location + editRange.length)
-        let rawRange = NSRange(location: rawStart, length: max(0, rawEnd - rawStart))
-
-        let nsRaw = rawSource as NSString
-        rawSource = nsRaw.replacingCharacters(in: rawRange, with: replacement)
-
-        let newCursorRaw = rawStart + (replacement as NSString).length
-        blocks = BlockParser.parse(rawSource, previous: blocks)
-        recompose(cursorInRaw: newCursorRaw)
     }
 
     public override func didChangeText() {
         super.didChangeText()
         guard !isUpdating, !isUndoRedoing else { return }
         syncRawSourceFromDisplay()
-        applySyntaxHighlighting()
+        applyBlockStyle()
         document?.updateChangeCount(.changeDone)
     }
 
-    /// Reads the active block's content from the text storage and rebuilds rawSource.
+    /// Syncs rawSource from the text storage and re-parses blocks.
+    /// With word-level rendering, text storage = rawSource, so this is simple.
     private func syncRawSourceFromDisplay() {
         guard let ts = textStorage else { return }
-        let displayString = ts.string as NSString
 
-        if blocks.isEmpty || displayRanges.isEmpty {
-            rawSource = ts.string
-            blocks = BlockParser.parse(rawSource)
-            return
-        }
-
-        guard let activeIdx = activeBlockIndex, activeIdx < displayRanges.count else {
-            rawSource = ts.string
-            blocks = BlockParser.parse(rawSource)
-            return
-        }
-
-        let activeDisplayStart: Int
-        if activeIdx == 0 {
-            activeDisplayStart = 0
-        } else {
-            activeDisplayStart = displayRanges[activeIdx - 1].upperBound + separatorLength
-        }
-
-        let activeDisplayEnd: Int
-        if activeIdx == displayRanges.count - 1 {
-            activeDisplayEnd = displayString.length
-        } else {
-            var suffixLength = 0
-            for i in (activeIdx + 1)..<displayRanges.count {
-                suffixLength += separatorLength + displayRanges[i].length
-            }
-            activeDisplayEnd = displayString.length - suffixLength
-        }
-
-        let safeStart = max(0, activeDisplayStart)
-        let safeEnd = max(safeStart, min(activeDisplayEnd, displayString.length))
-        let activeDisplayRange = NSRange(location: safeStart, length: safeEnd - safeStart)
-
-        let newActiveContent = displayString.substring(with: activeDisplayRange)
-
+        rawSource = ts.string
         let sel = selectedRange()
-        let cursorInBlock = max(0, sel.location - safeStart)
-        let rawCursor = blocks[activeIdx].range.location
-            + min(cursorInBlock, (newActiveContent as NSString).length)
-
-        var parts: [String] = []
-        for (i, block) in blocks.enumerated() {
-            if i == activeIdx {
-                parts.append(newActiveContent)
-            } else {
-                parts.append(block.content)
-            }
-        }
-        rawSource = parts.joined(separator: blockSeparator)
+        let cursorRaw = min(sel.location, (rawSource as NSString).length)
 
         blocks = BlockParser.parse(rawSource, previous: blocks)
         recalcDisplayRanges()
 
-        let clampedRawCursor = min(rawCursor, (rawSource as NSString).length)
-        let newBlockIndex = blockIndexForRawOffset(clampedRawCursor)
+        let newBlockIndex = blockIndexForRawOffset(cursorRaw)
         if newBlockIndex != activeBlockIndex {
-            recompose(cursorInRaw: clampedRawCursor)
+            recompose(cursorInRaw: cursorRaw)
         }
     }
 
@@ -306,7 +228,7 @@ public class EditorTextView: NSTextView {
         guard !isUpdating else { return }
 
         let sel = selectedRange()
-        let rawOffset = displayOffsetToRawOffset(sel.location)
+        let rawOffset = sel.location
         let newActiveIndex = blockIndexForRawOffset(rawOffset)
 
         if newActiveIndex != activeBlockIndex && !pendingRecompose {
@@ -316,19 +238,21 @@ public class EditorTextView: NSTextView {
                 self.pendingRecompose = false
 
                 let currentSel = self.selectedRange()
-                let rawStart = self.displayOffsetToRawOffset(currentSel.location)
-                let rawEnd = self.displayOffsetToRawOffset(currentSel.location + currentSel.length)
+                let rawStart = currentSel.location
+                let rawEnd = currentSel.location + currentSel.length
                 let rawSel = NSRange(location: rawStart, length: rawEnd - rawStart)
                 self.recompose(cursorInRaw: rawStart, selectionInRaw: rawSel)
             }
+        } else if newActiveIndex == activeBlockIndex {
+            // Same block — update active token (re-style to show/hide delimiters)
+            applyBlockStyle()
         }
     }
 
     // MARK: - Helpers
 
     func currentCursorInRaw() -> Int {
-        let sel = selectedRange()
-        return displayOffsetToRawOffset(sel.location)
+        return selectedRange().location
     }
 
     // MARK: - Content Loading (called by Document)

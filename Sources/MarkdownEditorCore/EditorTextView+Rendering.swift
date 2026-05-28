@@ -1,6 +1,12 @@
 import AppKit
 
-// MARK: - Active Block Syntax Highlighting & Inactive Block Rendering
+// MARK: - Word-Level Styling
+//
+// All blocks are styled the same way: content gets rich text attributes,
+// and inline delimiters are either hidden (cursor elsewhere) or dimmed
+// (cursor inside the token). Block-level markers are always dimmed.
+//
+// The text storage always contains the raw markdown — no string mutation.
 
 extension EditorTextView {
 
@@ -20,7 +26,11 @@ extension EditorTextView {
         NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
     }
 
-    /// Indentation amount for list items (active and inactive).
+    /// Font used to visually hide delimiter characters.
+    /// Near-zero size makes them effectively invisible and zero-width.
+    var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
+
+    /// Indentation amount for list items.
     var listIndent: CGFloat { 16 }
 
     /// Paragraph style with indentation for list items.
@@ -59,27 +69,48 @@ extension EditorTextView {
         block.setContentWidth(100, type: .percentageValueType)
         let leftEdge = NSRectEdge(rawValue: 0)!
         block.setWidth(2, type: .absoluteValueType, for: .border, edge: leftEdge)
-        block.setWidth(10, type: .absoluteValueType, for: .padding, edge: leftEdge)
         block.setBorderColor(.tertiaryLabelColor, for: leftEdge)
         ps.textBlocks = [block]
 
         return ps
     }
 
-    // MARK: - Active Block Syntax Highlighting
+    // MARK: - Delimiter Hiding Classification
 
-    /// Builds an NSAttributedString of the raw markdown with syntax highlighting.
-    func highlightSyntax(_ markdown: String) -> NSAttributedString {
+    /// Returns true if this span kind's delimiters should be hidden (not just
+    /// dimmed) when the cursor is not inside the token.
+    private func isDelimiterHideable(_ kind: SyntaxHighlighter.Span.Kind) -> Bool {
+        switch kind {
+        case .bold, .italic, .boldItalic, .strikethrough, .highlight,
+             .code, .link, .image, .lineBreak,
+             .heading, .blockquote:
+            return true
+        case .listItem, .table, .codeBlock, .thematicBreak:
+            return false
+        }
+    }
+
+    // MARK: - Unified Styling
+
+    /// Styles raw markdown text with rich attributes. Inline delimiters are hidden
+    /// unless the cursor is inside the token (in which case they're dimmed).
+    /// Block-level markers are always dimmed, never hidden.
+    ///
+    /// - Parameters:
+    ///   - markdown: Raw markdown text.
+    ///   - cursorPosition: Cursor offset within the markdown (nil = hide all inline delimiters).
+    func styleBlock(_ markdown: String, cursorPosition: Int? = nil) -> NSAttributedString {
         let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
+        guard !markdown.isEmpty else { return result }
+
         let spans = SyntaxHighlighter.parse(markdown)
 
         for span in spans {
-            // Dim delimiter characters
-            for dr in span.delimiterRanges {
-                guard dr.upperBound <= result.length else { continue }
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-            }
+            let cursorInToken = cursorPosition.map {
+                $0 >= span.fullRange.location && $0 <= span.fullRange.upperBound
+            } ?? false
 
+            // --- Content styling (applied first) ---
             switch span.kind {
             case .bold:
                 guard span.contentRange.upperBound <= result.length else { continue }
@@ -104,11 +135,6 @@ extension EditorTextView {
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.font, value: codeBlockFont, range: span.contentRange)
                 result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
-                // Dim the fence lines
-                for dr in span.delimiterRanges {
-                    guard dr.upperBound <= result.length else { continue }
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-                }
 
             case .strikethrough:
                 guard span.contentRange.upperBound <= result.length else { continue }
@@ -125,26 +151,35 @@ extension EditorTextView {
                                    size: bodyFont.pointSize * scale) ?? bodyFont
                 let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: heading, range: span.fullRange)
-                for dr in span.delimiterRanges {
-                    guard dr.upperBound <= result.length else { continue }
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-                }
 
             case .link:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
 
             case .image:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+                result.addAttribute(.font, value: italic, range: span.contentRange)
 
             case .blockquote:
-                break  // Just dim the "> " prefix (handled by generic delimiter loop)
+                guard span.fullRange.upperBound <= result.length else { continue }
+                // Paragraph style must cover fullRange so the first character of each
+                // paragraph (the `> ` delimiter) carries the NSTextBlock border.
+                // NSTextView uses the paragraph style from the first char of a paragraph.
+                result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: span.fullRange)
+                result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.contentRange)
 
-            case .listItem:
+            case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }
                 let nesting = listNestingLevel(for: markdown, span: span)
                 result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting), range: span.fullRange)
+                // Strikethrough checked items
+                if !ordered, checkbox == .checked {
+                    result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.contentRange)
+                }
 
             case .table:
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -159,269 +194,63 @@ extension EditorTextView {
                     let newStart = pipeRange.upperBound
                     searchRange = NSRange(location: newStart, length: max(0, span.fullRange.upperBound - newStart))
                 }
+
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
 
             case .lineBreak:
-                break  // Delimiter dimming handled by generic loop
+                break  // Delimiter handling done below
+            }
+
+            // --- Delimiter treatment (applied after content styling so it takes precedence) ---
+            for dr in span.delimiterRanges {
+                guard dr.upperBound <= result.length else { continue }
+                if cursorInToken || !isDelimiterHideable(span.kind) {
+                    // Visible: dim the delimiters
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                } else if case .blockquote = span.kind {
+                    // Blockquote: invisible but preserve width for indentation
+                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
+                } else {
+                    // Hidden: make delimiters invisible and near-zero-width
+                    result.addAttribute(.font, value: hiddenFont, range: dr)
+                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
+                }
             }
         }
 
         return result
     }
 
-    /// Re-applies syntax highlighting to the active block in the text storage.
+    // MARK: - In-Place Block Restyling
+
+    /// Re-applies styling to a single block in the text storage.
     /// Called after each keystroke to keep formatting in sync with content.
-    func applySyntaxHighlighting() {
+    func applyBlockStyle() {
         guard let ts = textStorage,
               let activeIdx = activeBlockIndex,
-              activeIdx < displayRanges.count,
               activeIdx < blocks.count else { return }
 
-        let displayRange = displayRanges[activeIdx]
-        guard displayRange.upperBound <= ts.length else { return }
+        let blockRange = blocks[activeIdx].range
+        guard blockRange.upperBound <= ts.length else { return }
 
         let content = blocks[activeIdx].content
-        let highlighted = highlightSyntax(content)
-        let offset = displayRange.location
+        let cursorInBlock = max(0, selectedRange().location - blockRange.location)
+        let styled = styleBlock(content, cursorPosition: cursorInBlock)
+        let offset = blockRange.location
 
         isUpdating = true
         ts.beginEditing()
 
-        highlighted.enumerateAttributes(in: NSRange(location: 0, length: highlighted.length), options: []) { attrs, range, _ in
-            let displayR = NSRange(location: range.location + offset, length: range.length)
-            ts.setAttributes(attrs, range: displayR)
+        styled.enumerateAttributes(in: NSRange(location: 0, length: styled.length), options: []) { attrs, range, _ in
+            let tsRange = NSRange(location: range.location + offset, length: range.length)
+            ts.setAttributes(attrs, range: tsRange)
         }
 
         ts.endEditing()
         isUpdating = false
 
         typingAttributes = baseAttributes
-    }
-
-    // MARK: - Inactive Block Rendering
-
-    /// Computes the exact delimiter ranges to strip for a rendered (inactive) block.
-    private func renderDelimiters(for span: SyntaxHighlighter.Span) -> [NSRange] {
-        switch span.kind {
-        case .italic:
-            return [
-                NSRange(location: span.contentRange.location - 1, length: 1),
-                NSRange(location: span.contentRange.upperBound, length: 1),
-            ]
-        case .bold:
-            return [
-                NSRange(location: span.contentRange.location - 2, length: 2),
-                NSRange(location: span.contentRange.upperBound, length: 2),
-            ]
-        case .boldItalic:
-            return [
-                NSRange(location: span.contentRange.location - 3, length: 3),
-                NSRange(location: span.contentRange.upperBound, length: 3),
-            ]
-        case .strikethrough, .highlight:
-            return [
-                NSRange(location: span.contentRange.location - 2, length: 2),
-                NSRange(location: span.contentRange.upperBound, length: 2),
-            ]
-        case .code, .codeBlock, .heading, .link, .image, .blockquote:
-            return span.delimiterRanges
-        case .listItem(let ordered, _):
-            return ordered ? [] : span.delimiterRanges
-        case .table, .thematicBreak, .lineBreak:
-            return span.delimiterRanges
-        }
-    }
-
-    func renderMarkdown(_ markdown: String) -> NSAttributedString {
-        let spans = SyntaxHighlighter.parse(markdown)
-
-        // Pre-compute list nesting levels from the original (pre-strip) markdown
-        var listNesting: [Int: Int] = [:]  // keyed by span fullRange.location
-        for span in spans {
-            if case .listItem = span.kind {
-                listNesting[span.fullRange.location] = listNestingLevel(for: markdown, span: span)
-            }
-        }
-
-        // Compute exact delimiter ranges for each span, sorted descending for back-to-front removal
-        var allDelimRanges: [NSRange] = []
-        for span in spans {
-            allDelimRanges.append(contentsOf: renderDelimiters(for: span))
-        }
-        allDelimRanges.sort { $0.location > $1.location }
-
-        // Build stripped text by removing delimiters
-        var stripped = markdown
-        var removals: [(location: Int, length: Int)] = []
-        for dr in allDelimRanges {
-            guard dr.location >= 0, dr.upperBound <= (stripped as NSString).length else { continue }
-            let startUTF16 = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: dr.location)
-            let endUTF16 = stripped.utf16.index(startUTF16, offsetBy: dr.length)
-            stripped.removeSubrange(startUTF16..<endUTF16)
-            removals.append((location: dr.location, length: dr.length))
-        }
-        removals.reverse()
-
-        // For thematic breaks, insert a visual divider line.
-        let thematicBreakSpans = spans.filter { $0.kind == .thematicBreak }
-        for span in thematicBreakSpans.reversed() {
-            let insertPos = mappedOffset(span.fullRange.location, removals: removals)
-            let idx = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: insertPos)
-            let divider = "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}"  // 20× ─
-            stripped.insert(contentsOf: divider, at: idx)
-            removals.append((location: span.fullRange.location, length: -(divider as NSString).length))
-        }
-
-        // For unordered list items, insert bullet/checkbox replacement at the start.
-        let unorderedListSpans = spans.filter {
-            if case .listItem(ordered: false, _) = $0.kind { return true }
-            return false
-        }
-        for span in unorderedListSpans.reversed() {
-            let insertPos = mappedOffset(span.contentRange.location, removals: removals)
-            let idx = stripped.utf16.index(stripped.utf16.startIndex, offsetBy: insertPos)
-            let bullet: String
-            if case .listItem(_, let checkbox) = span.kind {
-                switch checkbox {
-                case .unchecked: bullet = "\u{25CB} "  // ○
-                case .checked:   bullet = "\u{25CF} "  // ●
-                case .none:      bullet = "\u{2022} "  // •
-                }
-            } else {
-                bullet = "\u{2022} "
-            }
-            stripped.insert(contentsOf: bullet, at: idx)
-            removals.append((location: span.contentRange.location - 1, length: -2))
-        }
-
-        removals.sort { $0.location < $1.location }
-
-        let result = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
-
-        for span in spans {
-            let start = mappedOffset(span.contentRange.location, removals: removals)
-            let end = mappedOffset(span.contentRange.upperBound, removals: removals)
-            let mappedRange = NSRange(location: start, length: max(0, end - start))
-            guard mappedRange.upperBound <= result.length else { continue }
-
-            switch span.kind {
-            case .bold:
-                let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                result.addAttribute(.font, value: bold, range: mappedRange)
-            case .italic:
-                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
-                result.addAttribute(.font, value: italic, range: mappedRange)
-            case .boldItalic:
-                let bi = NSFontManager.shared.convert(bodyFont, toHaveTrait: [.boldFontMask, .italicFontMask])
-                result.addAttribute(.font, value: bi, range: mappedRange)
-            case .code:
-                result.addAttribute(.foregroundColor, value: codeColor, range: mappedRange)
-            case .codeBlock:
-                result.addAttribute(.font, value: codeBlockFont, range: mappedRange)
-                result.addAttribute(.foregroundColor, value: codeColor, range: mappedRange)
-            case .strikethrough:
-                result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)
-            case .highlight:
-                result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: mappedRange)
-            case .heading(let level):
-                let fullStart = mappedOffset(span.fullRange.location, removals: removals)
-                let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
-                let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
-                guard mappedFull.upperBound <= result.length else { continue }
-                let scale: CGFloat = level == 1 ? 1.5 : level == 2 ? 1.3 : level == 3 ? 1.15 : 1.0
-                let sized = NSFont(descriptor: bodyFont.fontDescriptor,
-                                   size: bodyFont.pointSize * scale) ?? bodyFont
-                let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
-                result.addAttribute(.font, value: heading, range: mappedFull)
-            case .link:
-                result.addAttribute(.foregroundColor, value: accentColor, range: mappedRange)
-                result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)
-            case .blockquote:
-                result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: mappedRange)
-                result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: mappedRange)
-            case .listItem(let ordered, let checkbox):
-                // Apply indentation to the full line, scaled by nesting level
-                let nesting = listNesting[span.fullRange.location] ?? 0
-                let lineStart: Int
-                if !ordered {
-                    lineStart = mappedRange.location - 2  // "• " or checkbox was inserted
-                } else {
-                    lineStart = mappedOffset(span.fullRange.location, removals: removals)
-                }
-                let lineEnd = mappedRange.upperBound
-                if lineStart >= 0 && lineEnd <= result.length {
-                    let lineRange = NSRange(location: lineStart, length: lineEnd - lineStart)
-                    result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting), range: lineRange)
-                }
-                if !ordered {
-                    // Dim the bullet/checkbox
-                    let bulletRange = NSRange(location: mappedRange.location - 2, length: 2)
-                    if bulletRange.location >= 0 && bulletRange.upperBound <= result.length {
-                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: bulletRange)
-                    }
-                    // Strikethrough checked items
-                    if checkbox == .checked {
-                        result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: mappedRange)
-                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedRange)
-                    }
-                } else {
-                    // Dim the number/marker
-                    for dr in span.delimiterRanges {
-                        let drStart = mappedOffset(dr.location, removals: removals)
-                        let drEnd = mappedOffset(dr.upperBound, removals: removals)
-                        let mappedDR = NSRange(location: drStart, length: max(0, drEnd - drStart))
-                        if mappedDR.location >= 0 && mappedDR.upperBound <= result.length {
-                            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedDR)
-                        }
-                    }
-                }
-            case .table:
-                // Apply monospace font to full range
-                let fullStart = mappedOffset(span.fullRange.location, removals: removals)
-                let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
-                let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
-                guard mappedFull.upperBound <= result.length else { continue }
-                result.addAttribute(.font, value: tableFont, range: mappedFull)
-                // Dim pipe characters and separator row
-                let nsStr = (result.string as NSString)
-                var searchRange = mappedFull
-                while searchRange.length > 0 {
-                    let pipeRange = nsStr.range(of: "|", options: [], range: searchRange)
-                    guard pipeRange.location != NSNotFound else { break }
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pipeRange)
-                    let newStart = pipeRange.upperBound
-                    searchRange = NSRange(location: newStart, length: max(0, mappedFull.upperBound - newStart))
-                }
-            case .image:
-                result.addAttribute(.foregroundColor, value: accentColor, range: mappedRange)
-                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
-                result.addAttribute(.font, value: italic, range: mappedRange)
-            case .thematicBreak:
-                // The divider text was inserted earlier; apply dim color to it.
-                let fullStart = mappedOffset(span.fullRange.location, removals: removals)
-                let fullEnd = mappedOffset(span.fullRange.upperBound, removals: removals)
-                let mappedFull = NSRange(location: fullStart, length: max(0, fullEnd - fullStart))
-                if mappedFull.upperBound <= result.length {
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: mappedFull)
-                }
-            case .lineBreak:
-                break
-            }
-        }
-
-        return result
-    }
-
-    /// Maps an offset in the original text to the stripped/modified text.
-    private func mappedOffset(_ original: Int, removals: [(location: Int, length: Int)]) -> Int {
-        var shift = 0
-        for r in removals {
-            if original > r.location {
-                shift += r.length
-            }
-        }
-        return original - shift
     }
 }

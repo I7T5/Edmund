@@ -97,3 +97,36 @@ func activateBlock(_ index: Int, in editor: EditorTextView) {
     let rawOffset = editor.blocks[index].range.location
     editor.recompose(cursorInRaw: rawOffset)
 }
+
+/// Returns true if the character at `offset` has hidden delimiter attributes
+/// (near-zero font size and clear color).
+@MainActor
+func isHidden(at offset: Int, in result: NSAttributedString) -> Bool {
+    guard offset < result.length else { return false }
+    let a = result.attributes(at: offset, effectiveRange: nil)
+    guard let f = a[.font] as? NSFont else { return false }
+    guard let c = a[.foregroundColor] as? NSColor else { return false }
+    return f.pointSize < 1.0 && c == NSColor.clear
+}
+
+/// Returns true if the character at `offset` is invisible but preserves its width
+/// (foreground color is clear, font size is NOT shrunk). Used for blockquote `> ` delimiters.
+@MainActor
+func isInvisible(at offset: Int, in result: NSAttributedString) -> Bool {
+    guard offset < result.length else { return false }
+    let a = result.attributes(at: offset, effectiveRange: nil)
+    guard let c = a[.foregroundColor] as? NSColor else { return false }
+    guard c == NSColor.clear else { return false }
+    // Font should NOT be tiny (width is preserved)
+    if let f = a[.font] as? NSFont { return f.pointSize >= 1.0 }
+    return true
+}
+
+/// Returns true if the character at `offset` is dimmed (tertiary label color).
+@MainActor
+func isDimmed(at offset: Int, in result: NSAttributedString) -> Bool {
+    guard offset < result.length else { return false }
+    let a = result.attributes(at: offset, effectiveRange: nil)
+    guard let c = a[.foregroundColor] as? NSColor else { return false }
+    return c == NSColor.tertiaryLabelColor
+}

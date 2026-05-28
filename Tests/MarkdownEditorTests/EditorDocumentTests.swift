@@ -52,19 +52,24 @@ struct EditorDocumentLoadingTests {
         #expect(editor.blocks[0].content == "")
     }
 
-    @Test("loadContent renders markdown in non-active blocks")
+    @Test("loadContent styles markdown in non-active blocks (text preserved, delimiters hidden)")
     @MainActor func loadContentRendersInactiveBlocks() {
         let editor = makeEditor()
         editor.loadContent("**bold**\n*italic*")
         #expect(editor.blocks.count == 2)
 
-        // The text storage should contain rendered content for inactive blocks.
-        // Block 0 is active (cursor at 0), block 1 is inactive and rendered.
+        // With word-level rendering, text storage always = rawSource.
+        // Block 0 is active (cursor at 0), block 1 is non-active.
         let ts = editor.textStorage!.string
-        // Active block shows raw markdown, inactive block strips delimiters
-        #expect(ts.contains("**bold**"))  // active — raw
-        #expect(ts.contains("italic"))     // inactive — rendered (no *)
-        #expect(!ts.contains("*italic*"))  // delimiters stripped
+        #expect(ts.contains("**bold**"))   // active — raw
+        #expect(ts.contains("*italic*"))   // non-active — raw text preserved
+
+        // Non-active block's delimiters are hidden via attributes, not stripped.
+        // "*" at block 1 start should have hidden font.
+        let b1Start = editor.displayRanges[1].location
+        let delimFont = font(at: b1Start, in: editor)!
+        #expect(delimFont.pointSize < 1.0)
+        #expect(fgColor(at: b1Start, in: editor) == NSColor.clear)
     }
 
     @Test("loadContent with markdown preserves rawSource exactly")

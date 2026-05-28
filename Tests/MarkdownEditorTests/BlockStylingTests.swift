@@ -131,220 +131,218 @@ struct BlockStylingActiveTests {
         #expect(delimColor == NSColor.tertiaryLabelColor)
     }
 
-    @Test("Active multi-line blockquote shows all raw lines")
-    @MainActor func activeMultiLineBlockquote() {
+    @Test("Active blockquote line shows its raw text")
+    @MainActor func activeBlockquoteLine() {
         let editor = makeEditor()
         editor.loadContent("> line1\n> line2\nother")
         activateBlock(0, in: editor)
 
+        // Each > line is its own block now
         let text = displayText(for: 0, in: editor)
-        #expect(text.contains("> line1"))
-        #expect(text.contains("> line2"))
+        #expect(text == "> line1")
     }
 }
 
 // ============================================================================
-// MARK: - Block Styling: Inactive Block
+// MARK: - Block Styling: Non-Active Block (delimiters hidden, not stripped)
 // ============================================================================
 
-@Suite("Integration — Block Styling (Inactive Block)")
-struct BlockStylingInactiveTests {
+@Suite("Integration — Block Styling (Non-Active Block)")
+struct BlockStylingNonActiveTests {
 
     // MARK: - Headings
 
-    @Test("Inactive # heading strips prefix, applies bold scaled font")
-    @MainActor func inactiveH1() {
+    @Test("Non-active # heading has bold scaled font, # is hidden")
+    @MainActor func nonActiveH1() {
         let editor = makeEditor()
         editor.loadContent("# Title\nother")
         activateBlock(1, in: editor)
 
+        // Text storage still contains raw "# Title"
         let text = displayText(for: 0, in: editor)
-        #expect(text == "Title")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(text == "# Title")
+        // # is hidden (cursor not in this block)
+        #expect(fgColor(at: 0, in: editor) == NSColor.clear)
+        #expect(font(at: 0, in: editor)!.pointSize < 1.0)
+        // Content has bold scaled font
+        let f = font(at: 2, in: editor)!
         let expectedSize = editor.bodyFont.pointSize * 1.5
         #expect(abs(f.pointSize - expectedSize) < 0.1)
         #expect(NSFontManager.shared.traits(of: f).contains(.boldFontMask))
     }
 
-    @Test("Inactive ## heading strips prefix, applies correct scale")
-    @MainActor func inactiveH2() {
+    @Test("Non-active ## heading applies correct scale")
+    @MainActor func nonActiveH2() {
         let editor = makeEditor()
         editor.loadContent("## Sub\nother")
         activateBlock(1, in: editor)
 
-        let text = displayText(for: 0, in: editor)
-        #expect(text == "Sub")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        let f = font(at: 3, in: editor)!
         let expectedSize = editor.bodyFont.pointSize * 1.3
         #expect(abs(f.pointSize - expectedSize) < 0.1)
     }
 
-    @Test("Inactive ### heading strips prefix, applies correct scale")
-    @MainActor func inactiveH3() {
+    @Test("Non-active ### heading applies correct scale")
+    @MainActor func nonActiveH3() {
         let editor = makeEditor()
         editor.loadContent("### Sec\nother")
         activateBlock(1, in: editor)
 
-        let text = displayText(for: 0, in: editor)
-        #expect(text == "Sec")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        let f = font(at: 4, in: editor)!
         let expectedSize = editor.bodyFont.pointSize * 1.15
         #expect(abs(f.pointSize - expectedSize) < 0.1)
     }
 
     // MARK: - Bullet Lists
 
-    @Test("Inactive - item shows bullet character and has list paragraph style")
-    @MainActor func inactiveBulletList() {
+    @Test("Non-active list item has raw text, dimmed marker, indent")
+    @MainActor func nonActiveBulletList() {
         let editor = makeEditor()
         editor.loadContent("- apples\nother")
         activateBlock(1, in: editor)
 
+        // Text unchanged
         let text = displayText(for: 0, in: editor)
-        #expect(text.contains("\u{2022}"))  // bullet •
-        #expect(text.contains("apples"))
-
-        let base = editor.displayRanges[0].location
-        let a = attrs(at: base, in: editor)
+        #expect(text == "- apples")
+        // Marker is dimmed
+        let delimColor = fgColor(at: 0, in: editor)
+        #expect(delimColor == NSColor.tertiaryLabelColor)
+        // Has indent
+        let a = attrs(at: 0, in: editor)
         let ps = a[.paragraphStyle] as? NSParagraphStyle
         #expect(ps != nil)
         #expect(ps!.firstLineHeadIndent == editor.listIndent)
     }
 
-    @Test("Inactive bullet is dimmed")
-    @MainActor func inactiveBulletDimmed() {
-        let editor = makeEditor()
-        editor.loadContent("- apples\nother")
-        activateBlock(1, in: editor)
-
-        let base = editor.displayRanges[0].location
-        let bulletColor = fgColor(at: base, in: editor)
-        #expect(bulletColor == NSColor.tertiaryLabelColor)
-    }
-
     // MARK: - Numbered Lists
 
-    @Test("Inactive 1. item keeps number and has list paragraph style")
-    @MainActor func inactiveNumberedList() {
+    @Test("Non-active ordered list has dimmed number and indent")
+    @MainActor func nonActiveNumberedList() {
         let editor = makeEditor()
         editor.loadContent("1. first\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text.contains("1."))
-        #expect(text.contains("first"))
-
-        let base = editor.displayRanges[0].location
-        let a = attrs(at: base, in: editor)
-        let ps = a[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps != nil)
-    }
-
-    @Test("Inactive ordered list number is dimmed")
-    @MainActor func inactiveNumberDimmed() {
-        let editor = makeEditor()
-        editor.loadContent("1. first\nother")
-        activateBlock(1, in: editor)
-
-        let base = editor.displayRanges[0].location
-        let numColor = fgColor(at: base, in: editor)
+        #expect(text == "1. first")
+        let numColor = fgColor(at: 0, in: editor)
         #expect(numColor == NSColor.tertiaryLabelColor)
     }
 
     // MARK: - Todo Lists
 
-    @Test("Inactive - [ ] unchecked shows open circle")
-    @MainActor func inactiveTodoUnchecked() {
+    @Test("Non-active - [ ] shows raw text with dimmed marker")
+    @MainActor func nonActiveTodoUnchecked() {
         let editor = makeEditor()
         editor.loadContent("- [ ] task\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text.contains("\u{25CB}"))  // ○
-        #expect(text.contains("task"))
+        #expect(text == "- [ ] task")
     }
 
-    @Test("Inactive - [x] checked shows filled circle and strikethrough")
-    @MainActor func inactiveTodoChecked() {
+    @Test("Non-active - [x] checked has strikethrough on content")
+    @MainActor func nonActiveTodoChecked() {
         let editor = makeEditor()
         editor.loadContent("- [x] done\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text.contains("\u{25CF}"))  // ●
-        #expect(text.contains("done"))
+        #expect(text == "- [x] done")
 
-        // "done" should have strikethrough
-        let base = editor.displayRanges[0].location
-        // Find "done" offset: "● done" → bullet(1) + space(1) + "done" at offset 2
-        let doneOffset = base + 2
-        let a = attrs(at: doneOffset, in: editor)
+        // Content "done" should have strikethrough
+        // "- [x] done" — content starts after "- [x] " at offset 6
+        let a = attrs(at: 6, in: editor)
         #expect(a[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
     }
 
     // MARK: - Blockquotes
 
-    @Test("Inactive > quote strips prefix, applies secondary label color")
-    @MainActor func inactiveBlockquote() {
+    @Test("Non-active > quote: prefix invisible (width-preserving), content has secondary color")
+    @MainActor func nonActiveBlockquote() {
         let editor = makeEditor()
         editor.loadContent("> wise words\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        #expect(text == "wise words")
-        let color = fgColor(at: editor.displayRanges[0].location, in: editor)
-        #expect(color == NSColor.secondaryLabelColor)
+        #expect(text == "> wise words")
+        // > is invisible but preserves width (color clear, font NOT shrunk)
+        #expect(fgColor(at: 0, in: editor) == NSColor.clear)
+        #expect(font(at: 0, in: editor)!.pointSize >= 1.0)
+        // Content has secondary label color
+        let contentColor = fgColor(at: 2, in: editor)
+        #expect(contentColor == NSColor.secondaryLabelColor)
     }
 
-    @Test("Inactive > quote has blockquote paragraph style with text block")
-    @MainActor func inactiveBlockquoteParagraphStyle() {
+    @Test("Non-active > quote has blockquote paragraph style with text block")
+    @MainActor func nonActiveBlockquoteParagraphStyle() {
         let editor = makeEditor()
-        editor.loadContent("> wise words\nother")
-        activateBlock(1, in: editor)
+        let styled = editor.styleBlock("> wise words")
 
-        let a = attrs(at: editor.displayRanges[0].location, in: editor)
-        let ps = a[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps != nil)
-        #expect(!ps!.textBlocks.isEmpty)
+        // Paragraph style must be on offset 0 (the >) so NSTextView uses it
+        // for the whole paragraph (it reads the style from the first char).
+        let a0 = styled.attributes(at: 0, effectiveRange: nil)
+        let ps0 = a0[.paragraphStyle] as? NSParagraphStyle
+        #expect(ps0 != nil)
+        #expect(!ps0!.textBlocks.isEmpty)
+
+        // Content should also have the same paragraph style
+        let a2 = styled.attributes(at: 2, effectiveRange: nil)
+        let ps2 = a2[.paragraphStyle] as? NSParagraphStyle
+        #expect(ps2 != nil)
+        #expect(!ps2!.textBlocks.isEmpty)
     }
 
-    @Test("Inactive multi-line blockquote strips all > prefixes")
-    @MainActor func inactiveMultiLineBlockquote() {
+    @Test("Non-active consecutive blockquote lines: each > hidden independently")
+    @MainActor func nonActiveConsecutiveBlockquoteLines() {
         let editor = makeEditor()
+        // Each > line is its own block; activate the last block
         editor.loadContent("> line1\n> line2\nother")
-        activateBlock(1, in: editor)
+        activateBlock(2, in: editor)
 
-        let text = displayText(for: 0, in: editor)
-        #expect(!text.contains(">"))
-        #expect(text.contains("line1"))
-        #expect(text.contains("line2"))
+        // Block 0: "> line1", > hidden
+        let text0 = displayText(for: 0, in: editor)
+        #expect(text0 == "> line1")
+        #expect(fgColor(at: 0, in: editor) == NSColor.clear)
+
+        // Block 1: "> line2", > hidden
+        let text1 = displayText(for: 1, in: editor)
+        #expect(text1 == "> line2")
+        let b1 = editor.displayRanges[1].location
+        #expect(fgColor(at: b1, in: editor) == NSColor.clear)
     }
 
-    @Test("Inactive multi-line blockquote has text block style")
-    @MainActor func inactiveMultiLineBlockquoteParagraphStyle() {
+    @Test("Non-active blockquote line has text block style")
+    @MainActor func nonActiveBlockquoteLineParagraphStyle() {
         let editor = makeEditor()
-        editor.loadContent("> line1\n> line2\nother")
-        activateBlock(1, in: editor)
+        let styled = editor.styleBlock("> wise words")
 
-        let a = attrs(at: editor.displayRanges[0].location, in: editor)
-        let ps = a[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps != nil)
-        #expect(!ps!.textBlocks.isEmpty)
+        // Paragraph style at offset 0 (first char) carries the text block border
+        let a0 = styled.attributes(at: 0, effectiveRange: nil)
+        let ps0 = a0[.paragraphStyle] as? NSParagraphStyle
+        #expect(ps0 != nil)
+        #expect(!ps0!.textBlocks.isEmpty)
     }
 
     // MARK: - Nested Content
 
-    @Test("Inactive bold inside blockquote is rendered")
-    @MainActor func inactiveBoldInBlockquote() {
+    @Test("Non-active bold inside blockquote: all delimiters hidden")
+    @MainActor func nonActiveBoldInBlockquote() {
         let editor = makeEditor()
         editor.loadContent("> **important**\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        // Blockquote ">" stripped, bold "**" stripped
-        #expect(text == "important")
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
-        #expect(NSFontManager.shared.traits(of: f).contains(.boldFontMask))
+        #expect(text == "> **important**")
+        // > is hidden (cursor not in this block)
+        #expect(fgColor(at: 0, in: editor) == NSColor.clear)
+        // ** delimiters at 2,3 should be hidden (inline)
+        let ts = editor.textStorage!
+        let f = ts.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(f!.pointSize < 1.0)
+        // Content "important" at 4-12 should have bold font
+        let contentFont = font(at: 4, in: editor)!
+        #expect(NSFontManager.shared.traits(of: contentFont).contains(.boldFontMask))
     }
 }
 
@@ -387,11 +385,11 @@ struct TableActiveTests {
     }
 }
 
-@Suite("Integration — Table (Inactive Block)")
-struct TableInactiveTests {
+@Suite("Integration — Table (Non-Active Block)")
+struct TableNonActiveTests {
 
-    @Test("Inactive table has monospace font")
-    @MainActor func inactiveMonospace() {
+    @Test("Non-active table has monospace font")
+    @MainActor func nonActiveMonospace() {
         let editor = makeEditor()
         editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
         activateBlock(1, in: editor)
@@ -400,8 +398,8 @@ struct TableInactiveTests {
         #expect(f.isFixedPitch)
     }
 
-    @Test("Inactive table pipes are dimmed")
-    @MainActor func inactivePipesDimmed() {
+    @Test("Non-active table pipes are dimmed")
+    @MainActor func nonActivePipesDimmed() {
         let editor = makeEditor()
         editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
         activateBlock(1, in: editor)
@@ -435,7 +433,6 @@ struct CodeBlockActiveTests {
         editor.loadContent("```\nhello\n```\nother")
         activateBlock(0, in: editor)
 
-        // First character of opening fence
         let color = fgColor(at: 0, in: editor)
         #expect(color == NSColor.tertiaryLabelColor)
     }
@@ -446,99 +443,101 @@ struct CodeBlockActiveTests {
         editor.loadContent("```\nhello\n```\nother")
         activateBlock(0, in: editor)
 
-        // "hello" starts at offset 4 (after "```\n")
         let f = font(at: 4, in: editor)!
         #expect(f.isFixedPitch)
     }
 }
 
-@Suite("Integration — Code Block (Inactive Block)")
-struct CodeBlockInactiveTests {
+@Suite("Integration — Code Block (Non-Active Block)")
+struct CodeBlockNonActiveTests {
 
-    @Test("Inactive code block strips fences, shows content only")
-    @MainActor func inactiveStripsDelimiters() {
+    @Test("Non-active code block shows raw text, fences are dimmed")
+    @MainActor func nonActiveFencesDimmed() {
         let editor = makeEditor()
         editor.loadContent("```\nhello\n```\nother")
         activateBlock(1, in: editor)
 
+        // Text storage has the raw text
         let text = displayText(for: 0, in: editor)
-        #expect(text.contains("hello"))
-        #expect(!text.contains("```"))
+        #expect(text == "```\nhello\n```")
+        // Fences dimmed
+        let color = fgColor(at: 0, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
     }
 
-    @Test("Inactive code block has monospace font")
-    @MainActor func inactiveMonospace() {
+    @Test("Non-active code block content has monospace font")
+    @MainActor func nonActiveMonospace() {
         let editor = makeEditor()
         editor.loadContent("```\nhello\n```\nother")
         activateBlock(1, in: editor)
 
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        // Content "hello" at offset 4
+        let f = font(at: 4, in: editor)!
         #expect(f.isFixedPitch)
     }
 
-    @Test("Inactive code block has code color")
-    @MainActor func inactiveCodeColor() {
+    @Test("Non-active code block content has code color")
+    @MainActor func nonActiveCodeColor() {
         let editor = makeEditor()
         editor.loadContent("```\nhello\n```\nother")
         activateBlock(1, in: editor)
 
-        let color = fgColor(at: editor.displayRanges[0].location, in: editor)
+        let color = fgColor(at: 4, in: editor)
         #expect(color != nil)
     }
 }
 
 // ============================================================================
-// MARK: - Block Transition (Active ↔ Inactive)
+// MARK: - Block Transition
 // ============================================================================
 
 @Suite("Integration — Block Transition")
 struct BlockTransitionTests {
 
-    @Test("Switching from active to inactive renders markdown")
-    @MainActor func activeToInactive() {
+    @Test("Text storage always contains raw markdown regardless of active block")
+    @MainActor func textStorageAlwaysRaw() {
         let editor = makeEditor()
         editor.loadContent("**bold**\nplain")
 
-        // Block 0 is active (cursor at 0), shows raw markdown
         activateBlock(0, in: editor)
-        let activeText = displayText(for: 0, in: editor)
-        #expect(activeText == "**bold**")
+        #expect(editor.textStorage!.string == "**bold**\nplain")
 
-        // Switch to block 1 — block 0 becomes inactive, rendered
         activateBlock(1, in: editor)
-        let inactiveText = displayText(for: 0, in: editor)
-        #expect(inactiveText == "bold")
+        #expect(editor.textStorage!.string == "**bold**\nplain")
     }
 
-    @Test("Switching from inactive to active shows raw markdown")
-    @MainActor func inactiveToActive() {
+    @Test("Switching active block changes which delimiters are visible")
+    @MainActor func switchingBlockChangesDelimiterVisibility() {
         let editor = makeEditor()
-        editor.loadContent("# Title\ntext")
+        editor.loadContent("**bold**\n*italic*")
 
-        // Activate block 1 so block 0 is inactive
-        activateBlock(1, in: editor)
-        let inactiveText = displayText(for: 0, in: editor)
-        #expect(inactiveText == "Title")
-
-        // Activate block 0 — shows raw
+        // Block 0 active: ** delimiters dimmed (visible)
         activateBlock(0, in: editor)
-        let activeText = displayText(for: 0, in: editor)
-        #expect(activeText == "# Title")
+        let dimColor = fgColor(at: 0, in: editor)
+        #expect(dimColor == NSColor.tertiaryLabelColor)
+
+        // Switch to block 1: block 0's ** delimiters become hidden
+        activateBlock(1, in: editor)
+        let ts = editor.textStorage!
+        let f = ts.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(f!.pointSize < 1.0)  // hidden
     }
 
-    @Test("Multiple blocks: only active block shows raw, others rendered")
-    @MainActor func multipleBlocksRendering() {
+    @Test("Multiple blocks: all inline delimiters hidden except active token")
+    @MainActor func multipleBlocksDelimiterHiding() {
         let editor = makeEditor()
         editor.loadContent("**a**\n*b*\n`c`")
 
         activateBlock(1, in: editor)
 
-        // Block 0 inactive: "a" (bold rendered)
-        #expect(displayText(for: 0, in: editor) == "a")
-        // Block 1 active: "*b*" (raw markdown)
-        #expect(displayText(for: 1, in: editor) == "*b*")
-        // Block 2 inactive: "c" (code rendered)
-        #expect(displayText(for: 2, in: editor) == "c")
+        let ts = editor.textStorage!
+        // Block 0 "**a**": ** at 0,1 should be hidden
+        let f0 = ts.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(f0!.pointSize < 1.0)
+        // Block 2 "`c`": ` at 10 should be hidden
+        let f2 = ts.attribute(.font, at: 10, effectiveRange: nil) as? NSFont
+        #expect(f2!.pointSize < 1.0)
     }
 }
 
@@ -580,52 +579,31 @@ struct ThematicBreakActiveTests {
     }
 }
 
-@Suite("Integration — Thematic Break (Inactive Block)")
-struct ThematicBreakInactiveTests {
+@Suite("Integration — Thematic Break (Non-Active Block)")
+struct ThematicBreakNonActiveTests {
 
-    @Test("Inactive --- renders as visual divider")
-    @MainActor func inactiveDashDivider() {
+    @Test("Non-active --- stays as raw text, dimmed")
+    @MainActor func nonActiveDashDimmed() {
         let editor = makeEditor()
         editor.loadContent("---\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        // The divider is 20× ─ (U+2500)
-        let expectedDivider = String(repeating: "\u{2500}", count: 20)
-        #expect(text == expectedDivider)
-    }
-
-    @Test("Inactive --- divider has dimmed color")
-    @MainActor func inactiveDividerDimmed() {
-        let editor = makeEditor()
-        editor.loadContent("---\nother")
-        activateBlock(1, in: editor)
-
-        let color = fgColor(at: editor.displayRanges[0].location, in: editor)
+        #expect(text == "---")
+        let color = fgColor(at: 0, in: editor)
         #expect(color == NSColor.tertiaryLabelColor)
     }
 
-    @Test("Inactive *** renders as visual divider")
-    @MainActor func inactiveAsteriskDivider() {
+    @Test("Non-active *** stays as raw text, dimmed")
+    @MainActor func nonActiveAsteriskDimmed() {
         let editor = makeEditor()
         editor.loadContent("***\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
-        let expectedDivider = String(repeating: "\u{2500}", count: 20)
-        #expect(text == expectedDivider)
-    }
-
-    @Test("Thematic break between content blocks renders correctly")
-    @MainActor func betweenBlocks() {
-        let editor = makeEditor()
-        editor.loadContent("above\n\n---\n\nbelow")
-        activateBlock(4, in: editor)  // activate "below"
-
-        // Block 2 is "---", should be rendered as divider
-        let text = displayText(for: 2, in: editor)
-        let expectedDivider = String(repeating: "\u{2500}", count: 20)
-        #expect(text == expectedDivider)
+        #expect(text == "***")
+        let color = fgColor(at: 0, in: editor)
+        #expect(color == NSColor.tertiaryLabelColor)
     }
 }
 
@@ -652,7 +630,6 @@ struct ImageActiveTests {
         editor.loadContent("![alt](url)")
         activateBlock(0, in: editor)
 
-        // "alt" starts at offset 2
         let color = fgColor(at: 2, in: editor)
         #expect(color != nil)
     }
@@ -663,42 +640,47 @@ struct ImageActiveTests {
         editor.loadContent("![alt](url)")
         activateBlock(0, in: editor)
 
-        // "![" at offset 0
         let delimColor = fgColor(at: 0, in: editor)
         #expect(delimColor == NSColor.tertiaryLabelColor)
     }
 }
 
-@Suite("Integration — Image (Inactive Block)")
-struct ImageInactiveTests {
+@Suite("Integration — Image (Non-Active Block)")
+struct ImageNonActiveTests {
 
-    @Test("Inactive ![alt](url) strips delimiters, shows alt text only")
-    @MainActor func inactiveImageStripsDelimiters() {
-        let editor = makeEditor()
-        editor.loadContent("![photo](https://example.com/img.png)\nother")
-        activateBlock(1, in: editor)
-
-        let text = displayText(for: 0, in: editor)
-        #expect(text == "photo")
-    }
-
-    @Test("Inactive image has italic font")
-    @MainActor func inactiveImageItalic() {
+    @Test("Non-active image: delimiters hidden, alt text styled")
+    @MainActor func nonActiveImageDelimitersHidden() {
         let editor = makeEditor()
         editor.loadContent("![photo](url)\nother")
         activateBlock(1, in: editor)
 
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        // Text storage has raw text
+        let text = displayText(for: 0, in: editor)
+        #expect(text == "![photo](url)")
+        // Delimiters hidden
+        let ts = editor.textStorage!
+        let f = ts.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(f!.pointSize < 1.0)
+    }
+
+    @Test("Non-active image has italic font on content")
+    @MainActor func nonActiveImageItalic() {
+        let editor = makeEditor()
+        editor.loadContent("![photo](url)\nother")
+        activateBlock(1, in: editor)
+
+        // "photo" is at positions 2-6
+        let f = font(at: 2, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.italicFontMask))
     }
 
-    @Test("Inactive image has accent color")
-    @MainActor func inactiveImageAccentColor() {
+    @Test("Non-active image content has accent color")
+    @MainActor func nonActiveImageAccentColor() {
         let editor = makeEditor()
         editor.loadContent("![photo](url)\nother")
         activateBlock(1, in: editor)
 
-        let color = fgColor(at: editor.displayRanges[0].location, in: editor)
+        let color = fgColor(at: 2, in: editor)
         #expect(color != nil)
     }
 }
@@ -720,31 +702,37 @@ struct LineBreakActiveTests {
         #expect(text == "hello\\")
     }
 
-    @Test("Active trailing backslash is dimmed")
+    @Test("Active trailing backslash is dimmed when cursor is inside token")
     @MainActor func activeBackslashDimmed() {
         let editor = makeEditor()
         editor.loadContent("hello\\")
-        activateBlock(0, in: editor)
+        // Place cursor at the backslash (offset 5) so it's the active token
+        editor.recompose(cursorInRaw: 5)
 
         let color = fgColor(at: 5, in: editor)
         #expect(color == NSColor.tertiaryLabelColor)
     }
 }
 
-@Suite("Integration — Line Break (Inactive Block)")
-struct LineBreakInactiveTests {
+@Suite("Integration — Line Break (Non-Active Block)")
+struct LineBreakNonActiveTests {
 
-    @Test("Inactive trailing backslash is stripped")
-    @MainActor func inactiveStripsBackslash() {
+    @Test("Non-active trailing backslash is hidden")
+    @MainActor func nonActiveBackslashHidden() {
         let editor = makeEditor()
         editor.loadContent("hello\\\nother")
         activateBlock(1, in: editor)
 
+        // Text storage still has backslash
         let text = displayText(for: 0, in: editor)
-        #expect(text == "hello")
+        #expect(text == "hello\\")
+        // But it's hidden
+        let ts = editor.textStorage!
+        let f = ts.attribute(.font, at: 5, effectiveRange: nil) as? NSFont
+        #expect(f!.pointSize < 1.0)
     }
 
-    @Test("Text without backslash renders unchanged when inactive")
+    @Test("Text without backslash renders unchanged when non-active")
     @MainActor func noBackslashUnchanged() {
         let editor = makeEditor()
         editor.loadContent("plain text\nother")

@@ -71,18 +71,6 @@ public enum BlockParser {
                 continue
             }
 
-            // Detect blockquote: consecutive lines starting with >
-            if isBlockquoteLine(lines[i]) {
-                var merged = [lines[i]]
-                i += 1
-                while i < lines.count && isBlockquoteLine(lines[i]) {
-                    merged.append(lines[i])
-                    i += 1
-                }
-                result.append(merged.joined(separator: "\n"))
-                continue
-            }
-
             // Detect table: header row followed by separator row
             if i + 1 < lines.count && isTableRow(lines[i]) && isTableSeparator(lines[i + 1]) {
                 var merged = [lines[i]]
@@ -100,14 +88,6 @@ public enum BlockParser {
         }
 
         return result
-    }
-
-    /// Returns true if the line is a blockquote line (starts with optional 0–3 spaces then `>`).
-    private static func isBlockquoteLine(_ line: String) -> Bool {
-        let trimmed = line.drop(while: { $0 == " " })
-        let leadingSpaces = line.count - trimmed.count
-        guard leadingSpaces <= 3 else { return false }
-        return trimmed.first == ">"
     }
 
     /// Returns true if the line contains a pipe character (potential table row).

@@ -220,14 +220,17 @@ struct FontIntegrationTests {
         #expect(abs(f.pointSize - expectedSize) < 0.1)
     }
 
-    @Test("updateFont affects inactive block rendering")
+    @Test("updateFont affects non-active block rendering")
     @MainActor func updateFontInactive() {
         let editor = makeEditor()
         editor.loadContent("**bold**\nother")
         editor.updateFont(name: "Helvetica", size: 18)
         activateBlock(1, in: editor)
 
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
+        // In word-level rendering, offset 0 is a delimiter (hidden font).
+        // Content "bold" starts at offset 2.
+        let base = editor.displayRanges[0].location
+        let f = font(at: base + 2, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.boldFontMask))
         #expect(f.pointSize == 18)
     }
@@ -316,23 +319,24 @@ struct AppearanceIntegrationTests {
         #expect(color == editor.accentColor)
     }
 
-    @Test("Code color is used for inline code in both active and inactive")
+    @Test("Code color is used for inline code in both active and non-active")
     @MainActor func codeColorBothStates() {
         let editor = makeEditor()
         editor.loadContent("`active`\n`inactive`")
 
-        // Active block 0
+        // Active block 0: content at offset 1
         activateBlock(0, in: editor)
         let activeColor = fgColor(at: 1, in: editor)
         #expect(activeColor == editor.codeColor)
 
-        // Switch to block 1, making block 0 inactive
+        // Switch to block 1, making block 0 non-active.
+        // Offset 0 is backtick (hidden), content "active" starts at offset 1.
         activateBlock(1, in: editor)
-        let inactiveColor = fgColor(at: editor.displayRanges[0].location, in: editor)
-        #expect(inactiveColor == editor.codeColor)
+        let nonActiveColor = fgColor(at: editor.displayRanges[0].location + 1, in: editor)
+        #expect(nonActiveColor == editor.codeColor)
     }
 
-    @Test("Syntax delimiter dimming uses tertiaryLabelColor")
+    @Test("Active token delimiters are dimmed, non-active token delimiters are hidden")
     @MainActor func delimiterDimming() {
         let editor = makeEditor()
         // "**bold** *italic* `code`"
@@ -340,12 +344,11 @@ struct AppearanceIntegrationTests {
         editor.loadContent("**bold** *italic* `code`")
         activateBlock(0, in: editor)
 
-        // ** at 0
+        // Cursor at 0 → inside bold token. Bold delimiters dimmed.
         #expect(fgColor(at: 0, in: editor) == NSColor.tertiaryLabelColor)
-        // * at 9
-        #expect(fgColor(at: 9, in: editor) == NSColor.tertiaryLabelColor)
-        // ` at 18
-        #expect(fgColor(at: 18, in: editor) == NSColor.tertiaryLabelColor)
+        // Italic and code delimiters hidden (cursor not inside those tokens)
+        #expect(fgColor(at: 9, in: editor) == NSColor.clear)
+        #expect(fgColor(at: 18, in: editor) == NSColor.clear)
     }
 }
 
@@ -364,13 +367,16 @@ struct FullDocumentIntegrationTests {
         // Make block 2 active (the list item)
         activateBlock(2, in: editor)
 
-        // Block 0 (heading, inactive): "Title" with bold scaled font
+        // Block 0 (heading, non-active): raw text preserved, markers hidden
         let h = displayText(for: 0, in: editor)
-        #expect(h == "Title")
-        let hf = font(at: editor.displayRanges[0].location, in: editor)!
+        #expect(h == "# Title")
+        // Heading marker "#" at offset 0 is hidden. Content has bold font.
+        let hBase = editor.displayRanges[0].location
+        #expect(fgColor(at: hBase, in: editor) == NSColor.clear)
+        let hf = font(at: hBase + 2, in: editor)!
         #expect(NSFontManager.shared.traits(of: hf).contains(.boldFontMask))
 
-        // Block 1 (plain, inactive): "Some text"
+        // Block 1 (plain, non-active): "Some text"
         let p = displayText(for: 1, in: editor)
         #expect(p == "Some text")
 
@@ -378,9 +384,11 @@ struct FullDocumentIntegrationTests {
         let li = displayText(for: 2, in: editor)
         #expect(li == "- item")
 
-        // Block 3 (quote, inactive): "quote" (stripped >)
+        // Block 3 (quote, non-active): raw text preserved, ">" hidden
         let q = displayText(for: 3, in: editor)
-        #expect(q == "quote")
+        #expect(q == "> quote")
+        let qBase = editor.displayRanges[3].location
+        #expect(fgColor(at: qBase, in: editor) == NSColor.clear)
     }
 
     @Test("Type complete document from scratch, verify structure")
@@ -408,27 +416,31 @@ struct FullDocumentIntegrationTests {
         // Activate block 2 (code)
         activateBlock(2, in: editor)
 
-        // Block 0 inactive: "Bold title" with bold
-        #expect(displayText(for: 0, in: editor) == "Bold title")
-        let bf = font(at: editor.displayRanges[0].location, in: editor)!
+        // Block 0 non-active: raw text preserved, delimiters hidden, content bold
+        #expect(displayText(for: 0, in: editor) == "**Bold title**")
+        let b0 = editor.displayRanges[0].location
+        let bf = font(at: b0 + 2, in: editor)!  // content starts after **
         #expect(NSFontManager.shared.traits(of: bf).contains(.boldFontMask))
 
-        // Block 1 inactive: "Italic subtitle" with italic
-        #expect(displayText(for: 1, in: editor) == "Italic subtitle")
-        let itf = font(at: editor.displayRanges[1].location, in: editor)!
+        // Block 1 non-active: raw text preserved, delimiters hidden, content italic
+        #expect(displayText(for: 1, in: editor) == "*Italic subtitle*")
+        let b1 = editor.displayRanges[1].location
+        let itf = font(at: b1 + 1, in: editor)!  // content starts after *
         #expect(NSFontManager.shared.traits(of: itf).contains(.italicFontMask))
 
         // Block 2 active: "`code block`" (raw)
         #expect(displayText(for: 2, in: editor) == "`code block`")
 
-        // Block 3 inactive: "deleted" with strikethrough
-        #expect(displayText(for: 3, in: editor) == "deleted")
-        let a3 = attrs(at: editor.displayRanges[3].location, in: editor)
+        // Block 3 non-active: raw text preserved, delimiters hidden, content has strikethrough
+        #expect(displayText(for: 3, in: editor) == "~~deleted~~")
+        let b3 = editor.displayRanges[3].location
+        let a3 = attrs(at: b3 + 2, in: editor)  // content starts after ~~
         #expect(a3[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
 
-        // Block 4 inactive: "highlight" with background
-        #expect(displayText(for: 4, in: editor) == "highlight")
-        let a4 = attrs(at: editor.displayRanges[4].location, in: editor)
+        // Block 4 non-active: raw text preserved, delimiters hidden, content has background
+        #expect(displayText(for: 4, in: editor) == "==highlight==")
+        let b4 = editor.displayRanges[4].location
+        let a4 = attrs(at: b4 + 2, in: editor)  // content starts after ==
         #expect(a4[.backgroundColor] != nil)
     }
 }
