@@ -464,6 +464,29 @@ struct ListItemTests {
             #expect(Bool(false), "Expected listItem")
         }
     }
+    @Test("Indented list item (2 spaces) produces a listItem span")
+    func indentedTwoSpaces() {
+        let spans = SyntaxHighlighter.parse("  - hello")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+    }
+
+    @Test("Indented list item (4 spaces) produces a listItem span")
+    func indentedFourSpaces() {
+        let spans = SyntaxHighlighter.parse("    - hello")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        // Should NOT also produce a codeBlock span
+        let codeBlocks = spans.filter { if case .codeBlock = $0.kind { return true }; return false }
+        #expect(codeBlocks.count == 0)
+    }
+
+    @Test("Indented list item (8 spaces) produces a listItem span")
+    func indentedEightSpaces() {
+        let spans = SyntaxHighlighter.parse("        - hello")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+    }
 }
 
 // MARK: - Tables

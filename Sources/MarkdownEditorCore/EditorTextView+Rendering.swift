@@ -24,13 +24,29 @@ extension EditorTextView {
     var listIndent: CGFloat { 16 }
 
     /// Paragraph style with indentation for list items.
-    private func listParagraphStyle() -> NSParagraphStyle {
+    /// `nestingLevel` adds additional indent for sub-lists (each level = one `listIndent`).
+    private func listParagraphStyle(nestingLevel: Int = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
-        ps.firstLineHeadIndent = listIndent
-        ps.headIndent = listIndent
+        let indent = listIndent * CGFloat(1 + nestingLevel)
+        ps.firstLineHeadIndent = indent
+        ps.headIndent = indent
         return ps
+    }
+
+    /// Computes list nesting level from leading whitespace in raw markdown.
+    /// Uses the Tab indent unit (4 spaces) as one nesting level.
+    private func listNestingLevel(for markdown: String, span: SyntaxHighlighter.Span) -> Int {
+        let nsMarkdown = markdown as NSString
+        let lineStart = span.fullRange.location
+        var spaces = 0
+        while lineStart + spaces < span.fullRange.upperBound {
+            let ch = nsMarkdown.character(at: lineStart + spaces)
+            guard ch == 0x20 else { break }  // space
+            spaces += 1
+        }
+        return spaces / 4
     }
 
     /// Paragraph style with a left border for blockquotes.
@@ -127,7 +143,8 @@ extension EditorTextView {
 
             case .listItem:
                 guard span.fullRange.upperBound <= result.length else { continue }
-                result.addAttribute(.paragraphStyle, value: listParagraphStyle(), range: span.fullRange)
+                let nesting = listNestingLevel(for: markdown, span: span)
+                result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting), range: span.fullRange)
 
             case .table:
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -219,6 +236,14 @@ extension EditorTextView {
 
     func renderMarkdown(_ markdown: String) -> NSAttributedString {
         let spans = SyntaxHighlighter.parse(markdown)
+
+        // Pre-compute list nesting levels from the original (pre-strip) markdown
+        var listNesting: [Int: Int] = [:]  // keyed by span fullRange.location
+        for span in spans {
+            if case .listItem = span.kind {
+                listNesting[span.fullRange.location] = listNestingLevel(for: markdown, span: span)
+            }
+        }
 
         // Compute exact delimiter ranges for each span, sorted descending for back-to-front removal
         var allDelimRanges: [NSRange] = []
@@ -317,7 +342,8 @@ extension EditorTextView {
                 result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: mappedRange)
                 result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: mappedRange)
             case .listItem(let ordered, let checkbox):
-                // Apply indentation to the full line
+                // Apply indentation to the full line, scaled by nesting level
+                let nesting = listNesting[span.fullRange.location] ?? 0
                 let lineStart: Int
                 if !ordered {
                     lineStart = mappedRange.location - 2  // "• " or checkbox was inserted
@@ -327,7 +353,7 @@ extension EditorTextView {
                 let lineEnd = mappedRange.upperBound
                 if lineStart >= 0 && lineEnd <= result.length {
                     let lineRange = NSRange(location: lineStart, length: lineEnd - lineStart)
-                    result.addAttribute(.paragraphStyle, value: listParagraphStyle(), range: lineRange)
+                    result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting), range: lineRange)
                 }
                 if !ordered {
                     // Dim the bullet/checkbox

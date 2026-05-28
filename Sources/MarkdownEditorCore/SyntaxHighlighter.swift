@@ -56,6 +56,9 @@ public enum SyntaxHighlighter {
         // Trailing backslash line break (single-line blocks only).
         parseLineBreak(text, into: &walker.spans)
 
+        // Deeply indented list items (4+ spaces) that swift-markdown treats as code.
+        parseIndentedListItem(text, into: &walker.spans)
+
         return walker.spans.sorted { $0.fullRange.location < $1.fullRange.location }
     }
 
@@ -104,6 +107,47 @@ public enum SyntaxHighlighter {
             fullRange: range,
             contentRange: NSRange(location: len - 1, length: 0),
             delimiterRanges: [range]
+        ))
+    }
+
+    /// Detects list items with 4+ leading spaces that swift-markdown parses as
+    /// indented code instead of list items. Uses the same regex pattern as
+    /// `isListLine` to identify them.
+    private static let indentedListRegex = try! NSRegularExpression(
+        pattern: #"^(\s{4,})([-*+])\s"#
+    )
+
+    private static func parseIndentedListItem(_ text: String, into spans: inout [Span]) {
+        // Only single-line blocks (no \n)
+        guard !text.contains("\n") else { return }
+        let nsText = text as NSString
+        let match = indentedListRegex.firstMatch(
+            in: text, range: NSRange(location: 0, length: nsText.length)
+        )
+        guard let match = match else { return }
+        // Don't duplicate if swift-markdown already found a listItem
+        let alreadyHasListItem = spans.contains {
+            if case .listItem = $0.kind { return true }
+            return false
+        }
+        guard !alreadyHasListItem else { return }
+
+        let full = NSRange(location: 0, length: nsText.length)
+        let delimEnd = match.range(at: 0).upperBound  // end of "    - "
+        let delim = NSRange(location: 0, length: delimEnd)
+        let content = NSRange(location: delimEnd, length: nsText.length - delimEnd)
+
+        // Remove any codeBlock span swift-markdown created for this indented line
+        spans.removeAll { span in
+            if case .codeBlock = span.kind { return true }
+            return false
+        }
+
+        spans.append(Span(
+            kind: .listItem(ordered: false, checkbox: nil),
+            fullRange: full,
+            contentRange: content,
+            delimiterRanges: [delim]
         ))
     }
 

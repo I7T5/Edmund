@@ -277,6 +277,33 @@ struct EditorMarkdownTests {
         #expect(hasIndent)
     }
 
+    @Test("Indented list item (4 spaces) renders with more indent than top-level")
+    @MainActor func indentedListRendering() {
+        let editor = makeEditor()
+        let topLevel = editor.renderMarkdown("- hello")
+        let indented = editor.renderMarkdown("    - hello")
+
+        var topIndent: CGFloat = 0
+        topLevel.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: topLevel.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle { topIndent = ps.firstLineHeadIndent }
+        }
+
+        var subIndent: CGFloat = 0
+        indented.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: indented.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle { subIndent = ps.firstLineHeadIndent }
+        }
+
+        #expect(subIndent > topIndent)
+    }
+
+    @Test("Indented list item (4 spaces) renders with bullet, not as code")
+    @MainActor func indentedListBullet() {
+        let editor = makeEditor()
+        let rendered = editor.renderMarkdown("    - hello")
+        #expect(rendered.string.contains("\u{2022}"))  // bullet •
+        #expect(rendered.string.contains("hello"))
+    }
+
     @Test("Ordered list number is dimmed")
     @MainActor func orderedListNumberDimmed() {
         let editor = makeEditor()
