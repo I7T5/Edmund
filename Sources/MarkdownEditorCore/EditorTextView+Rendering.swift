@@ -33,30 +33,46 @@ extension EditorTextView {
     /// Indentation amount for list items.
     var listIndent: CGFloat { 16 }
 
-    /// Paragraph style with indentation for list items.
-    /// `nestingLevel` adds additional indent for sub-lists (each level = one `listIndent`).
-    private func listParagraphStyle(nestingLevel: Int = 0) -> NSParagraphStyle {
+    /// Paragraph style with hanging indentation for list items.
+    /// The first line starts at `listIndent`; wrapped lines align with the
+    /// content after the marker (bullet / number / checkbox).
+    private func listParagraphStyle(nestingLevel: Int = 0, markerWidth: CGFloat = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
         let indent = listIndent * CGFloat(1 + nestingLevel)
         ps.firstLineHeadIndent = indent
-        ps.headIndent = indent
+        ps.headIndent = indent + markerWidth
         return ps
     }
 
     /// Computes list nesting level from leading whitespace in raw markdown.
-    /// Uses the Tab indent unit (4 spaces) as one nesting level.
+    /// Each tab or 2 spaces counts as one nesting level.
+    /// Scans from the start of the line (position 0 in the block) since
+    /// swift-markdown's span range may exclude leading whitespace.
     private func listNestingLevel(for markdown: String, span: SyntaxHighlighter.Span) -> Int {
         let nsMarkdown = markdown as NSString
-        let lineStart = span.fullRange.location
-        var spaces = 0
-        while lineStart + spaces < span.fullRange.upperBound {
-            let ch = nsMarkdown.character(at: lineStart + spaces)
-            guard ch == 0x20 else { break }  // space
-            spaces += 1
+        var level = 0
+        var col = 0
+        var i = 0
+        let end = span.fullRange.location + span.fullRange.length
+        while i < end {
+            let ch = nsMarkdown.character(at: i)
+            if ch == 0x09 {        // tab
+                level += 1
+                col = 0
+            } else if ch == 0x20 { // space
+                col += 1
+                if col == 2 {
+                    level += 1
+                    col = 0
+                }
+            } else {
+                break
+            }
+            i += 1
         }
-        return spaces / 4
+        return level
     }
 
     /// Paragraph style with a left border for blockquotes.
@@ -174,7 +190,11 @@ extension EditorTextView {
             case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }
                 let nesting = listNestingLevel(for: markdown, span: span)
-                result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting), range: span.fullRange)
+                // Measure marker width for hanging indent on wrapped lines
+                let markerLen = span.contentRange.location - span.fullRange.location
+                let markerStr = (markdown as NSString).substring(with: NSRange(location: span.fullRange.location, length: markerLen))
+                let markerWidth = (markerStr as NSString).size(withAttributes: [.font: bodyFont]).width
+                result.addAttribute(.paragraphStyle, value: listParagraphStyle(nestingLevel: nesting, markerWidth: markerWidth), range: span.fullRange)
                 // Strikethrough checked items
                 if !ordered, checkbox == .checked {
                     result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)

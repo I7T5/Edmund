@@ -85,8 +85,8 @@ struct TabIndentIntegrationTests {
         type("- item", into: editor)
         editor.insertTab(nil)
 
-        #expect(editor.rawSource == "    - item")
-        #expect(editor.textStorage!.string.contains("    - item"))
+        #expect(editor.rawSource == "  - item")
+        #expect(editor.textStorage!.string.contains("  - item"))
     }
 
     @Test("Tab on multi-line list indents all lines")
@@ -100,21 +100,21 @@ struct TabIndentIntegrationTests {
 
         #expect(editor.blocks.count == 3)
         for block in editor.blocks {
-            #expect(block.content.hasPrefix("    "))
+            #expect(block.content.hasPrefix("  "))
         }
     }
 
     @Test("Shift-Tab dedents, Undo reverts, Redo re-applies")
     @MainActor func dedentUndoRedo() {
         let editor = makeEditor()
-        editor.loadContent("    - item")
+        editor.loadContent("  - item")
         editor.setSelectedRange(NSRange(location: 0, length: 0))
 
         editor.insertBacktab(nil)
         #expect(editor.rawSource == "- item")
 
         editor.undo(nil)
-        #expect(editor.rawSource == "    - item")
+        #expect(editor.rawSource == "  - item")
 
         editor.redo(nil)
         #expect(editor.rawSource == "- item")
@@ -138,7 +138,7 @@ struct TabIndentIntegrationTests {
         editor.setSelectedRange(NSRange(location: 0, length: len))
         editor.insertTab(nil)
 
-        #expect(editor.rawSource == "    - bullet\n    1. numbered")
+        #expect(editor.rawSource == "  - bullet\n  1. numbered")
     }
 
     @Test("Multiple indent/dedent cycles are stable")
@@ -150,7 +150,7 @@ struct TabIndentIntegrationTests {
         // Indent twice
         editor.insertTab(nil)
         editor.insertTab(nil)
-        #expect(editor.rawSource == "        - item")
+        #expect(editor.rawSource == "    - item")
 
         // Dedent twice
         editor.insertBacktab(nil)

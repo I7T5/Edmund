@@ -110,11 +110,10 @@ public enum SyntaxHighlighter {
         ))
     }
 
-    /// Detects list items with 4+ leading spaces that swift-markdown parses as
-    /// indented code instead of list items. Uses the same regex pattern as
-    /// `isListLine` to identify them.
+    /// Detects list items with deep indentation (4+ spaces or tabs) that
+    /// swift-markdown parses as indented code instead of list items.
     private static let indentedListRegex = try! NSRegularExpression(
-        pattern: #"^(\s{4,})([-*+])\s"#
+        pattern: #"^([\t ]*\t[\t ]*|[ ]{4,})([-*+])\s"#
     )
 
     private static func parseIndentedListItem(_ text: String, into spans: inout [Span]) {

@@ -5,7 +5,7 @@ import AppKit
 extension EditorTextView {
 
     private static let listLineRegex = try! NSRegularExpression(pattern: #"^\s*(?:[-*+]|\d+\.)\s"#)
-    static let indentUnit = "    "  // 4 spaces
+    static let indentUnit = "  "  // 2 spaces
 
     /// Returns true if the line looks like a markdown list item
     /// (optionally indented): `- `, `* `, `+ `, `1. `, etc.
@@ -110,11 +110,16 @@ extension EditorTextView {
         let rawEnd = displayOffsetToRawOffset(sel.location + sel.length)
         let maxRemove = (Self.indentUnit as NSString).length
 
-        // Compute how many leading spaces to strip from each block.
+        // Compute how many leading whitespace characters to strip from each block.
         var removed: [Int] = Array(repeating: 0, count: blocks.count)
         for i in startBlock...endBlock {
-            let leading = blocks[i].content.prefix(while: { $0 == " " }).count
-            removed[i] = min(leading, maxRemove)
+            let content = blocks[i].content
+            if content.hasPrefix("\t") {
+                removed[i] = 1
+            } else {
+                let leading = content.prefix(while: { $0 == " " }).count
+                removed[i] = min(leading, maxRemove)
+            }
         }
 
         let totalRemoved = removed[startBlock...endBlock].reduce(0, +)
