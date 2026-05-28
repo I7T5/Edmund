@@ -30,15 +30,19 @@ extension EditorTextView {
     /// Near-zero size makes them effectively invisible and zero-width.
     var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
 
-    /// Paragraph style with hanging indentation for list items.
-    /// The raw whitespace characters provide first-line indentation (deletable
-    /// by the user). Wrapped lines use `headIndent` to align with content
-    /// after the marker.
+    /// Fixed padding before the bullet/number marker for all list items.
+    var listPadding: CGFloat { 16 }
+
+    /// Paragraph style for list items. A fixed padding pushes the marker
+    /// away from the left edge. Nesting beyond level 1 comes from raw
+    /// whitespace characters (deletable by the user). Wrapped lines use
+    /// `headIndent` to align with content after the marker.
     private func listParagraphStyle(markerWidth: CGFloat = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
-        ps.headIndent = markerWidth
+        ps.firstLineHeadIndent = listPadding
+        ps.headIndent = listPadding + markerWidth
         return ps
     }
 
