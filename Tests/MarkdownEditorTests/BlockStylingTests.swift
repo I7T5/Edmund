@@ -195,7 +195,7 @@ struct BlockStylingNonActiveTests {
 
     // MARK: - Bullet Lists
 
-    @Test("Non-active list item has raw text, accent-colored bullet, indent")
+    @Test("Non-active list item has raw text, dimmed marker, indent")
     @MainActor func nonActiveBulletList() {
         let editor = makeEditor()
         editor.loadContent("- apples\nother")
@@ -204,11 +204,9 @@ struct BlockStylingNonActiveTests {
         // Text unchanged
         let text = displayText(for: 0, in: editor)
         #expect(text == "- apples")
-        // Bullet `-` is accent-colored (not dimmed)
+        // Bullet `-` is dimmed
         let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == editor.accentColor)
-        // Trailing space is dimmed
-        #expect(fgColor(at: 1, in: editor) == NSColor.tertiaryLabelColor)
+        #expect(delimColor == NSColor.tertiaryLabelColor)
         // Has indent
         let a = attrs(at: 0, in: editor)
         let ps = a[.paragraphStyle] as? NSParagraphStyle
@@ -232,7 +230,7 @@ struct BlockStylingNonActiveTests {
 
     // MARK: - Todo Lists
 
-    @Test("Non-active - [ ] has dimmed prefix, secondary-label checkbox")
+    @Test("Non-active - [ ] has dimmed prefix, circle attachment on [")
     @MainActor func nonActiveTodoUnchecked() {
         let editor = makeEditor()
         editor.loadContent("- [ ] task\nother")
@@ -242,11 +240,16 @@ struct BlockStylingNonActiveTests {
         #expect(text == "- [ ] task")
         // "- " prefix (offsets 0-1) is dimmed
         #expect(fgColor(at: 0, in: editor) == NSColor.tertiaryLabelColor)
-        // "[ ]" (offsets 2-4) has secondary label color
-        #expect(fgColor(at: 2, in: editor) == NSColor.secondaryLabelColor)
+        // "[" (offset 2) has a text attachment (circle icon)
+        let a = attrs(at: 2, in: editor)
+        #expect(a[.attachment] is NSTextAttachment)
+        // " ]" (offsets 3-4) are hidden
+        let hiddenA = attrs(at: 3, in: editor)
+        let hiddenF = hiddenA[.font] as? NSFont
+        #expect(hiddenF != nil && hiddenF!.pointSize < 1.0)
     }
 
-    @Test("Non-active - [x] has dimmed prefix, accent-colored checkbox, strikethrough content")
+    @Test("Non-active - [x] has dimmed prefix, filled circle attachment, strikethrough content")
     @MainActor func nonActiveTodoChecked() {
         let editor = makeEditor()
         editor.loadContent("- [x] done\nother")
@@ -256,16 +259,21 @@ struct BlockStylingNonActiveTests {
         #expect(text == "- [x] done")
         // "- " prefix (offsets 0-1) is dimmed
         #expect(fgColor(at: 0, in: editor) == NSColor.tertiaryLabelColor)
-        // "[x]" (offsets 2-4) has accent color
-        #expect(fgColor(at: 2, in: editor) == editor.accentColor)
+        // "[" (offset 2) has a text attachment (filled circle icon)
+        let a = attrs(at: 2, in: editor)
+        #expect(a[.attachment] is NSTextAttachment)
+        // "x]" (offsets 3-4) are hidden
+        let hiddenA = attrs(at: 3, in: editor)
+        let hiddenF = hiddenA[.font] as? NSFont
+        #expect(hiddenF != nil && hiddenF!.pointSize < 1.0)
         // Content "done" should have strikethrough
-        let a = attrs(at: 6, in: editor)
-        #expect(a[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
+        let ca = attrs(at: 6, in: editor)
+        #expect(ca[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
     }
 
     // MARK: - Multi-Level Lists
 
-    @Test("Non-active nested bullet (2 spaces) has accent-colored marker")
+    @Test("Non-active nested bullet (2 spaces) has dimmed marker")
     @MainActor func nonActiveNestedBullet() {
         let editor = makeEditor()
         editor.loadContent("  - nested\nother")
@@ -273,11 +281,11 @@ struct BlockStylingNonActiveTests {
 
         let text = displayText(for: 0, in: editor)
         #expect(text == "  - nested")
-        // The `-` at offset 2 is accent-colored
-        #expect(fgColor(at: 2, in: editor) == editor.accentColor)
+        // The `-` at offset 2 is dimmed
+        #expect(fgColor(at: 2, in: editor) == NSColor.tertiaryLabelColor)
     }
 
-    @Test("Non-active deeply-indented bullet (4 spaces) has accent-colored marker")
+    @Test("Non-active deeply-indented bullet (4 spaces) has dimmed marker")
     @MainActor func nonActiveDeeplyNestedBullet() {
         let editor = makeEditor()
         editor.loadContent("    - deep\nother")
@@ -285,8 +293,8 @@ struct BlockStylingNonActiveTests {
 
         let text = displayText(for: 0, in: editor)
         #expect(text == "    - deep")
-        // The `-` at offset 4 is accent-colored
-        #expect(fgColor(at: 4, in: editor) == editor.accentColor)
+        // The `-` at offset 4 is dimmed
+        #expect(fgColor(at: 4, in: editor) == NSColor.tertiaryLabelColor)
     }
 
     // MARK: - Blockquotes

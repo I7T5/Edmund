@@ -106,12 +106,54 @@ extension EditorTextView {
         }
     }
 
+    // MARK: - Checkbox Attachment
+
+    /// Creates an NSTextAttachment with a circle icon for checkbox rendering.
+    /// Unchecked: gray outlined circle. Checked: filled yellow circle with checkmark.
+    private func checkboxAttachment(checked: Bool) -> NSTextAttachment {
+        let fontSize = bodyFont.pointSize
+        let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
+            let inset: CGFloat = 1.0
+            let circleRect = bounds.insetBy(dx: inset, dy: inset)
+            let path = NSBezierPath(ovalIn: circleRect)
+
+            if checked {
+                NSColor.systemYellow.setFill()
+                path.fill()
+                // Checkmark
+                let check = NSBezierPath()
+                check.lineWidth = max(1.5, fontSize * 0.1)
+                check.lineCapStyle = .round
+                check.lineJoinStyle = .round
+                let cx = bounds.midX, cy = bounds.midY
+                let r = circleRect.width / 2
+                check.move(to: NSPoint(x: cx - r * 0.35, y: cy + r * 0.05))
+                check.line(to: NSPoint(x: cx - r * 0.08, y: cy + r * 0.35))
+                check.line(to: NSPoint(x: cx + r * 0.38, y: cy - r * 0.30))
+                NSColor.white.setStroke()
+                check.stroke()
+            } else {
+                NSColor.secondaryLabelColor.setStroke()
+                path.lineWidth = max(1.5, fontSize * 0.08)
+                path.stroke()
+            }
+            return true
+        }
+
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        // Vertically center the circle relative to the text baseline
+        attachment.bounds = CGRect(x: 0, y: -fontSize * 0.15,
+                                   width: fontSize, height: fontSize)
+        return attachment
+    }
+
     // MARK: - List Marker Styling
 
     /// Applies custom non-active styling to a list item's delimiter range.
-    /// - Unordered bullet: accent-colored `-`/`*`/`+`, dimmed space
-    /// - Unchecked checkbox: dimmed `- `, secondary-label `[ ]`
-    /// - Checked checkbox: dimmed `- `, accent-colored `[x]`
+    /// - Unordered bullet: dimmed
+    /// - Unchecked checkbox: circle icon (Apple Notes style)
+    /// - Checked checkbox: filled circle icon (Apple Notes style)
     /// - Ordered: all dimmed
     private func styleListDelimiter(
         _ result: NSMutableAttributedString,
@@ -120,73 +162,56 @@ extension EditorTextView {
         ordered: Bool,
         checkbox: SyntaxHighlighter.Span.Kind.CheckboxState?
     ) {
-        if ordered {
+        if ordered || checkbox == nil {
+            // Ordered lists and plain bullets: dim everything
             result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
             return
         }
 
+        guard let checkbox = checkbox else { return }
+
         let nsDelim = (markdown as NSString).substring(with: dr) as NSString
 
-        if let checkbox = checkbox {
-            // --- Checkbox item: find [ ] or [x] within delimiter ---
-            let bracketOpen = nsDelim.range(of: "[")
-            guard bracketOpen.location != NSNotFound else {
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-                return
-            }
-            let afterOpen = NSRange(location: bracketOpen.upperBound,
-                                     length: nsDelim.length - bracketOpen.upperBound)
-            let bracketClose = nsDelim.range(of: "]", options: [], range: afterOpen)
-            guard bracketClose.location != NSNotFound else {
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-                return
-            }
-
-            let cbRange = NSRange(
-                location: dr.location + bracketOpen.location,
-                length: bracketClose.upperBound - bracketOpen.location
-            )
-
-            // Dim everything before `[`
-            if bracketOpen.location > 0 {
-                let before = NSRange(location: dr.location, length: bracketOpen.location)
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: before)
-            }
-            // Color the checkbox
-            let cbColor: NSColor = checkbox == .checked ? accentColor : .secondaryLabelColor
-            result.addAttribute(.foregroundColor, value: cbColor, range: cbRange)
-            // Dim everything after `]`
-            let afterEnd = cbRange.upperBound
-            if afterEnd < dr.upperBound {
-                let after = NSRange(location: afterEnd, length: dr.upperBound - afterEnd)
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: after)
-            }
-        } else {
-            // --- Plain unordered bullet: color the marker character ---
-            for i in 0..<nsDelim.length {
-                let ch = nsDelim.character(at: i)
-                // 0x2D = '-', 0x2A = '*', 0x2B = '+'
-                guard ch == 0x2D || ch == 0x2A || ch == 0x2B else { continue }
-
-                // Dim leading whitespace
-                if i > 0 {
-                    let ws = NSRange(location: dr.location, length: i)
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: ws)
-                }
-                // Accent-color the bullet character
-                let bullet = NSRange(location: dr.location + i, length: 1)
-                result.addAttribute(.foregroundColor, value: accentColor, range: bullet)
-                // Dim trailing characters (space)
-                let after = dr.location + i + 1
-                if after < dr.upperBound {
-                    let trailing = NSRange(location: after, length: dr.upperBound - after)
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: trailing)
-                }
-                return
-            }
-
-            // Fallback: dim everything
+        // --- Checkbox item: replace [ ]/[x] with circle icon ---
+        let bracketOpen = nsDelim.range(of: "[")
+        guard bracketOpen.location != NSNotFound else {
             result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+            return
+        }
+        let afterOpen = NSRange(location: bracketOpen.upperBound,
+                                 length: nsDelim.length - bracketOpen.upperBound)
+        let bracketClose = nsDelim.range(of: "]", options: [], range: afterOpen)
+        guard bracketClose.location != NSNotFound else {
+            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+            return
+        }
+
+        let cbStart = dr.location + bracketOpen.location
+        let cbEnd = dr.location + bracketClose.upperBound
+
+        // Dim everything before `[` (the "- " prefix)
+        if bracketOpen.location > 0 {
+            let before = NSRange(location: dr.location, length: bracketOpen.location)
+            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: before)
+        }
+
+        // Place circle attachment on `[` character
+        let attachment = checkboxAttachment(checked: checkbox == .checked)
+        result.addAttribute(.attachment, value: attachment,
+                            range: NSRange(location: cbStart, length: 1))
+
+        // Hide remaining checkbox characters (` ]`/`x]`) with zero-width + clear
+        let hideStart = cbStart + 1
+        if hideStart < cbEnd {
+            let hideRange = NSRange(location: hideStart, length: cbEnd - hideStart)
+            result.addAttribute(.font, value: hiddenFont, range: hideRange)
+            result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
+        }
+
+        // Dim everything after `]` (trailing space)
+        if cbEnd < dr.upperBound {
+            let after = NSRange(location: cbEnd, length: dr.upperBound - cbEnd)
+            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: after)
         }
     }
 

@@ -8,7 +8,7 @@ import AppKit
 /// mirroring the setup in main.swift.
 @MainActor
 func makeEditor() -> EditorTextView {
-    let textStorage = NSTextStorage()
+    let textStorage = EditorTextStorage()
     let layoutManager = NSLayoutManager()
     textStorage.addLayoutManager(layoutManager)
     let textContainer = NSTextContainer(

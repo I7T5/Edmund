@@ -311,51 +311,49 @@ struct EditorStylingTests {
         #expect(hasTextBlock)
     }
 
-    @Test("List bullet marker is accent-colored, never hidden")
-    @MainActor func listMarkerAccent() {
+    @Test("List bullet marker is dimmed, never hidden")
+    @MainActor func listMarkerDimmed() {
         let editor = makeEditor()
         let styled = editor.styleBlock("- hello")
-        // The `-` is accent-colored (not dimmed, not hidden)
-        let a = styled.attributes(at: 0, effectiveRange: nil)
-        let color = a[.foregroundColor] as? NSColor
-        #expect(color == editor.accentColor)
+        // The `-` is dimmed (not hidden)
+        #expect(isDimmed(at: 0, in: styled))
         #expect(!isHidden(at: 0, in: styled))
     }
 
-    @Test("Unchecked checkbox [ ] has secondary label color")
-    @MainActor func uncheckedCheckboxColor() {
+    @Test("Unchecked checkbox [ ] has circle attachment")
+    @MainActor func uncheckedCheckboxAttachment() {
         let editor = makeEditor()
         let styled = editor.styleBlock("- [ ] task")
         // "- " at 0-1 is dimmed
         #expect(isDimmed(at: 0, in: styled))
-        // "[ ]" at 2-4 has secondary label color
+        // "[" at 2 has a text attachment
         let a = styled.attributes(at: 2, effectiveRange: nil)
-        let color = a[.foregroundColor] as? NSColor
-        #expect(color == NSColor.secondaryLabelColor)
+        #expect(a[.attachment] is NSTextAttachment)
+        // " ]" at 3-4 are hidden
+        #expect(isHidden(at: 3, in: styled))
     }
 
-    @Test("Checked checkbox [x] has accent color")
-    @MainActor func checkedCheckboxColor() {
+    @Test("Checked checkbox [x] has circle attachment")
+    @MainActor func checkedCheckboxAttachment() {
         let editor = makeEditor()
         let styled = editor.styleBlock("- [x] done")
         // "- " at 0-1 is dimmed
         #expect(isDimmed(at: 0, in: styled))
-        // "[x]" at 2-4 has accent color
+        // "[" at 2 has a text attachment
         let a = styled.attributes(at: 2, effectiveRange: nil)
-        let color = a[.foregroundColor] as? NSColor
-        #expect(color == editor.accentColor)
+        #expect(a[.attachment] is NSTextAttachment)
+        // "x]" at 3-4 are hidden
+        #expect(isHidden(at: 3, in: styled))
     }
 
-    @Test("Nested bullet (2 spaces) has accent-colored marker")
-    @MainActor func nestedBulletAccent() {
+    @Test("Nested bullet (2 spaces) has dimmed marker")
+    @MainActor func nestedBulletDimmed() {
         let editor = makeEditor()
         let styled = editor.styleBlock("  - nested")
         // Leading spaces have base text color (not part of delimiter)
         #expect(!isDimmed(at: 0, in: styled))
-        // The `-` at offset 2 is accent-colored
-        let a = styled.attributes(at: 2, effectiveRange: nil)
-        let color = a[.foregroundColor] as? NSColor
-        #expect(color == editor.accentColor)
+        // The `-` at offset 2 is dimmed
+        #expect(isDimmed(at: 2, in: styled))
     }
 
     @Test("List items have hanging indent paragraph style")
