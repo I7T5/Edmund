@@ -14,7 +14,7 @@ extension EditorTextView {
     var syntaxDimColor: NSColor { .tertiaryLabelColor }
 
     /// Color for inline code spans.
-    var codeColor: NSColor { NSColor(calibratedRed: 0.541, green: 0.141, blue: 0.145, alpha: 1.0) }
+    var codeColor: NSColor { theme.codeColor }
 
     /// Monospaced font for tables.
     var tableFont: NSFont {
