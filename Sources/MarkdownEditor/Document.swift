@@ -70,7 +70,7 @@ class Document: NSDocument {
 
         // Build the text system chain:
         //   NSTextStorage → NSLayoutManager → NSTextContainer → NSTextView
-        let textStorage = NSTextStorage()
+        let textStorage = EditorTextStorage()
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
 
