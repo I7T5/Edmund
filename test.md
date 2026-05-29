@@ -20,13 +20,18 @@ Other names:
 - Light/dark mode
 
 
-This should be *italicized*, and so is _this_. This is **bolded** and so is __this__. But this is even more ***important***. There's also several special cases like **here* and _here__. 
+This should be *italicized*, and so is _this_. This is **bolded** and so is __this__. But this is even more ***important***. There's also several special cases like **here* and _here__ (we should have extra * and _). 
 
 > Quote
 
 1. `code`
 2. ~~strikethrough~~
 3. [link](http://example.com)
+4. ==Highlight==
+
+Nest lists
+- Hello
+  - World
 
 
 ## TODOs
@@ -52,7 +57,6 @@ Refer to the implementation of [Swift Markdown Engine](https://github.com/nodes-
 - [x] Divider with `---`
 - [x] Code blocks
   - [ ] Syntax highlighting
-- [ ] Multi-line quotes
 - [ ] Callouts: GFM-flavored; use BlockDirectives in `swift-markdown`
   - [ ] Collapsible vs. not collapsible
   - [ ] Default to collapsible vs. not collapsible
@@ -60,7 +64,8 @@ Refer to the implementation of [Swift Markdown Engine](https://github.com/nodes-
 - [ ] Comments
 - [ ] Math: KaTex or some kind of swift math integration. 
 
-### Frontend
+
+### Frontend / UIUX
 
 - [x] Richer markdown rendering (headers, code, links, lists)
 - [x] title bar blending, window sizing, and dark mode 
@@ -83,10 +88,15 @@ Refer to the implementation of [Swift Markdown Engine](https://github.com/nodes-
   - [ ] Custom theme (see full customization)
 - [ ] Active block highlighting: wiggly (not fully straight) highlighter style by line
 - [ ] Title bar: Add horizontal line to divide content and bar
+- [ ] List: Automatic add list item upon new line in a list environment
+- [ ] List: Un-indent current line when upon new line on a empty line
 
 ### Bugs
 
 - [x] List indentation: ` -` has less indentation than `-` (which has rendered indentation). Render indentation for all `-` at the beginning of the line, even after whitespace. 
+- [ ] Unmatched * and _ should not be hidden
+- [ ] Todo list indentation: Align beginning of list marker with first character in upper-level text
+
 
 ### Maybes
 

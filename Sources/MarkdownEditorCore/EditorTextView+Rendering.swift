@@ -106,6 +106,90 @@ extension EditorTextView {
         }
     }
 
+    // MARK: - List Marker Styling
+
+    /// Applies custom non-active styling to a list item's delimiter range.
+    /// - Unordered bullet: accent-colored `-`/`*`/`+`, dimmed space
+    /// - Unchecked checkbox: dimmed `- `, secondary-label `[ ]`
+    /// - Checked checkbox: dimmed `- `, accent-colored `[x]`
+    /// - Ordered: all dimmed
+    private func styleListDelimiter(
+        _ result: NSMutableAttributedString,
+        markdown: String,
+        delimiterRange dr: NSRange,
+        ordered: Bool,
+        checkbox: SyntaxHighlighter.Span.Kind.CheckboxState?
+    ) {
+        if ordered {
+            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+            return
+        }
+
+        let nsDelim = (markdown as NSString).substring(with: dr) as NSString
+
+        if let checkbox = checkbox {
+            // --- Checkbox item: find [ ] or [x] within delimiter ---
+            let bracketOpen = nsDelim.range(of: "[")
+            guard bracketOpen.location != NSNotFound else {
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                return
+            }
+            let afterOpen = NSRange(location: bracketOpen.upperBound,
+                                     length: nsDelim.length - bracketOpen.upperBound)
+            let bracketClose = nsDelim.range(of: "]", options: [], range: afterOpen)
+            guard bracketClose.location != NSNotFound else {
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                return
+            }
+
+            let cbRange = NSRange(
+                location: dr.location + bracketOpen.location,
+                length: bracketClose.upperBound - bracketOpen.location
+            )
+
+            // Dim everything before `[`
+            if bracketOpen.location > 0 {
+                let before = NSRange(location: dr.location, length: bracketOpen.location)
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: before)
+            }
+            // Color the checkbox
+            let cbColor: NSColor = checkbox == .checked ? accentColor : .secondaryLabelColor
+            result.addAttribute(.foregroundColor, value: cbColor, range: cbRange)
+            // Dim everything after `]`
+            let afterEnd = cbRange.upperBound
+            if afterEnd < dr.upperBound {
+                let after = NSRange(location: afterEnd, length: dr.upperBound - afterEnd)
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: after)
+            }
+        } else {
+            // --- Plain unordered bullet: color the marker character ---
+            for i in 0..<nsDelim.length {
+                let ch = nsDelim.character(at: i)
+                // 0x2D = '-', 0x2A = '*', 0x2B = '+'
+                guard ch == 0x2D || ch == 0x2A || ch == 0x2B else { continue }
+
+                // Dim leading whitespace
+                if i > 0 {
+                    let ws = NSRange(location: dr.location, length: i)
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: ws)
+                }
+                // Accent-color the bullet character
+                let bullet = NSRange(location: dr.location + i, length: 1)
+                result.addAttribute(.foregroundColor, value: accentColor, range: bullet)
+                // Dim trailing characters (space)
+                let after = dr.location + i + 1
+                if after < dr.upperBound {
+                    let trailing = NSRange(location: after, length: dr.upperBound - after)
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: trailing)
+                }
+                return
+            }
+
+            // Fallback: dim everything
+            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+        }
+    }
+
     // MARK: - Unified Styling
 
     /// Styles raw markdown text with rich attributes. Inline delimiters are hidden
@@ -244,6 +328,15 @@ extension EditorTextView {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
                     // Non-active: already hidden, don't override
+                } else if case .listItem(let ordered, let checkbox) = span.kind {
+                    // List markers: custom styling when non-active, dimmed when active
+                    if cursorInToken {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                    } else {
+                        styleListDelimiter(result, markdown: markdown,
+                                           delimiterRange: dr, ordered: ordered,
+                                           checkbox: checkbox)
+                    }
                 } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
