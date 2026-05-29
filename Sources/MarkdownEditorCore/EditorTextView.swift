@@ -60,9 +60,13 @@ public class EditorTextView: NSTextView {
     /// Must match what BlockParser splits on.
     let blockSeparator = "\n"
 
-    // MARK: - Colors (semantic — adapts to light/dark mode)
+    // MARK: - Theme (user-configurable visual settings)
 
-    let accentColor = NSColor(calibratedRed: 0.2, green: 0.4, blue: 0.9, alpha: 1.0)
+    public var theme: EditorTheme = .load()
+
+    // MARK: - Derived Visual Properties
+
+    var accentColor: NSColor { theme.accentColor }
 
     /// Foreground color for all body text. Uses the system text color so it
     /// flips automatically between near-black (light) and near-white (dark).
@@ -72,43 +76,25 @@ public class EditorTextView: NSTextView {
     /// standard semantic color for text-editing backgrounds (white / dark gray).
     private var editorBackgroundColor: NSColor { .textBackgroundColor }
 
-    // MARK: - Fonts & Style
+    // MARK: - Font & Paragraph Style (derived from theme)
 
-    // MARK: - Font Settings (persisted via UserDefaults)
+    public var bodyFont: NSFont { theme.bodyFont }
 
-    private static let defaultFontName = "Hoefler Text"
-    private static let defaultFontSize: CGFloat = 16
-    private static let fontNameKey = "EditorFontName"
-    private static let fontSizeKey = "EditorFontSize"
+    var bodyParagraphStyle: NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.lineSpacing = theme.lineSpacing
+        ps.paragraphSpacingBefore = theme.paragraphSpacingBefore
+        ps.paragraphSpacing = 0
+        return ps
+    }
 
-    public var bodyFont: NSFont = {
-        let name = UserDefaults.standard.string(forKey: "EditorFontName") ?? defaultFontName
-        let size = CGFloat(UserDefaults.standard.float(forKey: "EditorFontSize"))
-        let resolvedSize = size > 0 ? size : defaultFontSize
-        if let font = NSFont(name: name, size: resolvedSize) { return font }
-        return NSFont.systemFont(ofSize: resolvedSize)
-    }()
-
-    /// Update the editor font and recompose. Persists to UserDefaults.
-    public func updateFont(name: String, size: CGFloat) {
-        UserDefaults.standard.set(name, forKey: Self.fontNameKey)
-        UserDefaults.standard.set(Float(size), forKey: Self.fontSizeKey)
-        if let font = NSFont(name: name, size: size) {
-            bodyFont = font
-        } else {
-            bodyFont = NSFont.systemFont(ofSize: size)
-        }
+    /// Apply a new theme, persist it, and recompose.
+    public func applyTheme(_ newTheme: EditorTheme) {
+        theme = newTheme
+        theme.save()
         typingAttributes = baseAttributes
         recompose(cursorInRaw: currentCursorInRaw())
     }
-
-    let bodyParagraphStyle: NSParagraphStyle = {
-        let ps = NSMutableParagraphStyle()
-        ps.lineSpacing = 4
-        ps.paragraphSpacingBefore = 2
-        ps.paragraphSpacing = 0
-        return ps
-    }()
 
     var baseAttributes: [NSAttributedString.Key: Any] {
         [

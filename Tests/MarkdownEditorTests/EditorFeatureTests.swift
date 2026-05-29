@@ -176,17 +176,22 @@ struct FontIntegrationTests {
         #expect(f == editor.bodyFont)
     }
 
-    @Test("updateFont changes body font and recomposes")
-    @MainActor func updateFontChanges() {
+    @Test("applyTheme changes body font and recomposes")
+    @MainActor func applyThemeChangesFont() {
         let editor = makeEditor()
         editor.loadContent("hello")
 
         // Set to a known font first so we have a stable baseline
-        editor.updateFont(name: "Menlo", size: 12)
+        var theme = editor.theme
+        theme.fontName = "Menlo"
+        theme.fontSize = 12
+        editor.applyTheme(theme)
         #expect(editor.bodyFont.familyName == "Menlo")
 
         // Now change to a different font
-        editor.updateFont(name: "Helvetica", size: 20)
+        theme.fontName = "Helvetica"
+        theme.fontSize = 20
+        editor.applyTheme(theme)
         #expect(editor.bodyFont.familyName == "Helvetica")
         #expect(editor.bodyFont.pointSize == 20)
 
@@ -196,11 +201,14 @@ struct FontIntegrationTests {
         #expect(f?.pointSize == 20)
     }
 
-    @Test("updateFont affects bold rendering")
-    @MainActor func updateFontAffectsBold() {
+    @Test("applyTheme affects bold rendering")
+    @MainActor func applyThemeAffectsBold() {
         let editor = makeEditor()
         editor.loadContent("**bold**")
-        editor.updateFont(name: "Helvetica", size: 24)
+        var theme = editor.theme
+        theme.fontName = "Helvetica"
+        theme.fontSize = 24
+        editor.applyTheme(theme)
         activateBlock(0, in: editor)
 
         let f = font(at: 2, in: editor)!
@@ -208,11 +216,14 @@ struct FontIntegrationTests {
         #expect(f.pointSize == 24)
     }
 
-    @Test("updateFont affects heading scale")
-    @MainActor func updateFontAffectsHeading() {
+    @Test("applyTheme affects heading scale")
+    @MainActor func applyThemeAffectsHeading() {
         let editor = makeEditor()
         editor.loadContent("# Title")
-        editor.updateFont(name: "Helvetica", size: 20)
+        var theme = editor.theme
+        theme.fontName = "Helvetica"
+        theme.fontSize = 20
+        editor.applyTheme(theme)
         activateBlock(0, in: editor)
 
         let f = font(at: 2, in: editor)!
@@ -220,11 +231,14 @@ struct FontIntegrationTests {
         #expect(abs(f.pointSize - expectedSize) < 0.1)
     }
 
-    @Test("updateFont affects non-active block rendering")
-    @MainActor func updateFontInactive() {
+    @Test("applyTheme affects non-active block rendering")
+    @MainActor func applyThemeInactive() {
         let editor = makeEditor()
         editor.loadContent("**bold**\nother")
-        editor.updateFont(name: "Helvetica", size: 18)
+        var theme = editor.theme
+        theme.fontName = "Helvetica"
+        theme.fontSize = 18
+        editor.applyTheme(theme)
         activateBlock(1, in: editor)
 
         // In word-level rendering, offset 0 is a delimiter (hidden font).
@@ -235,21 +249,33 @@ struct FontIntegrationTests {
         #expect(f.pointSize == 18)
     }
 
-    @Test("Font size change persists to UserDefaults")
-    @MainActor func fontPersistence() {
+    @Test("Theme persists to UserDefaults")
+    @MainActor func themePersistence() {
         let editor = makeEditor()
-        editor.updateFont(name: "Courier", size: 14)
+        var theme = editor.theme
+        theme.fontName = "Courier"
+        theme.fontSize = 14
+        theme.accentHex = "#FF0000"
+        theme.lineSpacing = 8
+        editor.applyTheme(theme)
 
         let savedName = UserDefaults.standard.string(forKey: "EditorFontName")
         let savedSize = UserDefaults.standard.float(forKey: "EditorFontSize")
+        let savedAccent = UserDefaults.standard.string(forKey: "EditorAccentHex")
+        let savedSpacing = UserDefaults.standard.float(forKey: "EditorLineSpacing")
         #expect(savedName == "Courier")
         #expect(savedSize == 14)
+        #expect(savedAccent == "#FF0000")
+        #expect(savedSpacing == 8)
     }
 
     @Test("Invalid font name falls back to system font")
     @MainActor func invalidFontFallback() {
         let editor = makeEditor()
-        editor.updateFont(name: "NonExistentFont12345", size: 16)
+        var theme = editor.theme
+        theme.fontName = "NonExistentFont12345"
+        theme.fontSize = 16
+        editor.applyTheme(theme)
 
         #expect(editor.bodyFont.pointSize == 16)
         // Should be a system font since the name is invalid
