@@ -311,12 +311,51 @@ struct EditorStylingTests {
         #expect(hasTextBlock)
     }
 
-    @Test("List marker is dimmed, never hidden")
-    @MainActor func listMarkerDimmed() {
+    @Test("List bullet marker is accent-colored, never hidden")
+    @MainActor func listMarkerAccent() {
         let editor = makeEditor()
         let styled = editor.styleBlock("- hello")
-        #expect(isDimmed(at: 0, in: styled))
+        // The `-` is accent-colored (not dimmed, not hidden)
+        let a = styled.attributes(at: 0, effectiveRange: nil)
+        let color = a[.foregroundColor] as? NSColor
+        #expect(color == editor.accentColor)
         #expect(!isHidden(at: 0, in: styled))
+    }
+
+    @Test("Unchecked checkbox [ ] has secondary label color")
+    @MainActor func uncheckedCheckboxColor() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("- [ ] task")
+        // "- " at 0-1 is dimmed
+        #expect(isDimmed(at: 0, in: styled))
+        // "[ ]" at 2-4 has secondary label color
+        let a = styled.attributes(at: 2, effectiveRange: nil)
+        let color = a[.foregroundColor] as? NSColor
+        #expect(color == NSColor.secondaryLabelColor)
+    }
+
+    @Test("Checked checkbox [x] has accent color")
+    @MainActor func checkedCheckboxColor() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("- [x] done")
+        // "- " at 0-1 is dimmed
+        #expect(isDimmed(at: 0, in: styled))
+        // "[x]" at 2-4 has accent color
+        let a = styled.attributes(at: 2, effectiveRange: nil)
+        let color = a[.foregroundColor] as? NSColor
+        #expect(color == editor.accentColor)
+    }
+
+    @Test("Nested bullet (2 spaces) has accent-colored marker")
+    @MainActor func nestedBulletAccent() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("  - nested")
+        // Leading spaces have base text color (not part of delimiter)
+        #expect(!isDimmed(at: 0, in: styled))
+        // The `-` at offset 2 is accent-colored
+        let a = styled.attributes(at: 2, effectiveRange: nil)
+        let color = a[.foregroundColor] as? NSColor
+        #expect(color == editor.accentColor)
     }
 
     @Test("List items have hanging indent paragraph style")
