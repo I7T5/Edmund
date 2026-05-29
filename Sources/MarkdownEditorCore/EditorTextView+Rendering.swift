@@ -57,19 +57,20 @@ extension EditorTextView {
     }
 
     /// Paragraph style for thematic breaks. Uses an NSTextBlock with a
-    /// top border to render a full-width horizontal line.
+    /// top border to render a full-width horizontal line, totaling 1em height.
     private func thematicBreakParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
-        ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
-        ps.paragraphSpacingBefore = bodyParagraphStyle.paragraphSpacingBefore
 
         let block = NSTextBlock()
         block.setContentWidth(100, type: .percentageValueType)
-        // NSMinYEdge (1) = top in flipped coordinates (NSTextView)
-        let topEdge = NSRectEdge(rawValue: 1)!
+        // Center the 1pt border within 1em of vertical space.
+        let halfEm = (bodyFont.pointSize - 1) / 2
+        let topEdge = NSRectEdge(rawValue: 1)!   // NSMinYEdge = top in flipped
+        let bottomEdge = NSRectEdge(rawValue: 3)! // NSMaxYEdge = bottom in flipped
         block.setWidth(1, type: .absoluteValueType, for: .border, edge: topEdge)
         block.setBorderColor(.separatorColor, for: topEdge)
-        block.setWidth(4, type: .absoluteValueType, for: .padding, edge: topEdge)
+        block.setWidth(halfEm, type: .absoluteValueType, for: .margin, edge: topEdge)
+        block.setWidth(halfEm, type: .absoluteValueType, for: .margin, edge: bottomEdge)
         ps.textBlocks = [block]
 
         return ps
