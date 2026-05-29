@@ -9,19 +9,19 @@ extension EditorTextView {
     // Text storage content = rawSource, always.
     // Styling is attribute-only; the string never changes during recompose.
 
+    /// Full recompose: replaces the entire text storage. Used for initial load,
+    /// content changes (undo/redo, loadContent), font/appearance changes.
     func recompose(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
         isUpdating = true
 
         activeBlockIndex = blockIndexForRawOffset(cursorInRaw)
 
         // Build styled attributed string from rawSource.
-        // The string content IS rawSource — no delimiter stripping.
         let composed = NSMutableAttributedString(string: rawSource, attributes: baseAttributes)
 
         for (i, block) in blocks.enumerated() {
             guard block.range.upperBound <= composed.length else { continue }
 
-            // Cursor position within this block (nil for non-active blocks)
             let cursorInBlock: Int?
             if i == activeBlockIndex {
                 cursorInBlock = max(0, cursorInRaw - block.range.location)
@@ -31,7 +31,6 @@ extension EditorTextView {
 
             let styled = styleBlock(block.content, cursorPosition: cursorInBlock)
 
-            // Apply attributes from the styled block onto the composed string
             styled.enumerateAttributes(
                 in: NSRange(location: 0, length: styled.length), options: []
             ) { attrs, range, _ in
@@ -49,10 +48,8 @@ extension EditorTextView {
         textStorage?.replaceCharacters(in: fullRange, with: composed)
         textStorage?.endEditing()
 
-        // displayRanges = block ranges (identity mapping)
         displayRanges = blocks.map { $0.range }
 
-        // Cursor placement: display offset = raw offset (identity)
         if let rawSel = selectionInRaw, rawSel.length > 0 {
             let len = textStorage!.length
             let displaySel = NSRange(
@@ -62,6 +59,51 @@ extension EditorTextView {
             setSelectedRange(displaySel)
         } else {
             let clamped = min(cursorInRaw, textStorage!.length)
+            setSelectedRange(NSRange(location: clamped, length: 0))
+        }
+
+        typingAttributes = baseAttributes
+
+        isUpdating = false
+    }
+
+    /// Incremental recompose: only re-styles the old and new active blocks.
+    /// Used when the cursor moves between blocks without changing content.
+    func recomposeIncremental(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
+        guard let ts = textStorage else { return }
+
+        isUpdating = true
+
+        let oldActiveIndex = activeBlockIndex
+        let newActiveIndex = blockIndexForRawOffset(cursorInRaw)
+        activeBlockIndex = newActiveIndex
+
+        ts.beginEditing()
+
+        // Re-style old active block (hide all inline delimiters)
+        if let oldIdx = oldActiveIndex, oldIdx < blocks.count {
+            restyleBlock(oldIdx, cursorInBlock: nil)
+        }
+
+        // Re-style new active block (show delimiters at cursor)
+        if let newIdx = newActiveIndex, newIdx < blocks.count {
+            let cursorInBlock = max(0, cursorInRaw - blocks[newIdx].range.location)
+            restyleBlock(newIdx, cursorInBlock: cursorInBlock)
+        }
+
+        ts.endEditing()
+
+        displayRanges = blocks.map { $0.range }
+
+        if let rawSel = selectionInRaw, rawSel.length > 0 {
+            let len = ts.length
+            let displaySel = NSRange(
+                location: min(rawSel.location, len),
+                length: max(0, min(rawSel.upperBound, len) - min(rawSel.location, len))
+            )
+            setSelectedRange(displaySel)
+        } else {
+            let clamped = min(cursorInRaw, ts.length)
             setSelectedRange(NSRange(location: clamped, length: 0))
         }
 

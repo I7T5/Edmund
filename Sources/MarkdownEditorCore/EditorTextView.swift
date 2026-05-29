@@ -218,7 +218,7 @@ public class EditorTextView: NSTextView {
 
         let newBlockIndex = blockIndexForRawOffset(cursorRaw)
         if newBlockIndex != activeBlockIndex {
-            recompose(cursorInRaw: cursorRaw)
+            recomposeIncremental(cursorInRaw: cursorRaw)
         }
     }
 
@@ -241,7 +241,7 @@ public class EditorTextView: NSTextView {
                 let rawStart = currentSel.location
                 let rawEnd = currentSel.location + currentSel.length
                 let rawSel = NSRange(location: rawStart, length: rawEnd - rawStart)
-                self.recompose(cursorInRaw: rawStart, selectionInRaw: rawSel)
+                self.recomposeIncremental(cursorInRaw: rawStart, selectionInRaw: rawSel)
             }
         } else if newActiveIndex == activeBlockIndex {
             // Same block — update active token (re-style to show/hide delimiters)
