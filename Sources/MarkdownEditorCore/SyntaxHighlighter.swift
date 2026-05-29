@@ -241,6 +241,39 @@ public enum SyntaxHighlighter {
             return delims
         }
 
+        /// Trims delimiter ranges to the expected width for emphasis types.
+        /// When cmark includes unmatched delimiter characters in the emphasis
+        /// node's source range (e.g. `**here*` → italic with opening `**`),
+        /// this trims them so only the real delimiter chars are styled.
+        /// Returns adjusted (fullRange, delimiterRanges).
+        func trimEmphasisDelimiters(
+            expectedWidth: Int, full: NSRange, delims: [NSRange]
+        ) -> (NSRange, [NSRange]) {
+            guard delims.count == 2 else { return (full, delims) }
+            var trimmedDelims = delims
+            var trimmedFull = full
+
+            // Opening delimiter: keep only the last `expectedWidth` chars
+            if delims[0].length > expectedWidth {
+                let excess = delims[0].length - expectedWidth
+                trimmedDelims[0] = NSRange(location: delims[0].location + excess,
+                                            length: expectedWidth)
+                trimmedFull = NSRange(location: trimmedFull.location + excess,
+                                      length: trimmedFull.length - excess)
+            }
+
+            // Closing delimiter: keep only the first `expectedWidth` chars
+            if delims[1].length > expectedWidth {
+                let excess = delims[1].length - expectedWidth
+                trimmedDelims[1] = NSRange(location: delims[1].location,
+                                            length: expectedWidth)
+                trimmedFull = NSRange(location: trimmedFull.location,
+                                      length: trimmedFull.length - excess)
+            }
+
+            return (trimmedFull, trimmedDelims)
+        }
+
         /// Compute content range from full range and delimiter ranges.
         func contentRange(full: NSRange, delims: [NSRange]) -> NSRange {
             var start = full.location
@@ -295,11 +328,13 @@ public enum SyntaxHighlighter {
                 if strongNS == full {
                     // This is boldItalic. Compute delimiters from the Strong's children
                     // (the text nodes inside), not from the Emphasis's children (the Strong).
-                    let delims = delimiterRanges(parent: full, children: strong.children)
-                    let content = contentRange(full: full, delims: delims)
+                    let rawDelims = delimiterRanges(parent: full, children: strong.children)
+                    let (trimmedFull, delims) = trimEmphasisDelimiters(
+                        expectedWidth: 3, full: full, delims: rawDelims)
+                    let content = contentRange(full: trimmedFull, delims: delims)
                     spans.append(Span(
                         kind: .boldItalic,
-                        fullRange: full,
+                        fullRange: trimmedFull,
                         contentRange: content,
                         delimiterRanges: delims
                     ))
@@ -309,11 +344,13 @@ public enum SyntaxHighlighter {
             }
 
             // Regular italic
-            let delims = delimiterRanges(parent: full, children: emphasis.children)
-            let content = contentRange(full: full, delims: delims)
+            let rawDelims = delimiterRanges(parent: full, children: emphasis.children)
+            let (trimmedFull, delims) = trimEmphasisDelimiters(
+                expectedWidth: 1, full: full, delims: rawDelims)
+            let content = contentRange(full: trimmedFull, delims: delims)
             spans.append(Span(
                 kind: .italic,
-                fullRange: full,
+                fullRange: trimmedFull,
                 contentRange: content,
                 delimiterRanges: delims
             ))
@@ -344,11 +381,13 @@ public enum SyntaxHighlighter {
                let emphRange = emph.range {
                 let emphNS = nsRange(for: emphRange)
                 if emphNS == full {
-                    let delims = delimiterRanges(parent: full, children: emph.children)
-                    let content = contentRange(full: full, delims: delims)
+                    let rawDelims = delimiterRanges(parent: full, children: emph.children)
+                    let (trimmedFull, delims) = trimEmphasisDelimiters(
+                        expectedWidth: 3, full: full, delims: rawDelims)
+                    let content = contentRange(full: trimmedFull, delims: delims)
                     spans.append(Span(
                         kind: .boldItalic,
-                        fullRange: full,
+                        fullRange: trimmedFull,
                         contentRange: content,
                         delimiterRanges: delims
                     ))
@@ -357,11 +396,13 @@ public enum SyntaxHighlighter {
             }
 
             // Regular bold
-            let delims = delimiterRanges(parent: full, children: strong.children)
-            let content = contentRange(full: full, delims: delims)
+            let rawDelims = delimiterRanges(parent: full, children: strong.children)
+            let (trimmedFull, delims) = trimEmphasisDelimiters(
+                expectedWidth: 2, full: full, delims: rawDelims)
+            let content = contentRange(full: trimmedFull, delims: delims)
             spans.append(Span(
                 kind: .bold,
-                fullRange: full,
+                fullRange: trimmedFull,
                 contentRange: content,
                 delimiterRanges: delims
             ))
