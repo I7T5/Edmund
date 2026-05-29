@@ -217,29 +217,36 @@ extension EditorTextView {
 
     // MARK: - In-Place Block Restyling
 
-    /// Re-applies styling to a single block in the text storage.
-    /// Called after each keystroke to keep formatting in sync with content.
-    func applyBlockStyle() {
+    /// Re-styles a single block in the text storage in place (no string mutation).
+    /// `cursorInBlock` is the cursor offset within the block, or nil to hide
+    /// all inline delimiters (non-active block).
+    func restyleBlock(_ blockIndex: Int, cursorInBlock: Int? = nil) {
         guard let ts = textStorage,
-              let activeIdx = activeBlockIndex,
-              activeIdx < blocks.count else { return }
+              blockIndex < blocks.count else { return }
 
-        let blockRange = blocks[activeIdx].range
-        guard blockRange.upperBound <= ts.length else { return }
+        let block = blocks[blockIndex]
+        guard block.range.upperBound <= ts.length else { return }
 
-        let content = blocks[activeIdx].content
-        let cursorInBlock = max(0, selectedRange().location - blockRange.location)
-        let styled = styleBlock(content, cursorPosition: cursorInBlock)
-        let offset = blockRange.location
-
-        isUpdating = true
-        ts.beginEditing()
+        let styled = styleBlock(block.content, cursorPosition: cursorInBlock)
+        let offset = block.range.location
 
         styled.enumerateAttributes(in: NSRange(location: 0, length: styled.length), options: []) { attrs, range, _ in
             let tsRange = NSRange(location: range.location + offset, length: range.length)
             ts.setAttributes(attrs, range: tsRange)
         }
+    }
 
+    /// Re-applies styling to the active block. Called after each keystroke.
+    func applyBlockStyle() {
+        guard let ts = textStorage,
+              let activeIdx = activeBlockIndex,
+              activeIdx < blocks.count else { return }
+
+        let cursorInBlock = max(0, selectedRange().location - blocks[activeIdx].range.location)
+
+        isUpdating = true
+        ts.beginEditing()
+        restyleBlock(activeIdx, cursorInBlock: cursorInBlock)
         ts.endEditing()
         isUpdating = false
 
