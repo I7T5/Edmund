@@ -179,6 +179,23 @@ struct EditorStylingTests {
         #expect(color!.redComponent > 0.5 && color!.greenComponent < 0.2)
     }
 
+    @Test("Inline code content has monospace font")
+    @MainActor func codeMonospace() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("`code`")
+        let f = styled.attribute(.font, at: 1, effectiveRange: nil) as? NSFont
+        #expect(f != nil)
+        #expect(f!.isFixedPitch)
+    }
+
+    @Test("Inline code content has background color")
+    @MainActor func codeBackground() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("`code`")
+        let bg = styled.attribute(.backgroundColor, at: 1, effectiveRange: nil) as? NSColor
+        #expect(bg != nil)
+    }
+
     @Test("Link delimiters are hidden when cursor is outside")
     @MainActor func linkDelimitersHidden() {
         let editor = makeEditor()
@@ -369,11 +386,24 @@ struct EditorStylingTests {
         #expect(isDimmed(at: 0, in: styled))
     }
 
-    @Test("Thematic break is dimmed, never hidden")
-    @MainActor func thematicBreakDimmed() {
+    @Test("Non-active thematic break is hidden with horizontal line style")
+    @MainActor func thematicBreakHidden() {
         let editor = makeEditor()
         let styled = editor.styleBlock("---")
         #expect(styled.string == "---")
+        // Characters are hidden (visual line via NSTextBlock)
+        #expect(isHidden(at: 0, in: styled))
+        // Paragraph style has a text block for the border
+        let a = styled.attributes(at: 0, effectiveRange: nil)
+        let ps = a[.paragraphStyle] as? NSParagraphStyle
+        #expect(ps != nil)
+        #expect(!ps!.textBlocks.isEmpty)
+    }
+
+    @Test("Active thematic break is dimmed, not hidden")
+    @MainActor func thematicBreakActiveDimmed() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("---", cursorPosition: 1)
         #expect(isDimmed(at: 0, in: styled))
         #expect(!isHidden(at: 0, in: styled))
     }

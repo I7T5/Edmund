@@ -582,28 +582,37 @@ struct ThematicBreakActiveTests {
 @Suite("Integration — Thematic Break (Non-Active Block)")
 struct ThematicBreakNonActiveTests {
 
-    @Test("Non-active --- stays as raw text, dimmed")
-    @MainActor func nonActiveDashDimmed() {
+    @Test("Non-active --- is hidden with horizontal line paragraph style")
+    @MainActor func nonActiveDashHorizontalLine() {
         let editor = makeEditor()
         editor.loadContent("---\nother")
         activateBlock(1, in: editor)
 
+        // Raw text still present
         let text = displayText(for: 0, in: editor)
         #expect(text == "---")
-        let color = fgColor(at: 0, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        // Characters are hidden (visual line rendered via NSTextBlock)
+        #expect(isHidden(at: 0, in: editor.textStorage!))
+        // Paragraph style has an NSTextBlock
+        let a = attrs(at: 0, in: editor)
+        let ps = a[.paragraphStyle] as? NSParagraphStyle
+        #expect(ps != nil)
+        #expect(!ps!.textBlocks.isEmpty)
     }
 
-    @Test("Non-active *** stays as raw text, dimmed")
-    @MainActor func nonActiveAsteriskDimmed() {
+    @Test("Non-active *** is hidden with horizontal line paragraph style")
+    @MainActor func nonActiveAsteriskHorizontalLine() {
         let editor = makeEditor()
         editor.loadContent("***\nother")
         activateBlock(1, in: editor)
 
         let text = displayText(for: 0, in: editor)
         #expect(text == "***")
-        let color = fgColor(at: 0, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        #expect(isHidden(at: 0, in: editor.textStorage!))
+        let a = attrs(at: 0, in: editor)
+        let ps = a[.paragraphStyle] as? NSParagraphStyle
+        #expect(ps != nil)
+        #expect(!ps!.textBlocks.isEmpty)
     }
 }
 

@@ -46,6 +46,35 @@ extension EditorTextView {
         return ps
     }
 
+    /// Monospaced font for inline code spans, same size as body text.
+    var inlineCodeFont: NSFont {
+        NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
+    }
+
+    /// Subtle background color for inline code spans.
+    var inlineCodeBackground: NSColor {
+        NSColor(calibratedWhite: 0.5, alpha: 0.1)
+    }
+
+    /// Paragraph style for thematic breaks. Uses an NSTextBlock with a
+    /// top border to render a full-width horizontal line.
+    private func thematicBreakParagraphStyle() -> NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
+        ps.paragraphSpacingBefore = bodyParagraphStyle.paragraphSpacingBefore
+
+        let block = NSTextBlock()
+        block.setContentWidth(100, type: .percentageValueType)
+        // NSMinYEdge (1) = top in flipped coordinates (NSTextView)
+        let topEdge = NSRectEdge(rawValue: 1)!
+        block.setWidth(1, type: .absoluteValueType, for: .border, edge: topEdge)
+        block.setBorderColor(.separatorColor, for: topEdge)
+        block.setWidth(4, type: .absoluteValueType, for: .padding, edge: topEdge)
+        ps.textBlocks = [block]
+
+        return ps
+    }
+
     /// Paragraph style with a left border for blockquotes.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
@@ -116,7 +145,9 @@ extension EditorTextView {
 
             case .code:
                 guard span.contentRange.upperBound <= result.length else { continue }
+                result.addAttribute(.font, value: inlineCodeFont, range: span.contentRange)
                 result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
+                result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: span.contentRange)
 
             case .codeBlock:
                 guard span.contentRange.upperBound <= result.length else { continue }
@@ -189,7 +220,15 @@ extension EditorTextView {
 
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
+                if cursorInToken {
+                    // Active: show raw dashes, dimmed
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
+                } else {
+                    // Non-active: horizontal line via NSTextBlock, hide raw text
+                    result.addAttribute(.paragraphStyle, value: thematicBreakParagraphStyle(), range: span.fullRange)
+                    result.addAttribute(.font, value: hiddenFont, range: span.fullRange)
+                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)
+                }
 
             case .lineBreak:
                 break  // Delimiter handling done below
@@ -198,7 +237,14 @@ extension EditorTextView {
             // --- Delimiter treatment (applied after content styling so it takes precedence) ---
             for dr in span.delimiterRanges {
                 guard dr.upperBound <= result.length else { continue }
-                if cursorInToken || !isDelimiterHideable(span.kind) {
+
+                if case .thematicBreak = span.kind {
+                    // Thematic break: fully handled in content styling above
+                    if cursorInToken {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                    }
+                    // Non-active: already hidden, don't override
+                } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                 } else if case .blockquote = span.kind {
