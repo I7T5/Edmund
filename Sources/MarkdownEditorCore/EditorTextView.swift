@@ -188,6 +188,7 @@ public class EditorTextView: NSTextView {
         syncRawSourceFromDisplay()
         applyBlockStyle()
         document?.updateChangeCount(.changeDone)
+        scrollCursorToCenter()
     }
 
     /// Syncs rawSource from the text storage and re-parses blocks.
@@ -233,6 +234,31 @@ public class EditorTextView: NSTextView {
             // Same block — update active token (re-style to show/hide delimiters)
             applyBlockStyle()
         }
+        scrollCursorToCenter()
+    }
+
+    // MARK: - Typewriter Scroll
+
+    /// Scrolls the view so the cursor's line fragment is vertically centered
+    /// in the visible area.
+    private func scrollCursorToCenter() {
+        guard let lm = layoutManager, let container = textContainer,
+              let scrollView = enclosingScrollView else { return }
+
+        let sel = selectedRange()
+        let glyphRange = lm.glyphRange(forCharacterRange: NSRange(location: sel.location, length: 0),
+                                        actualCharacterRange: nil)
+        guard glyphRange.location != NSNotFound else { return }
+        let lineRect = lm.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+        let cursorY = lineRect.midY + textContainerOrigin.y
+
+        let visibleHeight = scrollView.contentView.bounds.height
+        let targetY = cursorY - visibleHeight / 2
+        let maxY = max(0, frame.height - visibleHeight)
+        let clampedY = min(max(0, targetY), maxY)
+
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     // MARK: - Helpers
