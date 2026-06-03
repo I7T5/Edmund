@@ -302,10 +302,19 @@ extension EditorTextView {
 
             case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                // Measure marker width (including leading whitespace) for hanging indent.
-                // Everything from position 0 to content start is the "marker" area.
+                // Measure marker width for hanging indent. For checkbox items,
+                // measure the VISUAL width (hidden prefix + circle attachment),
+                // not the raw text width.
                 let markerStr = (markdown as NSString).substring(to: span.contentRange.location)
-                let markerWidth = (markerStr as NSString).size(withAttributes: [.font: bodyFont]).width
+                let markerWidth: CGFloat
+                if checkbox != nil {
+                    let leadingWS = markerStr.prefix(while: { $0 == " " || $0 == "\t" })
+                    let wsWidth = (String(leadingWS) as NSString).size(withAttributes: [.font: bodyFont]).width
+                    let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
+                    markerWidth = wsWidth + bodyFont.pointSize + spaceWidth
+                } else {
+                    markerWidth = (markerStr as NSString).size(withAttributes: [.font: bodyFont]).width
+                }
                 // Apply paragraph style from position 0 — NSTextView uses the paragraph
                 // style from the first character of a paragraph.
                 result.addAttribute(.paragraphStyle, value: listParagraphStyle(markerWidth: markerWidth), range: NSRange(location: 0, length: result.length))

@@ -411,6 +411,28 @@ struct EditorStylingTests {
         #expect(wrapped > 0)
     }
 
+    @Test("Checkbox list has narrower hanging indent than raw text width")
+    @MainActor func checkboxHangingIndent() {
+        let editor = makeEditor()
+        let bullet = editor.styleBlock("- hello")
+        let checkbox = editor.styleBlock("- [ ] hello")
+
+        var bulletIndent: CGFloat = 0
+        bullet.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: bullet.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle { bulletIndent = ps.headIndent }
+        }
+
+        var cbIndent: CGFloat = 0
+        checkbox.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: checkbox.length)) { val, _, _ in
+            if let ps = val as? NSParagraphStyle { cbIndent = ps.headIndent }
+        }
+
+        // Checkbox indent should be based on visual width (circle + space),
+        // not raw text width of "- [ ] ". It should be comparable to bullet indent.
+        let rawWidth = ("- [ ] " as NSString).size(withAttributes: [.font: editor.bodyFont]).width
+        #expect(cbIndent < editor.listPadding + rawWidth)
+    }
+
     @Test("Table has monospace font and dimmed pipes")
     @MainActor func tableStyling() {
         let editor = makeEditor()
