@@ -96,6 +96,36 @@ struct ListContinuationTests {
         #expect(editor.rawSource == "- [ ] task\n")
     }
 
+    // MARK: - Un-indent on Empty Line
+
+    @Test("Enter on indented empty bullet un-indents one level")
+    @MainActor func enterUnindentsIndentedBullet() {
+        let editor = makeEditor()
+        editor.loadContent("- hello\n  - ")
+        // Cursor at end (offset 12)
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "- hello\n- ")
+    }
+
+    @Test("Enter on doubly-indented empty bullet un-indents one level")
+    @MainActor func enterUnindentsDoublyIndented() {
+        let editor = makeEditor()
+        editor.loadContent("    - ")
+        editor.setSelectedRange(NSRange(location: 6, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "  - ")
+    }
+
+    @Test("Enter on indented empty todo un-indents one level")
+    @MainActor func enterUnindentsTodo() {
+        let editor = makeEditor()
+        editor.loadContent("- task\n  - [ ] ")
+        editor.setSelectedRange(NSRange(location: 15, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "- task\n- [ ] ")
+    }
+
     // MARK: - Non-List Lines
 
     @Test("Enter on non-list line does normal newline")

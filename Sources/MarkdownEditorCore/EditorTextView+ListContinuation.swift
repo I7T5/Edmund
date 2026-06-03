@@ -74,10 +74,16 @@ extension EditorTextView {
                 replaceRange.length += 1
             }
             insertText("\n" + next, replacementRange: replaceRange)
+        } else if !indent.isEmpty {
+            // Indented empty list line → un-indent one level
+            let maxRemove = (Self.indentUnit as NSString).length
+            let leading = indent.prefix(while: { $0 == " " }).count
+            let remove = indent.hasPrefix("\t") ? 1 : min(leading, maxRemove)
+            let dedented = String(block.content.dropFirst(remove))
+            insertText(dedented, replacementRange: block.range)
         } else {
-            // Empty list line → remove the marker, leaving a blank line
-            let blockRange = block.range
-            insertText("", replacementRange: blockRange)
+            // Root-level empty list line → remove the marker entirely
+            insertText("", replacementRange: block.range)
         }
     }
 }
