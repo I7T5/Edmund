@@ -433,19 +433,19 @@ struct TableNonActiveTests {
         #expect(traits.contains(.boldFontMask))
     }
 
-    @Test("Non-active table outer pipes are hidden, inner pipes are secondary")
+    @Test("Non-active table pipes are all dimmed as vertical borders")
     @MainActor func nonActivePipesStyling() {
         let editor = makeEditor()
         editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
         activateBlock(1, in: editor)
 
         let base = editor.displayRanges[0].location
-        // Outer pipe at base+0 is hidden
-        let outerF = font(at: base, in: editor)!
-        #expect(outerF.pointSize < 1.0)
-        // Inner pipe at base+4 is secondary color
-        let color = fgColor(at: base + 4, in: editor)
-        #expect(color == NSColor.secondaryLabelColor)
+        // Outer pipe at base+0 is dimmed (visible as border)
+        let outerColor = fgColor(at: base, in: editor)
+        #expect(outerColor == NSColor.tertiaryLabelColor)
+        // Inner pipe at base+4 is also dimmed
+        let innerColor = fgColor(at: base + 4, in: editor)
+        #expect(innerColor == NSColor.tertiaryLabelColor)
     }
 }
 
