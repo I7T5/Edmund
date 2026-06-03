@@ -56,21 +56,17 @@ extension EditorTextView {
         NSColor(calibratedWhite: 0.5, alpha: 0.1)
     }
 
-    /// Paragraph style for thematic breaks. Uses an NSTextBlock with a
-    /// top border to render a full-width horizontal line, totaling 1em height.
+    /// Paragraph style for thematic breaks. Uses a DividerTextBlock (1em
+    /// height) that draws a centered hairline. paragraphSpacingBefore mirrors
+    /// the body style so the gaps above and below the line are symmetric.
     private func thematicBreakParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
+        ps.paragraphSpacingBefore = bodyParagraphStyle.paragraphSpacingBefore
+        ps.paragraphSpacing = 0
 
-        let block = NSTextBlock()
+        let block = DividerTextBlock()
+        block.lineHeight = bodyFont.pointSize
         block.setContentWidth(100, type: .percentageValueType)
-        // Center the 1pt border within 1em of vertical space.
-        let halfEm = (bodyFont.pointSize - 1) / 2
-        let topEdge = NSRectEdge(rawValue: 1)!   // NSMinYEdge = top in flipped
-        let bottomEdge = NSRectEdge(rawValue: 3)! // NSMaxYEdge = bottom in flipped
-        block.setWidth(1, type: .absoluteValueType, for: .border, edge: topEdge)
-        block.setBorderColor(.separatorColor, for: topEdge)
-        block.setWidth(halfEm, type: .absoluteValueType, for: .margin, edge: topEdge)
-        block.setWidth(halfEm, type: .absoluteValueType, for: .margin, edge: bottomEdge)
         ps.textBlocks = [block]
 
         return ps
@@ -416,5 +412,43 @@ extension EditorTextView {
         isUpdating = false
 
         typingAttributes = baseAttributes
+    }
+}
+
+// MARK: - DividerTextBlock
+
+/// NSTextBlock subclass that renders a full-width horizontal hairline
+/// centered vertically within a block whose height matches body text.
+private class DividerTextBlock: NSTextBlock {
+
+    /// Target block height (set to bodyFont.pointSize by the caller).
+    var lineHeight: CGFloat = 16
+
+    override func rectForLayout(
+        at startingPosition: CGPoint,
+        in rect: NSRect,
+        textContainer: NSTextContainer,
+        characterRange charRange: NSRange
+    ) -> NSRect {
+        var r = super.rectForLayout(at: startingPosition, in: rect,
+                                    textContainer: textContainer,
+                                    characterRange: charRange)
+        r.size.height = lineHeight
+        return r
+    }
+
+    override func drawBackground(
+        withFrame frameRect: NSRect,
+        in controlView: NSView,
+        characterRange charRange: NSRange,
+        layoutManager: NSLayoutManager
+    ) {
+        NSColor.separatorColor.setStroke()
+        let path = NSBezierPath()
+        let y = round(frameRect.midY) + 0.5
+        path.move(to: NSPoint(x: frameRect.minX, y: y))
+        path.line(to: NSPoint(x: frameRect.maxX, y: y))
+        path.lineWidth = 1
+        path.stroke()
     }
 }
