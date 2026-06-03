@@ -93,7 +93,7 @@ class Document: NSDocument {
         editor.textContainerInset = NSSize(width: 24, height: 18)
         editor.document = self
 
-        let statusBarHeight: CGFloat = 24
+        let statusBarHeight: CGFloat = 18
         let contentBounds = window.contentView!.bounds
 
         let scrollView = NSScrollView(frame: NSRect(
