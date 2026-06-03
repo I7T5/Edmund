@@ -64,9 +64,9 @@ class Document: NSDocument {
 
         // Empty toolbar gives the titlebar extra height (roomy traffic lights).
         let toolbar = NSToolbar(identifier: "MainToolbar")
-        toolbar.showsBaselineSeparator = false
         window.toolbar = toolbar
         window.toolbarStyle = .unified
+        window.titlebarSeparatorStyle = .line
 
         // Build the text system chain:
         //   NSTextStorage → NSLayoutManager → NSTextContainer → NSTextView
