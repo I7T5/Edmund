@@ -238,8 +238,8 @@ struct BlockStylingNonActiveTests {
 
         let text = displayText(for: 0, in: editor)
         #expect(text == "- [ ] task")
-        // "- " prefix (offsets 0-1) is dimmed
-        #expect(fgColor(at: 0, in: editor) == NSColor.tertiaryLabelColor)
+        // "- " prefix (offsets 0-1) is hidden (zero-width + clear)
+        #expect(isHidden(at: 0, in: editor.textStorage!))
         // "[" (offset 2) has a text attachment (circle icon)
         let a = attrs(at: 2, in: editor)
         #expect(a[.attachment] is NSTextAttachment)
@@ -257,8 +257,8 @@ struct BlockStylingNonActiveTests {
 
         let text = displayText(for: 0, in: editor)
         #expect(text == "- [x] done")
-        // "- " prefix (offsets 0-1) is dimmed
-        #expect(fgColor(at: 0, in: editor) == NSColor.tertiaryLabelColor)
+        // "- " prefix (offsets 0-1) is hidden (zero-width + clear)
+        #expect(isHidden(at: 0, in: editor.textStorage!))
         // "[" (offset 2) has a text attachment (filled circle icon)
         let a = attrs(at: 2, in: editor)
         #expect(a[.attachment] is NSTextAttachment)

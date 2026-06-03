@@ -130,9 +130,13 @@ extension EditorTextView {
                 NSColor.white.setStroke()
                 check.stroke()
             } else {
-                NSColor.secondaryLabelColor.setStroke()
-                path.lineWidth = max(1.5, fontSize * 0.08)
-                path.stroke()
+                let lw = max(1.5, fontSize * 0.08)
+                // Inset the stroke path so its outer edge matches the filled circle's edge.
+                let strokeRect = circleRect.insetBy(dx: lw / 2, dy: lw / 2)
+                let strokePath = NSBezierPath(ovalIn: strokeRect)
+                strokePath.lineWidth = lw
+                NSColor.tertiaryLabelColor.setStroke()
+                strokePath.stroke()
             }
             return true
         }
@@ -186,10 +190,11 @@ extension EditorTextView {
         let cbStart = dr.location + bracketOpen.location
         let cbEnd = dr.location + bracketClose.upperBound
 
-        // Dim everything before `[` (the "- " prefix)
+        // Hide everything before `[` (the "- " prefix) — zero-width + clear
         if bracketOpen.location > 0 {
             let before = NSRange(location: dr.location, length: bracketOpen.location)
-            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: before)
+            result.addAttribute(.font, value: hiddenFont, range: before)
+            result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
         }
 
         // Place circle attachment on `[` character

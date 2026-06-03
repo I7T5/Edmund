@@ -324,8 +324,8 @@ struct EditorStylingTests {
     @MainActor func uncheckedCheckboxAttachment() {
         let editor = makeEditor()
         let styled = editor.styleBlock("- [ ] task")
-        // "- " at 0-1 is dimmed
-        #expect(isDimmed(at: 0, in: styled))
+        // "- " at 0-1 is hidden (zero-width + clear)
+        #expect(isHidden(at: 0, in: styled))
         // "[" at 2 has a text attachment
         let a = styled.attributes(at: 2, effectiveRange: nil)
         #expect(a[.attachment] is NSTextAttachment)
@@ -337,8 +337,8 @@ struct EditorStylingTests {
     @MainActor func checkedCheckboxAttachment() {
         let editor = makeEditor()
         let styled = editor.styleBlock("- [x] done")
-        // "- " at 0-1 is dimmed
-        #expect(isDimmed(at: 0, in: styled))
+        // "- " at 0-1 is hidden (zero-width + clear)
+        #expect(isHidden(at: 0, in: styled))
         // "[" at 2 has a text attachment
         let a = styled.attributes(at: 2, effectiveRange: nil)
         #expect(a[.attachment] is NSTextAttachment)
