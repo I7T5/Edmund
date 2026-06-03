@@ -149,3 +149,32 @@ struct ListContinuationTests {
         #expect(editor.rawSource == "- hello\n- world")
     }
 }
+
+// MARK: - Checkbox Toggle (rawSource mutation)
+
+@Suite("EditorTextView — Checkbox Toggle")
+struct CheckboxToggleTests {
+
+    @Test("Toggling [ ] to [x] in rawSource works")
+    @MainActor func toggleUncheckedToChecked() {
+        let editor = makeEditor()
+        editor.loadContent("- [ ] task")
+        // Simulate what mouseDown does: find [ ] at offset 2 and toggle
+        let nsRaw = editor.rawSource as NSString
+        #expect(nsRaw.substring(with: NSRange(location: 2, length: 3)) == "[ ]")
+        editor.rawSource = nsRaw.replacingCharacters(
+            in: NSRange(location: 2, length: 3), with: "[x]")
+        #expect(editor.rawSource == "- [x] task")
+    }
+
+    @Test("Toggling [x] to [ ] in rawSource works")
+    @MainActor func toggleCheckedToUnchecked() {
+        let editor = makeEditor()
+        editor.loadContent("- [x] done")
+        let nsRaw = editor.rawSource as NSString
+        #expect(nsRaw.substring(with: NSRange(location: 2, length: 3)) == "[x]")
+        editor.rawSource = nsRaw.replacingCharacters(
+            in: NSRange(location: 2, length: 3), with: "[ ]")
+        #expect(editor.rawSource == "- [ ] done")
+    }
+}
