@@ -93,42 +93,38 @@ class Document: NSDocument {
         editor.textContainerInset = NSSize(width: 24, height: 18)
         editor.document = self
 
-        let scrollView = NSScrollView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        let statusBarHeight: CGFloat = 24
+        let contentBounds = window.contentView!.bounds
+
+        let scrollView = NSScrollView(frame: NSRect(
+            x: 0, y: statusBarHeight,
+            width: contentBounds.width,
+            height: contentBounds.height - statusBarHeight
+        ))
+        scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.documentView = editor
 
-        // Status bar: word and character count
+        // Status bar at the bottom of the window
         statusLabel = NSTextField(labelWithString: "")
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.frame = NSRect(
+            x: contentBounds.width - 312, y: 0,
+            width: 300, height: statusBarHeight
+        )
+        statusLabel.autoresizingMask = [.minXMargin]
         statusLabel.font = NSFont.systemFont(ofSize: 11)
         statusLabel.textColor = .tertiaryLabelColor
         statusLabel.alignment = .right
+        statusLabel.isBezeled = false
+        statusLabel.drawsBackground = false
+        statusLabel.isEditable = false
 
-        let statusBar = NSView()
-        statusBar.translatesAutoresizingMaskIntoConstraints = false
-        statusBar.addSubview(statusLabel)
-
-        let container = NSView(frame: window.contentView!.bounds)
+        let container = NSView(frame: contentBounds)
+        container.autoresizesSubviews = true
         container.addSubview(scrollView)
-        container.addSubview(statusBar)
-
-        NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
-
-            statusBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            statusBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            statusBar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            statusBar.heightAnchor.constraint(equalToConstant: 24),
-
-            statusLabel.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor, constant: -12),
-            statusLabel.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
-        ])
+        container.addSubview(statusLabel)
 
         window.contentView = container
 
