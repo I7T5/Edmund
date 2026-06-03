@@ -170,6 +170,50 @@ public class EditorTextView: NSTextView {
         recompose(cursorInRaw: currentCursorInRaw())
     }
 
+    // MARK: - Checkbox Toggle
+
+    public override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let charIndex = characterIndexForInsertion(at: point)
+
+        // Check if the click landed on a checkbox attachment
+        if charIndex < textStorage!.length,
+           textStorage!.attribute(.attachment, at: charIndex, effectiveRange: nil) is NSTextAttachment {
+            // Find the `[ ]` or `[x]` pattern at this position in rawSource
+            let nsRaw = rawSource as NSString
+            if charIndex < nsRaw.length {
+                let ch = nsRaw.character(at: charIndex)
+                // The attachment is placed on `[`
+                if ch == 0x5B { // '['
+                    let remaining = nsRaw.length - charIndex
+                    if remaining >= 3 {
+                        let snippet = nsRaw.substring(with: NSRange(location: charIndex, length: 3))
+                        if snippet == "[ ]" || snippet == "[x]" || snippet == "[X]" {
+                            // Record undo
+                            undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: selectedRange().location))
+                            redoStack.removeAll()
+                            lastEditType = .other
+                            lastEditBlockIndex = nil
+
+                            // Toggle
+                            let replacement = snippet == "[ ]" ? "[x]" : "[ ]"
+                            rawSource = nsRaw.replacingCharacters(
+                                in: NSRange(location: charIndex, length: 3),
+                                with: replacement
+                            )
+                            blocks = BlockParser.parse(rawSource, previous: blocks)
+                            recompose(cursorInRaw: selectedRange().location)
+                            document?.updateChangeCount(.changeDone)
+                            return
+                        }
+                    }
+                }
+            }
+        }
+
+        super.mouseDown(with: event)
+    }
+
     // MARK: - Edit Flow
 
     public override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
