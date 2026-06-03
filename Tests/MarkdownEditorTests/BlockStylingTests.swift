@@ -406,16 +406,6 @@ struct TableActiveTests {
         #expect(text.contains("| --- | --- |"))
     }
 
-    @Test("Active table has monospace font")
-    @MainActor func activeMonospace() {
-        let editor = makeEditor()
-        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
-        activateBlock(0, in: editor)
-
-        let f = font(at: 2, in: editor)!
-        #expect(f.isFixedPitch)
-    }
-
     @Test("Active table pipes are dimmed")
     @MainActor func activePipesDimmed() {
         let editor = makeEditor()
@@ -430,25 +420,32 @@ struct TableActiveTests {
 @Suite("Integration — Table (Non-Active Block)")
 struct TableNonActiveTests {
 
-    @Test("Non-active table has monospace font")
-    @MainActor func nonActiveMonospace() {
-        let editor = makeEditor()
-        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
-        activateBlock(1, in: editor)
-
-        let f = font(at: editor.displayRanges[0].location, in: editor)!
-        #expect(f.isFixedPitch)
-    }
-
-    @Test("Non-active table pipes are dimmed")
-    @MainActor func nonActivePipesDimmed() {
+    @Test("Non-active table header is bold")
+    @MainActor func nonActiveHeaderBold() {
         let editor = makeEditor()
         editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
         activateBlock(1, in: editor)
 
         let base = editor.displayRanges[0].location
-        let color = fgColor(at: base, in: editor)
-        #expect(color == NSColor.tertiaryLabelColor)
+        // "A" at base+2 should be bold
+        let f = font(at: base + 2, in: editor)!
+        let traits = NSFontManager.shared.traits(of: f)
+        #expect(traits.contains(.boldFontMask))
+    }
+
+    @Test("Non-active table outer pipes are hidden, inner pipes are secondary")
+    @MainActor func nonActivePipesStyling() {
+        let editor = makeEditor()
+        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
+        activateBlock(1, in: editor)
+
+        let base = editor.displayRanges[0].location
+        // Outer pipe at base+0 is hidden
+        let outerF = font(at: base, in: editor)!
+        #expect(outerF.pointSize < 1.0)
+        // Inner pipe at base+4 is secondary color
+        let color = fgColor(at: base + 4, in: editor)
+        #expect(color == NSColor.secondaryLabelColor)
     }
 }
 

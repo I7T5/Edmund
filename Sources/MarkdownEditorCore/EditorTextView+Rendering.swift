@@ -326,16 +326,58 @@ extension EditorTextView {
 
             case .table:
                 guard span.fullRange.upperBound <= result.length else { continue }
-                result.addAttribute(.font, value: tableFont, range: span.fullRange)
-                // Dim all pipe characters
-                let nsStr = (result.string as NSString)
-                var searchRange = span.fullRange
-                while searchRange.length > 0 {
-                    let pipeRange = nsStr.range(of: "|", options: [], range: searchRange)
-                    guard pipeRange.location != NSNotFound else { break }
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pipeRange)
-                    let newStart = pipeRange.upperBound
-                    searchRange = NSRange(location: newStart, length: max(0, span.fullRange.upperBound - newStart))
+                if cursorInToken {
+                    // Active: monospace, all pipes dimmed
+                    result.addAttribute(.font, value: tableFont, range: span.fullRange)
+                    let nsStr = (result.string as NSString)
+                    var sr = span.fullRange
+                    while sr.length > 0 {
+                        let pr = nsStr.range(of: "|", options: [], range: sr)
+                        guard pr.location != NSNotFound else { break }
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pr)
+                        let ns = pr.upperBound
+                        sr = NSRange(location: ns, length: max(0, span.fullRange.upperBound - ns))
+                    }
+                } else {
+                    // Non-active: serif, bold header, hidden separator & outer pipes
+                    let tableNS = (result.string as NSString)
+                    let tableStr = tableNS.substring(with: span.fullRange)
+                    let lines = tableStr.components(separatedBy: "\n")
+
+                    var lineOffset = span.fullRange.location
+                    for (i, line) in lines.enumerated() {
+                        let lineLen = (line as NSString).length
+                        let lineRange = NSRange(location: lineOffset, length: lineLen)
+                        guard lineRange.upperBound <= result.length else { break }
+
+                        if i == 0 {
+                            // Header row: bold serif font
+                            let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+                            result.addAttribute(.font, value: bold, range: lineRange)
+                        } else if i == 1 {
+                            // Separator row (| --- | --- |): hide entirely
+                            result.addAttribute(.font, value: hiddenFont, range: lineRange)
+                            result.addAttribute(.foregroundColor, value: NSColor.clear, range: lineRange)
+                        }
+
+                        // Pipe handling: hide outer, color inner
+                        let lineNS = line as NSString
+                        var pipePositions: [Int] = []
+                        for ci in 0..<lineNS.length {
+                            if lineNS.character(at: ci) == 0x7C { pipePositions.append(ci) }
+                        }
+                        for (pi, pos) in pipePositions.enumerated() {
+                            let pipeRange = NSRange(location: lineOffset + pos, length: 1)
+                            if pi == 0 || pi == pipePositions.count - 1 {
+                                result.addAttribute(.font, value: hiddenFont, range: pipeRange)
+                                result.addAttribute(.foregroundColor, value: NSColor.clear, range: pipeRange)
+                            } else {
+                                result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: pipeRange)
+                            }
+                        }
+
+                        lineOffset += lineLen + 1
+                    }
                 }
 
             case .thematicBreak:
@@ -364,6 +406,12 @@ extension EditorTextView {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
                     // Non-active: already hidden, don't override
+                } else if case .table = span.kind {
+                    // Table delimiters (separator row): dimmed when active, hidden when not
+                    if cursorInToken {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                    }
+                    // Non-active: already hidden by content styling, don't override
                 } else if case .listItem(let ordered, let checkbox) = span.kind {
                     // List markers: custom styling when non-active, dimmed when active
                     if cursorInToken {
