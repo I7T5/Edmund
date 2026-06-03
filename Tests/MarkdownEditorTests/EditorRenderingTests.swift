@@ -433,7 +433,7 @@ struct EditorStylingTests {
         #expect(cbIndent < editor.listPadding + rawWidth)
     }
 
-    @Test("Table header is bold, separator is hidden, outer pipes hidden")
+    @Test("Table header is bold, separator has border, pipes are dimmed")
     @MainActor func tableStyling() {
         let editor = makeEditor()
         let styled = editor.styleBlock("| A | B |\n| --- | --- |\n| 1 | 2 |")
@@ -444,11 +444,15 @@ struct EditorStylingTests {
         #expect(traits.contains(.boldFontMask))
         // Separator row (offset 10 = start of "| --- | --- |") is hidden
         #expect(isHidden(at: 10, in: styled))
-        // Outer pipe at offset 0 is hidden
-        #expect(isHidden(at: 0, in: styled))
-        // Inner pipe at offset 4 (between A and B) is secondary color
-        let pc = styled.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor
-        #expect(pc == NSColor.secondaryLabelColor)
+        // Separator row has a paragraph style with a text block for the border
+        let sepPS = styled.attribute(.paragraphStyle, at: 10, effectiveRange: nil) as? NSParagraphStyle
+        #expect(sepPS != nil)
+        #expect(!sepPS!.textBlocks.isEmpty)
+        // All pipes are dimmed (visible as vertical borders)
+        let outerColor = styled.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        #expect(outerColor == NSColor.tertiaryLabelColor)
+        let innerColor = styled.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor
+        #expect(innerColor == NSColor.tertiaryLabelColor)
     }
 
     @Test("Non-active thematic break is hidden with horizontal line style")

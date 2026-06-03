@@ -56,7 +56,7 @@ extension EditorTextView {
         NSColor(calibratedWhite: 0.5, alpha: 0.1)
     }
 
-    /// Paragraph style for thematic breaks. Uses a DividerTextBlock (1em
+    /// Paragraph style for thematic breaks. Uses a ThematicBreakTextBlock (1em
     /// height) that draws a centered hairline. paragraphSpacingBefore mirrors
     /// the body style so the gaps above and below the line are symmetric.
     private func thematicBreakParagraphStyle() -> NSParagraphStyle {
@@ -64,7 +64,7 @@ extension EditorTextView {
         ps.paragraphSpacingBefore = bodyParagraphStyle.paragraphSpacingBefore
         ps.paragraphSpacing = 0
 
-        let block = DividerTextBlock()
+        let block = ThematicBreakTextBlock()
         block.lineHeight = bodyFont.pointSize
         block.setContentWidth(100, type: .percentageValueType)
         ps.textBlocks = [block]
@@ -339,10 +339,21 @@ extension EditorTextView {
                         sr = NSRange(location: ns, length: max(0, span.fullRange.upperBound - ns))
                     }
                 } else {
-                    // Non-active: serif, bold header, hidden separator & outer pipes
+                    // Non-active: serif, bold header, separator as hairline border,
+                    // all pipes visible as vertical borders.
                     let tableNS = (result.string as NSString)
                     let tableStr = tableNS.substring(with: span.fullRange)
                     let lines = tableStr.components(separatedBy: "\n")
+
+                    // Measure table width so the separator line matches.
+                    let boldFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+                    var maxLineWidth: CGFloat = 0
+                    for (li, line) in lines.enumerated() {
+                        guard li != 1 else { continue }
+                        let f: NSFont = (li == 0) ? boldFont : bodyFont
+                        let w = (line as NSString).size(withAttributes: [.font: f]).width
+                        maxLineWidth = max(maxLineWidth, w)
+                    }
 
                     var lineOffset = span.fullRange.location
                     for (i, line) in lines.enumerated() {
@@ -352,27 +363,29 @@ extension EditorTextView {
 
                         if i == 0 {
                             // Header row: bold serif font
-                            let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                            result.addAttribute(.font, value: bold, range: lineRange)
+                            result.addAttribute(.font, value: boldFont, range: lineRange)
                         } else if i == 1 {
-                            // Separator row (| --- | --- |): hide entirely
+                            // Separator row: hide text, draw horizontal hairline
                             result.addAttribute(.font, value: hiddenFont, range: lineRange)
                             result.addAttribute(.foregroundColor, value: NSColor.clear, range: lineRange)
+
+                            let sepPS = NSMutableParagraphStyle()
+                            sepPS.paragraphSpacingBefore = 0
+                            sepPS.paragraphSpacing = 0
+                            let block = TableBorderTextBlock()
+                            block.setContentWidth(maxLineWidth, type: .absoluteValueType)
+                            sepPS.textBlocks = [block]
+                            result.addAttribute(.paragraphStyle, value: sepPS, range: lineRange)
                         }
 
-                        // Pipe handling: hide outer, color inner
-                        let lineNS = line as NSString
-                        var pipePositions: [Int] = []
-                        for ci in 0..<lineNS.length {
-                            if lineNS.character(at: ci) == 0x7C { pipePositions.append(ci) }
-                        }
-                        for (pi, pos) in pipePositions.enumerated() {
-                            let pipeRange = NSRange(location: lineOffset + pos, length: 1)
-                            if pi == 0 || pi == pipePositions.count - 1 {
-                                result.addAttribute(.font, value: hiddenFont, range: pipeRange)
-                                result.addAttribute(.foregroundColor, value: NSColor.clear, range: pipeRange)
-                            } else {
-                                result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: pipeRange)
+                        // Pipe handling: all pipes visible, dimmed (vertical borders)
+                        if i != 1 {
+                            let lineNS = line as NSString
+                            for ci in 0..<lineNS.length {
+                                if lineNS.character(at: ci) == 0x7C {
+                                    let pipeRange = NSRange(location: lineOffset + ci, length: 1)
+                                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pipeRange)
+                                }
                             }
                         }
 
@@ -477,11 +490,11 @@ extension EditorTextView {
     }
 }
 
-// MARK: - DividerTextBlock
+// MARK: - ThematicBreakTextBlock
 
 /// NSTextBlock subclass that renders a full-width horizontal hairline
 /// centered vertically within a block whose height matches body text.
-private class DividerTextBlock: NSTextBlock {
+private class ThematicBreakTextBlock: NSTextBlock {
 
     /// Target block height (set to bodyFont.pointSize by the caller).
     var lineHeight: CGFloat = 16
@@ -496,6 +509,44 @@ private class DividerTextBlock: NSTextBlock {
                                     textContainer: textContainer,
                                     characterRange: charRange)
         r.size.height = lineHeight
+        return r
+    }
+
+    override func drawBackground(
+        withFrame frameRect: NSRect,
+        in controlView: NSView,
+        characterRange charRange: NSRange,
+        layoutManager: NSLayoutManager
+    ) {
+        NSColor.separatorColor.setStroke()
+        let path = NSBezierPath()
+        let y = round(frameRect.midY) + 0.5
+        path.move(to: NSPoint(x: frameRect.minX, y: y))
+        path.line(to: NSPoint(x: frameRect.maxX, y: y))
+        path.lineWidth = 1
+        path.stroke()
+    }
+}
+
+// MARK: - TableBorderTextBlock
+
+/// NSTextBlock subclass for table separator rows. Draws a horizontal
+/// hairline across the block width so it serves as the header/body border.
+/// Content width is set to the measured table width by the caller so the
+/// line doesn't extend beyond the table text.
+private class TableBorderTextBlock: NSTextBlock {
+
+    override func rectForLayout(
+        at startingPosition: CGPoint,
+        in rect: NSRect,
+        textContainer: NSTextContainer,
+        characterRange charRange: NSRange
+    ) -> NSRect {
+        var r = super.rectForLayout(at: startingPosition, in: rect,
+                                    textContainer: textContainer,
+                                    characterRange: charRange)
+        // Collapse to a thin strip just tall enough for the hairline.
+        r.size.height = 4
         return r
     }
 
