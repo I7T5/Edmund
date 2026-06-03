@@ -10,6 +10,7 @@ import MarkdownEditorCore
 class Document: NSDocument {
 
     var editor: EditorTextView!
+    private var statusLabel: NSTextField!
 
     /// Content loaded from disk before the editor window exists.
     /// `nonisolated(unsafe)` because `read(from:ofType:)` may be called
@@ -92,18 +93,65 @@ class Document: NSDocument {
         editor.textContainerInset = NSSize(width: 24, height: 18)
         editor.document = self
 
-        let scrollView = NSScrollView(frame: window.contentView!.bounds)
-        scrollView.autoresizingMask = [.width, .height]
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.documentView = editor
 
-        window.contentView = scrollView
+        // Status bar: word and character count
+        statusLabel = NSTextField(labelWithString: "")
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.font = NSFont.systemFont(ofSize: 11)
+        statusLabel.textColor = .tertiaryLabelColor
+        statusLabel.alignment = .right
+
+        let statusBar = NSView()
+        statusBar.translatesAutoresizingMaskIntoConstraints = false
+        statusBar.addSubview(statusLabel)
+
+        let container = NSView(frame: window.contentView!.bounds)
+        container.addSubview(scrollView)
+        container.addSubview(statusBar)
+
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
+
+            statusBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            statusBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            statusBar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            statusBar.heightAnchor.constraint(equalToConstant: 24),
+
+            statusLabel.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor, constant: -12),
+            statusLabel.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+        ])
+
+        window.contentView = container
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(textDidChange(_:)),
+            name: NSText.didChangeNotification, object: editor
+        )
 
         let wc = NSWindowController(window: window)
         addWindowController(wc)
         window.makeFirstResponder(editor)
+        updateStatusBar()
+    }
+
+    @objc private func textDidChange(_ notification: Notification) {
+        updateStatusBar()
+    }
+
+    private func updateStatusBar() {
+        let text = editor?.rawSource ?? ""
+        let charCount = text.count
+        let wordCount = text.split { $0.isWhitespace || $0.isNewline }.count
+        statusLabel?.stringValue = "\(wordCount) words  \(charCount) characters"
     }
 
     // MARK: - Reading
@@ -123,6 +171,7 @@ class Document: NSDocument {
             editor?.loadContent(content)
             pendingContent = nil
         }
+        updateStatusBar()
     }
 
     // MARK: - Rename & Move (manual — NSDocument's built-in versions
