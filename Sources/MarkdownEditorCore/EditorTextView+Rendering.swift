@@ -88,6 +88,21 @@ extension EditorTextView {
         return ps
     }
 
+    /// Paragraph style for the table separator row (| --- | --- |).
+    /// Renders as a 1pt horizontal line with collapsed content height.
+    private func tableSeparatorParagraphStyle() -> NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.paragraphSpacingBefore = 0
+        ps.paragraphSpacing = 0
+
+        let block = DividerTextBlock()
+        block.lineHeight = 1
+        block.setContentWidth(100, type: .percentageValueType)
+        ps.textBlocks = [block]
+
+        return ps
+    }
+
     // MARK: - Delimiter Hiding Classification
 
     /// Returns true if this span kind's delimiters should be hidden (not just
@@ -355,9 +370,10 @@ extension EditorTextView {
                             let bold = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
                             result.addAttribute(.font, value: bold, range: lineRange)
                         } else if i == 1 {
-                            // Separator row (| --- | --- |): hide entirely
+                            // Separator row: hide text, render a horizontal border line
                             result.addAttribute(.font, value: hiddenFont, range: lineRange)
                             result.addAttribute(.foregroundColor, value: NSColor.clear, range: lineRange)
+                            result.addAttribute(.paragraphStyle, value: tableSeparatorParagraphStyle(), range: lineRange)
                         }
 
                         // Pipe handling: hide outer, color inner
