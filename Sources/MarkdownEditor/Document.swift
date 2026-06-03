@@ -133,8 +133,12 @@ class Document: NSDocument {
         window.contentView = container
 
         NotificationCenter.default.addObserver(
-            self, selector: #selector(textDidChange(_:)),
+            self, selector: #selector(editorDidChange(_:)),
             name: NSText.didChangeNotification, object: editor
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(editorSelectionDidChange(_:)),
+            name: NSTextView.didChangeSelectionNotification, object: editor
         )
 
         let wc = NSWindowController(window: window)
@@ -143,15 +147,35 @@ class Document: NSDocument {
         updateStatusBar()
     }
 
-    @objc private func textDidChange(_ notification: Notification) {
+    @objc private func editorDidChange(_ notification: Notification) {
+        updateStatusBar()
+    }
+
+    @objc private func editorSelectionDidChange(_ notification: Notification) {
         updateStatusBar()
     }
 
     private func updateStatusBar() {
-        let text = editor?.rawSource ?? ""
+        guard let editor = editor else { return }
+        let text = editor.rawSource
         let charCount = text.count
         let wordCount = text.split { $0.isWhitespace || $0.isNewline }.count
-        statusLabel?.stringValue = "\(wordCount) words  \(charCount) characters"
+
+        // Cursor position: line number and column
+        let cursorOffset = editor.selectedRange().location
+        let nsText = text as NSString
+        let clampedOffset = min(cursorOffset, nsText.length)
+        let upToCursor = nsText.substring(to: clampedOffset)
+        let line = upToCursor.components(separatedBy: "\n").count
+        let lastNewline = (upToCursor as NSString).range(of: "\n", options: .backwards)
+        let col: Int
+        if lastNewline.location == NSNotFound {
+            col = clampedOffset + 1
+        } else {
+            col = clampedOffset - lastNewline.upperBound + 1
+        }
+
+        statusLabel?.stringValue = "Ln \(line), Col \(col)    \(wordCount) words  \(charCount) chars"
     }
 
     // MARK: - Reading
