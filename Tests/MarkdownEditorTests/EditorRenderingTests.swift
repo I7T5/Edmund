@@ -433,16 +433,22 @@ struct EditorStylingTests {
         #expect(cbIndent < editor.listPadding + rawWidth)
     }
 
-    @Test("Table has monospace font and dimmed pipes")
+    @Test("Table header is bold, separator is hidden, outer pipes hidden")
     @MainActor func tableStyling() {
         let editor = makeEditor()
         let styled = editor.styleBlock("| A | B |\n| --- | --- |\n| 1 | 2 |")
-        // Monospace font on content
-        let f = styled.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
-        #expect(f != nil)
-        #expect(f!.isFixedPitch)
-        // Pipes are dimmed
-        #expect(isDimmed(at: 0, in: styled))
+        // Header "A" at offset 2 is bold
+        let hf = styled.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
+        #expect(hf != nil)
+        let traits = NSFontManager.shared.traits(of: hf!)
+        #expect(traits.contains(.boldFontMask))
+        // Separator row (offset 10 = start of "| --- | --- |") is hidden
+        #expect(isHidden(at: 10, in: styled))
+        // Outer pipe at offset 0 is hidden
+        #expect(isHidden(at: 0, in: styled))
+        // Inner pipe at offset 4 (between A and B) is secondary color
+        let pc = styled.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor
+        #expect(pc == NSColor.secondaryLabelColor)
     }
 
     @Test("Non-active thematic break is hidden with horizontal line style")
