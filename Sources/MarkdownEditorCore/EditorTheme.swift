@@ -35,7 +35,7 @@ public struct EditorTheme: Equatable, Sendable {
     // MARK: - Defaults
 
     public static let `default` = EditorTheme(
-        fontName: "Hoefler Text",
+        fontName: "Iowan Old Style",
         fontSize: 16,
         accentHex: "#3366E6",
         codeHex: "#8A2425",
