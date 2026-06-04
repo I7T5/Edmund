@@ -30,6 +30,42 @@ struct EditorDocumentLoadingTests {
         #expect(editor.blocks[2].content == "line three")
     }
 
+    @Test("loadContent normalizes CRLF to LF in the buffer")
+    @MainActor func loadContentNormalizesCRLF() {
+        let editor = makeEditor()
+        editor.loadContent("line one\r\nline two")
+        #expect(editor.rawSource == "line one\nline two")
+        #expect(editor.originalLineEnding == .crlf)
+    }
+
+    @Test("loadContent normalizes lone CR to LF in the buffer")
+    @MainActor func loadContentNormalizesCR() {
+        let editor = makeEditor()
+        editor.loadContent("line one\rline two")
+        #expect(editor.rawSource == "line one\nline two")
+        #expect(editor.originalLineEnding == .cr)
+    }
+
+    @Test("loadContent records LF for an LF file")
+    @MainActor func loadContentRecordsLF() {
+        let editor = makeEditor()
+        editor.loadContent("a\nb")
+        #expect(editor.originalLineEnding == .lf)
+    }
+
+    // The consistency bug this fix targets: a CRLF file used to leave a stray
+    // `\r` glued to each block's content because BlockParser splits on `\n`.
+    @Test("CRLF blocks have no stray carriage return in content")
+    @MainActor func crlfBlocksHaveNoStrayCR() {
+        let editor = makeEditor()
+        editor.loadContent("alpha\r\nbeta\r\ngamma")
+        #expect(editor.blocks.count == 3)
+        #expect(editor.blocks[0].content == "alpha")
+        #expect(editor.blocks[1].content == "beta")
+        #expect(editor.blocks[2].content == "gamma")
+        #expect(!editor.blocks.contains { $0.content.contains("\r") })
+    }
+
     @Test("loadContent clears undo/redo stacks")
     @MainActor func loadContentClearsUndo() {
         let editor = makeEditor()

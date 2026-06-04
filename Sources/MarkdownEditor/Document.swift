@@ -241,7 +241,13 @@ class Document: NSDocument {
     // MARK: - Writing
 
     override func data(ofType typeName: String) throws -> Data {
-        let text = editor?.rawSource ?? ""
+        // The buffer is always LF; restore the file's original line ending on
+        // write so opening, then saving, doesn't silently rewrite every line.
+        let normalized = editor?.rawSource ?? ""
+        let ending = editor?.originalLineEnding ?? .lf
+        let text = ending == .lf
+            ? normalized
+            : normalized.replacingOccurrences(of: "\n", with: ending.string)
         guard let data = text.data(using: .utf8) else {
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Could not encode text as UTF-8"])

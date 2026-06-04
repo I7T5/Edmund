@@ -35,6 +35,9 @@ public class EditorTextView: NSTextView {
     // MARK: - State (internal for @testable import)
 
     public var rawSource: String = ""
+    /// Line ending of the most recently loaded content. The buffer itself is
+    /// always LF; this is remembered so saves preserve the file's style.
+    public var originalLineEnding: LineEnding = .lf
     var blocks: [Block] = []
     var activeBlockIndex: Int? = nil
     var isUpdating = false
@@ -271,7 +274,10 @@ public class EditorTextView: NSTextView {
 
     /// Replace the editor's content. Used by NSDocument on file open.
     public func loadContent(_ content: String) {
-        rawSource = content
+        // Remember the file's line ending, then normalize the buffer to LF so
+        // block parsing and rendering never see a stray `\r`.
+        originalLineEnding = LineEnding.detect(in: content)
+        rawSource = LineEnding.normalize(content)
         blocks = BlockParser.parse(rawSource)
         undoStack.removeAll()
         redoStack.removeAll()
