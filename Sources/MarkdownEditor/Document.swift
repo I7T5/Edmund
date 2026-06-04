@@ -10,7 +10,7 @@ import MarkdownEditorCore
 class Document: NSDocument {
 
     var editor: EditorTextView!
-    private var statusLabel: NSTextField!
+    private var statusBar: StatusBarView!
 
     /// Content loaded from disk before the editor window exists.
     /// `nonisolated(unsafe)` because `read(from:ofType:)` may be called
@@ -97,7 +97,7 @@ class Document: NSDocument {
         editor.textContainerInset = NSSize(width: 24, height: 18)
         editor.document = self
 
-        let statusBarHeight: CGFloat = 18
+        let statusBarHeight: CGFloat = 22
         let contentBounds = window.contentView!.bounds
 
         let scrollView = NSScrollView(frame: NSRect(
@@ -111,24 +111,17 @@ class Document: NSDocument {
         scrollView.drawsBackground = false
         scrollView.documentView = editor
 
-        // Status bar at the bottom of the window
-        statusLabel = NSTextField(labelWithString: "")
-        statusLabel.frame = NSRect(
-            x: contentBounds.width - 312, y: 0,
-            width: 300, height: statusBarHeight
-        )
-        statusLabel.autoresizingMask = [.minXMargin]
-        statusLabel.font = NSFont.systemFont(ofSize: 11)
-        statusLabel.textColor = .tertiaryLabelColor
-        statusLabel.alignment = .right
-        statusLabel.isBezeled = false
-        statusLabel.drawsBackground = false
-        statusLabel.isEditable = false
+        // CotEditor-style status bar at the bottom: a slightly gray strip with a
+        // hairline top border, document counts on the left, line ending on the right.
+        statusBar = StatusBarView(frame: NSRect(
+            x: 0, y: 0, width: contentBounds.width, height: statusBarHeight
+        ))
+        statusBar.autoresizingMask = [.width]
 
         let container = NSView(frame: contentBounds)
         container.autoresizesSubviews = true
         container.addSubview(scrollView)
-        container.addSubview(statusLabel)
+        container.addSubview(statusBar)
 
         window.contentView = container
 
@@ -156,26 +149,51 @@ class Document: NSDocument {
     }
 
     private func updateStatusBar() {
-        guard let editor = editor else { return }
+        guard let editor = editor, let statusBar = statusBar else { return }
         let text = editor.rawSource
-        let charCount = text.count
-        let wordCount = text.split { $0.isWhitespace || $0.isNewline }.count
-
-        // Cursor position: line number and column
-        let cursorOffset = editor.selectedRange().location
         let nsText = text as NSString
-        let clampedOffset = min(cursorOffset, nsText.length)
-        let upToCursor = nsText.substring(to: clampedOffset)
-        let line = upToCursor.components(separatedBy: "\n").count
-        let lastNewline = (upToCursor as NSString).range(of: "\n", options: .backwards)
-        let col: Int
-        if lastNewline.location == NSNotFound {
-            col = clampedOffset + 1
-        } else {
-            col = clampedOffset - lastNewline.upperBound + 1
-        }
+        let lineCount = text.isEmpty ? 0 : text.components(separatedBy: "\n").count
+        let charCount = text.count
 
-        statusLabel?.stringValue = "Ln \(line), Col \(col)    \(wordCount) words  \(charCount) chars"
+        // Cursor position: 0-based character location and 1-based line number.
+        let cursorOffset = editor.selectedRange().location
+        let location = min(cursorOffset, nsText.length)
+        let upToCursor = nsText.substring(to: location)
+        let line = upToCursor.isEmpty ? 1 : upToCursor.components(separatedBy: "\n").count
+
+        // CotEditor renders the field labels dimmed and the values prominent.
+        let info = NSMutableAttributedString()
+        info.append(statusField("Lines", "\(lineCount)"))
+        info.append(statusField("Characters", "\(charCount)", leadingGap: true))
+        info.append(statusField("Location", "\(location)", leadingGap: true))
+        info.append(statusField("Line", "\(line)", leadingGap: true))
+        statusBar.infoLabel.attributedStringValue = info
+
+        // The buffer is always LF; show the file's remembered original ending.
+        // Encoding is omitted — markdown is effectively always UTF-8, so the
+        // indicator would never change.
+        statusBar.metaLabel.attributedStringValue = NSAttributedString(
+            string: editor.originalLineEnding.displayName,
+            attributes: [.font: StatusBarView.labelFont, .foregroundColor: NSColor.labelColor]
+        )
+
+        // Manual frame layout: re-run layout() so the right label re-sizes to its
+        // new content width (intrinsic-size invalidation alone won't trigger it).
+        statusBar.needsLayout = true
+    }
+
+    /// Builds a "Label: value" fragment with the label dimmed and the value prominent.
+    private func statusField(_ name: String, _ value: String,
+                             leadingGap: Bool = false) -> NSAttributedString {
+        let s = NSMutableAttributedString()
+        let prefix = leadingGap ? "   \(name): " : "\(name): "
+        s.append(NSAttributedString(string: prefix, attributes: [
+            .font: StatusBarView.labelFont, .foregroundColor: NSColor.secondaryLabelColor,
+        ]))
+        s.append(NSAttributedString(string: value, attributes: [
+            .font: StatusBarView.labelFont, .foregroundColor: NSColor.labelColor,
+        ]))
+        return s
     }
 
     // MARK: - Reading
@@ -253,5 +271,85 @@ class Document: NSDocument {
                           userInfo: [NSLocalizedDescriptionKey: "Could not encode text as UTF-8"])
         }
         return data
+    }
+}
+
+// MARK: - Status Bar View
+
+/// CotEditor-style status bar: a slightly gray strip with a hairline top
+/// border, left-aligned document counts, and right-aligned file metadata.
+private final class StatusBarView: NSView {
+
+    static let labelFont = NSFont.systemFont(ofSize: 11)
+
+    let infoLabel = NSTextField(labelWithString: "")
+    let metaLabel = NSTextField(labelWithString: "")
+
+    /// X position of the vertical separator drawn between the info block and the
+    /// line-ending value. Set in `layout()`, consumed in `draw()`.
+    private var separatorX: CGFloat = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        for label in [infoLabel, metaLabel] {
+            label.font = StatusBarView.labelFont
+            label.textColor = .secondaryLabelColor
+            label.isBezeled = false
+            label.drawsBackground = false
+            label.isEditable = false
+            label.isSelectable = false
+            label.lineBreakMode = .byTruncatingTail
+            addSubview(label)
+        }
+        infoLabel.alignment = .left
+        metaLabel.alignment = .right
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // Adaptive system window background (light gray / dark), distinct from
+        // the white text area above.
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+
+        NSColor.separatorColor.setStroke()
+
+        // Hairline separating the status bar from the text area above it.
+        let top = NSBezierPath()
+        let y = bounds.maxY - 0.5
+        top.move(to: NSPoint(x: bounds.minX, y: y))
+        top.line(to: NSPoint(x: bounds.maxX, y: y))
+        top.lineWidth = 1
+        top.stroke()
+
+        // Short vertical divider between the info block and the line-ending value.
+        let vInset: CGFloat = 5
+        let vx = round(separatorX) + 0.5
+        let divider = NSBezierPath()
+        divider.move(to: NSPoint(x: vx, y: bounds.minY + vInset))
+        divider.line(to: NSPoint(x: vx, y: bounds.maxY - vInset))
+        divider.lineWidth = 1
+        divider.stroke()
+    }
+
+    override func layout() {
+        super.layout()
+        let hMargin: CGFloat = 12
+        let sepGap: CGFloat = 12   // space on each side of the vertical divider
+        let labelHeight = infoLabel.intrinsicContentSize.height
+        let y = (bounds.height - labelHeight) / 2
+
+        let metaWidth = min(metaLabel.intrinsicContentSize.width, bounds.width / 2)
+        metaLabel.frame = NSRect(x: bounds.maxX - hMargin - metaWidth, y: y,
+                                 width: metaWidth, height: labelHeight)
+
+        separatorX = metaLabel.frame.minX - sepGap
+
+        let infoWidth = (separatorX - sepGap) - hMargin
+        infoLabel.frame = NSRect(x: hMargin, y: y, width: max(0, infoWidth), height: labelHeight)
+
+        needsDisplay = true   // divider position may have moved
     }
 }
