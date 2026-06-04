@@ -340,14 +340,17 @@ extension EditorTextView {
                     }
                 } else {
                     // Non-active: bold header, hidden pipes, column-width alignment
-                    // via kern, drawn vertical + horizontal borders via TableRowTextBlock.
+                    // via kern, drawn vertical + horizontal borders via TableRowTextBlock,
+                    // with cell padding for breathing room.
                     let tableNS = (result.string as NSString)
                     let tableStr = tableNS.substring(with: span.fullRange)
                     let lines = tableStr.components(separatedBy: "\n")
 
                     let boldFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+                    let cellHPad = bodyFont.pointSize * 0.3
+                    let cellVPad = bodyFont.pointSize * 0.15
 
-                    // --- Compute column widths (max cell width per column) ---
+                    // --- Compute column widths (max cell width + horizontal padding) ---
                     let headerCells = splitTableRow(lines[0])
                     let numCols = headerCells.count
                     guard numCols > 0 else { break }
@@ -361,6 +364,10 @@ extension EditorTextView {
                             colWidths[ci] = max(colWidths[ci], w)
                         }
                     }
+                    // Add horizontal padding to each column (space after cell text).
+                    for ci in 0..<numCols {
+                        colWidths[ci] += 2 * cellHPad
+                    }
 
                     // Column-border X offsets (between columns) and total width.
                     var borderXOffsets: [CGFloat] = []
@@ -370,6 +377,11 @@ extension EditorTextView {
                         if ci < numCols - 1 { borderXOffsets.append(cumX) }
                     }
                     let totalWidth = cumX
+
+                    let leftEdge  = NSRectEdge(rawValue: 0)!
+                    let rightEdge = NSRectEdge(rawValue: 2)!
+                    let edge1     = NSRectEdge(rawValue: 1)!
+                    let edge3     = NSRectEdge(rawValue: 3)!
 
                     // --- Style each row ---
                     var lineOffset = span.fullRange.location
@@ -388,10 +400,20 @@ extension EditorTextView {
                         ps.lineSpacing = 0
                         let block = TableRowTextBlock()
                         block.verticalLineXOffsets = borderXOffsets
+                        block.contentLeftOffset = cellHPad
                         block.setContentWidth(totalWidth, type: .absoluteValueType)
+                        // Left/right padding so text doesn't touch the table edge.
+                        block.setWidth(cellHPad, type: .absoluteValueType, for: .padding, edge: leftEdge)
+                        block.setWidth(cellHPad, type: .absoluteValueType, for: .padding, edge: rightEdge)
+                        // Vertical padding for breathing room between rows.
+                        block.setWidth(cellVPad, type: .absoluteValueType, for: .padding, edge: edge1)
+                        block.setWidth(cellVPad, type: .absoluteValueType, for: .padding, edge: edge3)
                         if i == 1 {
                             block.drawHorizontalLine = true
                             block.heightOverride = 4
+                            // Separator needs no vertical padding.
+                            block.setWidth(0, type: .absoluteValueType, for: .padding, edge: edge1)
+                            block.setWidth(0, type: .absoluteValueType, for: .padding, edge: edge3)
                         }
                         ps.textBlocks = [block]
                         result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
@@ -578,8 +600,11 @@ private class ThematicBreakTextBlock: NSTextBlock {
 /// continuous column borders.
 private class TableRowTextBlock: NSTextBlock {
 
-    /// X offsets (from block left edge) where vertical border lines are drawn.
+    /// X offsets (from content area left edge) where vertical border lines are drawn.
     var verticalLineXOffsets: [CGFloat] = []
+
+    /// Offset from frameRect.minX to the content area (= left padding).
+    var contentLeftOffset: CGFloat = 0
 
     /// Whether to draw a horizontal hairline centered in the row (separator).
     var drawHorizontalLine = false
@@ -609,11 +634,12 @@ private class TableRowTextBlock: NSTextBlock {
         layoutManager: NSLayoutManager
     ) {
         NSColor.separatorColor.setStroke()
+        let baseX = frameRect.minX + contentLeftOffset
 
         // Vertical borders at column boundaries
         for xOffset in verticalLineXOffsets {
             let path = NSBezierPath()
-            let x = round(frameRect.minX + xOffset) + 0.5
+            let x = round(baseX + xOffset) + 0.5
             path.move(to: NSPoint(x: x, y: frameRect.minY))
             path.line(to: NSPoint(x: x, y: frameRect.maxY))
             path.lineWidth = 1

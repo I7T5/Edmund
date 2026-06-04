@@ -41,12 +41,12 @@ Nest lists
 - [x] File save/open
   - [ ] NSDocuments integration
 - [x] Syntax highlighting in the active block — polish, not blocking
-- [ ] Typewriter scroll
+- [x] Typewriter scroll
 - [ ] Highlight active block
 - [ ] Title bar
   - [ ] Toggle between edit and reading mode
   - [ ] Togge between monospace and other
-- [ ] Status bar: Character/word count
+- [x] Status bar: Character/word count, line number, cursor position
 - [ ] Performance: Lazy loading for larger / more mathy files 
 
 #### Markdown support
@@ -87,15 +87,15 @@ Refer to the implementation of [Swift Markdown Engine](https://github.com/nodes-
   - [ ] Built-in: iA, old letters, typewriter, serif, code, native
   - [ ] Custom theme (see full customization)
 - [ ] Active block highlighting: wiggly (not fully straight) highlighter style by line
-- [ ] Title bar: Add horizontal line to divide content and bar
-- [ ] List: Automatic add list item upon new line in a list environment
-- [ ] List: Un-indent current line when upon new line on a empty line
+- [x] Title bar: Add horizontal line to divide content and bar
+- [x] List: Automatic add list item upon new line in a list environment
+- [x] List: Un-indent current line when upon new line on a empty line
 
 ### Bugs
 
 - [x] List indentation: ` -` has less indentation than `-` (which has rendered indentation). Render indentation for all `-` at the beginning of the line, even after whitespace. 
-- [ ] Unmatched * and _ should not be hidden
-- [ ] Todo list indentation: Align beginning of list marker with first character in upper-level text
+- [x] Unmatched * and _ should not be hidden
+- [x] Todo list indentation: Align beginning of list marker with first character in upper-level text
 
 
 ### Maybes
