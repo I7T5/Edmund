@@ -433,19 +433,23 @@ struct TableNonActiveTests {
         #expect(traits.contains(.boldFontMask))
     }
 
-    @Test("Non-active table pipes are all dimmed as vertical borders")
+    @Test("Non-active table pipes are hidden, rows have text blocks for borders")
     @MainActor func nonActivePipesStyling() {
         let editor = makeEditor()
         editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
         activateBlock(1, in: editor)
 
         let base = editor.displayRanges[0].location
-        // Outer pipe at base+0 is dimmed (visible as border)
-        let outerColor = fgColor(at: base, in: editor)
-        #expect(outerColor == NSColor.tertiaryLabelColor)
-        // Inner pipe at base+4 is also dimmed
-        let innerColor = fgColor(at: base + 4, in: editor)
-        #expect(innerColor == NSColor.tertiaryLabelColor)
+        // All pipes are hidden (vertical borders drawn by TableRowTextBlock)
+        let outerF = font(at: base, in: editor)!
+        #expect(outerF.pointSize < 1.0)
+        let innerF = font(at: base + 4, in: editor)!
+        #expect(innerF.pointSize < 1.0)
+        // Header row has a paragraph style with text blocks
+        let ts = editor.textStorage!
+        let ps = ts.attribute(.paragraphStyle, at: base, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil)
+        #expect(!ps!.textBlocks.isEmpty)
     }
 }
 
