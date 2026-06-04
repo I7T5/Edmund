@@ -339,52 +339,94 @@ extension EditorTextView {
                         sr = NSRange(location: ns, length: max(0, span.fullRange.upperBound - ns))
                     }
                 } else {
-                    // Non-active: serif, bold header, separator as hairline border,
-                    // all pipes visible as vertical borders.
+                    // Non-active: bold header, hidden pipes, column-width alignment
+                    // via kern, drawn vertical + horizontal borders via TableRowTextBlock.
                     let tableNS = (result.string as NSString)
                     let tableStr = tableNS.substring(with: span.fullRange)
                     let lines = tableStr.components(separatedBy: "\n")
 
-                    // Measure table width so the separator line matches.
                     let boldFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                    var maxLineWidth: CGFloat = 0
+
+                    // --- Compute column widths (max cell width per column) ---
+                    let headerCells = splitTableRow(lines[0])
+                    let numCols = headerCells.count
+                    guard numCols > 0 else { break }
+                    var colWidths = [CGFloat](repeating: 0, count: numCols)
                     for (li, line) in lines.enumerated() {
                         guard li != 1 else { continue }
+                        let cells = splitTableRow(line)
                         let f: NSFont = (li == 0) ? boldFont : bodyFont
-                        let w = (line as NSString).size(withAttributes: [.font: f]).width
-                        maxLineWidth = max(maxLineWidth, w)
+                        for ci in 0..<min(cells.count, numCols) {
+                            let w = (cells[ci] as NSString).size(withAttributes: [.font: f]).width
+                            colWidths[ci] = max(colWidths[ci], w)
+                        }
                     }
 
+                    // Column-border X offsets (between columns) and total width.
+                    var borderXOffsets: [CGFloat] = []
+                    var cumX: CGFloat = 0
+                    for ci in 0..<numCols {
+                        cumX += colWidths[ci]
+                        if ci < numCols - 1 { borderXOffsets.append(cumX) }
+                    }
+                    let totalWidth = cumX
+
+                    // --- Style each row ---
                     var lineOffset = span.fullRange.location
                     for (i, line) in lines.enumerated() {
                         let lineLen = (line as NSString).length
                         let lineRange = NSRange(location: lineOffset, length: lineLen)
                         guard lineRange.upperBound <= result.length else { break }
 
-                        if i == 0 {
-                            // Header row: bold serif font
-                            result.addAttribute(.font, value: boldFont, range: lineRange)
-                        } else if i == 1 {
-                            // Separator row: hide text, draw horizontal hairline
-                            result.addAttribute(.font, value: hiddenFont, range: lineRange)
-                            result.addAttribute(.foregroundColor, value: NSColor.clear, range: lineRange)
+                        let rowFont: NSFont = (i == 0) ? boldFont : bodyFont
 
-                            let sepPS = NSMutableParagraphStyle()
-                            sepPS.paragraphSpacingBefore = 0
-                            sepPS.paragraphSpacing = 0
-                            let block = TableBorderTextBlock()
-                            block.setContentWidth(maxLineWidth, type: .absoluteValueType)
-                            sepPS.textBlocks = [block]
-                            result.addAttribute(.paragraphStyle, value: sepPS, range: lineRange)
+                        // Paragraph style with TableRowTextBlock for borders
+                        let ps = NSMutableParagraphStyle()
+                        ps.paragraphSpacingBefore = (i == 0)
+                            ? bodyParagraphStyle.paragraphSpacingBefore : 0
+                        ps.paragraphSpacing = 0
+                        ps.lineSpacing = 0
+                        let block = TableRowTextBlock()
+                        block.verticalLineXOffsets = borderXOffsets
+                        block.setContentWidth(totalWidth, type: .absoluteValueType)
+                        if i == 1 {
+                            block.drawHorizontalLine = true
+                            block.heightOverride = 4
+                        }
+                        ps.textBlocks = [block]
+                        result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
+
+                        if i == 0 {
+                            result.addAttribute(.font, value: boldFont, range: lineRange)
                         }
 
-                        // Pipe handling: all pipes visible, dimmed (vertical borders)
+                        if i == 1 {
+                            // Separator row: hide all text
+                            result.addAttribute(.font, value: hiddenFont, range: lineRange)
+                            result.addAttribute(.foregroundColor, value: NSColor.clear, range: lineRange)
+                        }
+
+                        // Hide all pipes (zero-width + clear)
+                        let lineNS = line as NSString
+                        for ci in 0..<lineNS.length {
+                            if lineNS.character(at: ci) == 0x7C {
+                                let pipeRange = NSRange(location: lineOffset + ci, length: 1)
+                                result.addAttribute(.font, value: hiddenFont, range: pipeRange)
+                                result.addAttribute(.foregroundColor, value: NSColor.clear, range: pipeRange)
+                            }
+                        }
+
+                        // Kern-pad each cell to its column width (skip separator)
                         if i != 1 {
-                            let lineNS = line as NSString
-                            for ci in 0..<lineNS.length {
-                                if lineNS.character(at: ci) == 0x7C {
-                                    let pipeRange = NSRange(location: lineOffset + ci, length: 1)
-                                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pipeRange)
+                            let ranges = cellRanges(in: lineNS)
+                            for ci in 0..<min(ranges.count, numCols) {
+                                let cr = ranges[ci]
+                                let cellText = lineNS.substring(with: NSRange(location: cr.start, length: cr.end - cr.start))
+                                let cellWidth = (cellText as NSString).size(withAttributes: [.font: rowFont]).width
+                                let padding = colWidths[ci] - cellWidth
+                                if padding > 0.5 {
+                                    let kernLoc = lineOffset + cr.end - 1
+                                    result.addAttribute(.kern, value: padding, range: NSRange(location: kernLoc, length: 1))
                                 }
                             }
                         }
@@ -528,13 +570,22 @@ private class ThematicBreakTextBlock: NSTextBlock {
     }
 }
 
-// MARK: - TableBorderTextBlock
+// MARK: - TableRowTextBlock
 
-/// NSTextBlock subclass for table separator rows. Draws a horizontal
-/// hairline across the block width so it serves as the header/body border.
-/// Content width is set to the measured table width by the caller so the
-/// line doesn't extend beyond the table text.
-private class TableBorderTextBlock: NSTextBlock {
+/// NSTextBlock subclass for table rows. Each row draws vertical border lines
+/// at column boundaries. The separator row also draws a horizontal hairline.
+/// All rows use the same column offsets so the vertical lines align into
+/// continuous column borders.
+private class TableRowTextBlock: NSTextBlock {
+
+    /// X offsets (from block left edge) where vertical border lines are drawn.
+    var verticalLineXOffsets: [CGFloat] = []
+
+    /// Whether to draw a horizontal hairline centered in the row (separator).
+    var drawHorizontalLine = false
+
+    /// Height override for the separator row (collapses to thin strip).
+    var heightOverride: CGFloat?
 
     override func rectForLayout(
         at startingPosition: CGPoint,
@@ -545,8 +596,9 @@ private class TableBorderTextBlock: NSTextBlock {
         var r = super.rectForLayout(at: startingPosition, in: rect,
                                     textContainer: textContainer,
                                     characterRange: charRange)
-        // Collapse to a thin strip just tall enough for the hairline.
-        r.size.height = 4
+        if let h = heightOverride {
+            r.size.height = h
+        }
         return r
     }
 
@@ -557,11 +609,72 @@ private class TableBorderTextBlock: NSTextBlock {
         layoutManager: NSLayoutManager
     ) {
         NSColor.separatorColor.setStroke()
-        let path = NSBezierPath()
-        let y = round(frameRect.midY) + 0.5
-        path.move(to: NSPoint(x: frameRect.minX, y: y))
-        path.line(to: NSPoint(x: frameRect.maxX, y: y))
-        path.lineWidth = 1
-        path.stroke()
+
+        // Vertical borders at column boundaries
+        for xOffset in verticalLineXOffsets {
+            let path = NSBezierPath()
+            let x = round(frameRect.minX + xOffset) + 0.5
+            path.move(to: NSPoint(x: x, y: frameRect.minY))
+            path.line(to: NSPoint(x: x, y: frameRect.maxY))
+            path.lineWidth = 1
+            path.stroke()
+        }
+
+        // Horizontal separator
+        if drawHorizontalLine {
+            let path = NSBezierPath()
+            let y = round(frameRect.midY) + 0.5
+            path.move(to: NSPoint(x: frameRect.minX, y: y))
+            path.line(to: NSPoint(x: frameRect.maxX, y: y))
+            path.lineWidth = 1
+            path.stroke()
+        }
     }
+}
+
+// MARK: - Table Helpers
+
+/// Splits a markdown table row into cell strings (text between pipes).
+/// Handles both `| A | B |` (outer pipes) and `A | B` (no outer pipes).
+private func splitTableRow(_ line: String) -> [String] {
+    var parts = line.components(separatedBy: "|")
+    // Remove empty/whitespace-only first/last from outer pipes.
+    if let first = parts.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
+        parts.removeFirst()
+    }
+    if let last = parts.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
+        parts.removeLast()
+    }
+    return parts
+}
+
+/// Returns `(start, end)` character ranges for each cell in a table line.
+/// Works with or without outer pipes. `start` is the first content char,
+/// `end` is one past the last content char (i.e., the next pipe or line end).
+private func cellRanges(in line: NSString) -> [(start: Int, end: Int)] {
+    var pipePos: [Int] = []
+    for ci in 0..<line.length {
+        if line.character(at: ci) == 0x7C { pipePos.append(ci) }
+    }
+    guard !pipePos.isEmpty else { return [] }
+
+    // Build edge list: either the pipe position or a virtual -1/length sentinel.
+    var edges: [Int] = []
+    if pipePos[0] == 0 {
+        edges.append(contentsOf: pipePos)
+    } else {
+        edges.append(-1)
+        edges.append(contentsOf: pipePos)
+    }
+    if pipePos.last != line.length - 1 {
+        edges.append(line.length)
+    }
+
+    var result: [(start: Int, end: Int)] = []
+    for ei in 0..<(edges.count - 1) {
+        let s = edges[ei] + 1
+        let e = edges[ei + 1]
+        if e > s { result.append((s, e)) }
+    }
+    return result
 }

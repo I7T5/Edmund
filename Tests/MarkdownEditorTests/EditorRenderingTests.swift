@@ -433,7 +433,7 @@ struct EditorStylingTests {
         #expect(cbIndent < editor.listPadding + rawWidth)
     }
 
-    @Test("Table header is bold, separator has border, pipes are dimmed")
+    @Test("Table header is bold, separator has border, pipes are hidden")
     @MainActor func tableStyling() {
         let editor = makeEditor()
         let styled = editor.styleBlock("| A | B |\n| --- | --- |\n| 1 | 2 |")
@@ -448,11 +448,29 @@ struct EditorStylingTests {
         let sepPS = styled.attribute(.paragraphStyle, at: 10, effectiveRange: nil) as? NSParagraphStyle
         #expect(sepPS != nil)
         #expect(!sepPS!.textBlocks.isEmpty)
-        // All pipes are dimmed (visible as vertical borders)
-        let outerColor = styled.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
-        #expect(outerColor == NSColor.tertiaryLabelColor)
-        let innerColor = styled.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor
-        #expect(innerColor == NSColor.tertiaryLabelColor)
+        // All pipes are hidden (vertical borders drawn by TextBlock)
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 4, in: styled))
+        // Each row has a text block for vertical border drawing
+        let headerPS = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(headerPS != nil)
+        #expect(!headerPS!.textBlocks.isEmpty)
+    }
+
+    @Test("Table without outer pipes renders with borders and hidden pipes")
+    @MainActor func tableNoOuterPipes() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("col1 | col2\n---- | ----\nc11 | c12")
+        // Header "col1" at offset 0 is bold
+        let hf = styled.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(hf != nil)
+        #expect(NSFontManager.shared.traits(of: hf!).contains(.boldFontMask))
+        // Inner pipe at offset 5 is hidden
+        #expect(isHidden(at: 5, in: styled))
+        // Header row has a paragraph style with text blocks for borders
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil)
+        #expect(!ps!.textBlocks.isEmpty)
     }
 
     @Test("Non-active thematic break is hidden with horizontal line style")
