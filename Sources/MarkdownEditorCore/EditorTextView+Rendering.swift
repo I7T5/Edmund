@@ -370,11 +370,14 @@ extension EditorTextView {
                     }
 
                     // Column-border X offsets (between columns) and total width.
+                    // Each border is drawn cellHPad before the column boundary
+                    // so the 2*cellHPad per column splits evenly: hPad of right
+                    // padding for the current cell, hPad of left padding for the next.
                     var borderXOffsets: [CGFloat] = []
                     var cumX: CGFloat = 0
                     for ci in 0..<numCols {
                         cumX += colWidths[ci]
-                        if ci < numCols - 1 { borderXOffsets.append(cumX) }
+                        if ci < numCols - 1 { borderXOffsets.append(cumX - cellHPad) }
                     }
                     let totalWidth = cumX
 
