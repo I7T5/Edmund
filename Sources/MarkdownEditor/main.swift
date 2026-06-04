@@ -114,11 +114,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                          action: #selector(NSDocument.save(_:)),
                          keyEquivalent: "s")
 
-        let saveAsItem = fileMenu.addItem(withTitle: "Save As\u{2026}",
-                                          action: #selector(NSDocument.saveAs(_:)),
-                                          keyEquivalent: "s")
-        saveAsItem.keyEquivalentModifierMask = [.command, .shift]
-
         fileMenu.addItem(NSMenuItem.separator())
 
         fileMenu.addItem(withTitle: "Rename\u{2026}",
