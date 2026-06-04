@@ -478,9 +478,18 @@ extension EditorTextView {
 
             case .math(let display):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                if !cursorInToken {
+                if cursorInToken {
+                    // Active: show the raw LaTeX in monospace (like inline code);
+                    // `$` delimiters are dimmed in the loop below.
+                    result.addAttribute(.font, value: inlineCodeFont, range: span.fullRange)
+                } else {
                     let latex = (markdown as NSString).substring(with: span.contentRange)
-                    if let attachment = mathAttachment(latex: latex, display: display) {
+                    // Size the math to the font already applied at this location, so
+                    // inline math inside a heading matches the heading's size.
+                    let contextFont = result.attribute(.font, at: span.fullRange.location,
+                                                       effectiveRange: nil) as? NSFont ?? bodyFont
+                    if let attachment = mathAttachment(latex: latex, display: display,
+                                                       fontSize: contextFont.pointSize) {
                         // Hide the LaTeX source + closing `$`, show the rendered
                         // image on the opening `$` (which the attachment replaces).
                         let hideStart = span.contentRange.location
@@ -491,11 +500,11 @@ extension EditorTextView {
                         result.addAttribute(.attachment, value: attachment,
                                             range: NSRange(location: span.fullRange.location, length: 1))
                     } else {
-                        // Invalid LaTeX: surface the raw source tinted, don't hide.
+                        // Invalid LaTeX: surface the raw source in monospace, tinted.
+                        result.addAttribute(.font, value: inlineCodeFont, range: span.fullRange)
                         result.addAttribute(.foregroundColor, value: NSColor.systemRed, range: span.fullRange)
                     }
                 }
-                // Active: raw LaTeX shown; `$` delimiters dimmed in the loop below.
 
             case .lineBreak:
                 break  // Delimiter handling done below
