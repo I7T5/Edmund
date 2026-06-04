@@ -498,6 +498,64 @@ struct ListItemTests {
         let bolds = spans.filter { $0.kind == .bold }
         #expect(bolds.count == 1)
     }
+
+    @Test("Indented unchecked todo (4 spaces) detects unchecked checkbox")
+    func indentedUncheckedTodo() {
+        let spans = SyntaxHighlighter.parse("    - [ ] deep todo")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(_, let checkbox) = items[0].kind {
+            #expect(checkbox == .unchecked)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
+    }
+
+    @Test("Indented checked todo (4 spaces) detects checked checkbox")
+    func indentedCheckedTodo() {
+        let spans = SyntaxHighlighter.parse("    - [x] deep done")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(_, let checkbox) = items[0].kind {
+            #expect(checkbox == .checked)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
+    }
+
+    @Test("Deeply indented todo (8 spaces) detects checkbox")
+    func deeplyIndentedTodo() {
+        let spans = SyntaxHighlighter.parse("        - [ ] level 4 todo")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(_, let checkbox) = items[0].kind {
+            #expect(checkbox == .unchecked)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
+    }
+
+    @Test("Indented todo content excludes the checkbox delimiter")
+    func indentedTodoContentRange() {
+        let text = "    - [ ] task"
+        let spans = SyntaxHighlighter.parse(text)
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        // Content should be "task" — the "    - [ ] " prefix is the delimiter.
+        let content = (text as NSString).substring(with: items[0].contentRange)
+        #expect(content == "task")
+    }
+
+    @Test("Indented todo with uppercase [X] is checked")
+    func indentedUppercaseChecked() {
+        let spans = SyntaxHighlighter.parse("    - [X] done")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        if case .listItem(_, let checkbox) = items[0].kind {
+            #expect(checkbox == .checked)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
+    }
 }
 
 // MARK: - Tables
