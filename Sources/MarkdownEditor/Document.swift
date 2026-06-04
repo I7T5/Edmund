@@ -100,19 +100,17 @@ class Document: NSDocument {
         let statusBarHeight: CGFloat = 22
         let contentBounds = window.contentView!.bounds
 
-        let scrollView = NSScrollView(frame: NSRect(
-            x: 0, y: statusBarHeight,
-            width: contentBounds.width,
-            height: contentBounds.height - statusBarHeight
-        ))
+        // The text view fills the whole window; the status bar floats over its
+        // bottom edge, revealed on hover.
+        let scrollView = NSScrollView(frame: contentBounds)
         scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.documentView = editor
 
-        // CotEditor-style status bar at the bottom: a slightly gray strip with a
-        // hairline top border, document counts on the left, line ending on the right.
+        // Floating status bar: hidden by default, fades in when the pointer
+        // enters its strip. Counts on the left, line ending on the right.
         statusBar = StatusBarView(frame: NSRect(
             x: 0, y: 0, width: contentBounds.width, height: statusBarHeight
         ))
@@ -121,7 +119,7 @@ class Document: NSDocument {
         let container = NSView(frame: contentBounds)
         container.autoresizesSubviews = true
         container.addSubview(scrollView)
-        container.addSubview(statusBar)
+        container.addSubview(statusBar)   // overlay, on top of the text
 
         window.contentView = container
 
@@ -152,7 +150,7 @@ class Document: NSDocument {
         guard let editor = editor, let statusBar = statusBar else { return }
         let text = editor.rawSource
         let nsText = text as NSString
-        let lineCount = text.isEmpty ? 0 : text.components(separatedBy: "\n").count
+        let wordCount = text.split { $0.isWhitespace || $0.isNewline }.count
         let charCount = text.count
 
         // Cursor position: 0-based character location and 1-based line number.
@@ -161,39 +159,10 @@ class Document: NSDocument {
         let upToCursor = nsText.substring(to: location)
         let line = upToCursor.isEmpty ? 1 : upToCursor.components(separatedBy: "\n").count
 
-        // CotEditor renders the field labels dimmed and the values prominent.
-        let info = NSMutableAttributedString()
-        info.append(statusField("Lines", "\(lineCount)"))
-        info.append(statusField("Characters", "\(charCount)", leadingGap: true))
-        info.append(statusField("Location", "\(location)", leadingGap: true))
-        info.append(statusField("Line", "\(line)", leadingGap: true))
-        statusBar.infoLabel.attributedStringValue = info
-
         // The buffer is always LF; show the file's remembered original ending.
-        // Encoding is omitted — markdown is effectively always UTF-8, so the
-        // indicator would never change.
-        statusBar.metaLabel.attributedStringValue = NSAttributedString(
-            string: editor.originalLineEnding.displayName,
-            attributes: [.font: StatusBarView.labelFont, .foregroundColor: NSColor.labelColor]
-        )
-
-        // Manual frame layout: re-run layout() so the right label re-sizes to its
-        // new content width (intrinsic-size invalidation alone won't trigger it).
-        statusBar.needsLayout = true
-    }
-
-    /// Builds a "Label: value" fragment with the label dimmed and the value prominent.
-    private func statusField(_ name: String, _ value: String,
-                             leadingGap: Bool = false) -> NSAttributedString {
-        let s = NSMutableAttributedString()
-        let prefix = leadingGap ? "   \(name): " : "\(name): "
-        s.append(NSAttributedString(string: prefix, attributes: [
-            .font: StatusBarView.labelFont, .foregroundColor: NSColor.secondaryLabelColor,
-        ]))
-        s.append(NSAttributedString(string: value, attributes: [
-            .font: StatusBarView.labelFont, .foregroundColor: NSColor.labelColor,
-        ]))
-        return s
+        statusBar.setMetrics(words: wordCount, characters: charCount,
+                             location: location, line: line,
+                             lineEnding: editor.originalLineEnding.displayName)
     }
 
     // MARK: - Reading
@@ -276,80 +245,213 @@ class Document: NSDocument {
 
 // MARK: - Status Bar View
 
-/// CotEditor-style status bar: a slightly gray strip with a hairline top
-/// border, left-aligned document counts, and right-aligned file metadata.
+/// Floating status bar. Hidden by default and revealed when the pointer enters
+/// its strip (or pinned visible via the context menu). It draws everything
+/// itself — a vertical gradient from the editor background fading to transparent,
+/// the enabled document-count fields on the left, and the line ending on the
+/// right — so there are no subviews to truncate the text.
 private final class StatusBarView: NSView {
 
     static let labelFont = NSFont.systemFont(ofSize: 11)
 
-    let infoLabel = NSTextField(labelWithString: "")
-    let metaLabel = NSTextField(labelWithString: "")
+    private var prefs = StatusBarPrefs.load()
 
-    /// X position of the vertical separator drawn between the info block and the
-    /// line-ending value. Set in `layout()`, consumed in `draw()`.
-    private var separatorX: CGFloat = 0
+    // Latest metrics pushed from the document.
+    private var words = 0
+    private var characters = 0
+    private var location = 0
+    private var lineNumber = 1
+    private var lineEnding = "LF"
+
+    private var trackingArea: NSTrackingArea?
+    private var isHovering = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        for label in [infoLabel, metaLabel] {
-            label.font = StatusBarView.labelFont
-            label.textColor = .secondaryLabelColor
-            label.isBezeled = false
-            label.drawsBackground = false
-            label.isEditable = false
-            label.isSelectable = false
-            label.lineBreakMode = .byTruncatingTail
-            addSubview(label)
-        }
-        infoLabel.alignment = .left
-        metaLabel.alignment = .right
+        alphaValue = prefs.autoHide ? 0 : 1
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    override func draw(_ dirtyRect: NSRect) {
-        // Adaptive system window background (light gray / dark), distinct from
-        // the white text area above.
-        NSColor.windowBackgroundColor.setFill()
-        bounds.fill()
+    // MARK: - Data
 
-        NSColor.separatorColor.setStroke()
-
-        // Hairline separating the status bar from the text area above it.
-        let top = NSBezierPath()
-        let y = bounds.maxY - 0.5
-        top.move(to: NSPoint(x: bounds.minX, y: y))
-        top.line(to: NSPoint(x: bounds.maxX, y: y))
-        top.lineWidth = 1
-        top.stroke()
-
-        // Short vertical divider between the info block and the line-ending value.
-        let vInset: CGFloat = 5
-        let vx = round(separatorX) + 0.5
-        let divider = NSBezierPath()
-        divider.move(to: NSPoint(x: vx, y: bounds.minY + vInset))
-        divider.line(to: NSPoint(x: vx, y: bounds.maxY - vInset))
-        divider.lineWidth = 1
-        divider.stroke()
+    func setMetrics(words: Int, characters: Int, location: Int, line: Int, lineEnding: String) {
+        self.words = words
+        self.characters = characters
+        self.location = location
+        self.lineNumber = line
+        self.lineEnding = lineEnding
+        needsDisplay = true
     }
 
-    override func layout() {
-        super.layout()
+    // MARK: - Visibility
+
+    private var shouldBeVisible: Bool { !prefs.autoHide || isHovering }
+
+    private func refreshVisibility(animated: Bool) {
+        let target: CGFloat = shouldBeVisible ? 1 : 0
+        guard abs(alphaValue - target) > 0.001 else { return }
+        if animated {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.3
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                animator().alphaValue = target
+            }
+        } else {
+            alphaValue = target
+        }
+    }
+
+    // MARK: - Hover Tracking
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let ta = trackingArea { removeTrackingArea(ta) }
+        let ta = NSTrackingArea(rect: bounds,
+                                options: [.mouseEnteredAndExited, .activeInActiveApp],
+                                owner: self, userInfo: nil)
+        addTrackingArea(ta)
+        trackingArea = ta
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+        refreshVisibility(animated: true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        refreshVisibility(animated: true)
+    }
+
+    /// When the bar is hidden, let clicks fall through to the text view beneath.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if !shouldBeVisible && alphaValue < 0.01 { return nil }
+        return super.hitTest(point)
+    }
+
+    // MARK: - Context Menu (double- or right-click)
+
+    override func rightMouseDown(with event: NSEvent) {
+        NSMenu.popUpContextMenu(buildMenu(), with: event, for: self)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            NSMenu.popUpContextMenu(buildMenu(), with: event, for: self)
+        } else {
+            super.mouseDown(with: event)
+        }
+    }
+
+    private func buildMenu() -> NSMenu {
+        let menu = NSMenu()
+
+        let autoHide = NSMenuItem(title: "Auto-hide",
+                                  action: #selector(toggleAutoHide), keyEquivalent: "")
+        autoHide.target = self
+        autoHide.state = prefs.autoHide ? .on : .off
+        menu.addItem(autoHide)
+
+        menu.addItem(.separator())
+        let header = NSMenuItem(title: "Show Fields", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+
+        let fields: [(title: String, key: String, on: Bool)] = [
+            ("Words", "words", prefs.showWords),
+            ("Characters", "characters", prefs.showCharacters),
+            ("Location", "location", prefs.showLocation),
+            ("Line", "line", prefs.showLine),
+            ("Line Ending", "lineEnding", prefs.showLineEnding),
+        ]
+        for field in fields {
+            let item = NSMenuItem(title: field.title,
+                                  action: #selector(toggleField(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = field.key
+            item.state = field.on ? .on : .off
+            item.indentationLevel = 1
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func toggleAutoHide() {
+        prefs.autoHide.toggle()
+        prefs.save()
+        refreshVisibility(animated: true)
+    }
+
+    @objc private func toggleField(_ sender: NSMenuItem) {
+        switch sender.representedObject as? String {
+        case "words":      prefs.showWords.toggle()
+        case "characters": prefs.showCharacters.toggle()
+        case "location":   prefs.showLocation.toggle()
+        case "line":       prefs.showLine.toggle()
+        case "lineEnding": prefs.showLineEnding.toggle()
+        default: return
+        }
+        prefs.save()
+        needsDisplay = true
+    }
+
+    // MARK: - Drawing
+
+    private var labelAttrs: [NSAttributedString.Key: Any] {
+        [.font: Self.labelFont, .foregroundColor: NSColor.secondaryLabelColor]
+    }
+    private var valueAttrs: [NSAttributedString.Key: Any] {
+        [.font: Self.labelFont, .foregroundColor: NSColor.labelColor]
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // Vertical gradient: the editor background, fully opaque at the bottom and
+        // softening only slightly toward the top so the bar reads clearly even
+        // when overlaid on text. textBackgroundColor is semantic (light/dark).
+        let base = NSColor.textBackgroundColor
+        if let gradient = NSGradient(starting: base, ending: base.withAlphaComponent(0.85)) {
+            gradient.draw(in: bounds, angle: 90)   // 90° = bottom → top
+        }
+
         let hMargin: CGFloat = 12
-        let sepGap: CGFloat = 12   // space on each side of the vertical divider
-        let labelHeight = infoLabel.intrinsicContentSize.height
-        let y = (bounds.height - labelHeight) / 2
 
-        let metaWidth = min(metaLabel.intrinsicContentSize.width, bounds.width / 2)
-        metaLabel.frame = NSRect(x: bounds.maxX - hMargin - metaWidth, y: y,
-                                 width: metaWidth, height: labelHeight)
+        // Left: enabled count fields ("Label: value", label dimmed, value bold-ish).
+        let info = NSMutableAttributedString()
+        func field(_ name: String, _ value: String) {
+            if info.length > 0 {
+                info.append(NSAttributedString(string: "   ", attributes: labelAttrs))
+            }
+            info.append(NSAttributedString(string: "\(name): ", attributes: labelAttrs))
+            info.append(NSAttributedString(string: value, attributes: valueAttrs))
+        }
+        if prefs.showWords      { field("Words", "\(words)") }
+        if prefs.showCharacters { field("Characters", "\(characters)") }
+        if prefs.showLocation   { field("Location", "\(location)") }
+        if prefs.showLine       { field("Line", "\(lineNumber)") }
 
-        separatorX = metaLabel.frame.minX - sepGap
+        if info.length > 0 {
+            let size = info.size()
+            info.draw(at: NSPoint(x: hMargin, y: (bounds.height - size.height) / 2))
+        }
 
-        let infoWidth = (separatorX - sepGap) - hMargin
-        infoLabel.frame = NSRect(x: hMargin, y: y, width: max(0, infoWidth), height: labelHeight)
+        // Right: line ending, preceded by a short vertical divider.
+        if prefs.showLineEnding {
+            let value = NSAttributedString(string: lineEnding, attributes: valueAttrs)
+            let size = value.size()
+            let x = bounds.maxX - hMargin - size.width
+            value.draw(at: NSPoint(x: x, y: (bounds.height - size.height) / 2))
 
-        needsDisplay = true   // divider position may have moved
+            if info.length > 0 {
+                NSColor.separatorColor.setStroke()
+                let dx = round(x - 12) + 0.5
+                let divider = NSBezierPath()
+                divider.move(to: NSPoint(x: dx, y: 5))
+                divider.line(to: NSPoint(x: dx, y: bounds.height - 5))
+                divider.lineWidth = 1
+                divider.stroke()
+            }
+        }
     }
 }
