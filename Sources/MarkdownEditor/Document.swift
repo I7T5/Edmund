@@ -35,13 +35,17 @@ class Document: NSDocument {
         return readableTypes.contains(name)
     }
 
+    // A single writable type keeps the save panel from showing a file-format
+    // popup. Everything we write is markdown, so there's nothing to choose.
     override func writableTypes(for saveOperation: NSDocument.SaveOperationType) -> [String] {
-        switch saveOperation {
-        case .saveAsOperation, .saveToOperation:
-            ["net.daringfireball.markdown", "public.plain-text"]
-        default:
-            ["net.daringfireball.markdown"]
-        }
+        ["net.daringfireball.markdown"]
+    }
+
+    // The `net.daringfireball.markdown` UTI prefers the ".markdown" extension;
+    // force ".md" instead, which is what people actually expect.
+    override func fileNameExtension(forType typeName: String,
+                                    saveOperation: NSDocument.SaveOperationType) -> String? {
+        "md"
     }
 
     // MARK: - Window Setup
