@@ -116,6 +116,12 @@ public enum SyntaxHighlighter {
         pattern: #"^([\t ]*\t[\t ]*|[ ]{4,})([-*+])\s"#
     )
 
+    /// Matches a GFM task-list checkbox at the start of list-item content:
+    /// "[ ] ", "[x] ", or "[X] ". Capture group 1 is the state character.
+    private static let checkboxRegex = try! NSRegularExpression(
+        pattern: #"^\[([ xX])\]\s"#
+    )
+
     private static func parseIndentedListItem(_ text: String, into spans: inout [Span]) {
         // Only single-line blocks (no \n)
         guard !text.contains("\n") else { return }
@@ -132,7 +138,24 @@ public enum SyntaxHighlighter {
         guard !alreadyHasListItem else { return }
 
         let full = NSRange(location: 0, length: nsText.length)
-        let delimEnd = match.range(at: 0).upperBound  // end of "    - "
+        let markerEnd = match.range(at: 0).upperBound  // end of "    - "
+
+        // Detect a GFM task-list checkbox following the marker ("[ ] "/"[x] ").
+        // swift-markdown skips these on deeply-indented lines (it treats the
+        // whole line as code), so we parse the checkbox ourselves — otherwise
+        // task items nested beyond level 2 render without a circle.
+        var checkbox: Span.Kind.CheckboxState? = nil
+        var delimEnd = markerEnd
+        let afterMarker = nsText.substring(from: markerEnd) as NSString
+        if let cb = checkboxRegex.firstMatch(
+            in: afterMarker as String,
+            range: NSRange(location: 0, length: afterMarker.length)
+        ) {
+            let stateChar = afterMarker.substring(with: cb.range(at: 1))
+            checkbox = (stateChar == "x" || stateChar == "X") ? .checked : .unchecked
+            delimEnd = markerEnd + cb.range(at: 0).length
+        }
+
         let delim = NSRange(location: 0, length: delimEnd)
         let content = NSRange(location: delimEnd, length: nsText.length - delimEnd)
 
@@ -143,7 +166,7 @@ public enum SyntaxHighlighter {
         }
 
         spans.append(Span(
-            kind: .listItem(ordered: false, checkbox: nil),
+            kind: .listItem(ordered: false, checkbox: checkbox),
             fullRange: full,
             contentRange: content,
             delimiterRanges: [delim]

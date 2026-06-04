@@ -346,6 +346,20 @@ struct EditorStylingTests {
         #expect(isHidden(at: 3, in: styled))
     }
 
+    @Test("Indented checkbox (4 spaces, beyond level 2) has circle attachment")
+    @MainActor func indentedCheckboxAttachment() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("    - [ ] task")
+        // "    - " prefix (positions 0-5) is hidden
+        #expect(isHidden(at: 0, in: styled))
+        #expect(isHidden(at: 4, in: styled))
+        // "[" at position 6 has the circle attachment
+        let a = styled.attributes(at: 6, effectiveRange: nil)
+        #expect(a[.attachment] is NSTextAttachment)
+        // " ]" after the bracket is hidden
+        #expect(isHidden(at: 7, in: styled))
+    }
+
     @Test("Nested bullet (2 spaces) has dimmed marker")
     @MainActor func nestedBulletDimmed() {
         let editor = makeEditor()
