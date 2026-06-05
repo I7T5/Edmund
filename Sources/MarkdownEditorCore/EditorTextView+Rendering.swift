@@ -72,17 +72,17 @@ extension EditorTextView {
         return ps
     }
 
-    /// Centered paragraph style for display math. Spacing is intentionally zero:
-    /// a multi-line `$$…$$` block is several paragraphs in the text storage (its
-    /// hidden inner lines), so per-paragraph spacing would multiply into a large
-    /// gap. Breathing room comes from the blank lines authors put around display
-    /// math, like fenced code.
-    private func displayMathParagraphStyle() -> NSParagraphStyle {
+    /// Centered paragraph style for display math. The vertical padding is applied
+    /// only to the attachment's (first) line — a multi-line `$$…$$` block is
+    /// several paragraphs in the text storage (its hidden inner lines), so
+    /// padding every paragraph would multiply into a huge gap.
+    private func displayMathParagraphStyle(padded: Bool) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.alignment = .center
         ps.lineSpacing = 0
-        ps.paragraphSpacing = 0
-        ps.paragraphSpacingBefore = 0
+        let pad = padded ? bodyFont.pointSize * 0.9 : 0
+        ps.paragraphSpacingBefore = pad
+        ps.paragraphSpacing = pad
         return ps
     }
 
@@ -515,10 +515,22 @@ extension EditorTextView {
                         result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
                         result.addAttribute(.attachment, value: attachment,
                                             range: NSRange(location: span.fullRange.location, length: 1))
-                        // Display math sits centered on its own line.
+                        // Display math sits centered on its own line, with
+                        // vertical padding on the (first) line that carries the
+                        // attachment image.
                         if display {
-                            result.addAttribute(.paragraphStyle, value: displayMathParagraphStyle(),
+                            let fullStr = result.string as NSString
+                            result.addAttribute(.paragraphStyle,
+                                                value: displayMathParagraphStyle(padded: false),
                                                 range: span.fullRange)
+                            let nl = fullStr.range(of: "\n", options: [], range: span.fullRange)
+                            let firstLine = nl.location == NSNotFound
+                                ? span.fullRange
+                                : NSRange(location: span.fullRange.location,
+                                          length: nl.location - span.fullRange.location + 1)
+                            result.addAttribute(.paragraphStyle,
+                                                value: displayMathParagraphStyle(padded: true),
+                                                range: firstLine)
                         }
                     } else {
                         // Invalid LaTeX: surface the raw source in monospace, tinted.
