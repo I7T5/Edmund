@@ -16,6 +16,10 @@ public struct EditorTheme: Equatable, Sendable {
 
     public var accentHex: String
     public var codeHex: String
+    /// Color for LaTeX operators/commands (`_`, `^`, `\sum`, …) in raw math.
+    public var mathOperatorHex: String
+    /// Color for numbers in raw math.
+    public var mathNumberHex: String
 
     // MARK: - Spacing
 
@@ -23,13 +27,16 @@ public struct EditorTheme: Equatable, Sendable {
     public var paragraphSpacingBefore: CGFloat
 
     public init(fontName: String, fontSize: CGFloat, accentHex: String, codeHex: String,
-                lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat) {
+                lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat,
+                mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800") {
         self.fontName = fontName
         self.fontSize = fontSize
         self.accentHex = accentHex
         self.codeHex = codeHex
         self.lineSpacing = lineSpacing
         self.paragraphSpacingBefore = paragraphSpacingBefore
+        self.mathOperatorHex = mathOperatorHex
+        self.mathNumberHex = mathNumberHex
     }
 
     // MARK: - Defaults
@@ -57,6 +64,14 @@ public struct EditorTheme: Equatable, Sendable {
         NSColor(hex: codeHex) ?? .systemRed
     }
 
+    @MainActor public var mathOperatorColor: NSColor {
+        NSColor(hex: mathOperatorHex) ?? .systemRed
+    }
+
+    @MainActor public var mathNumberColor: NSColor {
+        NSColor(hex: mathNumberHex) ?? .systemOrange
+    }
+
     // MARK: - UserDefaults Persistence
 
     private enum Keys {
@@ -64,6 +79,8 @@ public struct EditorTheme: Equatable, Sendable {
         static let fontSize = "EditorFontSize"
         static let accentHex = "EditorAccentHex"
         static let codeHex = "EditorCodeHex"
+        static let mathOperatorHex = "EditorMathOperatorHex"
+        static let mathNumberHex = "EditorMathNumberHex"
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
     }
@@ -79,6 +96,8 @@ public struct EditorTheme: Equatable, Sendable {
         }()
         let accentHex = d.string(forKey: Keys.accentHex) ?? def.accentHex
         let codeHex = d.string(forKey: Keys.codeHex) ?? def.codeHex
+        let mathOperatorHex = d.string(forKey: Keys.mathOperatorHex) ?? def.mathOperatorHex
+        let mathNumberHex = d.string(forKey: Keys.mathNumberHex) ?? def.mathNumberHex
         let lineSpacing: CGFloat = d.object(forKey: Keys.lineSpacing) != nil
             ? CGFloat(d.float(forKey: Keys.lineSpacing))
             : def.lineSpacing
@@ -92,7 +111,9 @@ public struct EditorTheme: Equatable, Sendable {
             accentHex: accentHex,
             codeHex: codeHex,
             lineSpacing: lineSpacing,
-            paragraphSpacingBefore: paragraphSpacingBefore
+            paragraphSpacingBefore: paragraphSpacingBefore,
+            mathOperatorHex: mathOperatorHex,
+            mathNumberHex: mathNumberHex
         )
     }
 
@@ -102,6 +123,8 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(Float(fontSize), forKey: Keys.fontSize)
         d.set(accentHex, forKey: Keys.accentHex)
         d.set(codeHex, forKey: Keys.codeHex)
+        d.set(mathOperatorHex, forKey: Keys.mathOperatorHex)
+        d.set(mathNumberHex, forKey: Keys.mathNumberHex)
         d.set(Float(lineSpacing), forKey: Keys.lineSpacing)
         d.set(Float(paragraphSpacingBefore), forKey: Keys.paragraphSpacingBefore)
     }

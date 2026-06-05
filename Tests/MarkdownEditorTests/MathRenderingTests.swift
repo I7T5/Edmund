@@ -59,6 +59,41 @@ struct InlineMathRenderingTests {
     }
 }
 
+@Suite("Math — Source coloring")
+struct MathSourceColoringTests {
+
+    @MainActor private func color(_ s: NSAttributedString, at i: Int) -> String? {
+        (s.attribute(.foregroundColor, at: i, effectiveRange: nil) as? NSColor)?.hexString
+    }
+
+    @Test("Active math colors _, ^ as operators and digits as numbers")
+    @MainActor func operatorsAndNumbers() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("$x_1^2$", cursorPosition: 3)   // active
+        let op = editor.theme.mathOperatorColor.hexString
+        let num = editor.theme.mathNumberColor.hexString
+        // $0 x1 _2 13 ^4 25 $6
+        #expect(color(styled, at: 2) == op)    // _
+        #expect(color(styled, at: 3) == num)   // 1
+        #expect(color(styled, at: 4) == op)    // ^
+        #expect(color(styled, at: 5) == num)   // 2
+        #expect(color(styled, at: 1) != op)    // x is neither
+        #expect(color(styled, at: 1) != num)
+    }
+
+    @Test("Active math colors a backslash command as an operator")
+    @MainActor func backslashCommand() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("$\\alpha+1$", cursorPosition: 2)
+        let op = editor.theme.mathOperatorColor.hexString
+        let num = editor.theme.mathNumberColor.hexString
+        // $0 \1 a2 l3 p4 h5 a6 +7 18 $9
+        #expect(color(styled, at: 1) == op)    // backslash
+        #expect(color(styled, at: 4) == op)    // inside \alpha
+        #expect(color(styled, at: 8) == num)   // 1
+    }
+}
+
 @Suite("Math — Display rendering")
 struct DisplayMathRenderingTests {
 
