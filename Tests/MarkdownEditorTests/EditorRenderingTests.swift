@@ -311,13 +311,14 @@ struct EditorStylingTests {
         #expect(hasTextBlock)
     }
 
-    @Test("List bullet marker is dimmed, never hidden")
-    @MainActor func listMarkerDimmed() {
+    @Test("List bullet marker renders as a dot attachment")
+    @MainActor func listMarkerDot() {
         let editor = makeEditor()
         let styled = editor.styleBlock("- hello")
-        // The `-` is dimmed (not hidden)
-        #expect(isDimmed(at: 0, in: styled))
-        #expect(!isHidden(at: 0, in: styled))
+        // The `-` carries the bullet dot attachment.
+        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) is NSTextAttachment)
+        // The trailing space after the bullet is dimmed.
+        #expect(isDimmed(at: 1, in: styled))
     }
 
     @Test("Unchecked checkbox [ ] has circle attachment")
@@ -360,14 +361,14 @@ struct EditorStylingTests {
         #expect(isHidden(at: 7, in: styled))
     }
 
-    @Test("Nested bullet (2 spaces) has dimmed marker")
-    @MainActor func nestedBulletDimmed() {
+    @Test("Nested bullet (2 spaces) renders as a dot attachment")
+    @MainActor func nestedBulletDot() {
         let editor = makeEditor()
         let styled = editor.styleBlock("  - nested")
         // Leading spaces have base text color (not part of delimiter)
         #expect(!isDimmed(at: 0, in: styled))
-        // The `-` at offset 2 is dimmed
-        #expect(isDimmed(at: 2, in: styled))
+        // The `-` at offset 2 carries the bullet dot attachment
+        #expect(styled.attribute(.attachment, at: 2, effectiveRange: nil) is NSTextAttachment)
     }
 
     @Test("List items have hanging indent paragraph style")
@@ -381,6 +382,33 @@ struct EditorStylingTests {
             }
         }
         #expect(hasHangingIndent)
+    }
+
+    @Test("All list types share one content indent (Apple Notes alignment)")
+    @MainActor func listContentIndentsMatch() {
+        let editor = makeEditor()
+        func contentIndent(_ s: String) -> CGFloat {
+            let st = editor.styleBlock(s)
+            let ps = st.attribute(.paragraphStyle, at: st.length - 1, effectiveRange: nil) as? NSParagraphStyle
+            return ps?.headIndent ?? -1
+        }
+        let bullet = contentIndent("- item")
+        let number = contentIndent("1. item")
+        let todo = contentIndent("- [ ] item")
+        #expect(bullet > 0)
+        #expect(abs(bullet - number) < 0.5)
+        #expect(abs(bullet - todo) < 0.5)
+    }
+
+    @Test("Numbered marker is right-aligned into the icon slot")
+    @MainActor func numberedMarkerRightAligned() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("1. hello")
+        let ps = styled.attribute(.paragraphStyle, at: styled.length - 1, effectiveRange: nil) as? NSParagraphStyle
+        // The number sits in the slot: first-line indent is less than the
+        // shared content indent, so "1." right-aligns before the text.
+        #expect(ps != nil)
+        #expect(ps!.firstLineHeadIndent < ps!.headIndent)
     }
 
     @Test("Ordered list keeps its number and dims it")
