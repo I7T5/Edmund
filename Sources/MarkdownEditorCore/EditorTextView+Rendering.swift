@@ -9,11 +9,26 @@ extension NSAttributedString.Key {
 
 // MARK: - Word-Level Styling
 //
-// All blocks are styled the same way: content gets rich text attributes,
-// and inline delimiters are either hidden (cursor elsewhere) or dimmed
-// (cursor inside the token). Block-level markers are always dimmed.
+// This file is the heart of the inline live preview. `styleBlock` takes one
+// block's raw markdown, parses it into spans (SyntaxHighlighter), and returns
+// an NSAttributedString that decorates the *same* characters — the text storage
+// always holds the raw markdown, never a stripped version. Formatting is purely
+// attribute-based:
 //
-// The text storage always contains the raw markdown — no string mutation.
+//   - Content gets rich styling (bold/italic, code color, heading size, …).
+//   - Inline delimiters (`**`, `*`, `` ` ``, `$`) are hidden when the cursor is
+//     outside the token (near-zero font + clear color) and dimmed when inside.
+//   - Block markers (`#`, `>`, list bullets) are decorated or dimmed, never
+//     stripped, so editing stays WYSIWYG-ish and round-trips losslessly.
+//
+// Larger, self-contained pieces live in sibling files to keep this one focused:
+//   - EditorTextView+ListRendering.swift  — list/checkbox/bullet markers + indent
+//   - EditorTextView+TableSupport.swift   — table border blocks + row parsing
+//   - EditorTextView+MathRendering.swift  — `$…$` / `$$…$$` rendering + raw coloring
+//
+// What remains here: the styling primitives (fonts/colors/paragraph styles),
+// the `styleBlock` switch that dispatches per span kind, and the in-place
+// `restyleBlock` / `applyBlockStyle` used to re-style a single block on edits.
 
 extension EditorTextView {
 
@@ -36,31 +51,6 @@ extension EditorTextView {
     /// Font used to visually hide delimiter characters.
     /// Near-zero size makes them effectively invisible and zero-width.
     var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
-
-    /// Fixed padding before the bullet/number marker for all list items.
-    var listPadding: CGFloat { 16 }
-
-    /// Paragraph style for list items. A fixed padding pushes the marker
-    /// away from the left edge. Nesting beyond level 1 comes from raw
-    /// whitespace characters (deletable by the user). Wrapped lines use
-    /// `headIndent` to align with content after the marker.
-    private func listParagraphStyle(firstLineIndent: CGFloat, contentIndent: CGFloat) -> NSParagraphStyle {
-        let ps = NSMutableParagraphStyle()
-        ps.lineSpacing = bodyParagraphStyle.lineSpacing
-        ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
-        ps.firstLineHeadIndent = firstLineIndent
-        ps.headIndent = contentIndent
-        return ps
-    }
-
-    /// Nesting depth of a list item from its leading whitespace, using the
-    /// document's detected indent unit (a tab counts as one unit/level).
-    func listDepth(leadingWhitespace ws: String) -> Int {
-        let unit = max(1, listIndentUnit)
-        var cols = 0
-        for ch in ws { cols += (ch == "\t") ? unit : 1 }
-        return cols / unit
-    }
 
     /// Monospaced font for inline code spans, same size as body text.
     var inlineCodeFont: NSFont {
@@ -96,62 +86,6 @@ extension EditorTextView {
         return ps
     }
 
-    /// Colors raw LaTeX source: operators/commands (`_`, `^`, `\sum`, `\cdot`,
-    /// i.e. a backslash followed by letters) in the theme's math-operator color,
-    /// and numbers in the math-number color. Other characters keep their color.
-    private func colorMathSource(_ result: NSMutableAttributedString, range: NSRange) {
-        guard range.length > 0, range.upperBound <= result.length else { return }
-        let ns = result.string as NSString
-        let opColor = theme.mathOperatorColor
-        let numColor = theme.mathNumberColor
-        let backslash: unichar = 0x5C, underscore: unichar = 0x5F, caret: unichar = 0x5E
-
-        func isAlpha(_ c: unichar) -> Bool { (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) }
-        func isDigit(_ c: unichar) -> Bool { c >= 0x30 && c <= 0x39 }
-
-        var i = range.location
-        let end = range.upperBound
-        while i < end {
-            let c = ns.character(at: i)
-            if c == backslash {
-                // Command: backslash + following letters (\sum, \cdot). A
-                // backslash before a non-letter (\,, \{) colors just the pair.
-                var j = i + 1
-                while j < end, isAlpha(ns.character(at: j)) { j += 1 }
-                let cmdEnd = j > i + 1 ? j : min(i + 2, end)
-                result.addAttribute(.foregroundColor, value: opColor,
-                                    range: NSRange(location: i, length: cmdEnd - i))
-                i = cmdEnd
-            } else if c == underscore || c == caret {
-                result.addAttribute(.foregroundColor, value: opColor,
-                                    range: NSRange(location: i, length: 1))
-                i += 1
-            } else if isDigit(c) {
-                var j = i + 1
-                while j < end, isDigit(ns.character(at: j)) { j += 1 }
-                result.addAttribute(.foregroundColor, value: numColor,
-                                    range: NSRange(location: i, length: j - i))
-                i = j
-            } else {
-                i += 1
-            }
-        }
-    }
-
-    /// Centered paragraph style for display math. The vertical padding is applied
-    /// only to the attachment's (first) line — a multi-line `$$…$$` block is
-    /// several paragraphs in the text storage (its hidden inner lines), so
-    /// padding every paragraph would multiply into a huge gap.
-    private func displayMathParagraphStyle(padded: Bool) -> NSParagraphStyle {
-        let ps = NSMutableParagraphStyle()
-        ps.alignment = .center
-        ps.lineSpacing = 0
-        let pad = padded ? bodyFont.pointSize * 0.9 : 0
-        ps.paragraphSpacingBefore = pad
-        ps.paragraphSpacing = pad
-        return ps
-    }
-
     /// Paragraph style with a left border for blockquotes.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
@@ -184,178 +118,6 @@ extension EditorTextView {
             // Inline math hides its `$` like other inline tokens; display math
             // is block-level and handled specially.
             return !display
-        }
-    }
-
-    // MARK: - Checkbox Attachment
-
-    /// Creates an NSTextAttachment with a circle icon for checkbox rendering.
-    /// Unchecked: gray outlined circle. Checked: filled yellow circle with checkmark.
-    private func checkboxAttachment(checked: Bool) -> NSTextAttachment {
-        let fontSize = bodyFont.pointSize
-        let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
-            let inset: CGFloat = 1.0
-            let circleRect = bounds.insetBy(dx: inset, dy: inset)
-            let path = NSBezierPath(ovalIn: circleRect)
-
-            if checked {
-                NSColor.systemYellow.setFill()
-                path.fill()
-                // Checkmark
-                let check = NSBezierPath()
-                check.lineWidth = max(1.5, fontSize * 0.1)
-                check.lineCapStyle = .round
-                check.lineJoinStyle = .round
-                let cx = bounds.midX, cy = bounds.midY
-                let r = circleRect.width / 2
-                check.move(to: NSPoint(x: cx - r * 0.35, y: cy + r * 0.05))
-                check.line(to: NSPoint(x: cx - r * 0.08, y: cy + r * 0.35))
-                check.line(to: NSPoint(x: cx + r * 0.38, y: cy - r * 0.30))
-                NSColor.white.setStroke()
-                check.stroke()
-            } else {
-                let lw = max(1.5, fontSize * 0.08)
-                // Inset the stroke path so its outer edge matches the filled circle's edge.
-                let strokeRect = circleRect.insetBy(dx: lw / 2, dy: lw / 2)
-                let strokePath = NSBezierPath(ovalIn: strokeRect)
-                strokePath.lineWidth = lw
-                NSColor.tertiaryLabelColor.setStroke()
-                strokePath.stroke()
-            }
-            return true
-        }
-
-        let attachment = NSTextAttachment()
-        attachment.image = image
-        // Vertically center the circle relative to the text baseline
-        attachment.bounds = CGRect(x: 0, y: -fontSize * 0.15,
-                                   width: fontSize, height: fontSize)
-        return attachment
-    }
-
-    /// Creates an attachment with a small filled dot for unordered bullets,
-    /// sized to the same box as the checkbox circle so bullet and todo lists
-    /// share one indentation (Apple Notes style).
-    private func bulletAttachment() -> NSTextAttachment {
-        let fontSize = bodyFont.pointSize
-        let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
-            let r = fontSize * 0.13                 // small dot
-            let dot = NSRect(x: bounds.midX - r, y: bounds.midY - r, width: 2 * r, height: 2 * r)
-            NSColor.secondaryLabelColor.setFill()
-            NSBezierPath(ovalIn: dot).fill()
-            return true
-        }
-        let attachment = NSTextAttachment()
-        attachment.image = image
-        attachment.bounds = CGRect(x: 0, y: -fontSize * 0.15,
-                                   width: fontSize, height: fontSize)
-        return attachment
-    }
-
-    // MARK: - List Marker Styling
-
-    /// Applies custom non-active styling to a list item's delimiter range.
-    /// - Unordered bullet: dimmed
-    /// - Unchecked checkbox: circle icon (Apple Notes style)
-    /// - Checked checkbox: filled circle icon (Apple Notes style)
-    /// - Ordered: all dimmed
-    private func styleListDelimiter(
-        _ result: NSMutableAttributedString,
-        markdown: String,
-        delimiterRange dr: NSRange,
-        ordered: Bool,
-        checkbox: SyntaxHighlighter.Span.Kind.CheckboxState?
-    ) {
-        if ordered {
-            // Ordered lists: hide the leading whitespace (indent comes from the
-            // paragraph style) and dim the "N." marker.
-            let nsDelim = (markdown as NSString).substring(with: dr) as NSString
-            let digit = nsDelim.rangeOfCharacter(from: .decimalDigits)
-            let wsLen = digit.location == NSNotFound ? 0 : digit.location
-            if wsLen > 0 {
-                let before = NSRange(location: dr.location, length: wsLen)
-                result.addAttribute(.font, value: hiddenFont, range: before)
-                result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
-            }
-            let numStart = dr.location + wsLen
-            result.addAttribute(.foregroundColor, value: syntaxDimColor,
-                                range: NSRange(location: numStart, length: dr.upperBound - numStart))
-            return
-        }
-
-        if checkbox == nil {
-            // Plain bullet: render the dash as a small dot (Apple Notes style),
-            // sized to the checkbox box so all list types share one indent.
-            let nsDelim = (markdown as NSString).substring(with: dr) as NSString
-            let markerRel = nsDelim.rangeOfCharacter(from: CharacterSet(charactersIn: "-*+"))
-            guard markerRel.location != NSNotFound else {
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-                return
-            }
-            let markerAbs = dr.location + markerRel.location
-            // Hide any leading whitespace before the bullet (matches checkbox).
-            if markerRel.location > 0 {
-                let before = NSRange(location: dr.location, length: markerRel.location)
-                result.addAttribute(.font, value: hiddenFont, range: before)
-                result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
-            }
-            // Dot attachment on the bullet character.
-            result.addAttribute(.attachment, value: bulletAttachment(),
-                                range: NSRange(location: markerAbs, length: 1))
-            // Dim the trailing space(s) after the bullet.
-            let afterStart = markerAbs + 1
-            if afterStart < dr.upperBound {
-                result.addAttribute(.foregroundColor, value: syntaxDimColor,
-                                    range: NSRange(location: afterStart, length: dr.upperBound - afterStart))
-            }
-            return
-        }
-
-        guard let checkbox = checkbox else { return }
-
-        let nsDelim = (markdown as NSString).substring(with: dr) as NSString
-
-        // --- Checkbox item: replace [ ]/[x] with circle icon ---
-        let bracketOpen = nsDelim.range(of: "[")
-        guard bracketOpen.location != NSNotFound else {
-            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-            return
-        }
-        let afterOpen = NSRange(location: bracketOpen.upperBound,
-                                 length: nsDelim.length - bracketOpen.upperBound)
-        let bracketClose = nsDelim.range(of: "]", options: [], range: afterOpen)
-        guard bracketClose.location != NSNotFound else {
-            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-            return
-        }
-
-        let cbStart = dr.location + bracketOpen.location
-        let cbEnd = dr.location + bracketClose.upperBound
-
-        // Hide everything before `[` (the "- " prefix) — zero-width + clear
-        if bracketOpen.location > 0 {
-            let before = NSRange(location: dr.location, length: bracketOpen.location)
-            result.addAttribute(.font, value: hiddenFont, range: before)
-            result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
-        }
-
-        // Place circle attachment on `[` character
-        let attachment = checkboxAttachment(checked: checkbox == .checked)
-        result.addAttribute(.attachment, value: attachment,
-                            range: NSRange(location: cbStart, length: 1))
-
-        // Hide remaining checkbox characters (` ]`/`x]`) with zero-width + clear
-        let hideStart = cbStart + 1
-        if hideStart < cbEnd {
-            let hideRange = NSRange(location: hideStart, length: cbEnd - hideStart)
-            result.addAttribute(.font, value: hiddenFont, range: hideRange)
-            result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
-        }
-
-        // Dim everything after `]` (trailing space)
-        if cbEnd < dr.upperBound {
-            let after = NSRange(location: cbEnd, length: dr.upperBound - cbEnd)
-            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: after)
         }
     }
 
@@ -816,115 +578,3 @@ private class ThematicBreakTextBlock: NSTextBlock {
     }
 }
 
-// MARK: - TableRowTextBlock
-
-/// NSTextBlock subclass for table rows. Each row draws vertical border lines
-/// at column boundaries. The separator row also draws a horizontal hairline.
-/// All rows use the same column offsets so the vertical lines align into
-/// continuous column borders.
-private class TableRowTextBlock: NSTextBlock {
-
-    /// X offsets (from content area left edge) where vertical border lines are drawn.
-    var verticalLineXOffsets: [CGFloat] = []
-
-    /// Offset from frameRect.minX to the content area (= left padding).
-    var contentLeftOffset: CGFloat = 0
-
-    /// Whether to draw a horizontal hairline centered in the row (separator).
-    var drawHorizontalLine = false
-
-    /// Height override for the separator row (collapses to thin strip).
-    var heightOverride: CGFloat?
-
-    override func rectForLayout(
-        at startingPosition: CGPoint,
-        in rect: NSRect,
-        textContainer: NSTextContainer,
-        characterRange charRange: NSRange
-    ) -> NSRect {
-        var r = super.rectForLayout(at: startingPosition, in: rect,
-                                    textContainer: textContainer,
-                                    characterRange: charRange)
-        if let h = heightOverride {
-            r.size.height = h
-        }
-        return r
-    }
-
-    override func drawBackground(
-        withFrame frameRect: NSRect,
-        in controlView: NSView,
-        characterRange charRange: NSRange,
-        layoutManager: NSLayoutManager
-    ) {
-        NSColor.separatorColor.setStroke()
-        let baseX = frameRect.minX + contentLeftOffset
-
-        // Vertical borders at column boundaries
-        for xOffset in verticalLineXOffsets {
-            let path = NSBezierPath()
-            let x = round(baseX + xOffset) + 0.5
-            path.move(to: NSPoint(x: x, y: frameRect.minY))
-            path.line(to: NSPoint(x: x, y: frameRect.maxY))
-            path.lineWidth = 1
-            path.stroke()
-        }
-
-        // Horizontal separator
-        if drawHorizontalLine {
-            let path = NSBezierPath()
-            let y = round(frameRect.midY) + 0.5
-            path.move(to: NSPoint(x: frameRect.minX, y: y))
-            path.line(to: NSPoint(x: frameRect.maxX, y: y))
-            path.lineWidth = 1
-            path.stroke()
-        }
-    }
-}
-
-// MARK: - Table Helpers
-
-/// Splits a markdown table row into cell strings (text between pipes).
-/// Handles both `| A | B |` (outer pipes) and `A | B` (no outer pipes).
-private func splitTableRow(_ line: String) -> [String] {
-    var parts = line.components(separatedBy: "|")
-    // Remove empty/whitespace-only first/last from outer pipes.
-    if let first = parts.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
-        parts.removeFirst()
-    }
-    if let last = parts.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
-        parts.removeLast()
-    }
-    return parts
-}
-
-/// Returns `(start, end)` character ranges for each cell in a table line.
-/// Works with or without outer pipes. `start` is the first content char,
-/// `end` is one past the last content char (i.e., the next pipe or line end).
-private func cellRanges(in line: NSString) -> [(start: Int, end: Int)] {
-    var pipePos: [Int] = []
-    for ci in 0..<line.length {
-        if line.character(at: ci) == 0x7C { pipePos.append(ci) }
-    }
-    guard !pipePos.isEmpty else { return [] }
-
-    // Build edge list: either the pipe position or a virtual -1/length sentinel.
-    var edges: [Int] = []
-    if pipePos[0] == 0 {
-        edges.append(contentsOf: pipePos)
-    } else {
-        edges.append(-1)
-        edges.append(contentsOf: pipePos)
-    }
-    if pipePos.last != line.length - 1 {
-        edges.append(line.length)
-    }
-
-    var result: [(start: Int, end: Int)] = []
-    for ei in 0..<(edges.count - 1) {
-        let s = edges[ei] + 1
-        let e = edges[ei + 1]
-        if e > s { result.append((s, e)) }
-    }
-    return result
-}
