@@ -124,3 +124,32 @@ struct DisplayMathRenderingTests {
         #expect(!isHidden(at: 2, in: styled))             // source visible
     }
 }
+
+@Suite("Math — Fit to width")
+struct MathFitWidthTests {
+
+    // The test editor's container is 500 wide; usable width ≈ 500 − 2·5 padding.
+    private let cap: CGFloat = 490
+
+    @Test("A very wide equation is scaled down to the text width")
+    @MainActor func wideScaled() {
+        let editor = makeEditor()
+        let wide = "$$a_{10}x^{10}+a_9x^9+a_8x^8+a_7x^7+a_6x^6+a_5x^5+a_4x^4+a_3x^3+a_2x^2+a_1x+a_0$$"
+        let styled = editor.styleBlock(wide)
+        let att = styled.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        #expect(att != nil)
+        // Scaled to the cap (within a small tolerance), not its much larger natural width.
+        #expect((att?.bounds.width ?? 0) <= cap + 2)
+        #expect((att?.bounds.width ?? 0) >= cap - 12)
+    }
+
+    @Test("A normal-width equation is not scaled")
+    @MainActor func normalNotScaled() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("$$x+y$$")
+        let att = styled.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        #expect(att != nil)
+        let w = att?.bounds.width ?? 0
+        #expect(w > 0 && w < 200)        // comfortably under the cap
+    }
+}

@@ -61,11 +61,30 @@ extension EditorTextView {
 
         let attachment = NSTextAttachment()
         attachment.image = render.image
+
+        var width = render.image.size.width
+        var height = render.image.size.height
+        var descent = render.descent
+        // Interim until SwiftMath line-wrapping ships: if the equation is wider
+        // than the text area, scale it down to fit (otherwise leave it natural
+        // size). The baseline descent scales with it.
+        let maxWidth = availableContentWidth
+        if maxWidth > 0, width > maxWidth {
+            let scale = maxWidth / width
+            width *= scale
+            height *= scale
+            descent *= scale
+        }
         // Drop the image so its baseline (descent above the image bottom) lands
         // on the text baseline.
-        attachment.bounds = CGRect(x: 0, y: -render.descent,
-                                   width: render.image.size.width,
-                                   height: render.image.size.height)
+        attachment.bounds = CGRect(x: 0, y: -descent, width: width, height: height)
         return attachment
+    }
+
+    /// The usable text width for one line — the text container minus its line
+    /// fragment padding on both sides. Used to cap over-wide equations.
+    private var availableContentWidth: CGFloat {
+        guard let container = textContainer else { return 0 }
+        return container.containerSize.width - 2 * container.lineFragmentPadding
     }
 }
