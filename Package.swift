@@ -16,7 +16,7 @@ let package = Package(
                 .product(name: "SwiftMath", package: "SwiftMath"),
             ]),
         .executableTarget(
-            name: "MarkdownEditor",
+            name: "md",
             dependencies: ["MarkdownEditorCore"]),
         .testTarget(
             name: "MarkdownEditorTests",

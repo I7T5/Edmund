@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 APP_NAME="md"
 BUNDLE="build/${APP_NAME}.app"
-EXECUTABLE="MarkdownEditor"
+EXECUTABLE="md"
 
 echo "Building release binary..."
 swift build -c release 2>&1 | tail -3
