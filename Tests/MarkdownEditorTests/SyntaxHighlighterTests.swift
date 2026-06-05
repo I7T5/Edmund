@@ -891,13 +891,54 @@ struct InlineMathTests {
         #expect(spans.isEmpty)
     }
 
-    @Test("Display $$…$$ on one line is not treated as inline math (phase 2)")
-    func displayNotInline() {
-        #expect(mathSpans("$$x$$").isEmpty)
+    @Test("$$x$$ on one line is display math, not inline")
+    func singleLineDisplay() {
+        let spans = mathSpans("$$x$$")
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .math(display: true))
+        #expect(spans[0].contentRange == NSRange(location: 2, length: 1))
     }
 
     @Test("Opening $ followed by space is not math")
     func openFollowedBySpace() {
         #expect(mathSpans("a $ b $ c").isEmpty)
+    }
+}
+
+// MARK: - Display Math
+
+@Suite("SyntaxHighlighter — Display Math")
+struct DisplayMathTests {
+
+    private func mathSpans(_ text: String) -> [SyntaxHighlighter.Span] {
+        SyntaxHighlighter.parse(text).filter {
+            if case .math = $0.kind { return true }; return false
+        }
+    }
+
+    @Test("Multi-line $$…$$ block produces a display-math span")
+    func multiLineDisplay() {
+        let text = "$$\nx = y\n$$"
+        let spans = mathSpans(text)
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .math(display: true))
+        // full range spans the opening $$ through the closing $$.
+        #expect(spans[0].fullRange == NSRange(location: 0, length: (text as NSString).length))
+        // content is the text between the delimiters (newlines included).
+        let content = (text as NSString).substring(with: spans[0].contentRange)
+        #expect(content == "\nx = y\n")
+    }
+
+    @Test("Display delimiters are the two $$")
+    func displayDelimiters() {
+        let spans = mathSpans("$$a$$")
+        #expect(spans.count == 1)
+        #expect(spans[0].delimiterRanges == [NSRange(location: 0, length: 2),
+                                             NSRange(location: 3, length: 2)])
+    }
+
+    @Test("A normal paragraph is not display math")
+    func paragraphNotDisplay() {
+        #expect(mathSpans("just a paragraph").isEmpty)
     }
 }

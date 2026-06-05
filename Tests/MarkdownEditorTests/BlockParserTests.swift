@@ -290,6 +290,39 @@ struct BlockParserTests {
         #expect(blocks[0].content.contains("a\nb\nc"))
     }
 
+    @Test("Multi-line $$ display math merges into a single block")
+    func displayMathMerge() {
+        let text = "$$\nx = y\n$$"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "$$\nx = y\n$$")
+    }
+
+    @Test("One-line $$…$$ stays a single block")
+    func displayMathOneLine() {
+        let blocks = BlockParser.parse("$$ x = y $$")
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "$$ x = y $$")
+    }
+
+    @Test("Display math between paragraphs splits correctly")
+    func displayMathBetweenParagraphs() {
+        let text = "above\n$$\nx\n$$\nbelow"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 3)
+        #expect(blocks[0].content == "above")
+        #expect(blocks[1].content == "$$\nx\n$$")
+        #expect(blocks[2].content == "below")
+    }
+
+    @Test("Display math opener with content on the same line")
+    func displayMathOpenerWithContent() {
+        let text = "$$ x +\ny $$"
+        let blocks = BlockParser.parse(text)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "$$ x +\ny $$")
+    }
+
     @Test("Code fence range covers full text")
     func codeFenceRange() {
         let text = "```\nhello\n```"

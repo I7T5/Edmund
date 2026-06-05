@@ -58,3 +58,34 @@ struct InlineMathRenderingTests {
         #expect(color == NSColor.systemRed)
     }
 }
+
+@Suite("Math — Display rendering")
+struct DisplayMathRenderingTests {
+
+    @Test("Inactive $$…$$ shows an attachment and hides the source")
+    @MainActor func inactiveRendersAttachment() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("$$x+y$$")
+        // Attachment replaces the first `$`.
+        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) is NSTextAttachment)
+        // The second `$` of the opening delimiter is hidden too.
+        #expect(isHidden(at: 1, in: styled))
+        #expect(isHidden(at: 2, in: styled))             // content
+    }
+
+    @Test("Display math is centered")
+    @MainActor func displayIsCentered() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("$$x+y$$")
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps?.alignment == .center)
+    }
+
+    @Test("Active $$…$$ (cursor inside) shows raw, no attachment")
+    @MainActor func activeShowsRaw() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("$$x+y$$", cursorPosition: 3)
+        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) == nil)
+        #expect(!isHidden(at: 2, in: styled))             // source visible
+    }
+}

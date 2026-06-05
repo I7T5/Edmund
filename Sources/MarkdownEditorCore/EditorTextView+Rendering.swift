@@ -72,6 +72,20 @@ extension EditorTextView {
         return ps
     }
 
+    /// Centered paragraph style for display math. The vertical padding is applied
+    /// only to the attachment's (first) line — a multi-line `$$…$$` block is
+    /// several paragraphs in the text storage (its hidden inner lines), so
+    /// padding every paragraph would multiply into a huge gap.
+    private func displayMathParagraphStyle(padded: Bool) -> NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.alignment = .center
+        ps.lineSpacing = 0
+        let pad = padded ? bodyFont.pointSize * 0.9 : 0
+        ps.paragraphSpacingBefore = pad
+        ps.paragraphSpacing = pad
+        return ps
+    }
+
     /// Paragraph style with a left border for blockquotes.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
@@ -488,17 +502,36 @@ extension EditorTextView {
                     // inline math inside a heading matches the heading's size.
                     let contextFont = result.attribute(.font, at: span.fullRange.location,
                                                        effectiveRange: nil) as? NSFont ?? bodyFont
-                    if let attachment = mathAttachment(latex: latex, display: display,
+                    if let attachment = mathAttachment(latex: latex.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                       display: display,
                                                        fontSize: contextFont.pointSize) {
-                        // Hide the LaTeX source + closing `$`, show the rendered
-                        // image on the opening `$` (which the attachment replaces).
-                        let hideStart = span.contentRange.location
+                        // Show the rendered image on the first `$` (which the
+                        // attachment replaces) and hide everything after it — the
+                        // rest of the opening delimiter, the source, and the close.
+                        let hideStart = span.fullRange.location + 1
                         let hideLen = span.fullRange.upperBound - hideStart
                         let hideRange = NSRange(location: hideStart, length: hideLen)
                         result.addAttribute(.font, value: hiddenFont, range: hideRange)
                         result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
                         result.addAttribute(.attachment, value: attachment,
                                             range: NSRange(location: span.fullRange.location, length: 1))
+                        // Display math sits centered on its own line, with
+                        // vertical padding on the (first) line that carries the
+                        // attachment image.
+                        if display {
+                            let fullStr = result.string as NSString
+                            result.addAttribute(.paragraphStyle,
+                                                value: displayMathParagraphStyle(padded: false),
+                                                range: span.fullRange)
+                            let nl = fullStr.range(of: "\n", options: [], range: span.fullRange)
+                            let firstLine = nl.location == NSNotFound
+                                ? span.fullRange
+                                : NSRange(location: span.fullRange.location,
+                                          length: nl.location - span.fullRange.location + 1)
+                            result.addAttribute(.paragraphStyle,
+                                                value: displayMathParagraphStyle(padded: true),
+                                                range: firstLine)
+                        }
                     } else {
                         // Invalid LaTeX: surface the raw source in monospace, tinted.
                         result.addAttribute(.font, value: inlineCodeFont, range: span.fullRange)
