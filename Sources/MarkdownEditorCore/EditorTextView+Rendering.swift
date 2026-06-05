@@ -1,5 +1,12 @@
 import AppKit
 
+extension NSAttributedString.Key {
+    /// Stores a link's destination (URL string) on its visible text so a
+    /// cmd+click can follow it. Kept separate from the system `.link` attribute
+    /// to avoid NSTextView's built-in link styling/cursor behavior.
+    static let editorLinkURL = NSAttributedString.Key("EditorLinkURL")
+}
+
 // MARK: - Word-Level Styling
 //
 // All blocks are styled the same way: content gets rich text attributes,
@@ -349,10 +356,13 @@ extension EditorTextView {
                 let heading = NSFontManager.shared.convert(sized, toHaveTrait: .boldFontMask)
                 result.addAttribute(.font, value: heading, range: span.fullRange)
 
-            case .link:
+            case .link(let destination):
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
                 result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
+                if !destination.isEmpty {
+                    result.addAttribute(.editorLinkURL, value: destination, range: span.contentRange)
+                }
 
             case .image:
                 guard span.contentRange.upperBound <= result.length else { continue }

@@ -217,6 +217,17 @@ struct EditorStylingTests {
         #expect(underline != nil)
     }
 
+    @Test("Link text carries its destination URL for cmd+click")
+    @MainActor func linkCarriesURL() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("[text](https://example.com)")
+        // "text" is at positions 1-4; the URL attribute should cover it.
+        let dest = styled.attribute(.editorLinkURL, at: 1, effectiveRange: nil) as? String
+        #expect(dest == "https://example.com")
+        // The delimiters/destination source carry no URL attribute.
+        #expect(styled.attribute(.editorLinkURL, at: 0, effectiveRange: nil) == nil)
+    }
+
     @Test("Image delimiters are hidden when cursor is outside")
     @MainActor func imageDelimitersHidden() {
         let editor = makeEditor()

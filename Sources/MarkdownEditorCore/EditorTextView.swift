@@ -264,6 +264,39 @@ public class EditorTextView: NSTextView {
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
+    // MARK: - Link Following
+
+    /// Cmd+click on a link's text follows it; any other click edits normally.
+    public override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command), let url = linkURL(at: event) {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    /// The destination URL of the link under a mouse event, or nil if the click
+    /// doesn't land directly on link text.
+    private func linkURL(at event: NSEvent) -> URL? {
+        guard let lm = layoutManager, let container = textContainer,
+              let storage = textStorage, storage.length > 0 else { return nil }
+
+        var point = convert(event.locationInWindow, from: nil)
+        point.x -= textContainerOrigin.x
+        point.y -= textContainerOrigin.y
+
+        let glyphIndex = lm.glyphIndex(for: point, in: container)
+        // Reject clicks past the end of a line (which still resolve to a glyph).
+        let glyphRect = lm.boundingRect(forGlyphRange: NSRange(location: glyphIndex, length: 1), in: container)
+        guard glyphRect.contains(point) else { return nil }
+
+        let charIndex = lm.characterIndexForGlyph(at: glyphIndex)
+        guard charIndex < storage.length,
+              let dest = storage.attribute(.editorLinkURL, at: charIndex, effectiveRange: nil) as? String
+        else { return nil }
+        return URL(string: dest)
+    }
+
     // MARK: - Helpers
 
     func currentCursorInRaw() -> Int {
