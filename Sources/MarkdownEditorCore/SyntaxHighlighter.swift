@@ -33,6 +33,7 @@ public enum SyntaxHighlighter {
             case table
             case thematicBreak
             case lineBreak
+            case math(display: Bool)
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -52,6 +53,9 @@ public enum SyntaxHighlighter {
 
         // ==highlight== is not supported by swift-markdown; parse with regex.
         parseHighlight(text, into: &walker.spans)
+
+        // $…$ inline math (display $$…$$ is handled per-block in a later phase).
+        parseMath(text, into: &walker.spans)
 
         // Trailing backslash line break (single-line blocks only).
         parseLineBreak(text, into: &walker.spans)
@@ -87,6 +91,75 @@ public enum SyntaxHighlighter {
                 contentRange: content,
                 delimiterRanges: [openDelim, closeDelim]
             ))
+        }
+    }
+
+    /// Scans for inline `$…$` math. Uses Pandoc-style disambiguation so prose
+    /// like "it cost $5 to $10" is left alone:
+    ///   - the opening `$` is immediately followed by a non-space, non-`$` char,
+    ///   - the closing `$` is immediately preceded by a non-space char and is
+    ///     not followed by a digit,
+    ///   - `\$` is a literal escape, `$$` is skipped (display math, later phase),
+    ///   - inline math never spans a newline.
+    private static func parseMath(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        let n = ns.length
+        let dollar: unichar = 0x24, backslash: unichar = 0x5C, newline: unichar = 0x0A
+
+        func isSpace(_ c: unichar) -> Bool { c == 0x20 || c == 0x09 }
+        func isDigit(_ c: unichar) -> Bool { c >= 0x30 && c <= 0x39 }
+
+        var i = 0
+        while i < n {
+            let c = ns.character(at: i)
+            if c == backslash { i += 2; continue }   // skip escaped char
+            if c != dollar { i += 1; continue }
+            // Skip display `$$` (handled per-block in a later phase).
+            if i + 1 < n && ns.character(at: i + 1) == dollar { i += 2; continue }
+            // Opening `$`: must be followed by a non-space, non-`$` character.
+            guard i + 1 < n else { break }
+            let next = ns.character(at: i + 1)
+            if isSpace(next) || next == dollar || next == newline { i += 1; continue }
+
+            // Find the closing `$`.
+            var j = i + 1
+            var close = -1
+            while j < n {
+                let cj = ns.character(at: j)
+                if cj == backslash { j += 2; continue }
+                if cj == newline { break }           // inline math stays on one line
+                if cj == dollar {
+                    let prev = ns.character(at: j - 1)
+                    let isDouble = j + 1 < n && ns.character(at: j + 1) == dollar
+                    let nextIsDigit = j + 1 < n && isDigit(ns.character(at: j + 1))
+                    if !isDouble && !isSpace(prev) && !nextIsDigit { close = j; break }
+                }
+                j += 1
+            }
+
+            guard close > i + 1 else { i += 1; continue }
+
+            let full = NSRange(location: i, length: close - i + 1)
+            // Don't match inside code spans.
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock:
+                    return existing.fullRange.location <= full.location
+                        && existing.fullRange.upperBound >= full.upperBound
+                default:
+                    return false
+                }
+            }
+            if !overlaps {
+                spans.append(Span(
+                    kind: .math(display: false),
+                    fullRange: full,
+                    contentRange: NSRange(location: i + 1, length: close - i - 1),
+                    delimiterRanges: [NSRange(location: i, length: 1),
+                                      NSRange(location: close, length: 1)]
+                ))
+            }
+            i = close + 1
         }
     }
 

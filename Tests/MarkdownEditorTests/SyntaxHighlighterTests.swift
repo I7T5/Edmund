@@ -843,3 +843,61 @@ struct LineBreakTests {
         #expect(breaks[0].delimiterRanges == [NSRange(location: 4, length: 1)])
     }
 }
+
+// MARK: - Inline Math
+
+@Suite("SyntaxHighlighter — Inline Math")
+struct InlineMathTests {
+
+    private func mathSpans(_ text: String) -> [SyntaxHighlighter.Span] {
+        SyntaxHighlighter.parse(text).filter {
+            if case .math = $0.kind { return true }; return false
+        }
+    }
+
+    @Test("$x$ produces an inline math span with correct ranges")
+    func basicInline() {
+        let spans = mathSpans("$x$")
+        #expect(spans.count == 1)
+        let s = spans[0]
+        #expect(s.kind == .math(display: false))
+        #expect(s.fullRange == NSRange(location: 0, length: 3))
+        #expect(s.contentRange == NSRange(location: 1, length: 1))
+        #expect(s.delimiterRanges == [NSRange(location: 0, length: 1),
+                                      NSRange(location: 2, length: 1)])
+    }
+
+    @Test("Math in the middle of text has the right offset")
+    func mathInMiddle() {
+        let spans = mathSpans("energy $E=mc^2$ here")
+        #expect(spans.count == 1)
+        #expect(spans[0].fullRange == NSRange(location: 7, length: 8))
+        #expect(spans[0].contentRange == NSRange(location: 8, length: 6))
+    }
+
+    @Test("Prose dollar amounts are not matched")
+    func proseDollarsIgnored() {
+        #expect(mathSpans("it cost $5 to $10 today").isEmpty)
+    }
+
+    @Test("Escaped \\$ is not a delimiter")
+    func escapedDollar() {
+        #expect(mathSpans("price is \\$5 each").isEmpty)
+    }
+
+    @Test("$ inside inline code is not matched")
+    func dollarsInCode() {
+        let spans = mathSpans("`$x$`")
+        #expect(spans.isEmpty)
+    }
+
+    @Test("Display $$…$$ on one line is not treated as inline math (phase 2)")
+    func displayNotInline() {
+        #expect(mathSpans("$$x$$").isEmpty)
+    }
+
+    @Test("Opening $ followed by space is not math")
+    func openFollowedBySpace() {
+        #expect(mathSpans("a $ b $ c").isEmpty)
+    }
+}

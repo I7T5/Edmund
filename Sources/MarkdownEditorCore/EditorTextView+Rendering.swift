@@ -100,6 +100,10 @@ extension EditorTextView {
             return true
         case .listItem, .table, .codeBlock, .thematicBreak:
             return false
+        case .math(let display):
+            // Inline math hides its `$` like other inline tokens; display math
+            // is block-level and handled specially.
+            return !display
         }
     }
 
@@ -472,6 +476,36 @@ extension EditorTextView {
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)
                 }
 
+            case .math(let display):
+                guard span.fullRange.upperBound <= result.length else { continue }
+                if cursorInToken {
+                    // Active: show the raw LaTeX in monospace (like inline code);
+                    // `$` delimiters are dimmed in the loop below.
+                    result.addAttribute(.font, value: inlineCodeFont, range: span.fullRange)
+                } else {
+                    let latex = (markdown as NSString).substring(with: span.contentRange)
+                    // Size the math to the font already applied at this location, so
+                    // inline math inside a heading matches the heading's size.
+                    let contextFont = result.attribute(.font, at: span.fullRange.location,
+                                                       effectiveRange: nil) as? NSFont ?? bodyFont
+                    if let attachment = mathAttachment(latex: latex, display: display,
+                                                       fontSize: contextFont.pointSize) {
+                        // Hide the LaTeX source + closing `$`, show the rendered
+                        // image on the opening `$` (which the attachment replaces).
+                        let hideStart = span.contentRange.location
+                        let hideLen = span.fullRange.upperBound - hideStart
+                        let hideRange = NSRange(location: hideStart, length: hideLen)
+                        result.addAttribute(.font, value: hiddenFont, range: hideRange)
+                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
+                        result.addAttribute(.attachment, value: attachment,
+                                            range: NSRange(location: span.fullRange.location, length: 1))
+                    } else {
+                        // Invalid LaTeX: surface the raw source in monospace, tinted.
+                        result.addAttribute(.font, value: inlineCodeFont, range: span.fullRange)
+                        result.addAttribute(.foregroundColor, value: NSColor.systemRed, range: span.fullRange)
+                    }
+                }
+
             case .lineBreak:
                 break  // Delimiter handling done below
             }
@@ -500,6 +534,12 @@ extension EditorTextView {
                         styleListDelimiter(result, markdown: markdown,
                                            delimiterRange: dr, ordered: ordered,
                                            checkbox: checkbox)
+                    }
+                } else if case .math = span.kind {
+                    // Math: when active, dim the `$`; when not, the attachment and
+                    // source-hiding are already applied in content styling — leave them.
+                    if cursorInToken {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
                 } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
