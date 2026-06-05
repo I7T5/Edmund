@@ -34,7 +34,13 @@ public class EditorTextView: NSTextView {
 
     // MARK: - State (internal for @testable import)
 
-    public var rawSource: String = ""
+    public var rawSource: String = "" {
+        didSet { listIndentUnit = Self.detectListIndentUnit(rawSource) }
+    }
+    /// Columns of leading whitespace that make up one list-nesting level,
+    /// detected from the document (the smallest indent used, or one tab).
+    /// Defaults to 4. Used to map a list item's indentation to a nesting depth.
+    public var listIndentUnit: Int = 4
     /// Line ending of the most recently loaded content. The buffer itself is
     /// always LF; this is remembered so saves preserve the file's style.
     public var originalLineEnding: LineEnding = .lf
@@ -268,6 +274,41 @@ public class EditorTextView: NSTextView {
 
     func currentCursorInRaw() -> Int {
         return selectedRange().location
+    }
+
+    /// Detects the indentation unit (columns per nesting level) used by list
+    /// items in `source`: the smallest positive leading-space count, or 4 when
+    /// tabs are used (a tab counts as one level) or nothing is found.
+    static func detectListIndentUnit(_ source: String) -> Int {
+        var minSpaces = Int.max
+        for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+            var spaces = 0
+            var sawTab = false
+            for ch in line {
+                if ch == " " { spaces += 1 }
+                else if ch == "\t" { sawTab = true; break }
+                else { break }
+            }
+            let rest = line.drop(while: { $0 == " " || $0 == "\t" })
+            guard startsWithListMarker(rest) else { continue }
+            if sawTab { return 4 }
+            if spaces > 0 { minSpaces = min(minSpaces, spaces) }
+        }
+        return minSpaces == Int.max ? 4 : minSpaces
+    }
+
+    private static func startsWithListMarker(_ s: Substring) -> Bool {
+        guard let first = s.first else { return false }
+        if first == "-" || first == "*" || first == "+" {
+            return s.dropFirst().first == " "
+        }
+        if first.isNumber {
+            let afterDigits = s.drop(while: { $0.isNumber })
+            if let d = afterDigits.first, d == "." || d == ")" {
+                return afterDigits.dropFirst().first == " "
+            }
+        }
+        return false
     }
 
     // MARK: - Content Loading (called by Document)

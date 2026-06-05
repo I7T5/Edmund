@@ -46,6 +46,15 @@ extension EditorTextView {
         return ps
     }
 
+    /// Nesting depth of a list item from its leading whitespace, using the
+    /// document's detected indent unit (a tab counts as one unit/level).
+    func listDepth(leadingWhitespace ws: String) -> Int {
+        let unit = max(1, listIndentUnit)
+        var cols = 0
+        for ch in ws { cols += (ch == "\t") ? unit : 1 }
+        return cols / unit
+    }
+
     /// Monospaced font for inline code spans, same size as body text.
     var inlineCodeFont: NSFont {
         NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
@@ -243,8 +252,19 @@ extension EditorTextView {
         checkbox: SyntaxHighlighter.Span.Kind.CheckboxState?
     ) {
         if ordered {
-            // Ordered lists: dim the "N." marker (alignment via paragraph style).
-            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+            // Ordered lists: hide the leading whitespace (indent comes from the
+            // paragraph style) and dim the "N." marker.
+            let nsDelim = (markdown as NSString).substring(with: dr) as NSString
+            let digit = nsDelim.rangeOfCharacter(from: .decimalDigits)
+            let wsLen = digit.location == NSNotFound ? 0 : digit.location
+            if wsLen > 0 {
+                let before = NSRange(location: dr.location, length: wsLen)
+                result.addAttribute(.font, value: hiddenFont, range: before)
+                result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
+            }
+            let numStart = dr.location + wsLen
+            result.addAttribute(.foregroundColor, value: syntaxDimColor,
+                                range: NSRange(location: numStart, length: dr.upperBound - numStart))
             return
         }
 
@@ -409,23 +429,36 @@ extension EditorTextView {
 
             case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                // All list types share one content indent so their text lines up
-                // (Apple Notes style). Unordered markers render as a pointSize-wide
-                // icon + space (the "slot"); ordered markers are raw "N." text that
-                // we right-align into the same slot via the first-line indent.
+                // Indentation model (Apple Notes style): each nesting level steps
+                // in by one marker "slot" (pointSize-wide icon + a space), so a
+                // child's marker lands under its parent's content. All list types
+                // share the same slot, so their text lines up. The leading
+                // whitespace is hidden (by the delimiter styling) and the indent
+                // comes entirely from the paragraph style.
                 let markerStr = (markdown as NSString).substring(to: span.contentRange.location)
                 let leadingWS = markerStr.prefix(while: { $0 == " " || $0 == "\t" })
-                let wsWidth = (String(leadingWS) as NSString).size(withAttributes: [.font: bodyFont]).width
                 let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
                 let slotWidth = bodyFont.pointSize + spaceWidth
-                let contentIndent = listPadding + wsWidth + slotWidth
                 let firstLineIndent: CGFloat
-                if ordered {
-                    let numText = String(markerStr.dropFirst(leadingWS.count))   // "N. "
-                    let numWidth = (numText as NSString).size(withAttributes: [.font: bodyFont]).width
-                    firstLineIndent = max(2, listPadding + slotWidth - numWidth)
-                } else {
+                let contentIndent: CGFloat
+                if cursorInToken {
+                    // Active (editing): show raw; let the leading whitespace
+                    // provide the indent so the source reads naturally.
                     firstLineIndent = listPadding
+                    contentIndent = listPadding
+                } else {
+                    let depth = listDepth(leadingWhitespace: String(leadingWS))
+                    let markerStart = listPadding + CGFloat(depth) * slotWidth
+                    contentIndent = markerStart + slotWidth
+                    if ordered {
+                        // Right-align the "N." into the slot so its content lands
+                        // at contentIndent (also aligns multi-digit numbers).
+                        let numText = String(markerStr.dropFirst(leadingWS.count))
+                        let numWidth = (numText as NSString).size(withAttributes: [.font: bodyFont]).width
+                        firstLineIndent = max(2, contentIndent - numWidth)
+                    } else {
+                        firstLineIndent = markerStart
+                    }
                 }
                 // Apply paragraph style from position 0 — NSTextView uses the paragraph
                 // style from the first character of a paragraph.

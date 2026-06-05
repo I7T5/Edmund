@@ -411,6 +411,30 @@ struct EditorStylingTests {
         #expect(ps!.firstLineHeadIndent < ps!.headIndent)
     }
 
+    @Test("Indent unit is detected from the document")
+    @MainActor func indentUnitDetection() {
+        #expect(EditorTextView.detectListIndentUnit("- a\n  - b") == 2)
+        #expect(EditorTextView.detectListIndentUnit("- a\n    - b") == 4)
+        #expect(EditorTextView.detectListIndentUnit("- a\n- b") == 4)      // no nesting → default
+        #expect(EditorTextView.detectListIndentUnit("- a\n\t- b") == 4)    // tab → one level
+    }
+
+    @Test("A nested list item's marker sits under its parent's content")
+    @MainActor func nestedMarkerUnderParentContent() {
+        let editor = makeEditor()
+        editor.listIndentUnit = 2
+        func style(_ s: String) -> NSParagraphStyle? {
+            let st = editor.styleBlock(s)
+            return st.attribute(.paragraphStyle, at: st.length - 1, effectiveRange: nil) as? NSParagraphStyle
+        }
+        let parent = style("- parent")
+        let child = style("  - child")
+        #expect(parent != nil && child != nil)
+        // The child's marker (firstLineHeadIndent) lands at the parent's content
+        // (headIndent), within a small tolerance.
+        #expect(abs(child!.firstLineHeadIndent - parent!.headIndent) < 1.0)
+    }
+
     @Test("Ordered list keeps its number and dims it")
     @MainActor func orderedListDimmed() {
         let editor = makeEditor()
