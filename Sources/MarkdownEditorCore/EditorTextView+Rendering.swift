@@ -72,6 +72,48 @@ extension EditorTextView {
         return ps
     }
 
+    /// Colors raw LaTeX source: operators/commands (`_`, `^`, `\sum`, `\cdot`,
+    /// i.e. a backslash followed by letters) in the theme's math-operator color,
+    /// and numbers in the math-number color. Other characters keep their color.
+    private func colorMathSource(_ result: NSMutableAttributedString, range: NSRange) {
+        guard range.length > 0, range.upperBound <= result.length else { return }
+        let ns = result.string as NSString
+        let opColor = theme.mathOperatorColor
+        let numColor = theme.mathNumberColor
+        let backslash: unichar = 0x5C, underscore: unichar = 0x5F, caret: unichar = 0x5E
+
+        func isAlpha(_ c: unichar) -> Bool { (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) }
+        func isDigit(_ c: unichar) -> Bool { c >= 0x30 && c <= 0x39 }
+
+        var i = range.location
+        let end = range.upperBound
+        while i < end {
+            let c = ns.character(at: i)
+            if c == backslash {
+                // Command: backslash + following letters (\sum, \cdot). A
+                // backslash before a non-letter (\,, \{) colors just the pair.
+                var j = i + 1
+                while j < end, isAlpha(ns.character(at: j)) { j += 1 }
+                let cmdEnd = j > i + 1 ? j : min(i + 2, end)
+                result.addAttribute(.foregroundColor, value: opColor,
+                                    range: NSRange(location: i, length: cmdEnd - i))
+                i = cmdEnd
+            } else if c == underscore || c == caret {
+                result.addAttribute(.foregroundColor, value: opColor,
+                                    range: NSRange(location: i, length: 1))
+                i += 1
+            } else if isDigit(c) {
+                var j = i + 1
+                while j < end, isDigit(ns.character(at: j)) { j += 1 }
+                result.addAttribute(.foregroundColor, value: numColor,
+                                    range: NSRange(location: i, length: j - i))
+                i = j
+            } else {
+                i += 1
+            }
+        }
+    }
+
     /// Centered paragraph style for display math. The vertical padding is applied
     /// only to the attachment's (first) line — a multi-line `$$…$$` block is
     /// several paragraphs in the text storage (its hidden inner lines), so
@@ -493,9 +535,10 @@ extension EditorTextView {
             case .math(let display):
                 guard span.fullRange.upperBound <= result.length else { continue }
                 if cursorInToken {
-                    // Active: show the raw LaTeX in monospace (like inline code);
-                    // `$` delimiters are dimmed in the loop below.
+                    // Active: show the raw LaTeX in monospace (like inline code),
+                    // with LaTeX syntax coloring; `$` delimiters dimmed below.
                     result.addAttribute(.font, value: inlineCodeFont, range: span.fullRange)
+                    colorMathSource(result, range: span.contentRange)
                 } else {
                     let latex = (markdown as NSString).substring(with: span.contentRange)
                     // Size the math to the font already applied at this location, so
