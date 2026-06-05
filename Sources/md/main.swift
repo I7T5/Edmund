@@ -10,14 +10,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
 
-        // Open file from command-line argument.
-        // (NSDocumentController automatically opens an untitled document on launch,
-        //  so we only need to act when a file path is provided.)
+        // Open file from command-line argument. When a file is given,
+        // `applicationShouldOpenUntitledFile` suppresses the otherwise-automatic
+        // blank document, so we don't end up with two windows.
         let args = CommandLine.arguments
         if args.count > 1 {
             let url = URL(fileURLWithPath: args[1])
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
+    }
+
+    // Auto-open a blank document on launch only when no file was passed on the
+    // command line (otherwise the file arg + the blank doc make two windows).
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        CommandLine.arguments.count <= 1
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -55,7 +61,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
-        panel.begin { response in
+
+        let complete: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url else { return }
             NSDocumentController.shared.openDocument(
                 withContentsOf: url, display: true
@@ -64,6 +71,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     NSAlert(error: error).runModal()
                 }
             }
+        }
+
+        // Attach the panel to the front window as a sheet so it's always visible
+        // — a free-floating panel can open off-screen or behind the window
+        // (the app's windows can launch off-screen), which looks like a hang.
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            panel.beginSheetModal(for: window, completionHandler: complete)
+        } else {
+            panel.begin(completionHandler: complete)
         }
     }
 
