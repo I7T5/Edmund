@@ -44,13 +44,22 @@ extension EditorTextView {
     /// away from the left edge. Nesting beyond level 1 comes from raw
     /// whitespace characters (deletable by the user). Wrapped lines use
     /// `headIndent` to align with content after the marker.
-    private func listParagraphStyle(markerWidth: CGFloat = 0) -> NSParagraphStyle {
+    private func listParagraphStyle(firstLineIndent: CGFloat, contentIndent: CGFloat) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
-        ps.firstLineHeadIndent = listPadding
-        ps.headIndent = listPadding + markerWidth
+        ps.firstLineHeadIndent = firstLineIndent
+        ps.headIndent = contentIndent
         return ps
+    }
+
+    /// Nesting depth of a list item from its leading whitespace, using the
+    /// document's detected indent unit (a tab counts as one unit/level).
+    func listDepth(leadingWhitespace ws: String) -> Int {
+        let unit = max(1, listIndentUnit)
+        var cols = 0
+        for ch in ws { cols += (ch == "\t") ? unit : 1 }
+        return cols / unit
     }
 
     /// Monospaced font for inline code spans, same size as body text.
@@ -224,6 +233,25 @@ extension EditorTextView {
         return attachment
     }
 
+    /// Creates an attachment with a small filled dot for unordered bullets,
+    /// sized to the same box as the checkbox circle so bullet and todo lists
+    /// share one indentation (Apple Notes style).
+    private func bulletAttachment() -> NSTextAttachment {
+        let fontSize = bodyFont.pointSize
+        let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
+            let r = fontSize * 0.13                 // small dot
+            let dot = NSRect(x: bounds.midX - r, y: bounds.midY - r, width: 2 * r, height: 2 * r)
+            NSColor.secondaryLabelColor.setFill()
+            NSBezierPath(ovalIn: dot).fill()
+            return true
+        }
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        attachment.bounds = CGRect(x: 0, y: -fontSize * 0.15,
+                                   width: fontSize, height: fontSize)
+        return attachment
+    }
+
     // MARK: - List Marker Styling
 
     /// Applies custom non-active styling to a list item's delimiter range.
@@ -238,9 +266,48 @@ extension EditorTextView {
         ordered: Bool,
         checkbox: SyntaxHighlighter.Span.Kind.CheckboxState?
     ) {
-        if ordered || checkbox == nil {
-            // Ordered lists and plain bullets: dim everything
-            result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+        if ordered {
+            // Ordered lists: hide the leading whitespace (indent comes from the
+            // paragraph style) and dim the "N." marker.
+            let nsDelim = (markdown as NSString).substring(with: dr) as NSString
+            let digit = nsDelim.rangeOfCharacter(from: .decimalDigits)
+            let wsLen = digit.location == NSNotFound ? 0 : digit.location
+            if wsLen > 0 {
+                let before = NSRange(location: dr.location, length: wsLen)
+                result.addAttribute(.font, value: hiddenFont, range: before)
+                result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
+            }
+            let numStart = dr.location + wsLen
+            result.addAttribute(.foregroundColor, value: syntaxDimColor,
+                                range: NSRange(location: numStart, length: dr.upperBound - numStart))
+            return
+        }
+
+        if checkbox == nil {
+            // Plain bullet: render the dash as a small dot (Apple Notes style),
+            // sized to the checkbox box so all list types share one indent.
+            let nsDelim = (markdown as NSString).substring(with: dr) as NSString
+            let markerRel = nsDelim.rangeOfCharacter(from: CharacterSet(charactersIn: "-*+"))
+            guard markerRel.location != NSNotFound else {
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                return
+            }
+            let markerAbs = dr.location + markerRel.location
+            // Hide any leading whitespace before the bullet (matches checkbox).
+            if markerRel.location > 0 {
+                let before = NSRange(location: dr.location, length: markerRel.location)
+                result.addAttribute(.font, value: hiddenFont, range: before)
+                result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
+            }
+            // Dot attachment on the bullet character.
+            result.addAttribute(.attachment, value: bulletAttachment(),
+                                range: NSRange(location: markerAbs, length: 1))
+            // Dim the trailing space(s) after the bullet.
+            let afterStart = markerAbs + 1
+            if afterStart < dr.upperBound {
+                result.addAttribute(.foregroundColor, value: syntaxDimColor,
+                                    range: NSRange(location: afterStart, length: dr.upperBound - afterStart))
+            }
             return
         }
 
@@ -380,22 +447,42 @@ extension EditorTextView {
 
             case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                // Measure marker width for hanging indent. For checkbox items,
-                // measure the VISUAL width (hidden prefix + circle attachment),
-                // not the raw text width.
+                // Indentation model (Apple Notes style): each nesting level steps
+                // in by one marker "slot" (pointSize-wide icon + a space), so a
+                // child's marker lands under its parent's content. All list types
+                // share the same slot, so their text lines up. The leading
+                // whitespace is hidden (by the delimiter styling) and the indent
+                // comes entirely from the paragraph style.
                 let markerStr = (markdown as NSString).substring(to: span.contentRange.location)
-                let markerWidth: CGFloat
-                if checkbox != nil {
-                    let leadingWS = markerStr.prefix(while: { $0 == " " || $0 == "\t" })
-                    let wsWidth = (String(leadingWS) as NSString).size(withAttributes: [.font: bodyFont]).width
-                    let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
-                    markerWidth = wsWidth + bodyFont.pointSize + spaceWidth
+                let leadingWS = markerStr.prefix(while: { $0 == " " || $0 == "\t" })
+                let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
+                let slotWidth = bodyFont.pointSize + spaceWidth
+                let firstLineIndent: CGFloat
+                let contentIndent: CGFloat
+                if cursorInToken {
+                    // Active (editing): show raw; let the leading whitespace
+                    // provide the indent so the source reads naturally.
+                    firstLineIndent = listPadding
+                    contentIndent = listPadding
                 } else {
-                    markerWidth = (markerStr as NSString).size(withAttributes: [.font: bodyFont]).width
+                    let depth = listDepth(leadingWhitespace: String(leadingWS))
+                    let markerStart = listPadding + CGFloat(depth) * slotWidth
+                    contentIndent = markerStart + slotWidth
+                    if ordered {
+                        // Right-align the "N." into the slot so its content lands
+                        // at contentIndent (also aligns multi-digit numbers).
+                        let numText = String(markerStr.dropFirst(leadingWS.count))
+                        let numWidth = (numText as NSString).size(withAttributes: [.font: bodyFont]).width
+                        firstLineIndent = max(2, contentIndent - numWidth)
+                    } else {
+                        firstLineIndent = markerStart
+                    }
                 }
                 // Apply paragraph style from position 0 — NSTextView uses the paragraph
                 // style from the first character of a paragraph.
-                result.addAttribute(.paragraphStyle, value: listParagraphStyle(markerWidth: markerWidth), range: NSRange(location: 0, length: result.length))
+                result.addAttribute(.paragraphStyle,
+                                    value: listParagraphStyle(firstLineIndent: firstLineIndent, contentIndent: contentIndent),
+                                    range: NSRange(location: 0, length: result.length))
                 // Strikethrough checked items
                 if !ordered, checkbox == .checked {
                     result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)

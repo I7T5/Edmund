@@ -195,7 +195,7 @@ struct BlockStylingNonActiveTests {
 
     // MARK: - Bullet Lists
 
-    @Test("Non-active list item has raw text, dimmed marker, indent")
+    @Test("Non-active list item has raw text, bullet dot, indent")
     @MainActor func nonActiveBulletList() {
         let editor = makeEditor()
         editor.loadContent("- apples\nother")
@@ -204,11 +204,10 @@ struct BlockStylingNonActiveTests {
         // Text unchanged
         let text = displayText(for: 0, in: editor)
         #expect(text == "- apples")
-        // Bullet `-` is dimmed
-        let delimColor = fgColor(at: 0, in: editor)
-        #expect(delimColor == NSColor.tertiaryLabelColor)
-        // Has indent
+        // Bullet `-` renders as a dot attachment
         let a = attrs(at: 0, in: editor)
+        #expect(a[.attachment] is NSTextAttachment)
+        // Has indent
         let ps = a[.paragraphStyle] as? NSParagraphStyle
         #expect(ps != nil)
         #expect(ps!.headIndent > 0)
@@ -273,7 +272,7 @@ struct BlockStylingNonActiveTests {
 
     // MARK: - Multi-Level Lists
 
-    @Test("Non-active nested bullet (2 spaces) has dimmed marker")
+    @Test("Non-active nested bullet (2 spaces) renders as a dot")
     @MainActor func nonActiveNestedBullet() {
         let editor = makeEditor()
         editor.loadContent("  - nested\nother")
@@ -281,11 +280,11 @@ struct BlockStylingNonActiveTests {
 
         let text = displayText(for: 0, in: editor)
         #expect(text == "  - nested")
-        // The `-` at offset 2 is dimmed
-        #expect(fgColor(at: 2, in: editor) == NSColor.tertiaryLabelColor)
+        // The `-` at offset 2 carries the bullet dot attachment
+        #expect(attrs(at: 2, in: editor)[.attachment] is NSTextAttachment)
     }
 
-    @Test("Non-active deeply-indented bullet (4 spaces) has dimmed marker")
+    @Test("Non-active deeply-indented bullet (4 spaces) renders as a dot")
     @MainActor func nonActiveDeeplyNestedBullet() {
         let editor = makeEditor()
         editor.loadContent("    - deep\nother")
@@ -293,8 +292,8 @@ struct BlockStylingNonActiveTests {
 
         let text = displayText(for: 0, in: editor)
         #expect(text == "    - deep")
-        // The `-` at offset 4 is dimmed
-        #expect(fgColor(at: 4, in: editor) == NSColor.tertiaryLabelColor)
+        // The `-` at offset 4 carries the bullet dot attachment
+        #expect(attrs(at: 4, in: editor)[.attachment] is NSTextAttachment)
     }
 
     // MARK: - Blockquotes
