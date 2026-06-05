@@ -48,6 +48,18 @@ class Document: NSDocument {
         "md"
     }
 
+    // `fileNameExtension(forType:…)` alone isn't enough: for an untitled save
+    // the panel still seeds its name field from the markdown UTI's preferred
+    // extension (".markdown"). Force the default name to end in ".md" and let
+    // the user type any other extension if they really want one.
+    override func prepareSavePanel(_ savePanel: NSSavePanel) -> Bool {
+        savePanel.allowedContentTypes = []
+        savePanel.allowsOtherFileTypes = true
+        let base = (savePanel.nameFieldStringValue as NSString).deletingPathExtension
+        savePanel.nameFieldStringValue = (base.isEmpty ? "Untitled" : base) + ".md"
+        return true
+    }
+
     // MARK: - Window Setup
 
     override func makeWindowControllers() {
