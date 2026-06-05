@@ -56,16 +56,24 @@ extension EditorTextView {
         NSColor(calibratedWhite: 0.5, alpha: 0.1)
     }
 
-    /// Paragraph style for thematic breaks. Uses a ThematicBreakTextBlock (1em
-    /// height) that draws a centered hairline. paragraphSpacingBefore mirrors
-    /// the body style so the gaps above and below the line are symmetric.
+    /// Paragraph style for thematic breaks. The raw dashes are hidden with a
+    /// near-zero font, which would collapse the line — so we force the line to a
+    /// full body-line height and add symmetric breathing space above and below.
+    /// A ThematicBreakTextBlock draws the hairline centered in that height.
     private func thematicBreakParagraphStyle() -> NSParagraphStyle {
+        let lineHeight = bodyFont.pointSize + theme.lineSpacing
+
         let ps = NSMutableParagraphStyle()
-        ps.paragraphSpacingBefore = bodyParagraphStyle.paragraphSpacingBefore
-        ps.paragraphSpacing = 0
+        // Force a real line height despite the hidden (0.01pt) dashes.
+        ps.minimumLineHeight = lineHeight
+        ps.maximumLineHeight = lineHeight
+        // Breathing space above and below — slightly less below, since the line
+        // height already contributes space beneath the centered rule.
+        ps.paragraphSpacingBefore = bodyFont.pointSize * 0.5
+        ps.paragraphSpacing = bodyFont.pointSize * 0.3
 
         let block = ThematicBreakTextBlock()
-        block.lineHeight = bodyFont.pointSize
+        block.lineHeight = lineHeight
         block.setContentWidth(100, type: .percentageValueType)
         ps.textBlocks = [block]
 
