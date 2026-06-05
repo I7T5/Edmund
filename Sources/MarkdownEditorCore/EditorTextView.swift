@@ -245,7 +245,7 @@ public class EditorTextView: NSTextView {
     /// Scrolls the view so the cursor's line fragment is vertically centered
     /// in the visible area.
     private func scrollCursorToCenter() {
-        guard let lm = layoutManager, let container = textContainer,
+        guard let lm = layoutManager,
               let scrollView = enclosingScrollView else { return }
 
         let sel = selectedRange()

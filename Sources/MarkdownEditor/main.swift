@@ -132,11 +132,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let editMenu = NSMenu(title: "Edit")
 
         editMenu.addItem(withTitle: "Undo",
-                         action: Selector(("undo:")),
+                         action: #selector(EditorTextView.undo(_:)),
                          keyEquivalent: "z")
 
         let redoItem = editMenu.addItem(withTitle: "Redo",
-                                        action: Selector(("redo:")),
+                                        action: #selector(EditorTextView.redo(_:)),
                                         keyEquivalent: "z")
         redoItem.keyEquivalentModifierMask = [.command, .shift]
 

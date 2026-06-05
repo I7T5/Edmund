@@ -8,11 +8,11 @@ import AppKit
 
 extension EditorTextView {
 
-    @objc func undo(_ sender: Any?) {
+    @objc public func undo(_ sender: Any?) {
         performUndo()
     }
 
-    @objc func redo(_ sender: Any?) {
+    @objc public func redo(_ sender: Any?) {
         performRedo()
     }
 
