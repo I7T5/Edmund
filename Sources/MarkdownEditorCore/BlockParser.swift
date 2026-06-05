@@ -71,6 +71,25 @@ public enum BlockParser {
                 continue
             }
 
+            // Detect display-math fence: a line starting with `$$`.
+            if let closedOnSameLine = displayMathClosedOnSameLine(lines[i]) {
+                if closedOnSameLine {
+                    result.append(lines[i])
+                    i += 1
+                    continue
+                }
+                var merged = [lines[i]]
+                i += 1
+                while i < lines.count {
+                    merged.append(lines[i])
+                    let closes = lines[i].contains("$$")
+                    i += 1
+                    if closes { break }
+                }
+                result.append(merged.joined(separator: "\n"))
+                continue
+            }
+
             // Detect table: header row followed by separator row
             if i + 1 < lines.count && isTableRow(lines[i]) && isTableSeparator(lines[i + 1]) {
                 var merged = [lines[i]]
@@ -88,6 +107,15 @@ public enum BlockParser {
         }
 
         return result
+    }
+
+    /// If the line (after optional leading whitespace) starts with `$$`, returns
+    /// whether a second `$$` also appears on the same line (a one-line `$$…$$`
+    /// block). Returns nil when the line is not a display-math opener.
+    private static func displayMathClosedOnSameLine(_ line: String) -> Bool? {
+        let trimmed = line.drop(while: { $0 == " " })
+        guard trimmed.hasPrefix("$$") else { return nil }
+        return trimmed.dropFirst(2).contains("$$")
     }
 
     /// Returns true if the line contains a pipe character (potential table row).

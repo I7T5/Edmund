@@ -72,6 +72,20 @@ extension EditorTextView {
         return ps
     }
 
+    /// Centered paragraph style for display math. Spacing is intentionally zero:
+    /// a multi-line `$$…$$` block is several paragraphs in the text storage (its
+    /// hidden inner lines), so per-paragraph spacing would multiply into a large
+    /// gap. Breathing room comes from the blank lines authors put around display
+    /// math, like fenced code.
+    private func displayMathParagraphStyle() -> NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.alignment = .center
+        ps.lineSpacing = 0
+        ps.paragraphSpacing = 0
+        ps.paragraphSpacingBefore = 0
+        return ps
+    }
+
     /// Paragraph style with a left border for blockquotes.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
@@ -488,17 +502,24 @@ extension EditorTextView {
                     // inline math inside a heading matches the heading's size.
                     let contextFont = result.attribute(.font, at: span.fullRange.location,
                                                        effectiveRange: nil) as? NSFont ?? bodyFont
-                    if let attachment = mathAttachment(latex: latex, display: display,
+                    if let attachment = mathAttachment(latex: latex.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                       display: display,
                                                        fontSize: contextFont.pointSize) {
-                        // Hide the LaTeX source + closing `$`, show the rendered
-                        // image on the opening `$` (which the attachment replaces).
-                        let hideStart = span.contentRange.location
+                        // Show the rendered image on the first `$` (which the
+                        // attachment replaces) and hide everything after it — the
+                        // rest of the opening delimiter, the source, and the close.
+                        let hideStart = span.fullRange.location + 1
                         let hideLen = span.fullRange.upperBound - hideStart
                         let hideRange = NSRange(location: hideStart, length: hideLen)
                         result.addAttribute(.font, value: hiddenFont, range: hideRange)
                         result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
                         result.addAttribute(.attachment, value: attachment,
                                             range: NSRange(location: span.fullRange.location, length: 1))
+                        // Display math sits centered on its own line.
+                        if display {
+                            result.addAttribute(.paragraphStyle, value: displayMathParagraphStyle(),
+                                                range: span.fullRange)
+                        }
                     } else {
                         // Invalid LaTeX: surface the raw source in monospace, tinted.
                         result.addAttribute(.font, value: inlineCodeFont, range: span.fullRange)

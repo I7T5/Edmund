@@ -54,7 +54,9 @@ public enum SyntaxHighlighter {
         // ==highlight== is not supported by swift-markdown; parse with regex.
         parseHighlight(text, into: &walker.spans)
 
-        // $…$ inline math (display $$…$$ is handled per-block in a later phase).
+        // $$…$$ display math (the block is pre-merged by BlockParser), then
+        // $…$ inline math.
+        parseDisplayMath(text, into: &walker.spans)
         parseMath(text, into: &walker.spans)
 
         // Trailing backslash line break (single-line blocks only).
@@ -92,6 +94,29 @@ public enum SyntaxHighlighter {
                 delimiterRanges: [openDelim, closeDelim]
             ))
         }
+    }
+
+    /// Recognizes a whole block as `$$…$$` display math. `BlockParser` has
+    /// already merged a multi-line `$$ … $$` run into a single block, so here we
+    /// only need to confirm the block opens and closes with `$$`.
+    private static func parseDisplayMath(_ text: String, into spans: inout [Span]) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("$$"), trimmed.hasSuffix("$$"), trimmed.count >= 4 else { return }
+
+        let ns = text as NSString
+        let open = ns.range(of: "$$")
+        let close = ns.range(of: "$$", options: .backwards)
+        guard open.location != NSNotFound, close.location != NSNotFound,
+              close.location >= open.location + 2 else { return }
+
+        let full = NSRange(location: open.location, length: close.upperBound - open.location)
+        let content = NSRange(location: open.upperBound, length: close.location - open.upperBound)
+        spans.append(Span(
+            kind: .math(display: true),
+            fullRange: full,
+            contentRange: content,
+            delimiterRanges: [open, close]
+        ))
     }
 
     /// Scans for inline `$…$` math. Uses Pandoc-style disambiguation so prose
@@ -140,10 +165,10 @@ public enum SyntaxHighlighter {
             guard close > i + 1 else { i += 1; continue }
 
             let full = NSRange(location: i, length: close - i + 1)
-            // Don't match inside code spans.
+            // Don't match inside code spans or a display-math block.
             let overlaps = spans.contains { existing in
                 switch existing.kind {
-                case .code, .codeBlock:
+                case .code, .codeBlock, .math(display: true):
                     return existing.fullRange.location <= full.location
                         && existing.fullRange.upperBound >= full.upperBound
                 default:
