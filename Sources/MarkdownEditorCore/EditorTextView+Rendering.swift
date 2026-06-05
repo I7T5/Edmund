@@ -62,15 +62,15 @@ extension EditorTextView {
     /// A ThematicBreakTextBlock draws the hairline centered in that height.
     private func thematicBreakParagraphStyle() -> NSParagraphStyle {
         let lineHeight = bodyFont.pointSize + theme.lineSpacing
-        let breathing = bodyFont.pointSize * 0.5
 
         let ps = NSMutableParagraphStyle()
         // Force a real line height despite the hidden (0.01pt) dashes.
         ps.minimumLineHeight = lineHeight
         ps.maximumLineHeight = lineHeight
-        // Symmetric vertical padding so the rule has room to breathe.
-        ps.paragraphSpacingBefore = breathing
-        ps.paragraphSpacing = breathing
+        // Breathing space above and below — slightly less below, since the line
+        // height already contributes space beneath the centered rule.
+        ps.paragraphSpacingBefore = bodyFont.pointSize * 0.5
+        ps.paragraphSpacing = bodyFont.pointSize * 0.3
 
         let block = ThematicBreakTextBlock()
         block.lineHeight = lineHeight
