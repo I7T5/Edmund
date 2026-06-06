@@ -85,8 +85,8 @@ public struct EditorTheme: Equatable, Sendable {
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
     }
 
-    public static func load() -> EditorTheme {
-        let d = UserDefaults.standard
+    public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {
+        let d = defaults
         let def = EditorTheme.default
 
         let fontName = d.string(forKey: Keys.fontName) ?? def.fontName
@@ -117,8 +117,8 @@ public struct EditorTheme: Equatable, Sendable {
         )
     }
 
-    public func save() {
-        let d = UserDefaults.standard
+    public func save(to defaults: UserDefaults = .standard) {
+        let d = defaults
         d.set(fontName, forKey: Keys.fontName)
         d.set(Float(fontSize), forKey: Keys.fontSize)
         d.set(accentHex, forKey: Keys.accentHex)

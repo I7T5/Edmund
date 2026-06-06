@@ -16,10 +16,21 @@ func makeEditor() -> EditorTextView {
     )
     textContainer.widthTracksTextView = true
     layoutManager.addTextContainer(textContainer)
-    return EditorTextView(
+    let editor = EditorTextView(
         frame: NSRect(x: 0, y: 0, width: 500, height: 300),
         textContainer: textContainer
     )
+    // Isolate theme persistence. EditorTextView loads/saves its theme via
+    // UserDefaults; without isolation, tests that call `applyTheme` write font
+    // sizes into the shared `.standard` domain, and under parallel execution
+    // those leak into other editors (this caused the math fit-width flake).
+    // Give each editor its own empty domain.
+    let suite = "MarkdownEditorTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defaults.removePersistentDomain(forName: suite)
+    editor.themeDefaults = defaults
+    editor.theme = .load(from: defaults)
+    return editor
 }
 
 // MARK: - Input Simulation

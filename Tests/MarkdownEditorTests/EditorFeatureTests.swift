@@ -259,10 +259,13 @@ struct FontIntegrationTests {
         theme.lineSpacing = 8
         editor.applyTheme(theme)
 
-        let savedName = UserDefaults.standard.string(forKey: "EditorFontName")
-        let savedSize = UserDefaults.standard.float(forKey: "EditorFontSize")
-        let savedAccent = UserDefaults.standard.string(forKey: "EditorAccentHex")
-        let savedSpacing = UserDefaults.standard.float(forKey: "EditorLineSpacing")
+        // Read from the editor's own (isolated) defaults domain, where
+        // applyTheme persists — see makeEditor.
+        let d = editor.themeDefaults
+        let savedName = d.string(forKey: "EditorFontName")
+        let savedSize = d.float(forKey: "EditorFontSize")
+        let savedAccent = d.string(forKey: "EditorAccentHex")
+        let savedSpacing = d.float(forKey: "EditorLineSpacing")
         #expect(savedName == "Courier")
         #expect(savedSize == 14)
         #expect(savedAccent == "#FF0000")

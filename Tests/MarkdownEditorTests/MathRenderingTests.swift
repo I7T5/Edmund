@@ -134,9 +134,14 @@ struct MathFitWidthTests {
     @Test("A very wide equation is scaled down to the text width")
     @MainActor func wideScaled() {
         let editor = makeEditor()
-        // Pin the container width so the usable width is deterministic. With
-        // `widthTracksTextView` it depends on the view's layout state, which
-        // varies between runs and made this assertion flaky.
+        // Pin the font size so the equation is reliably wider than the cap
+        // regardless of the default theme: at 24pt its natural width (~780)
+        // comfortably exceeds the 490 cap, so the scale-down branch must run.
+        var theme = editor.theme
+        theme.fontSize = 24
+        editor.theme = theme
+
+        // Pin the container width so the usable width is exactly 500 − 2·5 = 490.
         editor.textContainer?.widthTracksTextView = false
         editor.textContainer?.size = NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
 
