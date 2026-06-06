@@ -471,6 +471,68 @@ struct EditorStylingTests {
         #expect(abs((ps!.firstLineHeadIndent + slot) - ps!.headIndent) < 1.0)
     }
 
+    // MARK: - Active list item alignment
+
+    /// The paragraph style of the (only) paragraph in a styled block.
+    @MainActor private func listPS(_ editor: EditorTextView, _ s: String, cursor: Int?) -> NSParagraphStyle? {
+        let st = editor.styleBlock(s, cursorPosition: cursor)
+        return st.attribute(.paragraphStyle, at: st.length - 1, effectiveRange: nil) as? NSParagraphStyle
+    }
+
+    @Test("Active list item shares the rendered item's content indent")
+    @MainActor func activeContentIndentMatchesInactive() {
+        let editor = makeEditor()
+        // Cursor inside the item makes it active (raw marker shown).
+        for marker in ["- item", "1. item", "- [ ] item"] {
+            let active = listPS(editor, marker, cursor: 4)
+            let inactive = listPS(editor, marker, cursor: nil)
+            #expect(active != nil && inactive != nil)
+            // Content (hanging indent) is identical whether active or not, so the
+            // text doesn't shift when you click into the item.
+            #expect(abs(active!.headIndent - inactive!.headIndent) < 0.5)
+            // The raw marker is right-aligned into its slot (first line < content).
+            #expect(active!.firstLineHeadIndent < active!.headIndent)
+        }
+    }
+
+    @Test("Active list marker stays visible and editable (not hidden)")
+    @MainActor func activeMarkerVisible() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("- hello", cursorPosition: 3)
+        // The `-` marker is shown (dimmed), not replaced by an attachment nor
+        // hidden with the near-zero clear font.
+        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) == nil)
+        let f = styled.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect((f?.pointSize ?? 0) >= 1.0)
+        #expect(isDimmed(at: 0, in: styled))           // marker is dimmed, visible
+        #expect(styled.string == "- hello")            // raw text intact (editable)
+    }
+
+    @Test("Active nested item aligns with its depth (leading whitespace hidden)")
+    @MainActor func activeNestedAligns() {
+        let editor = makeEditor()
+        editor.listIndentUnit = 2
+        // A nested item, active. Its content indent must match the rendered
+        // (inactive) nested item at the same depth — not collapse to top level.
+        let active = listPS(editor, "  - child", cursor: 6)
+        let inactive = listPS(editor, "  - child", cursor: nil)
+        #expect(active != nil && inactive != nil)
+        #expect(abs(active!.headIndent - inactive!.headIndent) < 0.5)
+
+        // And the active nested item is deeper than an active top-level item.
+        let topLevel = listPS(editor, "- top", cursor: 3)
+        #expect(active!.headIndent > topLevel!.headIndent + 1.0)
+
+        // Leading whitespace (offsets 0,1) is hidden so the indent comes from the
+        // paragraph style, not the visible spaces.
+        let styled = editor.styleBlock("  - child", cursorPosition: 6)
+        for i in 0..<2 {
+            let a = styled.attributes(at: i, effectiveRange: nil)
+            #expect((a[.font] as? NSFont).map { $0.pointSize < 1.0 } == true)
+            #expect(a[.foregroundColor] as? NSColor == NSColor.clear)
+        }
+    }
+
     @Test("Ordered list keeps its number and dims it")
     @MainActor func orderedListDimmed() {
         let editor = makeEditor()

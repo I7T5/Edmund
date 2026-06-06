@@ -219,40 +219,39 @@ extension EditorTextView {
                 let leadingWS = markerStr.prefix(while: { $0 == " " || $0 == "\t" })
                 let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
                 let slotWidth = bodyFont.pointSize + spaceWidth
+                let depth = listDepth(leadingWhitespace: String(leadingWS))
+                let markerStart = listPadding + CGFloat(depth) * slotWidth
+                let contentIndent = markerStart + slotWidth
+                // The visible marker text ("- ", "1. ", "- [ ] "), without the
+                // leading whitespace (which we hide below).
+                let markerText = String(markerStr.dropFirst(leadingWS.count))
+                let markerWidth = (markerText as NSString).size(withAttributes: [.font: bodyFont]).width
                 let firstLineIndent: CGFloat
-                let contentIndent: CGFloat
-                if cursorInToken {
-                    // Active (editing): show raw; let the leading whitespace
-                    // provide the indent so the source reads naturally.
-                    firstLineIndent = listPadding
-                    contentIndent = listPadding
+                if cursorInToken || ordered {
+                    // Active item, OR an ordered marker: right-align the marker into
+                    // its slot so the content begins at `contentIndent` — the same
+                    // place as the rendered (inactive) form. This keeps the active
+                    // item aligned with the rest of the list at every depth (and
+                    // clicking into an item doesn't shift its text), while leaving
+                    // the raw "- " / "1." / "- [ ]" marker visible and editable.
+                    // Wrapped lines hang at contentIndent via headIndent.
+                    firstLineIndent = max(2, contentIndent - markerWidth)
                 } else {
-                    let depth = listDepth(leadingWhitespace: String(leadingWS))
-                    let markerStart = listPadding + CGFloat(depth) * slotWidth
-                    contentIndent = markerStart + slotWidth
-                    if ordered {
-                        // Right-align the "N." into the slot so its content lands
-                        // at contentIndent (also aligns multi-digit numbers).
-                        let numText = String(markerStr.dropFirst(leadingWS.count))
-                        let numWidth = (numText as NSString).size(withAttributes: [.font: bodyFont]).width
-                        firstLineIndent = max(2, contentIndent - numWidth)
-                    } else {
-                        firstLineIndent = markerStart
-                    }
-                    // Hide the leading indentation — the indent is provided entirely
-                    // by the paragraph style. swift-markdown's list-item delimiter
-                    // range starts at the marker and excludes this whitespace, so
-                    // without hiding it here those spaces render visibly and push the
-                    // first line right, breaking its alignment with the hanging
-                    // (wrapped-line) indent. (The deep-indent rescue parser already
-                    // includes the whitespace in its delimiter, so this is a no-op
-                    // there.)
-                    let wsLen = leadingWS.count
-                    if wsLen > 0 {
-                        let lead = NSRange(location: 0, length: wsLen)
-                        result.addAttribute(.font, value: hiddenFont, range: lead)
-                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: lead)
-                    }
+                    // Inactive bullet/checkbox: the marker icon sits at markerStart.
+                    firstLineIndent = markerStart
+                }
+                // Hide the leading indentation — the indent is provided entirely by
+                // the paragraph style. swift-markdown's list-item delimiter range
+                // starts at the marker and excludes this whitespace, so without
+                // hiding it here those spaces render visibly and push the first line
+                // right, breaking alignment with the hanging (wrapped-line) indent.
+                // (The deep-indent rescue parser already includes the whitespace in
+                // its delimiter; the delimiter styling below avoids re-showing it.)
+                let wsLen = leadingWS.count
+                if wsLen > 0 {
+                    let lead = NSRange(location: 0, length: wsLen)
+                    result.addAttribute(.font, value: hiddenFont, range: lead)
+                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: lead)
                 }
                 // Apply paragraph style from position 0 — NSTextView uses the paragraph
                 // style from the first character of a paragraph.
@@ -486,7 +485,19 @@ extension EditorTextView {
                 } else if case .listItem(let ordered, let checkbox) = span.kind {
                     // List markers: custom styling when non-active, dimmed when active
                     if cursorInToken {
-                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                        // Dim the visible marker, but skip any leading whitespace in
+                        // the delimiter range — it was hidden during content styling
+                        // and dimming it here would re-show it (the rescue parser's
+                        // delimiter includes that whitespace).
+                        let nsDelim = (markdown as NSString).substring(with: dr) as NSString
+                        let firstNonWS = nsDelim.rangeOfCharacter(
+                            from: CharacterSet(charactersIn: " \t").inverted)
+                        let mStart = dr.location +
+                            (firstNonWS.location == NSNotFound ? dr.length : firstNonWS.location)
+                        if mStart < dr.upperBound {
+                            result.addAttribute(.foregroundColor, value: syntaxDimColor,
+                                                range: NSRange(location: mStart, length: dr.upperBound - mStart))
+                        }
                     } else {
                         styleListDelimiter(result, markdown: markdown,
                                            delimiterRange: dr, ordered: ordered,
