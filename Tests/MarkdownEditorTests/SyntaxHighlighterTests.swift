@@ -535,6 +535,45 @@ struct ListItemTests {
         }
     }
 
+    @Test("Indented ordered item (4 spaces) produces an ordered listItem span")
+    func indentedOrderedFourSpaces() {
+        let spans = SyntaxHighlighter.parse("    1. hello")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(let ordered, _) = items[0].kind {
+            #expect(ordered == true)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
+        // Should NOT also produce a codeBlock span.
+        let codeBlocks = spans.filter { if case .codeBlock = $0.kind { return true }; return false }
+        #expect(codeBlocks.count == 0)
+    }
+
+    @Test("Deeply indented ordered item (8 spaces, paren) is ordered")
+    func deeplyIndentedOrderedParen() {
+        let spans = SyntaxHighlighter.parse("        2) deep")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(let ordered, _) = items[0].kind {
+            #expect(ordered == true)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
+    }
+
+    @Test("Tab-indented ordered item is ordered")
+    func tabIndentedOrdered() {
+        let spans = SyntaxHighlighter.parse("\t1. tabbed")
+        let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+        #expect(items.count == 1)
+        if case .listItem(let ordered, _) = items[0].kind {
+            #expect(ordered == true)
+        } else {
+            #expect(Bool(false), "Expected listItem")
+        }
+    }
+
     @Test("Indented todo content excludes the checkbox delimiter")
     func indentedTodoContentRange() {
         let text = "    - [ ] task"

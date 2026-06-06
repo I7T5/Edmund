@@ -153,9 +153,11 @@ extension SyntaxHighlighter {
     }
 
     /// Detects list items with deep indentation (4+ spaces or tabs) that
-    /// swift-markdown parses as indented code instead of list items.
+    /// swift-markdown parses as indented code instead of list items. Group 2 is
+    /// the marker — an unordered bullet (`-`/`*`/`+`) or an ordered number
+    /// (`1.`/`1)`), so nested ordered lists are rescued too.
     static let indentedListRegex = try! NSRegularExpression(
-        pattern: #"^([\t ]*\t[\t ]*|[ ]{4,})([-*+])\s"#
+        pattern: #"^([\t ]*\t[\t ]*|[ ]{4,})([-*+]|\d{1,9}[.)])\s"#
     )
 
     /// Matches a GFM task-list checkbox at the start of list-item content:
@@ -182,20 +184,27 @@ extension SyntaxHighlighter {
         let full = NSRange(location: 0, length: nsText.length)
         let markerEnd = match.range(at: 0).upperBound  // end of "    - "
 
+        // An ordered marker (1./1)) starts with a digit; a bullet (-/*/+) doesn't.
+        let marker = nsText.substring(with: match.range(at: 2))
+        let ordered = marker.first?.isNumber ?? false
+
         // Detect a GFM task-list checkbox following the marker ("[ ] "/"[x] ").
         // swift-markdown skips these on deeply-indented lines (it treats the
         // whole line as code), so we parse the checkbox ourselves — otherwise
-        // task items nested beyond level 2 render without a circle.
+        // task items nested beyond level 2 render without a circle. Only the
+        // unordered `- [ ]` form is supported.
         var checkbox: Span.Kind.CheckboxState? = nil
         var delimEnd = markerEnd
-        let afterMarker = nsText.substring(from: markerEnd) as NSString
-        if let cb = checkboxRegex.firstMatch(
-            in: afterMarker as String,
-            range: NSRange(location: 0, length: afterMarker.length)
-        ) {
-            let stateChar = afterMarker.substring(with: cb.range(at: 1))
-            checkbox = (stateChar == "x" || stateChar == "X") ? .checked : .unchecked
-            delimEnd = markerEnd + cb.range(at: 0).length
+        if !ordered {
+            let afterMarker = nsText.substring(from: markerEnd) as NSString
+            if let cb = checkboxRegex.firstMatch(
+                in: afterMarker as String,
+                range: NSRange(location: 0, length: afterMarker.length)
+            ) {
+                let stateChar = afterMarker.substring(with: cb.range(at: 1))
+                checkbox = (stateChar == "x" || stateChar == "X") ? .checked : .unchecked
+                delimEnd = markerEnd + cb.range(at: 0).length
+            }
         }
 
         let delim = NSRange(location: 0, length: delimEnd)
@@ -208,7 +217,7 @@ extension SyntaxHighlighter {
         }
 
         spans.append(Span(
-            kind: .listItem(ordered: false, checkbox: checkbox),
+            kind: .listItem(ordered: ordered, checkbox: checkbox),
             fullRange: full,
             contentRange: content,
             delimiterRanges: [delim]
