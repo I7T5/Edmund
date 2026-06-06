@@ -71,6 +71,11 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Theme (user-configurable visual settings)
 
+    /// The UserDefaults domain backing theme persistence. Defaults to the
+    /// shared `.standard` store; tests override it to isolate from the real
+    /// domain (and from each other under parallel execution).
+    public var themeDefaults: UserDefaults = .standard
+
     public var theme: EditorTheme = .load()
 
     // MARK: - Derived Visual Properties
@@ -100,7 +105,7 @@ public class EditorTextView: NSTextView {
     /// Apply a new theme, persist it, and recompose.
     public func applyTheme(_ newTheme: EditorTheme) {
         theme = newTheme
-        theme.save()
+        theme.save(to: themeDefaults)
         typingAttributes = baseAttributes
         recompose(cursorInRaw: currentCursorInRaw())
     }
