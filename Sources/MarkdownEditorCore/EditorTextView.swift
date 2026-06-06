@@ -186,6 +186,28 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Edit Flow
 
+    /// NSTextView copies the attributes next to the caret into `typingAttributes`.
+    /// When the caret sits beside a hidden delimiter (our near-zero-size
+    /// `hiddenFont` + clear color), newly inserted text inherits that invisible
+    /// font. Regular typing self-heals via `applyBlockStyle` on each keystroke,
+    /// but IME composition (e.g. Pinyin) is deferred while marked — so the
+    /// composing text would render invisibly and input appears broken. Refuse the
+    /// invisible font here so composition is always visible; the block restyle
+    /// still applies the correct final styling on commit.
+    public override var typingAttributes: [NSAttributedString.Key: Any] {
+        get { super.typingAttributes }
+        set {
+            var attrs = newValue
+            if let font = attrs[.font] as? NSFont, font.pointSize < 1.0 {
+                attrs[.font] = bodyFont
+                if (attrs[.foregroundColor] as? NSColor) == .clear {
+                    attrs[.foregroundColor] = foregroundColor
+                }
+            }
+            super.typingAttributes = attrs
+        }
+    }
+
     public override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         if isUpdating { return false }
         if let replacement = replacementString {
