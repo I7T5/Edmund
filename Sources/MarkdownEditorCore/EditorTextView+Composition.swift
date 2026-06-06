@@ -1,6 +1,13 @@
 import AppKit
 
 // MARK: - Display Composition & Coordinate Mapping
+//
+// `recompose` rebuilds the whole text storage by styling every block and
+// joining them; `recomposeIncremental` re-styles only the block(s) the cursor
+// moved between, which is what runs on most edits. Because the text storage
+// always equals the raw source (word-level rendering, no string stripping),
+// the display↔raw coordinate mapping is the identity — the conversion helpers
+// exist so call sites read clearly and stay correct if that ever changes.
 
 extension EditorTextView {
 

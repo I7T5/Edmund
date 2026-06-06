@@ -1,6 +1,12 @@
 import AppKit
 
 // MARK: - List Continuation on Enter
+//
+// Pressing Return inside a list item starts the next item automatically: it
+// repeats the same indent and a fresh marker (the next number for ordered
+// lists, an empty checkbox for task lists, the same bullet otherwise). Pressing
+// Return on an *empty* item instead removes the marker and breaks out of the
+// list, matching the behavior of most note editors.
 
 extension EditorTextView {
 
