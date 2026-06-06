@@ -1,6 +1,11 @@
 import AppKit
 
 // MARK: - Tab / Shift-Tab List Indentation
+//
+// Tab / Shift-Tab change the nesting of list items by adding or removing one
+// indent unit of leading whitespace. They apply to every list block the
+// selection touches (so a whole sub-list can be indented at once) and only kick
+// in on list lines — elsewhere Tab inserts a literal tab as usual.
 
 extension EditorTextView {
 

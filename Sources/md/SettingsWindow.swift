@@ -2,6 +2,10 @@ import AppKit
 import CoreText
 import MarkdownEditorCore
 
+/// The Settings window (⌘,). Lets the user pick the body font and size, accent
+/// and code colors, and line / paragraph spacing, with a live preview. Changes
+/// are written into an `EditorTheme`, persisted, and applied to every open
+/// editor so the document updates immediately.
 class SettingsWindowController: NSWindowController {
 
     private var fontPopup: NSPopUpButton!
