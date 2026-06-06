@@ -446,6 +446,31 @@ struct EditorStylingTests {
         #expect(abs(child!.firstLineHeadIndent - parent!.headIndent) < 1.0)
     }
 
+    @Test("Nested item hides leading whitespace so first line aligns with hanging indent")
+    @MainActor func nestedHangingIndentAligns() {
+        let editor = makeEditor()
+        editor.listIndentUnit = 2
+        // A 2-space item is parsed by swift-markdown (walker path), whose
+        // delimiter range starts at the marker and excludes the leading
+        // indentation. That whitespace must still be hidden, or the visible
+        // spaces push the first line right and break its alignment with the
+        // wrapped-line (hanging) indent.
+        let styled = editor.styleBlock("  - [ ] wraps onto the next line")
+        // Leading spaces (offsets 0,1) are hidden: near-zero font + clear color.
+        for i in 0..<2 {
+            let a = styled.attributes(at: i, effectiveRange: nil)
+            #expect((a[.font] as? NSFont).map { $0.pointSize < 1.0 } == true)
+            #expect(a[.foregroundColor] as? NSColor == NSColor.clear)
+        }
+        // First-line content lands at the hanging indent: firstLineHeadIndent
+        // plus one marker slot (icon + space) equals headIndent.
+        let ps = styled.attribute(.paragraphStyle, at: styled.length - 1, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil)
+        let spaceWidth = (" " as NSString).size(withAttributes: [.font: editor.bodyFont]).width
+        let slot = editor.bodyFont.pointSize + spaceWidth
+        #expect(abs((ps!.firstLineHeadIndent + slot) - ps!.headIndent) < 1.0)
+    }
+
     @Test("Ordered list keeps its number and dims it")
     @MainActor func orderedListDimmed() {
         let editor = makeEditor()

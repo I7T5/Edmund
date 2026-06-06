@@ -239,6 +239,20 @@ extension EditorTextView {
                     } else {
                         firstLineIndent = markerStart
                     }
+                    // Hide the leading indentation — the indent is provided entirely
+                    // by the paragraph style. swift-markdown's list-item delimiter
+                    // range starts at the marker and excludes this whitespace, so
+                    // without hiding it here those spaces render visibly and push the
+                    // first line right, breaking its alignment with the hanging
+                    // (wrapped-line) indent. (The deep-indent rescue parser already
+                    // includes the whitespace in its delimiter, so this is a no-op
+                    // there.)
+                    let wsLen = leadingWS.count
+                    if wsLen > 0 {
+                        let lead = NSRange(location: 0, length: wsLen)
+                        result.addAttribute(.font, value: hiddenFont, range: lead)
+                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: lead)
+                    }
                 }
                 // Apply paragraph style from position 0 — NSTextView uses the paragraph
                 // style from the first character of a paragraph.
