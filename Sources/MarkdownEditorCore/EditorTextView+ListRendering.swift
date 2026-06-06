@@ -96,7 +96,8 @@ extension EditorTextView {
         let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
             let r = fontSize * 0.13                 // small dot
             let dot = NSRect(x: bounds.midX - r, y: bounds.midY - r, width: 2 * r, height: 2 * r)
-            NSColor.secondaryLabelColor.setFill()
+            // Match the dim used for numbered-list markers (syntaxDimColor).
+            NSColor.tertiaryLabelColor.setFill()
             NSBezierPath(ovalIn: dot).fill()
             return true
         }
