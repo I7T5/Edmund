@@ -293,6 +293,15 @@ struct FontIntegrationTests {
 @Suite("Integration — Appearance")
 struct AppearanceIntegrationTests {
 
+    @Test("Typewriter mode defaults on and is toggleable")
+    @MainActor func typewriterModeToggle() {
+        let editor = makeEditor()
+        // Default preserves the historical always-centered behavior.
+        #expect(editor.typewriterModeEnabled == true)
+        editor.typewriterModeEnabled = false
+        #expect(editor.typewriterModeEnabled == false)
+    }
+
     @Test("Editor background uses textBackgroundColor")
     @MainActor func editorBackground() {
         let editor = makeEditor()
