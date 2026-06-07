@@ -283,9 +283,15 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Typewriter Scroll
 
+    /// When true (the default), edits and cursor moves keep the current line
+    /// vertically centered (typewriter scrolling). When false, scrolling is left
+    /// to the normal "keep the cursor visible" behavior. Toggled from View menu.
+    public var typewriterModeEnabled: Bool = true
+
     /// Scrolls the view so the cursor's line fragment is vertically centered
     /// in the visible area.
     private func scrollCursorToCenter() {
+        guard typewriterModeEnabled else { return }
         guard let lm = layoutManager,
               let scrollView = enclosingScrollView else { return }
 

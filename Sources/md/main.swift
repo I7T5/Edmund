@@ -3,9 +3,19 @@ import MarkdownEditorCore
 
 // --- App Delegate -----------------------------------------------------------
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     var settingsWindowController: SettingsWindowController?
+
+    // MARK: - Typewriter Mode (persisted)
+
+    static let typewriterModeKey = "EditorTypewriterMode"
+
+    /// Whether typewriter scrolling is enabled. Defaults to on (the historical
+    /// behavior) when nothing has been saved yet.
+    static func typewriterModeEnabled(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: typewriterModeKey) as? Bool ?? true
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
@@ -50,6 +60,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settingsWindowController?.showWindow(nil)
         settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - View
+
+    /// Toggles typewriter scrolling, persists the choice, and applies it to every
+    /// open document immediately.
+    @MainActor @objc func toggleTypewriterMode(_ sender: Any?) {
+        let newValue = !AppDelegate.typewriterModeEnabled()
+        UserDefaults.standard.set(newValue, forKey: AppDelegate.typewriterModeKey)
+        for case let doc as Document in NSDocumentController.shared.documents {
+            doc.editor?.typewriterModeEnabled = newValue
+        }
+    }
+
+    @MainActor func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleTypewriterMode(_:)) {
+            menuItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+        }
+        return true
     }
 
     // MARK: - Open Document
@@ -177,6 +206,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
+
+        // View menu
+        let viewMenuItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+
+        let typewriterItem = viewMenu.addItem(
+            withTitle: "Typewriter Mode",
+            action: #selector(AppDelegate.toggleTypewriterMode(_:)),
+            keyEquivalent: "")
+        typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+
+        viewMenuItem.submenu = viewMenu
+        mainMenu.addItem(viewMenuItem)
 
         NSApplication.shared.mainMenu = mainMenu
     }

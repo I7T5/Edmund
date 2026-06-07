@@ -107,6 +107,7 @@ class Document: NSDocument {
         editor.isHorizontallyResizable = false
         editor.autoresizingMask = [.width]
         editor.textContainerInset = NSSize(width: 24, height: 18)
+        editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         editor.document = self
 
         let statusBarHeight: CGFloat = 22
