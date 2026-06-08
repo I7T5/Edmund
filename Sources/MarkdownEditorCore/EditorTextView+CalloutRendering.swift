@@ -183,8 +183,14 @@ extension EditorTextView {
         let width = ceil(symW + gap + titleSize.width)
 
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
-            symbol.draw(in: NSRect(x: 0, y: (height - symH) / 2, width: symW, height: symH))
-            titleStr.draw(at: NSPoint(x: symW + gap, y: (height - titleSize.height) / 2))
+            let titleY = (height - titleSize.height) / 2
+            titleStr.draw(at: NSPoint(x: symW + gap, y: titleY))
+            // Center the icon on the title's cap height (its optical middle) rather
+            // than the full line box, so tall-glyph symbols (e.g. the lightbulb)
+            // don't sit high.
+            let baseline = titleY + abs(titleFont.descender)
+            let capCenter = baseline + titleFont.capHeight / 2
+            symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2, width: symW, height: symH))
             return true
         }
 

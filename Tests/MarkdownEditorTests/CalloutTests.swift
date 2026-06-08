@@ -72,13 +72,23 @@ struct CalloutStyleTests {
         #expect(Callout.style(for: "bogus") == nil)
     }
 
-    @Test("GitHub types use the requested SF Symbols")
-    func githubIcons() {
-        #expect(Callout.style(for: "note")?.symbolName == "pencil.line")
-        #expect(Callout.style(for: "tip")?.symbolName == "lightbulb.max")
+    @Test("Built-in types use the expected SF Symbols")
+    func builtinIcons() {
+        #expect(Callout.style(for: "note")?.symbolName == "pencil.tip")
+        #expect(Callout.style(for: "tip")?.symbolName == "lightbulb")
         #expect(Callout.style(for: "important")?.symbolName == "exclamationmark.bubble")
         #expect(Callout.style(for: "warning")?.symbolName == "exclamationmark.triangle")
         #expect(Callout.style(for: "caution")?.symbolName == "exclamationmark.octagon")
+        #expect(Callout.style(for: "todo")?.symbolName == "circle.dotted")
+        #expect(Callout.style(for: "success")?.symbolName == "checkmark")
+        #expect(Callout.style(for: "failure")?.symbolName == "xmark")
+    }
+
+    @Test("note matches info's color; tip matches abstract's; warning aliases match warning")
+    func colorGroupings() {
+        #expect(Callout.style(for: "note")?.colorHex == Callout.style(for: "info")?.colorHex)
+        #expect(Callout.style(for: "tip")?.colorHex == Callout.style(for: "abstract")?.colorHex)
+        #expect(Callout.style(for: "attention")?.colorHex == Callout.style(for: "warning")?.colorHex)
     }
 
     @Test("Obsidian's default types and aliases all resolve")
@@ -111,13 +121,16 @@ struct CalloutStyleTests {
 
     @Test("Color resolution picks the dark accent under a dark appearance")
     func darkResolution() {
-        let note = Callout.defaultStyles["note"]!
-        #expect(note.accentHex(dark: false) == "#0969DA")
-        #expect(note.accentHex(dark: true) == "#1F6FEB")
+        let important = Callout.defaultStyles["important"]!
+        #expect(important.accentHex(dark: false) == "#8250DF")
+        #expect(important.accentHex(dark: true) == "#A371F7")
         // Border falls back to the (appearance-specific) accent when unset.
-        #expect(note.resolvedBorderHex(dark: true) == "#1F6FEB")
+        #expect(important.resolvedBorderHex(dark: true) == "#A371F7")
         // No explicit background by default → renderer derives one from the accent.
-        #expect(note.explicitBackgroundHex(dark: false) == nil)
+        #expect(important.explicitBackgroundHex(dark: false) == nil)
+        // A type with no dark variant falls back to its light accent.
+        let note = Callout.defaultStyles["note"]!
+        #expect(note.accentHex(dark: true) == note.colorHex)
     }
 
     @Test("Customizable fields are honored")

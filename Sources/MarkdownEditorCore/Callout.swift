@@ -92,9 +92,9 @@ public enum Callout {
         var m: [String: CalloutStyle] = [:]
         func add(_ style: CalloutStyle, _ names: String...) { for n in names { m[n] = style } }
 
-        // GitHub types (icons per request; GitHub light/dark accents).
-        add(CalloutStyle(symbolName: "pencil.line",              colorHex: "#0969DA", darkColorHex: "#1F6FEB"), "note")
-        add(CalloutStyle(symbolName: "lightbulb.max",            colorHex: "#1A7F37", darkColorHex: "#3FB950"), "tip", "hint")
+        // note → same blue as info; tip → same teal as abstract (Obsidian-style).
+        add(CalloutStyle(symbolName: "pencil.tip",               colorHex: "#086DDD"), "note")
+        add(CalloutStyle(symbolName: "lightbulb",                colorHex: "#00BFBC"), "tip", "hint")
         add(CalloutStyle(symbolName: "exclamationmark.bubble",   colorHex: "#8250DF", darkColorHex: "#A371F7"), "important")
         add(CalloutStyle(symbolName: "exclamationmark.triangle", colorHex: "#9A6700", darkColorHex: "#D29922"), "warning", "attention")
         add(CalloutStyle(symbolName: "exclamationmark.octagon",  colorHex: "#CF222E", darkColorHex: "#F85149"), "caution")
@@ -102,10 +102,12 @@ public enum Callout {
         // Obsidian's other defaults (closest color + SF Symbol), with aliases.
         add(CalloutStyle(symbolName: "list.bullet.clipboard", colorHex: "#00BFBC"), "abstract", "summary", "tldr")
         add(CalloutStyle(symbolName: "info.circle",           colorHex: "#086DDD"), "info")
-        add(CalloutStyle(symbolName: "checkmark.circle",      colorHex: "#086DDD"), "todo")
-        add(CalloutStyle(symbolName: "checkmark.seal",        colorHex: "#08B94E"), "success", "check", "done")
+        // checkmark.circle.dotted isn't available before macOS 15; circle.dotted
+        // is the closest "to-do / pending" look.
+        add(CalloutStyle(symbolName: "circle.dotted",         colorHex: "#086DDD"), "todo")
+        add(CalloutStyle(symbolName: "checkmark",             colorHex: "#08B94E"), "success", "check", "done")
         add(CalloutStyle(symbolName: "questionmark.circle",   colorHex: "#EC7500"), "question", "help", "faq")
-        add(CalloutStyle(symbolName: "xmark.circle",          colorHex: "#E93147"), "failure", "fail", "missing")
+        add(CalloutStyle(symbolName: "xmark",                 colorHex: "#E93147"), "failure", "fail", "missing")
         add(CalloutStyle(symbolName: "bolt",                  colorHex: "#E93147"), "danger", "error")
         add(CalloutStyle(symbolName: "ant",                   colorHex: "#E93147"), "bug")
         add(CalloutStyle(symbolName: "list.bullet",           colorHex: "#7852EE"), "example")
