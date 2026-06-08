@@ -247,8 +247,19 @@ public class EditorTextView: NSTextView {
         let sel = selectedRange()
         let cursorRaw = min(sel.location, (rawSource as NSString).length)
 
+        let previousBlockCount = blocks.count
         blocks = BlockParser.parse(rawSource, previous: blocks)
         recalcDisplayRanges()
+
+        // If the number of blocks changed, an edit split or merged blocks (e.g. a
+        // callout/code fence/quote gaining or losing lines). Incremental recompose
+        // only restyles the active block, so a neighbor whose meaning changed —
+        // such as a former callout body line left with a stale background — would
+        // keep its old styling. Do a full recompose to keep the document correct.
+        if blocks.count != previousBlockCount {
+            recompose(cursorInRaw: cursorRaw)
+            return
+        }
 
         let newBlockIndex = blockIndexForRawOffset(cursorRaw)
         if newBlockIndex != activeBlockIndex {
