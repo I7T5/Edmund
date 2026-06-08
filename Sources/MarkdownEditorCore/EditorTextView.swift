@@ -78,6 +78,11 @@ public class EditorTextView: NSTextView {
 
     public var theme: EditorTheme = .load()
 
+    /// User overrides for callout styles, keyed by lowercased type. Lets a
+    /// settings layer customize a built-in type's color / icon / border /
+    /// background (or add new types). Empty by default (GitHub styles).
+    public var calloutStyleOverrides: [String: CalloutStyle] = [:]
+
     // MARK: - Derived Visual Properties
 
     var accentColor: NSColor { theme.accentColor }

@@ -37,6 +37,24 @@ struct CalloutMarkerTests {
     }
 }
 
+@Suite("Callout — title")
+struct CalloutTitleTests {
+
+    @Test("No custom title → capitalized type (note/NOTE both render Note)")
+    func capitalized() {
+        // parseMarker lowercases the type, so both `[!note]` and `[!NOTE]`
+        // arrive here as "note".
+        #expect(Callout.title(type: "note", customTitle: "") == "Note")
+        #expect(Callout.title(type: "warning", customTitle: "   ") == "Warning")
+    }
+
+    @Test("Custom title is used verbatim (trimmed), preserving case")
+    func customTitle() {
+        #expect(Callout.title(type: "note", customTitle: " My Title ") == "My Title")
+        #expect(Callout.title(type: "tip", customTitle: "DON'T") == "DON'T")
+    }
+}
+
 @Suite("Callout — style registry")
 struct CalloutStyleTests {
 
@@ -59,5 +77,28 @@ struct CalloutStyleTests {
         let custom = CalloutStyle(symbolName: "star.fill", colorHex: "#123456")
         #expect(Callout.style(for: "FAQ", overrides: ["faq": custom]) == custom)
         #expect(Callout.style(for: "note", overrides: ["note": custom]) == custom)
+    }
+
+    @Test("Color resolution picks the dark accent under a dark appearance")
+    func darkResolution() {
+        let note = Callout.defaultStyles["note"]!
+        #expect(note.accentHex(dark: false) == "#0969DA")
+        #expect(note.accentHex(dark: true) == "#1F6FEB")
+        // Border falls back to the (appearance-specific) accent when unset.
+        #expect(note.resolvedBorderHex(dark: true) == "#1F6FEB")
+        // No explicit background by default → renderer derives one from the accent.
+        #expect(note.explicitBackgroundHex(dark: false) == nil)
+    }
+
+    @Test("Customizable fields are honored")
+    func customFields() {
+        let s = CalloutStyle(symbolName: "x", colorHex: "#111111",
+                             borderColorHex: "#222222",
+                             backgroundColorHex: "#333333",
+                             borderEdges: [.left, .top], borderWidth: 5)
+        #expect(s.resolvedBorderHex(dark: false) == "#222222")
+        #expect(s.explicitBackgroundHex(dark: false) == "#333333")
+        #expect(s.borderEdges.contains(.top))
+        #expect(s.borderWidth == 5)
     }
 }
