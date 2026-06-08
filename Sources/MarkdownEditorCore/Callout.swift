@@ -96,7 +96,7 @@ public enum Callout {
         add(CalloutStyle(symbolName: "pencil.tip",               colorHex: "#086DDD"), "note")
         add(CalloutStyle(symbolName: "lightbulb",                colorHex: "#00BFBC"), "tip", "hint")
         add(CalloutStyle(symbolName: "exclamationmark.bubble",   colorHex: "#8250DF", darkColorHex: "#A371F7"), "important")
-        add(CalloutStyle(symbolName: "exclamationmark.triangle", colorHex: "#9A6700", darkColorHex: "#D29922"), "warning", "attention")
+        add(CalloutStyle(symbolName: "exclamationmark.triangle", colorHex: "#EC7500"), "warning", "attention")
         add(CalloutStyle(symbolName: "exclamationmark.octagon",  colorHex: "#CF222E", darkColorHex: "#F85149"), "caution")
 
         // Obsidian's other defaults (closest color + SF Symbol), with aliases.

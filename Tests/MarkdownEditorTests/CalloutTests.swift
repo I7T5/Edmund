@@ -88,6 +88,7 @@ struct CalloutStyleTests {
     func colorGroupings() {
         #expect(Callout.style(for: "note")?.colorHex == Callout.style(for: "info")?.colorHex)
         #expect(Callout.style(for: "tip")?.colorHex == Callout.style(for: "abstract")?.colorHex)
+        #expect(Callout.style(for: "warning")?.colorHex == Callout.style(for: "question")?.colorHex)
         #expect(Callout.style(for: "attention")?.colorHex == Callout.style(for: "warning")?.colorHex)
     }
 
