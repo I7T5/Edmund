@@ -37,6 +37,10 @@ public struct CalloutStyle: Sendable, Equatable {
     public let borderEdges: Edges
     public let borderWidth: CGFloat
 
+    /// Per-symbol vertical nudge (points) for the icon, since SF Symbols differ
+    /// in internal optical centering. Negative lowers the icon.
+    public let iconBaselineNudge: CGFloat
+
     public init(symbolName: String,
                 colorHex: String,
                 darkColorHex: String? = nil,
@@ -46,7 +50,8 @@ public struct CalloutStyle: Sendable, Equatable {
                 darkBackgroundColorHex: String? = nil,
                 backgroundAlpha: CGFloat = 0.08,
                 borderEdges: Edges = [],
-                borderWidth: CGFloat = 3) {
+                borderWidth: CGFloat = 3,
+                iconBaselineNudge: CGFloat = 0) {
         self.symbolName = symbolName
         self.colorHex = colorHex
         self.darkColorHex = darkColorHex
@@ -57,6 +62,7 @@ public struct CalloutStyle: Sendable, Equatable {
         self.backgroundAlpha = backgroundAlpha
         self.borderEdges = borderEdges
         self.borderWidth = borderWidth
+        self.iconBaselineNudge = iconBaselineNudge
     }
 
     /// The accent hex for the given appearance.
@@ -94,13 +100,13 @@ public enum Callout {
 
         // note → same blue as info; tip → same teal as abstract (Obsidian-style).
         add(CalloutStyle(symbolName: "pencil.tip",               colorHex: "#086DDD"), "note")
-        add(CalloutStyle(symbolName: "lightbulb",                colorHex: "#00BFBC"), "tip", "hint")
+        add(CalloutStyle(symbolName: "flame",                    colorHex: "#00BFBC"), "tip", "hint")
         add(CalloutStyle(symbolName: "exclamationmark.bubble",   colorHex: "#8250DF", darkColorHex: "#A371F7"), "important")
         add(CalloutStyle(symbolName: "exclamationmark.triangle", colorHex: "#EC7500"), "warning", "attention")
         add(CalloutStyle(symbolName: "exclamationmark.octagon",  colorHex: "#CF222E", darkColorHex: "#F85149"), "caution")
 
         // Obsidian's other defaults (closest color + SF Symbol), with aliases.
-        add(CalloutStyle(symbolName: "list.bullet.clipboard", colorHex: "#00BFBC"), "abstract", "summary", "tldr")
+        add(CalloutStyle(symbolName: "list.bullet.clipboard", colorHex: "#00BFBC", iconBaselineNudge: 1.0), "abstract", "summary", "tldr")
         add(CalloutStyle(symbolName: "info.circle",           colorHex: "#086DDD"), "info")
         // checkmark.circle.dotted isn't available before macOS 15; circle.dashed
         // is the closest "to-do / pending" look.
@@ -109,7 +115,7 @@ public enum Callout {
         add(CalloutStyle(symbolName: "questionmark.circle",   colorHex: "#EC7500"), "question", "help", "faq")
         add(CalloutStyle(symbolName: "xmark",                 colorHex: "#E93147"), "failure", "fail", "missing")
         add(CalloutStyle(symbolName: "bolt",                  colorHex: "#E93147"), "danger", "error")
-        add(CalloutStyle(symbolName: "ant",                   colorHex: "#E93147"), "bug")
+        add(CalloutStyle(symbolName: "ladybug",               colorHex: "#E93147"), "bug")
         add(CalloutStyle(symbolName: "list.bullet",           colorHex: "#7852EE"), "example")
         add(CalloutStyle(symbolName: "quote.bubble",          colorHex: "#9E9E9E"), "quote", "cite")
         return m

@@ -91,7 +91,8 @@ extension EditorTextView {
         result.addAttribute(.font, value: hiddenFont, range: header)
         result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
         if let att = calloutHeaderAttachment(symbolName: info.style.symbolName,
-                                             title: info.title, color: c.accent) {
+                                             title: info.title, color: c.accent,
+                                             iconNudge: info.style.iconBaselineNudge) {
             result.addAttribute(.attachment, value: att,
                                 range: NSRange(location: header.location, length: 1))
         }
@@ -116,6 +117,14 @@ extension EditorTextView {
         }
         return (accent, border, background)
     }
+
+    // MARK: Padding constants (shared by the box and the header image)
+
+    /// Top breathing room — baked into the header image so it's part of the
+    /// header *line* (clickable text space), not dead block padding.
+    private var calloutTopPad: CGFloat { bodyFont.pointSize * 0.8 }
+    /// Bottom breathing room (kept as block padding; slightly less, to balance).
+    private var calloutBottomPad: CGFloat { bodyFont.pointSize * 0.65 }
 
     // MARK: Paragraph style (border / background / padding)
 
@@ -148,14 +157,14 @@ extension EditorTextView {
         // shared hidden `> ` already provides the indent — rather than sitting
         // further right. (A block quote's left inset is its 2pt border; matching
         // that here keeps callouts and quotes aligned.)
-        let topPad = bodyFont.pointSize * 0.8
-        let bottomPad = bodyFont.pointSize * 0.65   // slightly less, to balance
+        // Top padding lives in the header image (clickable text space); only the
+        // bottom padding is block padding here.
         let leftPad: CGFloat = 2
         let rightPad: CGFloat = 10
-        block.setWidth(topPad, type: .absoluteValueType, for: .padding, edge: top)
-        block.setWidth(bottomPad, type: .absoluteValueType, for: .padding, edge: bottom)
+        block.setWidth(calloutBottomPad, type: .absoluteValueType, for: .padding, edge: bottom)
         block.setWidth(leftPad, type: .absoluteValueType, for: .padding, edge: left)
         block.setWidth(rightPad, type: .absoluteValueType, for: .padding, edge: right)
+        _ = top   // (top padding intentionally omitted — see header image)
 
         ps.textBlocks = [block]
         return ps
@@ -166,7 +175,8 @@ extension EditorTextView {
     /// Draws "icon  Title" into one image, tinted to the callout color. Returns
     /// `nil` if the SF Symbol can't be resolved (the caller then leaves the raw
     /// marker text visible).
-    private func calloutHeaderAttachment(symbolName: String, title: String, color: NSColor) -> NSTextAttachment? {
+    private func calloutHeaderAttachment(symbolName: String, title: String, color: NSColor,
+                                         iconNudge: CGFloat) -> NSTextAttachment? {
         let pointSize = bodyFont.pointSize
         let symConfig = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
@@ -180,23 +190,31 @@ extension EditorTextView {
 
         let gap = pointSize * 0.3
         let symW = symbol.size.width, symH = symbol.size.height
-        let height = ceil(max(symH, titleSize.height))
+        let contentHeight = ceil(max(symH, titleSize.height))
         let width = ceil(symW + gap + titleSize.width)
+        // The image is taller than its content: the extra `calloutTopPad` sits on
+        // top, so the callout's top breathing room is part of this (clickable)
+        // header line rather than dead block padding above it.
+        let topPad = ceil(calloutTopPad)
+        let height = contentHeight + topPad
 
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
-            let titleY = (height - titleSize.height) / 2
+            // Draw the content in the bottom `contentHeight` band; leave `topPad`
+            // empty above it.
+            let titleY = (contentHeight - titleSize.height) / 2
             titleStr.draw(at: NSPoint(x: symW + gap, y: titleY))
             // Center the icon on the title's cap height (its optical middle) rather
-            // than the full line box, so tall-glyph symbols (e.g. the lightbulb)
-            // don't sit high.
+            // than the full line box, so tall-glyph symbols don't sit high.
             let baseline = titleY + abs(titleFont.descender)
             let capCenter = baseline + titleFont.capHeight / 2
-            symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2, width: symW, height: symH))
+            symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2 + iconNudge, width: symW, height: symH))
             return true
         }
 
         let attachment = NSTextAttachment()
         attachment.image = image
+        // The content's bottom stays on the text baseline (as before); the extra
+        // `topPad` extends the image (and the line fragment) upward.
         attachment.bounds = CGRect(x: 0, y: -pointSize * 0.15, width: width, height: height)
         return attachment
     }

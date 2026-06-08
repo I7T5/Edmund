@@ -75,7 +75,7 @@ struct CalloutStyleTests {
     @Test("Built-in types use the expected SF Symbols")
     func builtinIcons() {
         #expect(Callout.style(for: "note")?.symbolName == "pencil.tip")
-        #expect(Callout.style(for: "tip")?.symbolName == "lightbulb")
+        #expect(Callout.style(for: "tip")?.symbolName == "flame")
         #expect(Callout.style(for: "important")?.symbolName == "exclamationmark.bubble")
         #expect(Callout.style(for: "warning")?.symbolName == "exclamationmark.triangle")
         #expect(Callout.style(for: "caution")?.symbolName == "exclamationmark.octagon")
