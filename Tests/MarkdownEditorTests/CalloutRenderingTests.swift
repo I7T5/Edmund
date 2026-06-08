@@ -44,6 +44,22 @@ struct CalloutRenderingTests {
         #expect(!isHidden(at: 2, in: styled))   // "[" visible (dimmed), editable
     }
 
+    @Test("Callout's left inset does not exceed a plain block quote's")
+    @MainActor func leftInsetNotLargerThanBlockquote() {
+        let editor = makeEditor()
+        let left = leftEdge
+        func leftInset(_ s: String) -> CGFloat {
+            let st = editor.styleBlock(s)
+            guard let b = (st.attribute(.paragraphStyle, at: 0, effectiveRange: nil)
+                as? NSParagraphStyle)?.textBlocks.first else { return -1 }
+            return b.width(for: .border, edge: left) + b.width(for: .padding, edge: left)
+        }
+        let callout = leftInset("> [!note]\n> x")
+        let quote = leftInset("> x")
+        #expect(callout > 0 && quote > 0)
+        #expect(callout <= quote + 0.01)
+    }
+
     @Test("The tinted background covers the callout's body lines too")
     @MainActor func backgroundCoversBody() {
         let editor = makeEditor()

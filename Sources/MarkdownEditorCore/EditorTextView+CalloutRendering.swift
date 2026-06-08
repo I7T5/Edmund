@@ -143,13 +143,18 @@ extension EditorTextView {
             block.setBorderColor(borderColor, for: rectEdge)
         }
 
-        // Breathing room: vertical (item) + horizontal padding.
-        let vPad = bodyFont.pointSize * 0.45
-        let hPad: CGFloat = 10
+        // Breathing room: generous vertical padding. The left padding is kept
+        // small so the callout's text lines up with a plain block quote's — the
+        // shared hidden `> ` already provides the indent — rather than sitting
+        // further right. (A block quote's left inset is its 2pt border; matching
+        // that here keeps callouts and quotes aligned.)
+        let vPad = bodyFont.pointSize * 0.8
+        let leftPad: CGFloat = 2
+        let rightPad: CGFloat = 10
         block.setWidth(vPad, type: .absoluteValueType, for: .padding, edge: top)
         block.setWidth(vPad, type: .absoluteValueType, for: .padding, edge: bottom)
-        block.setWidth(hPad, type: .absoluteValueType, for: .padding, edge: left)
-        block.setWidth(hPad, type: .absoluteValueType, for: .padding, edge: right)
+        block.setWidth(leftPad, type: .absoluteValueType, for: .padding, edge: left)
+        block.setWidth(rightPad, type: .absoluteValueType, for: .padding, edge: right)
 
         ps.textBlocks = [block]
         return ps
