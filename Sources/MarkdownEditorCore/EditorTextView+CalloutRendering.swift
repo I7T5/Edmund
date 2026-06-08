@@ -148,11 +148,12 @@ extension EditorTextView {
         // shared hidden `> ` already provides the indent — rather than sitting
         // further right. (A block quote's left inset is its 2pt border; matching
         // that here keeps callouts and quotes aligned.)
-        let vPad = bodyFont.pointSize * 0.8
+        let topPad = bodyFont.pointSize * 0.8
+        let bottomPad = bodyFont.pointSize * 0.65   // slightly less, to balance
         let leftPad: CGFloat = 2
         let rightPad: CGFloat = 10
-        block.setWidth(vPad, type: .absoluteValueType, for: .padding, edge: top)
-        block.setWidth(vPad, type: .absoluteValueType, for: .padding, edge: bottom)
+        block.setWidth(topPad, type: .absoluteValueType, for: .padding, edge: top)
+        block.setWidth(bottomPad, type: .absoluteValueType, for: .padding, edge: bottom)
         block.setWidth(leftPad, type: .absoluteValueType, for: .padding, edge: left)
         block.setWidth(rightPad, type: .absoluteValueType, for: .padding, edge: right)
 

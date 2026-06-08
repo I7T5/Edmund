@@ -79,7 +79,7 @@ struct CalloutStyleTests {
         #expect(Callout.style(for: "important")?.symbolName == "exclamationmark.bubble")
         #expect(Callout.style(for: "warning")?.symbolName == "exclamationmark.triangle")
         #expect(Callout.style(for: "caution")?.symbolName == "exclamationmark.octagon")
-        #expect(Callout.style(for: "todo")?.symbolName == "circle.dotted")
+        #expect(Callout.style(for: "todo")?.symbolName == "circle.dashed")
         #expect(Callout.style(for: "success")?.symbolName == "checkmark")
         #expect(Callout.style(for: "failure")?.symbolName == "xmark")
     }

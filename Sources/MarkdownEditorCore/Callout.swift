@@ -102,9 +102,9 @@ public enum Callout {
         // Obsidian's other defaults (closest color + SF Symbol), with aliases.
         add(CalloutStyle(symbolName: "list.bullet.clipboard", colorHex: "#00BFBC"), "abstract", "summary", "tldr")
         add(CalloutStyle(symbolName: "info.circle",           colorHex: "#086DDD"), "info")
-        // checkmark.circle.dotted isn't available before macOS 15; circle.dotted
+        // checkmark.circle.dotted isn't available before macOS 15; circle.dashed
         // is the closest "to-do / pending" look.
-        add(CalloutStyle(symbolName: "circle.dotted",         colorHex: "#086DDD"), "todo")
+        add(CalloutStyle(symbolName: "circle.dashed",         colorHex: "#086DDD"), "todo")
         add(CalloutStyle(symbolName: "checkmark",             colorHex: "#08B94E"), "success", "check", "done")
         add(CalloutStyle(symbolName: "questionmark.circle",   colorHex: "#EC7500"), "question", "help", "faq")
         add(CalloutStyle(symbolName: "xmark",                 colorHex: "#E93147"), "failure", "fail", "missing")
