@@ -201,11 +201,18 @@ extension EditorTextView {
 
             case .blockquote:
                 guard span.fullRange.upperBound <= result.length else { continue }
-                // Paragraph style must cover fullRange so the first character of each
-                // paragraph (the `> ` delimiter) carries the NSTextBlock border.
-                // NSTextView uses the paragraph style from the first char of a paragraph.
-                result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: span.fullRange)
-                result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.contentRange)
+                // A block quote whose first line is `[!type]` is a callout
+                // (GitHub-flavored) — render it with an icon, colored label, and
+                // colored bar instead of the plain quote styling.
+                if let callout = calloutInfo(forBlockquote: span, markdown: markdown) {
+                    styleCalloutContent(result, span: span, info: callout, active: cursorInToken)
+                } else {
+                    // Paragraph style must cover fullRange so the first character of each
+                    // paragraph (the `> ` delimiter) carries the NSTextBlock border.
+                    // NSTextView uses the paragraph style from the first char of a paragraph.
+                    result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: span.fullRange)
+                    result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.contentRange)
+                }
 
             case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }

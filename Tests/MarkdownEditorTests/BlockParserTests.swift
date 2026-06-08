@@ -15,6 +15,27 @@ struct BlockParserTests {
         #expect(blocks[0].range == NSRange(location: 0, length: 0))
     }
 
+    @Test("A callout merges its block-quote lines into one block")
+    func calloutMerges() {
+        let blocks = BlockParser.parse("> [!note]\n> line one\n> line two\n\nafter")
+        // The three `>` lines form one callout block; blank + "after" follow.
+        #expect(blocks.count == 3)
+        #expect(blocks[0].content == "> [!note]\n> line one\n> line two")
+        #expect(blocks[2].content == "after")
+    }
+
+    @Test("A plain block quote stays split per line (unchanged)")
+    func plainQuoteNotMerged() {
+        let blocks = BlockParser.parse("> a\n> b")
+        #expect(blocks.count == 2)
+    }
+
+    @Test("An unknown [!type] is not treated as a callout opener")
+    func unknownCalloutNotMerged() {
+        let blocks = BlockParser.parse("> [!bogus]\n> b")
+        #expect(blocks.count == 2)
+    }
+
     @Test("Single line produces one block")
     func singleLine() {
         let blocks = BlockParser.parse("hello")

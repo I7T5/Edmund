@@ -90,6 +90,21 @@ public enum BlockParser {
                 continue
             }
 
+            // Detect a callout: a block-quote line whose content is `[!type]`
+            // (a known type). Merge it with the following block-quote lines so the
+            // whole callout is one block and renders with one continuous colored
+            // bar (a plain block quote stays split per line, as before).
+            if isCalloutOpener(lines[i]) {
+                var merged = [lines[i]]
+                i += 1
+                while i < lines.count && isBlockquoteLine(lines[i]) {
+                    merged.append(lines[i])
+                    i += 1
+                }
+                result.append(merged.joined(separator: "\n"))
+                continue
+            }
+
             // Detect table: header row followed by separator row
             if i + 1 < lines.count && isTableRow(lines[i]) && isTableSeparator(lines[i + 1]) {
                 var merged = [lines[i]]
@@ -116,6 +131,23 @@ public enum BlockParser {
         let trimmed = line.drop(while: { $0 == " " })
         guard trimmed.hasPrefix("$$") else { return nil }
         return trimmed.dropFirst(2).contains("$$")
+    }
+
+    /// Returns true if the line is a block-quote line (optional leading spaces
+    /// then `>`).
+    private static func isBlockquoteLine(_ line: String) -> Bool {
+        return line.drop(while: { $0 == " " }).first == ">"
+    }
+
+    /// Returns true if the line opens a callout: a block-quote line whose content
+    /// after `>` is a known `[!type]` marker.
+    private static func isCalloutOpener(_ line: String) -> Bool {
+        let afterIndent = line.drop(while: { $0 == " " })
+        guard afterIndent.first == ">" else { return false }
+        let content = afterIndent.dropFirst().drop(while: { $0 == " " })
+        guard let marker = Callout.parseMarker(String(content)),
+              Callout.style(for: marker.type) != nil else { return false }
+        return true
     }
 
     /// Returns true if the line contains a pipe character (potential table row).
