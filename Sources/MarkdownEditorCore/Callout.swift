@@ -45,7 +45,7 @@ public struct CalloutStyle: Sendable, Equatable {
                 backgroundColorHex: String? = nil,
                 darkBackgroundColorHex: String? = nil,
                 backgroundAlpha: CGFloat = 0.08,
-                borderEdges: Edges = .left,
+                borderEdges: Edges = [],
                 borderWidth: CGFloat = 3) {
         self.symbolName = symbolName
         self.colorHex = colorHex
@@ -84,16 +84,34 @@ public struct CalloutStyle: Sendable, Equatable {
 /// existing block-quote span.
 public enum Callout {
 
-    /// Default type → style map (lowercased keys), mirroring GitHub's five
-    /// built-in callouts (with light + dark accents). Designed to be merged with
+    /// Default type → style map (lowercased keys). GitHub's five built-in types
+    /// keep their accents; the rest are Obsidian's default callouts mapped to the
+    /// closest color + SF Symbol (with their aliases). Designed to be merged with
     /// user overrides.
-    public static let defaultStyles: [String: CalloutStyle] = [
-        "note":      CalloutStyle(symbolName: "info.circle.fill",              colorHex: "#0969DA", darkColorHex: "#1F6FEB"),
-        "tip":       CalloutStyle(symbolName: "lightbulb.fill",                colorHex: "#1A7F37", darkColorHex: "#3FB950"),
-        "important": CalloutStyle(symbolName: "exclamationmark.bubble.fill",   colorHex: "#8250DF", darkColorHex: "#A371F7"),
-        "warning":   CalloutStyle(symbolName: "exclamationmark.triangle.fill", colorHex: "#9A6700", darkColorHex: "#D29922"),
-        "caution":   CalloutStyle(symbolName: "exclamationmark.octagon.fill",  colorHex: "#CF222E", darkColorHex: "#F85149"),
-    ]
+    public static let defaultStyles: [String: CalloutStyle] = {
+        var m: [String: CalloutStyle] = [:]
+        func add(_ style: CalloutStyle, _ names: String...) { for n in names { m[n] = style } }
+
+        // GitHub types (icons per request; GitHub light/dark accents).
+        add(CalloutStyle(symbolName: "pencil.line",              colorHex: "#0969DA", darkColorHex: "#1F6FEB"), "note")
+        add(CalloutStyle(symbolName: "lightbulb.max",            colorHex: "#1A7F37", darkColorHex: "#3FB950"), "tip", "hint")
+        add(CalloutStyle(symbolName: "exclamationmark.bubble",   colorHex: "#8250DF", darkColorHex: "#A371F7"), "important")
+        add(CalloutStyle(symbolName: "exclamationmark.triangle", colorHex: "#9A6700", darkColorHex: "#D29922"), "warning", "attention")
+        add(CalloutStyle(symbolName: "exclamationmark.octagon",  colorHex: "#CF222E", darkColorHex: "#F85149"), "caution")
+
+        // Obsidian's other defaults (closest color + SF Symbol), with aliases.
+        add(CalloutStyle(symbolName: "list.bullet.clipboard", colorHex: "#00BFBC"), "abstract", "summary", "tldr")
+        add(CalloutStyle(symbolName: "info.circle",           colorHex: "#086DDD"), "info")
+        add(CalloutStyle(symbolName: "checkmark.circle",      colorHex: "#086DDD"), "todo")
+        add(CalloutStyle(symbolName: "checkmark.seal",        colorHex: "#08B94E"), "success", "check", "done")
+        add(CalloutStyle(symbolName: "questionmark.circle",   colorHex: "#EC7500"), "question", "help", "faq")
+        add(CalloutStyle(symbolName: "xmark.circle",          colorHex: "#E93147"), "failure", "fail", "missing")
+        add(CalloutStyle(symbolName: "bolt",                  colorHex: "#E93147"), "danger", "error")
+        add(CalloutStyle(symbolName: "ant",                   colorHex: "#E93147"), "bug")
+        add(CalloutStyle(symbolName: "list.bullet",           colorHex: "#7852EE"), "example")
+        add(CalloutStyle(symbolName: "quote.bubble",          colorHex: "#9E9E9E"), "quote", "cite")
+        return m
+    }()
 
     /// The style for `type` (case-insensitive), or `nil` if it isn't a known
     /// callout type — in which case the block stays a plain block quote, matching

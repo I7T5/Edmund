@@ -5,12 +5,11 @@ import AppKit
 @Suite("Callout — rendering")
 struct CalloutRenderingTests {
 
-    private let noteHex = Callout.defaultStyles["note"]!.colorHex
     private let leftEdge = NSRectEdge(rawValue: 0)!
 
     // "> [!note]…"  indices: 0'>' 1' ' 2'[' 3'!' 4'n' 5'o' 6't' 7'e' 8']'
 
-    @Test("Rendered callout: header replaced by an image, source hidden, colored bar")
+    @Test("Rendered callout: header replaced by an image, source hidden, tinted bg, no border")
     @MainActor func rendered() {
         let editor = makeEditor()
         let styled = editor.styleBlock("> [!note]\n> body")
@@ -22,10 +21,11 @@ struct CalloutRenderingTests {
         // The raw "[!note]" header is hidden (near-zero font + clear) — its title
         // is drawn inside the image instead.
         for i in 3...8 { #expect(isHidden(at: i, in: styled)) }
-        // The left bar is the callout color.
-        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        #expect(ps?.textBlocks.first?.borderColor(for: leftEdge)?.hexString
-                == NSColor(hex: noteHex)?.hexString)
+        // A tinted background marks the callout; no border by default.
+        let block = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil)
+            .flatMap { ($0 as? NSParagraphStyle)?.textBlocks.first }
+        #expect(block?.backgroundColor != nil)
+        #expect(block?.borderColor(for: leftEdge) == nil)
     }
 
     @Test("Unknown type stays a plain block quote")
@@ -44,15 +44,14 @@ struct CalloutRenderingTests {
         #expect(!isHidden(at: 2, in: styled))   // "[" visible (dimmed), editable
     }
 
-    @Test("The colored bar covers the callout's body lines too")
-    @MainActor func barCoversBody() {
+    @Test("The tinted background covers the callout's body lines too")
+    @MainActor func backgroundCoversBody() {
         let editor = makeEditor()
         let styled = editor.styleBlock("> [!note]\n> body line")
         let bodyIdx = (styled.string as NSString).range(of: "body").location
         #expect(bodyIdx != NSNotFound)
         let ps = styled.attribute(.paragraphStyle, at: bodyIdx, effectiveRange: nil) as? NSParagraphStyle
-        #expect(ps?.textBlocks.first?.borderColor(for: leftEdge)?.hexString
-                == NSColor(hex: noteHex)?.hexString)
+        #expect(ps?.textBlocks.first?.backgroundColor != nil)
     }
 
     @Test("Custom title text is hidden (drawn in the header image)")

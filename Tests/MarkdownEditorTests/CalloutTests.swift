@@ -72,6 +72,36 @@ struct CalloutStyleTests {
         #expect(Callout.style(for: "bogus") == nil)
     }
 
+    @Test("GitHub types use the requested SF Symbols")
+    func githubIcons() {
+        #expect(Callout.style(for: "note")?.symbolName == "pencil.line")
+        #expect(Callout.style(for: "tip")?.symbolName == "lightbulb.max")
+        #expect(Callout.style(for: "important")?.symbolName == "exclamationmark.bubble")
+        #expect(Callout.style(for: "warning")?.symbolName == "exclamationmark.triangle")
+        #expect(Callout.style(for: "caution")?.symbolName == "exclamationmark.octagon")
+    }
+
+    @Test("Obsidian's default types and aliases all resolve")
+    func obsidianTypes() {
+        let types = ["abstract", "summary", "tldr", "info", "todo", "success", "check",
+                     "done", "question", "help", "faq", "failure", "fail", "missing",
+                     "danger", "error", "bug", "example", "quote", "cite", "hint", "attention"]
+        for t in types { #expect(Callout.style(for: t) != nil, "expected '\(t)' to resolve") }
+    }
+
+    @Test("Aliases share their primary type's style")
+    func aliases() {
+        #expect(Callout.style(for: "summary") == Callout.style(for: "abstract"))
+        #expect(Callout.style(for: "done") == Callout.style(for: "success"))
+        #expect(Callout.style(for: "error") == Callout.style(for: "danger"))
+        #expect(Callout.style(for: "cite") == Callout.style(for: "quote"))
+    }
+
+    @Test("Callouts have no border by default (background only)")
+    func noBorderByDefault() {
+        #expect(Callout.style(for: "note")?.borderEdges == [])
+    }
+
     @Test("Overrides win and can add custom types (customization-ready)")
     func overrides() {
         let custom = CalloutStyle(symbolName: "star.fill", colorHex: "#123456")
