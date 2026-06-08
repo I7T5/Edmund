@@ -281,8 +281,14 @@ public class EditorTextView: NSTextView {
         if newActiveIndex != activeBlockIndex && !pendingRecompose {
             pendingRecompose = true
             DispatchQueue.main.async { [weak self] in
-                guard let self = self, !self.isUpdating else { return }
+                guard let self = self else { return }
+                // Always clear the flag first. If we bail out below (a recompose is
+                // mid-flight and will set the active block itself), leaving it set
+                // would permanently wedge active-block switching — the cursor could
+                // never re-activate a block, so e.g. a callout would stay rendered
+                // with un-editable zero-width marker characters.
                 self.pendingRecompose = false
+                guard !self.isUpdating else { return }
 
                 let currentSel = self.selectedRange()
                 let rawStart = currentSel.location
