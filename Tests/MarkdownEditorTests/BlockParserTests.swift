@@ -24,16 +24,20 @@ struct BlockParserTests {
         #expect(blocks[2].content == "after")
     }
 
-    @Test("A plain block quote stays split per line (unchanged)")
-    func plainQuoteNotMerged() {
-        let blocks = BlockParser.parse("> a\n> b")
-        #expect(blocks.count == 2)
+    @Test("Consecutive block-quote lines merge into one block")
+    func blockquoteLinesMerge() {
+        // One NSTextBlock per quote (vs one per line) avoids the NSTextView
+        // table-cell deletion restriction at per-line boundaries.
+        let blocks = BlockParser.parse("> a\n> b\n\nafter")
+        #expect(blocks.count == 3)
+        #expect(blocks[0].content == "> a\n> b")
+        #expect(blocks[2].content == "after")
     }
 
-    @Test("An unknown [!type] is not treated as a callout opener")
-    func unknownCalloutNotMerged() {
+    @Test("An unknown [!type] still merges as a plain block quote")
+    func unknownCalloutMergesAsQuote() {
         let blocks = BlockParser.parse("> [!bogus]\n> b")
-        #expect(blocks.count == 2)
+        #expect(blocks.count == 1)
     }
 
     @Test("Single line produces one block")
@@ -351,27 +355,24 @@ struct BlockParserTests {
         #expect(blocks[0].range == NSRange(location: 0, length: (text as NSString).length))
     }
 
-    // MARK: - Blockquotes (each line is its own block)
+    // MARK: - Blockquotes (consecutive lines merge into one block)
 
-    @Test("Consecutive blockquote lines are separate blocks")
-    func blockquoteSeparateBlocks() {
+    @Test("Consecutive blockquote lines merge into one block")
+    func blockquoteMergedBlock() {
         let text = "> line1\n> line2\n> line3"
         let blocks = BlockParser.parse(text)
-        #expect(blocks.count == 3)
-        #expect(blocks[0].content == "> line1")
-        #expect(blocks[1].content == "> line2")
-        #expect(blocks[2].content == "> line3")
+        #expect(blocks.count == 1)
+        #expect(blocks[0].content == "> line1\n> line2\n> line3")
     }
 
     @Test("Blockquote between paragraphs")
     func blockquoteBetweenParagraphs() {
         let text = "above\n> line1\n> line2\nbelow"
         let blocks = BlockParser.parse(text)
-        #expect(blocks.count == 4)
+        #expect(blocks.count == 3)
         #expect(blocks[0].content == "above")
-        #expect(blocks[1].content == "> line1")
-        #expect(blocks[2].content == "> line2")
-        #expect(blocks[3].content == "below")
+        #expect(blocks[1].content == "> line1\n> line2")
+        #expect(blocks[2].content == "below")
     }
 
     @Test("Single blockquote line is one block")
@@ -382,12 +383,12 @@ struct BlockParserTests {
         #expect(blocks[0].content == "> just one")
     }
 
-    @Test("Blockquote line range covers single line")
+    @Test("A merged blockquote's range spans all its lines")
     func blockquoteRange() {
         let text = "> a\n> b"
         let blocks = BlockParser.parse(text)
-        #expect(blocks[0].range == NSRange(location: 0, length: 3))
-        #expect(blocks[1].range == NSRange(location: 4, length: 3))
+        #expect(blocks.count == 1)
+        #expect(blocks[0].range == NSRange(location: 0, length: 7))
     }
 
     @Test("Non-consecutive blockquotes are separate blocks")

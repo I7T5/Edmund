@@ -90,11 +90,13 @@ public enum BlockParser {
                 continue
             }
 
-            // Detect a callout: a block-quote line whose content is `[!type]`
-            // (a known type). Merge it with the following block-quote lines so the
-            // whole callout is one block and renders with one continuous colored
-            // bar (a plain block quote stays split per line, as before).
-            if isCalloutOpener(lines[i]) {
+            // Merge a run of consecutive block-quote lines (`>`) into one block.
+            // This covers callouts and plain multi-line block quotes alike. It is
+            // also required for editing: each block becomes a single NSTextBlock
+            // (one "table cell"), and NSTextView refuses to delete at the boundary
+            // between two adjacent cells — so per-line block-quote cells made the
+            // marker characters undeletable. One cell per quote avoids that.
+            if isBlockquoteLine(lines[i]) {
                 var merged = [lines[i]]
                 i += 1
                 while i < lines.count && isBlockquoteLine(lines[i]) {
@@ -137,17 +139,6 @@ public enum BlockParser {
     /// then `>`).
     private static func isBlockquoteLine(_ line: String) -> Bool {
         return line.drop(while: { $0 == " " }).first == ">"
-    }
-
-    /// Returns true if the line opens a callout: a block-quote line whose content
-    /// after `>` is a known `[!type]` marker.
-    private static func isCalloutOpener(_ line: String) -> Bool {
-        let afterIndent = line.drop(while: { $0 == " " })
-        guard afterIndent.first == ">" else { return false }
-        let content = afterIndent.dropFirst().drop(while: { $0 == " " })
-        guard let marker = Callout.parseMarker(String(content)),
-              Callout.style(for: marker.type) != nil else { return false }
-        return true
     }
 
     /// Returns true if the line contains a pipe character (potential table row).
