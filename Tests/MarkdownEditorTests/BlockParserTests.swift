@@ -400,4 +400,115 @@ struct BlockParserTests {
         #expect(blocks[1].content == "paragraph")
         #expect(blocks[2].content == "> second")
     }
+
+    // MARK: - Changed Window (parseWithDiff)
+
+    @Test("Unchanged re-parse yields an empty window")
+    func diffUnchanged() {
+        let (b1, _) = BlockParser.parseWithDiff("a\nb\nc")
+        let (b2, changed) = BlockParser.parseWithDiff("a\nb\nc", previous: b1)
+        #expect(changed.isEmpty)
+        #expect(b1.map(\.id) == b2.map(\.id))
+    }
+
+    @Test("Editing one block yields a one-block window")
+    func diffSingleEdit() {
+        let (b1, _) = BlockParser.parseWithDiff("a\nb\nc")
+        let (b2, changed) = BlockParser.parseWithDiff("a\nbX\nc", previous: b1)
+        #expect(changed == 1..<2)
+        #expect(b2[0].id == b1[0].id)
+        #expect(b2[2].id == b1[2].id)
+        #expect(b2[1].id != b1[1].id)
+    }
+
+    @Test("Splitting a block yields a two-block window (count change)")
+    func diffSplit() {
+        let (b1, _) = BlockParser.parseWithDiff("hello world\ntail")
+        let (b2, changed) = BlockParser.parseWithDiff("hello\nworld\ntail", previous: b1)
+        #expect(b2.count == 3)
+        #expect(changed == 0..<2)
+        #expect(b2[2].id == b1[1].id)   // suffix keeps its ID
+    }
+
+    @Test("Merging two blocks yields a one-block window")
+    func diffMerge() {
+        let (b1, _) = BlockParser.parseWithDiff("> a\nplain\ntail")
+        // "plain" becomes a quote line and merges into the run.
+        let (b2, changed) = BlockParser.parseWithDiff("> a\n> plain\ntail", previous: b1)
+        #expect(b2.count == 2)
+        #expect(changed == 0..<1)
+        #expect(b2[1].id == b1[2].id)
+    }
+
+    @Test("Identical-content documents: window covers only the edit")
+    func diffIdenticalContent() {
+        let (b1, _) = BlockParser.parseWithDiff("a\na\na\na")
+        let (b2, changed) = BlockParser.parseWithDiff("a\nX\na\na", previous: b1)
+        #expect(changed == 1..<2)
+        // Prefix and suffix matches keep their IDs positionally.
+        #expect(b2[0].id == b1[0].id)
+        #expect(b2[2].id == b1[2].id)
+        #expect(b2[3].id == b1[3].id)
+    }
+
+    @Test("Overlap clamp: duplicating a block doesn't double-match")
+    func diffOverlapClamp() {
+        let (b1, _) = BlockParser.parseWithDiff("a")
+        let (b2, changed) = BlockParser.parseWithDiff("a\na", previous: b1)
+        #expect(b2.count == 2)
+        #expect(changed.count == 1)
+        #expect(Set(b2.map(\.id)).count == 2)
+    }
+
+    // MARK: - Block Kinds
+
+    @Test("Kinds are classified per block")
+    func kinds() {
+        let text = """
+        # Title
+        plain
+        - item
+        3. ordered
+        ---
+        > quote
+
+        > [!note]
+        > body
+        | a | b |
+        | --- | --- |
+        ```
+        code
+        ```
+        $$
+        x
+        $$
+        """
+        let blocks = BlockParser.parse(text)
+        let kinds = blocks.map(\.kind)
+        #expect(kinds == [
+            .heading(level: 1),
+            .paragraph,
+            .listItem,
+            .listItem,
+            .thematicBreak,
+            .quoteRun(isCallout: false),
+            .blank,
+            .quoteRun(isCallout: true),
+            .table,
+            .fence,
+            .mathDisplay,
+        ])
+    }
+
+    @Test("Blank and whitespace-only lines are .blank")
+    func blankKinds() {
+        let blocks = BlockParser.parse("a\n\n   \nb")
+        #expect(blocks.map(\.kind) == [.paragraph, .blank, .blank, .paragraph])
+    }
+
+    @Test("Thematic break beats list classification for '- - -'")
+    func hrBeatsList() {
+        let blocks = BlockParser.parse("- - -")
+        #expect(blocks[0].kind == .thematicBreak)
+    }
 }
