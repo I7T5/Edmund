@@ -56,17 +56,23 @@ extension EditorTextView {
 
     public override func insertNewline(_ sender: Any?) {
         let sel = selectedRange()
-        guard sel.length == 0,
-              let blockIdx = blockIndexForRawOffset(sel.location),
-              blockIdx < blocks.count else {
+        guard sel.length == 0 else {
             super.insertNewline(sender)
             return
         }
+        if handleListNewline(sel) { return }
+        if handleBlockquoteNewline(at: sel.location) { return }
+        super.insertNewline(sender)
+    }
+
+    /// List continuation. Returns true if it handled the newline.
+    private func handleListNewline(_ sel: NSRange) -> Bool {
+        guard let blockIdx = blockIndexForRawOffset(sel.location),
+              blockIdx < blocks.count else { return false }
 
         let block = blocks[blockIdx]
         guard let (indent, marker, hasContent) = parseListMarker(block.content) else {
-            super.insertNewline(sender)
-            return
+            return false
         }
 
         if hasContent {
@@ -91,5 +97,6 @@ extension EditorTextView {
             // Root-level empty list line → remove the marker entirely
             insertText("", replacementRange: block.range)
         }
+        return true
     }
 }

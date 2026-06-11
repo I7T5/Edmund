@@ -78,6 +78,11 @@ public class EditorTextView: NSTextView {
 
     public var theme: EditorTheme = .load()
 
+    /// User overrides for callout styles, keyed by lowercased type. Lets a
+    /// settings layer customize a built-in type's color / icon / border /
+    /// background (or add new types). Empty by default (GitHub styles).
+    public var calloutStyleOverrides: [String: CalloutStyle] = [:]
+
     // MARK: - Derived Visual Properties
 
     var accentColor: NSColor { theme.accentColor }
@@ -242,8 +247,19 @@ public class EditorTextView: NSTextView {
         let sel = selectedRange()
         let cursorRaw = min(sel.location, (rawSource as NSString).length)
 
+        let previousBlockCount = blocks.count
         blocks = BlockParser.parse(rawSource, previous: blocks)
         recalcDisplayRanges()
+
+        // If the number of blocks changed, an edit split or merged blocks (e.g. a
+        // callout/code fence/quote gaining or losing lines). Incremental recompose
+        // only restyles the active block, so a neighbor whose meaning changed —
+        // such as a former callout body line left with a stale background — would
+        // keep its old styling. Do a full recompose to keep the document correct.
+        if blocks.count != previousBlockCount {
+            recompose(cursorInRaw: cursorRaw)
+            return
+        }
 
         let newBlockIndex = blockIndexForRawOffset(cursorRaw)
         if newBlockIndex != activeBlockIndex {
@@ -265,8 +281,14 @@ public class EditorTextView: NSTextView {
         if newActiveIndex != activeBlockIndex && !pendingRecompose {
             pendingRecompose = true
             DispatchQueue.main.async { [weak self] in
-                guard let self = self, !self.isUpdating else { return }
+                guard let self = self else { return }
+                // Always clear the flag first. If we bail out below (a recompose is
+                // mid-flight and will set the active block itself), leaving it set
+                // would permanently wedge active-block switching — the cursor could
+                // never re-activate a block, so e.g. a callout would stay rendered
+                // with un-editable zero-width marker characters.
                 self.pendingRecompose = false
+                guard !self.isUpdating else { return }
 
                 let currentSel = self.selectedRange()
                 let rawStart = currentSel.location

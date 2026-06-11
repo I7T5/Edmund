@@ -90,6 +90,23 @@ public enum BlockParser {
                 continue
             }
 
+            // Merge a run of consecutive block-quote lines (`>`) into one block.
+            // This covers callouts and plain multi-line block quotes alike. It is
+            // also required for editing: each block becomes a single NSTextBlock
+            // (one "table cell"), and NSTextView refuses to delete at the boundary
+            // between two adjacent cells — so per-line block-quote cells made the
+            // marker characters undeletable. One cell per quote avoids that.
+            if isBlockquoteLine(lines[i]) {
+                var merged = [lines[i]]
+                i += 1
+                while i < lines.count && isBlockquoteLine(lines[i]) {
+                    merged.append(lines[i])
+                    i += 1
+                }
+                result.append(merged.joined(separator: "\n"))
+                continue
+            }
+
             // Detect table: header row followed by separator row
             if i + 1 < lines.count && isTableRow(lines[i]) && isTableSeparator(lines[i + 1]) {
                 var merged = [lines[i]]
@@ -116,6 +133,12 @@ public enum BlockParser {
         let trimmed = line.drop(while: { $0 == " " })
         guard trimmed.hasPrefix("$$") else { return nil }
         return trimmed.dropFirst(2).contains("$$")
+    }
+
+    /// Returns true if the line is a block-quote line (optional leading spaces
+    /// then `>`).
+    private static func isBlockquoteLine(_ line: String) -> Bool {
+        return line.drop(while: { $0 == " " }).first == ">"
     }
 
     /// Returns true if the line contains a pipe character (potential table row).

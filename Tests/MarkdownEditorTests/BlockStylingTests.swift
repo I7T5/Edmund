@@ -131,15 +131,15 @@ struct BlockStylingActiveTests {
         #expect(delimColor == NSColor.tertiaryLabelColor)
     }
 
-    @Test("Active blockquote line shows its raw text")
+    @Test("Active blockquote shows its raw text")
     @MainActor func activeBlockquoteLine() {
         let editor = makeEditor()
         editor.loadContent("> line1\n> line2\nother")
         activateBlock(0, in: editor)
 
-        // Each > line is its own block now
+        // Consecutive `>` lines merge into one block.
         let text = displayText(for: 0, in: editor)
-        #expect(text == "> line1")
+        #expect(text == "> line1\n> line2")
     }
 }
 
@@ -333,23 +333,17 @@ struct BlockStylingNonActiveTests {
         #expect(!ps2!.textBlocks.isEmpty)
     }
 
-    @Test("Non-active consecutive blockquote lines: each > hidden independently")
+    @Test("Non-active merged blockquote hides each > delimiter")
     @MainActor func nonActiveConsecutiveBlockquoteLines() {
         let editor = makeEditor()
-        // Each > line is its own block; activate the last block
+        // Consecutive `>` lines merge into one block; "other" is the next block.
         editor.loadContent("> line1\n> line2\nother")
-        activateBlock(2, in: editor)
+        activateBlock(1, in: editor)   // activate "other"; the quote stays rendered
 
-        // Block 0: "> line1", > hidden
-        let text0 = displayText(for: 0, in: editor)
-        #expect(text0 == "> line1")
-        #expect(fgColor(at: 0, in: editor) == NSColor.clear)
-
-        // Block 1: "> line2", > hidden
-        let text1 = displayText(for: 1, in: editor)
-        #expect(text1 == "> line2")
-        let b1 = editor.displayRanges[1].location
-        #expect(fgColor(at: b1, in: editor) == NSColor.clear)
+        #expect(displayText(for: 0, in: editor) == "> line1\n> line2")
+        // Both lines' `>` delimiters are hidden (clear, width-preserved).
+        #expect(fgColor(at: 0, in: editor) == NSColor.clear)   // line1 `>`
+        #expect(fgColor(at: 8, in: editor) == NSColor.clear)   // line2 `>`
     }
 
     @Test("Non-active blockquote line has text block style")
