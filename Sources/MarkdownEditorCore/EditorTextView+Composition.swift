@@ -74,49 +74,85 @@ extension EditorTextView {
         isUpdating = false
     }
 
-    /// Incremental recompose: only re-styles the old and new active blocks.
-    /// Used when the cursor moves between blocks without changing content.
-    func recomposeIncremental(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
+    /// Dirty-set recompose: restyles exactly the given block indexes in place.
+    /// Attribute-only — the storage string is never touched. This is the
+    /// single styling path for edits, activation changes, and theme /
+    /// appearance refreshes; `recompose` (string-replacing) remains only for
+    /// paths that rebuild `rawSource` (load, undo, indent).
+    ///
+    /// `settingSelection` is true for selection-driven and whole-document
+    /// callers (preserving the old recompose behavior); the edit path leaves
+    /// the caret where NSTextView already placed it to avoid re-entrant
+    /// selection notifications.
+    func recomposeDirty(
+        _ dirty: IndexSet,
+        cursorInRaw: Int,
+        selectionInRaw: NSRange? = nil,
+        settingSelection: Bool = false
+    ) {
         guard let ts = textStorage else { return }
 
         isUpdating = true
 
-        let oldActiveIndex = activeBlockIndex
         let newActiveIndex = blockIndexForRawOffset(cursorInRaw)
         activeBlockIndex = newActiveIndex
 
+        let nsString = ts.string as NSString
         ts.beginEditing()
+        for idx in dirty where idx < blocks.count {
+            let cursorInBlock: Int? = (idx == newActiveIndex)
+                ? max(0, cursorInRaw - blocks[idx].range.location) : nil
+            restyleBlock(idx, cursorInBlock: cursorInBlock)
 
-        // Re-style old active block (hide all inline delimiters)
-        if let oldIdx = oldActiveIndex, oldIdx < blocks.count {
-            restyleBlock(oldIdx, cursorInBlock: nil)
+            // Full recompose resets separator newlines to base attributes as
+            // a side effect of rebuilding the whole string; do the same for
+            // dirty blocks so stale paragraph styles can't linger on the `\n`
+            // after e.g. a former callout.
+            let sep = blocks[idx].range.upperBound
+            if sep < nsString.length && nsString.character(at: sep) == 0x0A {
+                ts.setAttributes(baseAttributes, range: NSRange(location: sep, length: 1))
+            }
         }
-
-        // Re-style new active block (show delimiters at cursor)
-        if let newIdx = newActiveIndex, newIdx < blocks.count {
-            let cursorInBlock = max(0, cursorInRaw - blocks[newIdx].range.location)
-            restyleBlock(newIdx, cursorInBlock: cursorInBlock)
-        }
-
         ts.endEditing()
 
         displayRanges = blocks.map { $0.range }
 
-        if let rawSel = selectionInRaw, rawSel.length > 0 {
-            let len = ts.length
-            let displaySel = NSRange(
-                location: min(rawSel.location, len),
-                length: max(0, min(rawSel.upperBound, len) - min(rawSel.location, len))
-            )
-            setSelectedRange(displaySel)
-        } else {
-            let clamped = min(cursorInRaw, ts.length)
-            setSelectedRange(NSRange(location: clamped, length: 0))
+        if settingSelection {
+            if let rawSel = selectionInRaw, rawSel.length > 0 {
+                let len = ts.length
+                let displaySel = NSRange(
+                    location: min(rawSel.location, len),
+                    length: max(0, min(rawSel.upperBound, len) - min(rawSel.location, len))
+                )
+                setSelectedRange(displaySel)
+            } else {
+                let clamped = min(cursorInRaw, ts.length)
+                setSelectedRange(NSRange(location: clamped, length: 0))
+            }
         }
 
         typingAttributes = baseAttributes
 
         isUpdating = false
+    }
+
+    /// Incremental recompose: only re-styles the old and new active blocks.
+    /// Used when the cursor moves between blocks without changing content.
+    func recomposeIncremental(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
+        var dirty = IndexSet()
+        if let oldIdx = activeBlockIndex, oldIdx < blocks.count { dirty.insert(oldIdx) }
+        if let newIdx = blockIndexForRawOffset(cursorInRaw) { dirty.insert(newIdx) }
+        recomposeDirty(dirty, cursorInRaw: cursorInRaw,
+                       selectionInRaw: selectionInRaw, settingSelection: true)
+    }
+
+    /// Restyles every block in place (attribute-only). For theme and
+    /// appearance changes: the string is unchanged but every attribute
+    /// derives from the new theme/appearance.
+    func recomposeAllDirty() {
+        recomposeDirty(IndexSet(blocks.indices),
+                       cursorInRaw: currentCursorInRaw(),
+                       settingSelection: true)
     }
 
     /// Recalculates displayRanges from current blocks.

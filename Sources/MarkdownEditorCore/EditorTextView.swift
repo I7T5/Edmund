@@ -107,12 +107,12 @@ public class EditorTextView: NSTextView {
         return ps
     }
 
-    /// Apply a new theme, persist it, and recompose.
+    /// Apply a new theme, persist it, and restyle every block in place.
     public func applyTheme(_ newTheme: EditorTheme) {
         theme = newTheme
         theme.save(to: themeDefaults)
         typingAttributes = baseAttributes
-        recompose(cursorInRaw: currentCursorInRaw())
+        recomposeAllDirty()
     }
 
     var baseAttributes: [NSAttributedString.Key: Any] {
@@ -186,7 +186,7 @@ public class EditorTextView: NSTextView {
             .foregroundColor: foregroundColor,
         ]
         typingAttributes = baseAttributes
-        recompose(cursorInRaw: currentCursorInRaw())
+        recomposeAllDirty()
     }
 
     // MARK: - Edit Flow
@@ -233,38 +233,58 @@ public class EditorTextView: NSTextView {
         // — which fires didChangeText again with no marked text.
         guard !hasMarkedText() else { return }
         syncRawSourceFromDisplay()
-        applyBlockStyle()
         document?.updateChangeCount(.changeDone)
         scrollCursorToCenter()
     }
 
-    /// Syncs rawSource from the text storage and re-parses blocks.
-    /// With word-level rendering, text storage = rawSource, so this is simple.
+    /// Syncs rawSource from the text storage, re-parses blocks, and restyles
+    /// exactly the blocks the edit affected: the parser's changed window, the
+    /// old and new active blocks, and — when the document-global list indent
+    /// unit moved — every list block. One flush, attribute-only; the storage
+    /// string is never replaced on the edit path.
     private func syncRawSourceFromDisplay() {
         guard let ts = textStorage else { return }
 
-        rawSource = ts.string
+        let oldIndentUnit = listIndentUnit
+        rawSource = ts.string   // didSet recomputes listIndentUnit
         let sel = selectedRange()
         let cursorRaw = min(sel.location, (rawSource as NSString).length)
 
-        let previousBlockCount = blocks.count
-        blocks = BlockParser.parse(rawSource, previous: blocks)
-        recalcDisplayRanges()
+        let oldCount = blocks.count
+        let oldActive = activeBlockIndex
+        let (newBlocks, changed) = BlockParser.parseWithDiff(rawSource, previous: blocks)
+        blocks = newBlocks
 
-        // If the number of blocks changed, an edit split or merged blocks (e.g. a
-        // callout/code fence/quote gaining or losing lines). Incremental recompose
-        // only restyles the active block, so a neighbor whose meaning changed —
-        // such as a former callout body line left with a stale background — would
-        // keep its old styling. Do a full recompose to keep the document correct.
-        if blocks.count != previousBlockCount {
-            recompose(cursorInRaw: cursorRaw)
-            return
+        var dirty = IndexSet(integersIn: changed)
+
+        // Map the old active block through the diff so its deactivation
+        // restyle lands on the right index: prefix indices are unchanged,
+        // suffix indices shift by the count delta, and anything inside the
+        // window is already dirty.
+        if let old = oldActive {
+            let suffixCount = newBlocks.count - changed.upperBound
+            if old < changed.lowerBound {
+                dirty.insert(old)
+            } else if old >= oldCount - suffixCount {
+                dirty.insert(old + (newBlocks.count - oldCount))
+            }
         }
 
-        let newBlockIndex = blockIndexForRawOffset(cursorRaw)
-        if newBlockIndex != activeBlockIndex {
-            recomposeIncremental(cursorInRaw: cursorRaw)
+        // The block under the cursor gets cursor-aware delimiter styling
+        // (this also subsumes the old per-keystroke applyBlockStyle pass).
+        if let newActive = blockIndexForRawOffset(cursorRaw) {
+            dirty.insert(newActive)
         }
+
+        // listIndentUnit is document-global: when it changes, the rendered
+        // indentation of every list block changes with it.
+        if listIndentUnit != oldIndentUnit {
+            for (i, block) in blocks.enumerated() where block.kind == .listItem {
+                dirty.insert(i)
+            }
+        }
+
+        recomposeDirty(dirty, cursorInRaw: cursorRaw)
     }
 
     // MARK: - Selection Change Detection
