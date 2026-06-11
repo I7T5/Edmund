@@ -33,8 +33,8 @@ struct InlineMathRenderingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("$x^2$")           // no cursor → render
         // Attachment replaces the opening `$`.
-        let attachment = styled.attribute(.attachment, at: 0, effectiveRange: nil)
-        #expect(attachment is NSTextAttachment)
+        let attachment = styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil)
+        #expect(attachment is FragmentOverlay)
         // LaTeX source + closing `$` are hidden.
         #expect(isHidden(at: 1, in: styled))
         #expect(isHidden(at: 4, in: styled))
@@ -44,7 +44,7 @@ struct InlineMathRenderingTests {
     @MainActor func activeShowsRaw() {
         let editor = makeEditor()
         let styled = editor.styleBlock("$x^2$", cursorPosition: 2)
-        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) == nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
         #expect(!isHidden(at: 1, in: styled))             // source visible
     }
 
@@ -52,7 +52,7 @@ struct InlineMathRenderingTests {
     @MainActor func invalidLatexFallsBack() {
         let editor = makeEditor()
         let styled = editor.styleBlock("$\\frac{$")
-        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) == nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
         #expect(!isHidden(at: 1, in: styled))             // raw source shown
         let color = styled.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
         #expect(color == NSColor.systemRed)
@@ -102,7 +102,7 @@ struct DisplayMathRenderingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("$$x+y$$")
         // Attachment replaces the first `$`.
-        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) is NSTextAttachment)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) is FragmentOverlay)
         // The second `$` of the opening delimiter is hidden too.
         #expect(isHidden(at: 1, in: styled))
         #expect(isHidden(at: 2, in: styled))             // content
@@ -120,7 +120,7 @@ struct DisplayMathRenderingTests {
     @MainActor func activeShowsRaw() {
         let editor = makeEditor()
         let styled = editor.styleBlock("$$x+y$$", cursorPosition: 3)
-        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) == nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
         #expect(!isHidden(at: 2, in: styled))             // source visible
     }
 }
@@ -147,7 +147,7 @@ struct MathFitWidthTests {
 
         let wide = "$$a_{10}x^{10}+a_9x^9+a_8x^8+a_7x^7+a_6x^6+a_5x^5+a_4x^4+a_3x^3+a_2x^2+a_1x+a_0$$"
         let styled = editor.styleBlock(wide)
-        let att = styled.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        let att = styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) as? FragmentOverlay
         #expect(att != nil)
         // The natural width exceeds the usable width, so it scales down to
         // exactly the cap (500 − 2·5 line-fragment padding).
@@ -158,7 +158,7 @@ struct MathFitWidthTests {
     @MainActor func normalNotScaled() {
         let editor = makeEditor()
         let styled = editor.styleBlock("$$x+y$$")
-        let att = styled.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment
+        let att = styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) as? FragmentOverlay
         #expect(att != nil)
         let w = att?.bounds.width ?? 0
         #expect(w > 0 && w < 200)        // comfortably under the cap

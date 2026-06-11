@@ -9,8 +9,9 @@ import AppKit
 struct RecomposeTests {
 
     @MainActor private func calloutBackground(_ ts: NSTextStorage, at i: Int) -> NSColor? {
-        let ps = ts.attributes(at: i, effectiveRange: nil)[.paragraphStyle] as? NSParagraphStyle
-        return ps?.textBlocks.first?.backgroundColor
+        guard let deco = ts.attributes(at: i, effectiveRange: nil)[.blockDecoration] as? BlockDecoration,
+              case .box(let background, _, _, _) = deco.kind else { return nil }
+        return background
     }
 
     @Test("Removing a callout marker clears the stale background on its former body")

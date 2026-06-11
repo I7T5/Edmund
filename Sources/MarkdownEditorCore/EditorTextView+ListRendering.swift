@@ -44,9 +44,9 @@ extension EditorTextView {
 
     // MARK: Marker Icons
 
-    /// Creates an NSTextAttachment with a circle icon for checkbox rendering.
+    /// Creates a fragment overlay with a circle icon for checkbox rendering.
     /// Unchecked: gray outlined circle. Checked: filled yellow circle with checkmark.
-    private func checkboxAttachment(checked: Bool) -> NSTextAttachment {
+    private func checkboxOverlay(checked: Bool) -> FragmentOverlay {
         let fontSize = bodyFont.pointSize
         let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
             let inset: CGFloat = 1.0
@@ -80,18 +80,16 @@ extension EditorTextView {
             return true
         }
 
-        let attachment = NSTextAttachment()
-        attachment.image = image
         // Vertically center the circle relative to the text baseline
-        attachment.bounds = CGRect(x: 0, y: -fontSize * 0.15,
-                                   width: fontSize, height: fontSize)
-        return attachment
+        return FragmentOverlay(image: image,
+                               bounds: CGRect(x: 0, y: -fontSize * 0.15,
+                                              width: fontSize, height: fontSize))
     }
 
-    /// Creates an attachment with a small filled dot for unordered bullets,
+    /// Creates an overlay with a small filled dot for unordered bullets,
     /// sized to the same box as the checkbox circle so bullet and todo lists
     /// share one indentation (Apple Notes style).
-    private func bulletAttachment() -> NSTextAttachment {
+    private func bulletOverlay() -> FragmentOverlay {
         let fontSize = bodyFont.pointSize
         let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
             let r = fontSize * 0.13                 // small dot
@@ -101,11 +99,9 @@ extension EditorTextView {
             NSBezierPath(ovalIn: dot).fill()
             return true
         }
-        let attachment = NSTextAttachment()
-        attachment.image = image
-        attachment.bounds = CGRect(x: 0, y: -fontSize * 0.15,
-                                   width: fontSize, height: fontSize)
-        return attachment
+        return FragmentOverlay(image: image,
+                               bounds: CGRect(x: 0, y: -fontSize * 0.15,
+                                              width: fontSize, height: fontSize))
     }
 
     // MARK: Marker Styling
@@ -156,9 +152,9 @@ extension EditorTextView {
                 result.addAttribute(.font, value: hiddenFont, range: before)
                 result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
             }
-            // Dot attachment on the bullet character.
-            result.addAttribute(.attachment, value: bulletAttachment(),
-                                range: NSRange(location: markerAbs, length: 1))
+            // Dot overlay on the (hidden) bullet character.
+            applyOverlay(bulletOverlay(), anchor: NSRange(location: markerAbs, length: 1),
+                         in: result)
             // Dim the trailing space(s) after the bullet.
             let afterStart = markerAbs + 1
             if afterStart < dr.upperBound {
@@ -196,10 +192,9 @@ extension EditorTextView {
             result.addAttribute(.foregroundColor, value: NSColor.clear, range: before)
         }
 
-        // Place circle attachment on `[` character
-        let attachment = checkboxAttachment(checked: checkbox == .checked)
-        result.addAttribute(.attachment, value: attachment,
-                            range: NSRange(location: cbStart, length: 1))
+        // Circle overlay on the (hidden) `[` character
+        applyOverlay(checkboxOverlay(checked: checkbox == .checked),
+                     anchor: NSRange(location: cbStart, length: 1), in: result)
 
         // Hide remaining checkbox characters (` ]`/`x]`) with zero-width + clear
         let hideStart = cbStart + 1

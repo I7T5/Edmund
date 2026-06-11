@@ -1,12 +1,12 @@
 import AppKit
 import CoreText
 
-/// A text storage subclass that preserves `.attachment` attributes on
-/// any character, not just the object replacement character (\u{FFFC}).
+/// A text storage subclass whose `fixAttributes` does font substitution only.
 ///
-/// Standard NSTextStorage strips attachments from non-FFFC characters
-/// during `fixAttributes`. This subclass skips attribute fixing since
-/// the editor explicitly manages all attributes for every character.
+/// The editor explicitly manages every attribute on every character (custom
+/// keys like `.blockDecoration` / `.fragmentOverlay` included), so the
+/// framework's default attribute "fixing" has nothing useful to add — and
+/// historically it stripped attributes the renderer depended on.
 public class EditorTextStorage: NSTextStorage {
     private let backing = NSMutableAttributedString()
 
@@ -38,10 +38,9 @@ public class EditorTextStorage: NSTextStorage {
     }
 
     override public func fixAttributes(in range: NSRange) {
-        // We deliberately skip the framework's default attribute fixing because
-        // it strips .attachment from non-FFFC characters — and the editor places
-        // marker icons (bullet dot, checkbox circle, math image) on real
-        // characters like "-", "[", "$".
+        // We deliberately skip the framework's default attribute fixing — the
+        // editor manages all attributes itself, and the default pass has a
+        // history of stripping what the renderer depends on.
         //
         // But one part of fixing is still needed: font substitution. The body
         // font (a serif/mono) has no glyphs for emoji, CJK, etc.; without

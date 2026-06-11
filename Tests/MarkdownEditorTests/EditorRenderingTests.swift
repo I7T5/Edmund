@@ -309,17 +309,15 @@ struct EditorStylingTests {
         #expect(color == NSColor.secondaryLabelColor)
     }
 
-    @Test("Blockquote has paragraph style with text block")
+    @Test("Blockquote carries a left-bar decoration")
     @MainActor func blockquoteTextBlock() {
         let editor = makeEditor()
         let styled = editor.styleBlock("> text")
-        var hasTextBlock = false
-        styled.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: styled.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle, !ps.textBlocks.isEmpty {
-                hasTextBlock = true
-            }
+        guard let deco = blockDecoration(at: 0, in: styled),
+              case .leftBar = deco.kind else {
+            Issue.record("expected a .leftBar BlockDecoration on the quote")
+            return
         }
-        #expect(hasTextBlock)
     }
 
     @Test("List bullet marker renders as a dot attachment")
@@ -327,7 +325,7 @@ struct EditorStylingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("- hello")
         // The `-` carries the bullet dot attachment.
-        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) is NSTextAttachment)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) is FragmentOverlay)
         // The trailing space after the bullet is dimmed.
         #expect(isDimmed(at: 1, in: styled))
     }
@@ -340,7 +338,7 @@ struct EditorStylingTests {
         #expect(isHidden(at: 0, in: styled))
         // "[" at 2 has a text attachment
         let a = styled.attributes(at: 2, effectiveRange: nil)
-        #expect(a[.attachment] is NSTextAttachment)
+        #expect(a[.fragmentOverlay] is FragmentOverlay)
         // " ]" at 3-4 are hidden
         #expect(isHidden(at: 3, in: styled))
     }
@@ -353,7 +351,7 @@ struct EditorStylingTests {
         #expect(isHidden(at: 0, in: styled))
         // "[" at 2 has a text attachment
         let a = styled.attributes(at: 2, effectiveRange: nil)
-        #expect(a[.attachment] is NSTextAttachment)
+        #expect(a[.fragmentOverlay] is FragmentOverlay)
         // "x]" at 3-4 are hidden
         #expect(isHidden(at: 3, in: styled))
     }
@@ -367,7 +365,7 @@ struct EditorStylingTests {
         #expect(isHidden(at: 4, in: styled))
         // "[" at position 6 has the circle attachment
         let a = styled.attributes(at: 6, effectiveRange: nil)
-        #expect(a[.attachment] is NSTextAttachment)
+        #expect(a[.fragmentOverlay] is FragmentOverlay)
         // " ]" after the bracket is hidden
         #expect(isHidden(at: 7, in: styled))
     }
@@ -379,7 +377,7 @@ struct EditorStylingTests {
         // Leading spaces have base text color (not part of delimiter)
         #expect(!isDimmed(at: 0, in: styled))
         // The `-` at offset 2 carries the bullet dot attachment
-        #expect(styled.attribute(.attachment, at: 2, effectiveRange: nil) is NSTextAttachment)
+        #expect(styled.attribute(.fragmentOverlay, at: 2, effectiveRange: nil) is FragmentOverlay)
     }
 
     @Test("List items have hanging indent paragraph style")
@@ -501,7 +499,7 @@ struct EditorStylingTests {
         let styled = editor.styleBlock("- hello", cursorPosition: 3)
         // The `-` marker is shown (dimmed), not replaced by an attachment nor
         // hidden with the near-zero clear font.
-        #expect(styled.attribute(.attachment, at: 0, effectiveRange: nil) == nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
         let f = styled.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
         #expect((f?.pointSize ?? 0) >= 1.0)
         #expect(isDimmed(at: 0, in: styled))           // marker is dimmed, visible
@@ -608,17 +606,21 @@ struct EditorStylingTests {
         #expect(traits.contains(.boldFontMask))
         // Separator row (offset 10 = start of "| --- | --- |") is hidden
         #expect(isHidden(at: 10, in: styled))
-        // Separator row has a paragraph style with a text block for the border
-        let sepPS = styled.attribute(.paragraphStyle, at: 10, effectiveRange: nil) as? NSParagraphStyle
-        #expect(sepPS != nil)
-        #expect(!sepPS!.textBlocks.isEmpty)
-        // All pipes are hidden (vertical borders drawn by TextBlock)
+        // Separator row carries a separator .tableRow decoration
+        if let deco = blockDecoration(at: 10, in: styled),
+           case .tableRow(_, _, _, let separator) = deco.kind {
+            #expect(separator)
+        } else {
+            Issue.record("expected a .tableRow decoration on the separator row")
+        }
+        // All pipes are hidden (vertical borders drawn by the decoration)
         #expect(isHidden(at: 0, in: styled))
         #expect(isHidden(at: 4, in: styled))
-        // Each row has a text block for vertical border drawing
-        let headerPS = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        #expect(headerPS != nil)
-        #expect(!headerPS!.textBlocks.isEmpty)
+        // Each row carries a .tableRow decoration for the borders
+        if let deco = blockDecoration(at: 0, in: styled),
+           case .tableRow = deco.kind {} else {
+            Issue.record("expected a .tableRow decoration on the header row")
+        }
     }
 
     @Test("Table without outer pipes renders with borders and hidden pipes")
@@ -631,10 +633,11 @@ struct EditorStylingTests {
         #expect(NSFontManager.shared.traits(of: hf!).contains(.boldFontMask))
         // Inner pipe at offset 5 is hidden
         #expect(isHidden(at: 5, in: styled))
-        // Header row has a paragraph style with text blocks for borders
-        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        #expect(ps != nil)
-        #expect(!ps!.textBlocks.isEmpty)
+        // Header row carries a .tableRow decoration for the borders
+        if let deco = blockDecoration(at: 0, in: styled),
+           case .tableRow = deco.kind {} else {
+            Issue.record("expected a .tableRow decoration on the header row")
+        }
     }
 
     @Test("Non-active thematic break is hidden with horizontal line style")
@@ -642,13 +645,12 @@ struct EditorStylingTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("---")
         #expect(styled.string == "---")
-        // Characters are hidden (visual line via NSTextBlock)
+        // Characters are hidden (the rule is a .horizontalRule decoration)
         #expect(isHidden(at: 0, in: styled))
-        // Paragraph style has a text block for the border
-        let a = styled.attributes(at: 0, effectiveRange: nil)
-        let ps = a[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps != nil)
-        #expect(!ps!.textBlocks.isEmpty)
+        if let deco = blockDecoration(at: 0, in: styled),
+           case .horizontalRule = deco.kind {} else {
+            Issue.record("expected a .horizontalRule decoration")
+        }
     }
 
     @Test("Active thematic break is dimmed, not hidden")

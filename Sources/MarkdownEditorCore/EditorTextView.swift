@@ -165,6 +165,18 @@ public class EditorTextView: NSTextView {
         // Vend decoration-drawing layout fragments (TextKit 2).
         textLayoutManager?.delegate = self
 
+        #if DEBUG
+        // TextKit 1 fallback is silent and permanent: it happens when any
+        // NSLayoutManager API is touched or an unsupported attribute (e.g.
+        // NSTextBlock) enters the storage. Fail loudly instead.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(textKit1FallbackTripwire(_:)),
+            name: NSTextView.willSwitchToNSLayoutManagerNotification,
+            object: self
+        )
+        #endif
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(selectionDidChange(_:)),
@@ -176,6 +188,15 @@ public class EditorTextView: NSTextView {
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
+
+    #if DEBUG
+    @objc private func textKit1FallbackTripwire(_ note: Notification) {
+        assertionFailure("""
+        TextKit 1 fallback triggered — an NSLayoutManager API was called or an \
+        unsupported attribute (NSTextBlock/NSTextTable?) entered the storage.
+        """)
+    }
+    #endif
 
     // MARK: - Appearance
 

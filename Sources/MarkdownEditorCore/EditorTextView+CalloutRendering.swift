@@ -65,12 +65,28 @@ extension EditorTextView {
         guard span.fullRange.upperBound <= result.length else { return }
         let c = resolvedCalloutColors(info.style)
 
-        result.addAttribute(.paragraphStyle,
-                            value: calloutParagraphStyle(borderColor: c.border,
-                                                         backgroundColor: c.background,
-                                                         edges: info.style.borderEdges,
-                                                         borderWidth: info.style.borderWidth),
+        // The box is drawn by DecoratedTextLayoutFragment behind every
+        // paragraph of the callout; the fragments tile into one continuous box.
+        result.addAttribute(
+            .blockDecoration,
+            value: BlockDecoration(.box(background: c.background,
+                                        borderColor: c.border,
+                                        borderEdges: info.style.borderEdges,
+                                        borderWidth: info.style.borderWidth)),
+            range: span.fullRange)
+        result.addAttribute(.paragraphStyle, value: calloutParagraphStyle(),
                             range: span.fullRange)
+        // Bottom breathing room: paragraph spacing on the last line. The box
+        // covers it (it's inside the last fragment's frame), and clicks there
+        // resolve to the callout's last line — no dead zone.
+        let ns = result.string as NSString
+        var lastLineStart = span.fullRange.location
+        let nl = ns.range(of: "\n", options: .backwards,
+                          range: span.fullRange)
+        if nl.location != NSNotFound { lastLineStart = nl.upperBound }
+        result.addAttribute(.paragraphStyle, value: calloutParagraphStyle(isLastLine: true),
+                            range: NSRange(location: lastLineStart,
+                                           length: span.fullRange.upperBound - lastLineStart))
 
         let m = info.marker
         if active {
@@ -84,17 +100,30 @@ extension EditorTextView {
             return
         }
 
-        // Rendered: hide the whole header, draw an icon + title image on the first
-        // character.
+        // Rendered: hide the whole header, draw an icon + title image at the
+        // first character via a fragment overlay.
         let header = info.headerRange
         guard header.length > 0, header.upperBound <= result.length else { return }
         result.addAttribute(.font, value: hiddenFont, range: header)
         result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
-        if let att = calloutHeaderAttachment(symbolName: info.style.symbolName,
-                                             title: info.title, color: c.accent,
-                                             iconNudge: info.style.iconBaselineNudge) {
-            result.addAttribute(.attachment, value: att,
-                                range: NSRange(location: header.location, length: 1))
+        if let overlay = calloutHeaderOverlay(symbolName: info.style.symbolName,
+                                              title: info.title, color: c.accent,
+                                              iconNudge: info.style.iconBaselineNudge) {
+            applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
+                         in: result)
+            // Top breathing room: a raised minimum line height on the header
+            // line — still clickable text space, the box covers it.
+            let ns = result.string as NSString
+            let nl = ns.range(of: "\n", options: [], range: span.fullRange)
+            let headerLineEnd = nl.location == NSNotFound ? span.fullRange.upperBound : nl.location
+            let headerLine = NSRange(location: span.fullRange.location,
+                                     length: headerLineEnd - span.fullRange.location)
+            let headerIsLastLine = nl.location == NSNotFound
+            result.addAttribute(
+                .paragraphStyle,
+                value: calloutParagraphStyle(isLastLine: headerIsLastLine,
+                                             minimumLineHeight: overlay.bounds.height + calloutTopPad),
+                range: headerLine)
         }
     }
 
@@ -126,57 +155,35 @@ extension EditorTextView {
     /// Bottom breathing room (kept as block padding; slightly less, to balance).
     private var calloutBottomPad: CGFloat { bodyFont.pointSize * 0.65 }
 
-    // MARK: Paragraph style (border / background / padding)
+    // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 
-    private func calloutParagraphStyle(borderColor: NSColor, backgroundColor: NSColor,
-                                       edges: CalloutStyle.Edges, borderWidth: CGFloat) -> NSParagraphStyle {
+    /// Text insets the NSTextBlock padding used to provide. The left inset is
+    /// kept small so the callout's text lines up with a plain block quote's —
+    /// the quote's 2pt bar inset matches this 2pt — and the top breathing room
+    /// lives in the header image (clickable text space). The bottom breathing
+    /// room is the last line's paragraph spacing: it's inside the last
+    /// fragment's frame, so the drawn box covers it and clicks there land on
+    /// the callout's last line.
+    private func calloutParagraphStyle(isLastLine: Bool = false,
+                                       minimumLineHeight: CGFloat = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
-        ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
-
-        // One block instance shared across the callout's lines renders as a single
-        // continuous box, so borders/background/padding wrap the whole callout
-        // (padding only at the outer top/bottom, not between lines).
-        let block = NSTextBlock()
-        block.setContentWidth(100, type: .percentageValueType)
-        block.backgroundColor = backgroundColor
-
-        let left   = NSRectEdge(rawValue: 0)!   // minX
-        let top     = NSRectEdge(rawValue: 1)!  // minY (top, flipped text coords)
-        let right  = NSRectEdge(rawValue: 2)!   // maxX
-        let bottom = NSRectEdge(rawValue: 3)!   // maxY
-        let edgeMap: [(CalloutStyle.Edges, NSRectEdge)] =
-            [(.left, left), (.top, top), (.right, right), (.bottom, bottom)]
-        for (e, rectEdge) in edgeMap where edges.contains(e) {
-            block.setWidth(borderWidth, type: .absoluteValueType, for: .border, edge: rectEdge)
-            block.setBorderColor(borderColor, for: rectEdge)
-        }
-
-        // Breathing room: generous vertical padding. The left padding is kept
-        // small so the callout's text lines up with a plain block quote's — the
-        // shared hidden `> ` already provides the indent — rather than sitting
-        // further right. (A block quote's left inset is its 2pt border; matching
-        // that here keeps callouts and quotes aligned.)
-        // Top padding lives in the header image (clickable text space); only the
-        // bottom padding is block padding here.
-        let leftPad: CGFloat = 2
-        let rightPad: CGFloat = 10
-        block.setWidth(calloutBottomPad, type: .absoluteValueType, for: .padding, edge: bottom)
-        block.setWidth(leftPad, type: .absoluteValueType, for: .padding, edge: left)
-        block.setWidth(rightPad, type: .absoluteValueType, for: .padding, edge: right)
-        _ = top   // (top padding intentionally omitted — see header image)
-
-        ps.textBlocks = [block]
+        ps.firstLineHeadIndent = 2
+        ps.headIndent = 2
+        ps.tailIndent = -10
+        ps.paragraphSpacing = isLastLine ? calloutBottomPad : 0
+        ps.minimumLineHeight = minimumLineHeight
         return ps
     }
 
     // MARK: Header image (icon + title)
 
-    /// Draws "icon  Title" into one image, tinted to the callout color. Returns
-    /// `nil` if the SF Symbol can't be resolved (the caller then leaves the raw
-    /// marker text visible).
-    private func calloutHeaderAttachment(symbolName: String, title: String, color: NSColor,
-                                         iconNudge: CGFloat) -> NSTextAttachment? {
+    /// Draws "icon  Title" into one image, tinted to the callout color, and
+    /// wraps it in a `FragmentOverlay`. Returns `nil` if the SF Symbol can't
+    /// be resolved. The top breathing room is NOT in the image — the caller
+    /// raises the header line's minimum line height instead.
+    private func calloutHeaderOverlay(symbolName: String, title: String, color: NSColor,
+                                      iconNudge: CGFloat) -> FragmentOverlay? {
         let pointSize = bodyFont.pointSize
         let symConfig = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
@@ -192,15 +199,8 @@ extension EditorTextView {
         let symW = symbol.size.width, symH = symbol.size.height
         let contentHeight = ceil(max(symH, titleSize.height))
         let width = ceil(symW + gap + titleSize.width)
-        // The image is taller than its content: the extra `calloutTopPad` sits on
-        // top, so the callout's top breathing room is part of this (clickable)
-        // header line rather than dead block padding above it.
-        let topPad = ceil(calloutTopPad)
-        let height = contentHeight + topPad
 
-        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
-            // Draw the content in the bottom `contentHeight` band; leave `topPad`
-            // empty above it.
+        let image = NSImage(size: NSSize(width: width, height: contentHeight), flipped: false) { _ in
             let titleY = (contentHeight - titleSize.height) / 2
             titleStr.draw(at: NSPoint(x: symW + gap, y: titleY))
             // Center the icon on the title's cap height (its optical middle) rather
@@ -211,11 +211,8 @@ extension EditorTextView {
             return true
         }
 
-        let attachment = NSTextAttachment()
-        attachment.image = image
-        // The content's bottom stays on the text baseline (as before); the extra
-        // `topPad` extends the image (and the line fragment) upward.
-        attachment.bounds = CGRect(x: 0, y: -pointSize * 0.15, width: width, height: height)
-        return attachment
+        return FragmentOverlay(image: image,
+                               bounds: CGRect(x: 0, y: -pointSize * 0.15,
+                                              width: width, height: contentHeight))
     }
 }

@@ -25,6 +25,18 @@ func makeEditor() -> EditorTextView {
     return editor
 }
 
+/// The BlockDecoration attribute at `offset` in the editor's storage, if any.
+@MainActor
+func blockDecoration(at offset: Int, in editor: EditorTextView) -> BlockDecoration? {
+    attrs(at: offset, in: editor)[.blockDecoration] as? BlockDecoration
+}
+
+/// The BlockDecoration attribute at `offset` in a styled string, if any.
+func blockDecoration(at offset: Int, in result: NSAttributedString) -> BlockDecoration? {
+    guard offset < result.length else { return nil }
+    return result.attribute(.blockDecoration, at: offset, effectiveRange: nil) as? BlockDecoration
+}
+
 /// Forces layout of the whole document (TextKit 2). The lazy equivalent of
 /// the old `layoutManager.ensureLayout(for: textContainer)`.
 @MainActor
@@ -149,9 +161,8 @@ func isDimmed(at offset: Int, in result: NSAttributedString) -> Bool {
 // exactly the way full `recompose` does it. Incremental paths (dirty-set
 // styling, lazy rendering) must always leave the storage attribute-equivalent
 // to this composition. Comparison is structural: paragraph styles and
-// attachments are compared component-wise because fresh compositions create
-// fresh NSTextBlock / NSTextAttachment instances that never compare equal by
-// pointer-based isEqual.
+// fragment overlays are compared component-wise because fresh compositions
+// create fresh instances that never compare equal by pointer-based isEqual.
 
 /// Composes the editor's document from scratch the way full `recompose` does:
 /// base attributes everywhere, then per-block styling (cursor-aware for the
@@ -244,14 +255,13 @@ func attributeDifference(
                 if let diff = paragraphStyleDifference(pa, pb) {
                     return "paragraphStyle: \(diff)"
                 }
-            } else if let aa = va as? NSTextAttachment, let ab = vb as? NSTextAttachment {
-                if String(describing: type(of: aa)) != String(describing: type(of: ab)) {
-                    return "attachment class: \(type(of: aa)) vs \(type(of: ab))"
-                }
-                let ba = aa.bounds, bb = ab.bounds
+            } else if let fa = va as? FragmentOverlay, let fb = vb as? FragmentOverlay {
+                // Overlay images are drawn fresh per composition; bounds carry
+                // the comparable geometry.
+                let ba = fa.bounds, bb = fb.bounds
                 if abs(ba.width - bb.width) > 0.5 || abs(ba.height - bb.height) > 0.5
                     || abs(ba.origin.y - bb.origin.y) > 0.5 {
-                    return "attachment bounds: \(ba) vs \(bb)"
+                    return "overlay bounds: \(ba) vs \(bb)"
                 }
             } else if let oa = va as? NSObject, let ob = vb as? NSObject {
                 if !oa.isEqual(ob) {

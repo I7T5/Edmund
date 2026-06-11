@@ -65,7 +65,7 @@ extension EditorTextView {
     /// Paragraph style for thematic breaks. The raw dashes are hidden with a
     /// near-zero font, which would collapse the line — so we force the line to a
     /// full body-line height and add symmetric breathing space above and below.
-    /// A ThematicBreakTextBlock draws the hairline centered in that height.
+    /// A `.horizontalRule` BlockDecoration draws the hairline centered in it.
     private func thematicBreakParagraphStyle() -> NSParagraphStyle {
         let lineHeight = bodyFont.pointSize + theme.lineSpacing
 
@@ -77,28 +77,17 @@ extension EditorTextView {
         // height already contributes space beneath the centered rule.
         ps.paragraphSpacingBefore = bodyFont.pointSize * 0.5
         ps.paragraphSpacing = bodyFont.pointSize * 0.3
-
-        let block = ThematicBreakTextBlock()
-        block.lineHeight = lineHeight
-        block.setContentWidth(100, type: .percentageValueType)
-        ps.textBlocks = [block]
-
         return ps
     }
 
-    /// Paragraph style with a left border for blockquotes.
+    /// Paragraph style for blockquotes: a 2pt text inset matching the width of
+    /// the left bar that the `.leftBar` BlockDecoration draws.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
-
-        let block = NSTextBlock()
-        block.setContentWidth(100, type: .percentageValueType)
-        let leftEdge = NSRectEdge(rawValue: 0)!
-        block.setWidth(2, type: .absoluteValueType, for: .border, edge: leftEdge)
-        block.setBorderColor(.tertiaryLabelColor, for: leftEdge)
-        ps.textBlocks = [block]
-
+        ps.firstLineHeadIndent = 2
+        ps.headIndent = 2
         return ps
     }
 
@@ -207,10 +196,13 @@ extension EditorTextView {
                 if let callout = calloutInfo(forBlockquote: span, markdown: markdown) {
                     styleCalloutContent(result, span: span, info: callout, active: cursorInToken)
                 } else {
-                    // Paragraph style must cover fullRange so the first character of each
-                    // paragraph (the `> ` delimiter) carries the NSTextBlock border.
-                    // NSTextView uses the paragraph style from the first char of a paragraph.
+                    // Attributes must cover fullRange so the first character of each
+                    // paragraph (the `> ` delimiter) carries the style/decoration —
+                    // the fragment vendor reads the paragraph's first character.
                     result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: span.fullRange)
+                    result.addAttribute(.blockDecoration,
+                                        value: BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2)),
+                                        range: span.fullRange)
                     result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.contentRange)
                 }
 
@@ -328,11 +320,6 @@ extension EditorTextView {
                     }
                     let totalWidth = cumX
 
-                    let leftEdge  = NSRectEdge(rawValue: 0)!
-                    let rightEdge = NSRectEdge(rawValue: 2)!
-                    let edge1     = NSRectEdge(rawValue: 1)!
-                    let edge3     = NSRectEdge(rawValue: 3)!
-
                     // --- Style each row ---
                     var lineOffset = span.fullRange.location
                     for (i, line) in lines.enumerated() {
@@ -342,31 +329,34 @@ extension EditorTextView {
 
                         let rowFont: NSFont = (i == 0) ? boldFont : bodyFont
 
-                        // Paragraph style with TableRowTextBlock for borders
+                        // Row geometry via the paragraph style; the borders are
+                        // drawn by a .tableRow BlockDecoration. Vertical padding
+                        // becomes paragraph spacing (row gap = trailing + leading
+                        // spacing = 2*cellVPad, same as the old block padding).
                         let ps = NSMutableParagraphStyle()
-                        ps.paragraphSpacingBefore = (i == 0)
-                            ? bodyParagraphStyle.paragraphSpacingBefore : 0
-                        ps.paragraphSpacing = 0
                         ps.lineSpacing = 0
-                        let block = TableRowTextBlock()
-                        block.verticalLineXOffsets = borderXOffsets
-                        block.contentLeftOffset = cellHPad
-                        block.setContentWidth(totalWidth, type: .absoluteValueType)
-                        // Left/right padding so text doesn't touch the table edge.
-                        block.setWidth(cellHPad, type: .absoluteValueType, for: .padding, edge: leftEdge)
-                        block.setWidth(cellHPad, type: .absoluteValueType, for: .padding, edge: rightEdge)
-                        // Vertical padding for breathing room between rows.
-                        block.setWidth(cellVPad, type: .absoluteValueType, for: .padding, edge: edge1)
-                        block.setWidth(cellVPad, type: .absoluteValueType, for: .padding, edge: edge3)
+                        ps.firstLineHeadIndent = cellHPad
+                        ps.headIndent = cellHPad
                         if i == 1 {
-                            block.drawHorizontalLine = true
-                            block.heightOverride = 4
-                            // Separator needs no vertical padding.
-                            block.setWidth(0, type: .absoluteValueType, for: .padding, edge: edge1)
-                            block.setWidth(0, type: .absoluteValueType, for: .padding, edge: edge3)
+                            // Separator row: its text is hidden; force a thin
+                            // strip and draw the horizontal rule through it.
+                            ps.minimumLineHeight = 4
+                            ps.maximumLineHeight = 4
+                            ps.paragraphSpacingBefore = 0
+                            ps.paragraphSpacing = 0
+                        } else {
+                            ps.paragraphSpacingBefore = cellVPad + ((i == 0)
+                                ? bodyParagraphStyle.paragraphSpacingBefore : 0)
+                            ps.paragraphSpacing = cellVPad
                         }
-                        ps.textBlocks = [block]
                         result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
+                        result.addAttribute(
+                            .blockDecoration,
+                            value: BlockDecoration(.tableRow(columnXOffsets: borderXOffsets,
+                                                             width: totalWidth,
+                                                             leftInset: cellHPad,
+                                                             separator: i == 1)),
+                            range: lineRange)
 
                         if i == 0 {
                             result.addAttribute(.font, value: boldFont, range: lineRange)
@@ -413,8 +403,11 @@ extension EditorTextView {
                     // Active: show raw dashes, dimmed
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
                 } else {
-                    // Non-active: horizontal line via NSTextBlock, hide raw text
+                    // Non-active: horizontal hairline decoration, hide raw text
                     result.addAttribute(.paragraphStyle, value: thematicBreakParagraphStyle(), range: span.fullRange)
+                    result.addAttribute(.blockDecoration,
+                                        value: BlockDecoration(.horizontalRule(color: .separatorColor)),
+                                        range: span.fullRange)
                     result.addAttribute(.font, value: hiddenFont, range: span.fullRange)
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)
                 }
@@ -432,22 +425,24 @@ extension EditorTextView {
                     // inline math inside a heading matches the heading's size.
                     let contextFont = result.attribute(.font, at: span.fullRange.location,
                                                        effectiveRange: nil) as? NSFont ?? bodyFont
-                    if let attachment = mathAttachment(latex: latex.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                       display: display,
-                                                       fontSize: contextFont.pointSize) {
-                        // Show the rendered image on the first `$` (which the
-                        // attachment replaces) and hide everything after it — the
-                        // rest of the opening delimiter, the source, and the close.
+                    if let overlay = mathOverlay(latex: latex.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                 display: display,
+                                                 fontSize: contextFont.pointSize) {
+                        // Draw the rendered image at the first `$` (hidden, with
+                        // kern reserving the image's width) and hide everything
+                        // after it — the rest of the opening delimiter, the
+                        // source, and the close.
                         let hideStart = span.fullRange.location + 1
                         let hideLen = span.fullRange.upperBound - hideStart
                         let hideRange = NSRange(location: hideStart, length: hideLen)
                         result.addAttribute(.font, value: hiddenFont, range: hideRange)
                         result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
-                        result.addAttribute(.attachment, value: attachment,
-                                            range: NSRange(location: span.fullRange.location, length: 1))
+                        applyOverlay(overlay,
+                                     anchor: NSRange(location: span.fullRange.location, length: 1),
+                                     in: result)
                         // Display math sits centered on its own line, with
-                        // vertical padding on the (first) line that carries the
-                        // attachment image.
+                        // vertical padding and the image's height reserved on
+                        // the (first) line that carries it.
                         if display {
                             let fullStr = result.string as NSString
                             result.addAttribute(.paragraphStyle,
@@ -459,7 +454,8 @@ extension EditorTextView {
                                 : NSRange(location: span.fullRange.location,
                                           length: nl.location - span.fullRange.location + 1)
                             result.addAttribute(.paragraphStyle,
-                                                value: displayMathParagraphStyle(padded: true),
+                                                value: displayMathParagraphStyle(padded: true,
+                                                                                 imageHeight: overlay.bounds.height),
                                                 range: firstLine)
                         }
                     } else {
@@ -574,39 +570,4 @@ extension EditorTextView {
 
 // MARK: - ThematicBreakTextBlock
 
-/// NSTextBlock subclass that renders a full-width horizontal hairline
-/// centered vertically within a block whose height matches body text.
-private class ThematicBreakTextBlock: NSTextBlock {
-
-    /// Target block height (set to bodyFont.pointSize by the caller).
-    var lineHeight: CGFloat = 16
-
-    override func rectForLayout(
-        at startingPosition: CGPoint,
-        in rect: NSRect,
-        textContainer: NSTextContainer,
-        characterRange charRange: NSRange
-    ) -> NSRect {
-        var r = super.rectForLayout(at: startingPosition, in: rect,
-                                    textContainer: textContainer,
-                                    characterRange: charRange)
-        r.size.height = lineHeight
-        return r
-    }
-
-    override func drawBackground(
-        withFrame frameRect: NSRect,
-        in controlView: NSView,
-        characterRange charRange: NSRange,
-        layoutManager: NSLayoutManager
-    ) {
-        NSColor.separatorColor.setStroke()
-        let path = NSBezierPath()
-        let y = round(frameRect.midY) + 0.5
-        path.move(to: NSPoint(x: frameRect.minX, y: y))
-        path.line(to: NSPoint(x: frameRect.maxX, y: y))
-        path.lineWidth = 1
-        path.stroke()
-    }
-}
 
