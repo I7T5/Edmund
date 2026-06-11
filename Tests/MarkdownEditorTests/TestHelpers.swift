@@ -4,21 +4,13 @@ import AppKit
 
 // MARK: - Editor Construction
 
-/// Creates an EditorTextView with a proper text system chain,
-/// mirroring the setup in main.swift.
+/// Creates an EditorTextView with the TextKit 2 text system chain,
+/// mirroring the setup in Document.makeWindowControllers().
 @MainActor
 func makeEditor() -> EditorTextView {
-    let textStorage = EditorTextStorage()
-    let layoutManager = NSLayoutManager()
-    textStorage.addLayoutManager(layoutManager)
-    let textContainer = NSTextContainer(
-        size: NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
-    )
-    textContainer.widthTracksTextView = true
-    layoutManager.addTextContainer(textContainer)
-    let editor = EditorTextView(
+    let editor = EditorTextView.makeTextKit2(
         frame: NSRect(x: 0, y: 0, width: 500, height: 300),
-        textContainer: textContainer
+        containerSize: NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
     )
     // Isolate theme persistence. EditorTextView loads/saves its theme via
     // UserDefaults; without isolation, tests that call `applyTheme` write font
@@ -31,6 +23,14 @@ func makeEditor() -> EditorTextView {
     editor.themeDefaults = defaults
     editor.theme = .load(from: defaults)
     return editor
+}
+
+/// Forces layout of the whole document (TextKit 2). The lazy equivalent of
+/// the old `layoutManager.ensureLayout(for: textContainer)`.
+@MainActor
+func ensureFullLayout(_ editor: EditorTextView) {
+    guard let tlm = editor.textLayoutManager else { return }
+    tlm.ensureLayout(for: tlm.documentRange)
 }
 
 // MARK: - Input Simulation

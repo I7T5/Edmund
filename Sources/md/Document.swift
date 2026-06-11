@@ -85,20 +85,10 @@ class Document: NSDocument {
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .line
 
-        // Build the text system chain:
-        //   NSTextStorage → NSLayoutManager → NSTextContainer → NSTextView
-        let textStorage = EditorTextStorage()
-        let layoutManager = NSLayoutManager()
-        textStorage.addLayoutManager(layoutManager)
-
-        let contentSize = NSSize(width: windowWidth, height: CGFloat.greatestFiniteMagnitude)
-        let textContainer = NSTextContainer(size: contentSize)
-        textContainer.widthTracksTextView = true
-        layoutManager.addTextContainer(textContainer)
-
-        editor = EditorTextView(
+        // Build the TextKit 2 text system chain (viewport-based layout).
+        editor = EditorTextView.makeTextKit2(
             frame: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
-            textContainer: textContainer
+            containerSize: NSSize(width: windowWidth, height: CGFloat.greatestFiniteMagnitude)
         )
         editor.minSize = NSSize(width: 0, height: 0)
         editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,

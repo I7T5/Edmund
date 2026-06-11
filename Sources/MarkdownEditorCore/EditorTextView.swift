@@ -162,6 +162,9 @@ public class EditorTextView: NSTextView {
         blocks = BlockParser.parse(rawSource)
         recompose(cursorInRaw: 0)
 
+        // Vend decoration-drawing layout fragments (TextKit 2).
+        textLayoutManager?.delegate = self
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(selectionDidChange(_:)),
@@ -334,14 +337,8 @@ public class EditorTextView: NSTextView {
     /// in the visible area.
     private func scrollCursorToCenter() {
         guard typewriterModeEnabled else { return }
-        guard let lm = layoutManager,
-              let scrollView = enclosingScrollView else { return }
-
-        let sel = selectedRange()
-        let glyphRange = lm.glyphRange(forCharacterRange: NSRange(location: sel.location, length: 0),
-                                        actualCharacterRange: nil)
-        guard glyphRange.location != NSNotFound else { return }
-        let lineRect = lm.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+        guard let scrollView = enclosingScrollView,
+              let lineRect = caretLineRect() else { return }
         let cursorY = lineRect.midY + textContainerOrigin.y
 
         let visibleHeight = scrollView.contentView.bounds.height
@@ -351,6 +348,26 @@ public class EditorTextView: NSTextView {
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    /// The caret line's rect in text-container coordinates (TextKit 2: lays
+    /// out only the caret's fragment, positions above are estimated).
+    private func caretLineRect() -> CGRect? {
+        guard let tlm = textLayoutManager else { return nil }
+        let sel = selectedRange()
+        guard let loc = tlm.location(tlm.documentRange.location, offsetBy: sel.location)
+        else { return nil }
+        tlm.ensureLayout(for: NSTextRange(location: loc))
+        guard let fragment = tlm.textLayoutFragment(for: loc) else { return nil }
+        let frame = fragment.layoutFragmentFrame
+
+        guard let paraStart = fragment.textElement?.elementRange?.location else { return frame }
+        let offsetInPara = tlm.offset(from: paraStart, to: loc)
+        let line = fragment.textLineFragments.first {
+            NSLocationInRange(offsetInPara, $0.characterRange)
+        } ?? fragment.textLineFragments.last
+        guard let line else { return frame }
+        return line.typographicBounds.offsetBy(dx: frame.minX, dy: frame.minY)
     }
 
     // MARK: - Link Following
@@ -367,19 +384,26 @@ public class EditorTextView: NSTextView {
     /// The destination URL of the link under a mouse event, or nil if the click
     /// doesn't land directly on link text.
     private func linkURL(at event: NSEvent) -> URL? {
-        guard let lm = layoutManager, let container = textContainer,
+        guard let tlm = textLayoutManager,
               let storage = textStorage, storage.length > 0 else { return nil }
 
         var point = convert(event.locationInWindow, from: nil)
         point.x -= textContainerOrigin.x
         point.y -= textContainerOrigin.y
 
-        let glyphIndex = lm.glyphIndex(for: point, in: container)
-        // Reject clicks past the end of a line (which still resolve to a glyph).
-        let glyphRect = lm.boundingRect(forGlyphRange: NSRange(location: glyphIndex, length: 1), in: container)
-        guard glyphRect.contains(point) else { return nil }
+        guard let fragment = tlm.textLayoutFragment(for: point) else { return nil }
+        let frame = fragment.layoutFragmentFrame
+        let pointInFragment = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+        // Reject clicks past the end of a line: typographic bounds cover only
+        // the line's used extent.
+        guard let line = fragment.textLineFragments.first(where: {
+            $0.typographicBounds.contains(pointInFragment)
+        }) else { return nil }
 
-        let charIndex = lm.characterIndexForGlyph(at: glyphIndex)
+        let indexInParagraph = line.characterIndex(for: pointInFragment)
+        guard indexInParagraph >= 0,
+              let paraStart = fragment.textElement?.elementRange?.location else { return nil }
+        let charIndex = tlm.offset(from: tlm.documentRange.location, to: paraStart) + indexInParagraph
         guard charIndex < storage.length,
               let dest = storage.attribute(.editorLinkURL, at: charIndex, effectiveRange: nil) as? String
         else { return nil }
