@@ -129,13 +129,23 @@ extension EditorTextView {
     //
     // With text storage = rawSource, display offset = raw offset (identity).
 
+    /// Binary search over the (sorted, adjacent) block ranges. An offset at a
+    /// block's `upperBound` — the trailing `\n` separator — belongs to that
+    /// block; offsets past the last block clamp to it.
     func blockIndexForRawOffset(_ rawOffset: Int) -> Int? {
-        for (i, block) in blocks.enumerated() {
-            if rawOffset >= block.range.location && rawOffset <= block.range.upperBound {
-                return i
+        guard !blocks.isEmpty else { return nil }
+        var lo = 0
+        var hi = blocks.count - 1
+        // First block whose inclusive upper bound reaches the offset.
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if blocks[mid].range.upperBound < rawOffset {
+                lo = mid + 1
+            } else {
+                hi = mid
             }
         }
-        return blocks.isEmpty ? nil : blocks.count - 1
+        return lo
     }
 
     func displayOffsetToRawOffset(_ displayOffset: Int) -> Int {
