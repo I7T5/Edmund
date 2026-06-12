@@ -287,7 +287,22 @@ public class EditorTextView: NSTextView {
 
         let oldCount = blocks.count
         let oldActive = activeBlockIndex
-        let (newBlocks, changed) = BlockParser.parseWithDiff(rawSource, previous: blocks)
+        // Incremental parse from the storage's accumulated edit — O(edit);
+        // full positional-diff parse as the fallback.
+        let newBlocks: [Block]
+        let changed: Range<Int>
+        if let pending = (ts as? EditorTextStorage)?.consumePendingEdit(),
+           let incremental = BlockParser.incrementalParse(text: rawSource,
+                                                          old: blocks,
+                                                          editedOldRange: pending.oldRange,
+                                                          delta: pending.delta) {
+            (newBlocks, changed) = incremental
+            #if DEBUG
+            verifyIncrementalParse(newBlocks)
+            #endif
+        } else {
+            (newBlocks, changed) = BlockParser.parseWithDiff(rawSource, previous: blocks)
+        }
         blocks = newBlocks
 
         var dirty = IndexSet(integersIn: changed)
@@ -321,6 +336,33 @@ public class EditorTextView: NSTextView {
 
         recomposeDirty(dirty, cursorInRaw: cursorRaw)
     }
+
+    #if DEBUG
+    /// Debug oracle for the incremental parser: every incremental result must
+    /// equal a from-scratch parse (content, ranges, kinds — IDs are allowed
+    /// to differ). Skipped under MD_PERF so measurements stay representative.
+    private func verifyIncrementalParse(_ incremental: [Block]) {
+        guard ProcessInfo.processInfo.environment["MD_PERF"] == nil else { return }
+        let reference = BlockParser.parse(rawSource)
+        guard incremental.count == reference.count else {
+            assertionFailure("""
+            incremental parse diverged: \(incremental.count) blocks \
+            vs \(reference.count) reference
+            """)
+            return
+        }
+        for (a, b) in zip(incremental, reference) {
+            if a.content != b.content || a.range != b.range || a.kind != b.kind {
+                assertionFailure("""
+                incremental parse diverged at \(a.range): \
+                \(String(reflecting: a.content)) [\(a.kind)] vs \
+                \(String(reflecting: b.content)) [\(b.kind)] at \(b.range)
+                """)
+                return
+            }
+        }
+    }
+    #endif
 
     // MARK: - Selection Change Detection
 

@@ -47,6 +47,112 @@ public enum BlockParser {
         return (blocks, changed)
     }
 
+    /// Re-parses only the lines affected by an edit, splicing the untouched
+    /// prefix and (shifted) suffix of the previous parse around the re-split
+    /// window — O(edit), not O(document).
+    ///
+    /// The window starts one block before the first affected block: every
+    /// merge rule needs at most that much left context (quote-run adjacency
+    /// and the table header+separator lookahead are single-step; an unclosed
+    /// fence/math opener further up would already contain the edit inside its
+    /// merged block). Downstream, the re-split continues until a produced
+    /// block boundary lands on an old block start at/after the edit's end —
+    /// from there the old parse is provably identical, because a block's
+    /// parse depends only on its own and following lines.
+    ///
+    /// Returns nil when the inputs don't allow it (caller falls back to the
+    /// full parse).
+    public static func incrementalParse(
+        text: String,
+        old: [Block],
+        editedOldRange: NSRange,
+        delta: Int
+    ) -> (blocks: [Block], changed: Range<Int>)? {
+        guard !old.isEmpty else { return nil }
+        let newLength = (text as NSString).length
+        let oldLength = newLength - delta
+        guard editedOldRange.location >= 0,
+              editedOldRange.upperBound <= oldLength else { return nil }
+
+        guard let firstAffected = blockIndex(in: old, forOffset: editedOldRange.location)
+        else { return nil }
+
+        let windowStartIndex = max(0, firstAffected - 1)
+        let windowStartOffset = old[windowStartIndex].range.location
+        let editEndNew = editedOldRange.upperBound + delta
+
+        var buf = LineBuffer(text, from: windowStartOffset)
+        var window: [Block] = []
+        var cursor = windowStartOffset   // new-coords offset of the next block
+        var lineIndex = 0
+        var suffixStart: Int? = nil      // old block index to splice from
+
+        while true {
+            // Resync probe at this block boundary (not at the initial one).
+            if cursor > windowStartOffset && cursor >= editEndNew {
+                let oldOffset = cursor - delta
+                if let j = blockIndex(in: old, forOffset: oldOffset),
+                   old[j].range.location == oldOffset,
+                   oldOffset >= editedOldRange.upperBound {
+                    suffixStart = j
+                    break
+                }
+            }
+
+            guard let (content, kind, next) = consumeBlock(&buf, at: lineIndex) else {
+                break   // end of document: the window runs to the end
+            }
+            let length = (content as NSString).length
+            window.append(Block(content: content,
+                                range: NSRange(location: cursor, length: length),
+                                kind: kind))
+            lineIndex = next
+            cursor += length
+            // Skip the `\n` separator if another line follows; otherwise this
+            // was the document's final block — stop before re-probing (the
+            // boundary we'd probe is the block we just consumed).
+            if buf.line(at: next) != nil { cursor += 1 } else { break }
+        }
+
+        // Trim unchanged leading window blocks (the lookback block usually
+        // re-parses identically): preserve their identity and styling, and
+        // keep the changed window tight.
+        let spliceLimit = suffixStart ?? old.count
+        var keep = 0
+        while keep < window.count, windowStartIndex + keep < spliceLimit,
+              old[windowStartIndex + keep].content == window[keep].content {
+            window[keep].id = old[windowStartIndex + keep].id
+            window[keep].isStyled = old[windowStartIndex + keep].isStyled
+            keep += 1
+        }
+
+        var blocks = Array(old[0..<windowStartIndex])
+        blocks.append(contentsOf: window)
+        if let s = suffixStart {
+            for j in s..<old.count {
+                var b = old[j]
+                b.range.location += delta
+                blocks.append(b)
+            }
+        }
+
+        return (blocks, (windowStartIndex + keep) ..< (windowStartIndex + window.count))
+    }
+
+    /// Binary search over sorted, adjacent block ranges — the same
+    /// inclusive-upper-bound semantics as the editor's lookup (an offset at a
+    /// block's trailing separator maps to that block; past-end clamps to last).
+    private static func blockIndex(in blocks: [Block], forOffset offset: Int) -> Int? {
+        guard !blocks.isEmpty else { return nil }
+        var lo = 0
+        var hi = blocks.count - 1
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if blocks[mid].range.upperBound < offset { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
+    }
+
     /// Positional prefix/suffix diff: scans content equality from the front
     /// and the back, copies old IDs onto the matches, and returns the changed
     /// window in new-list indices. O(unchanged + changed); never matches a
@@ -74,86 +180,128 @@ public enum BlockParser {
 
     // MARK: - Helpers
 
+    /// Lazily materializes the `\n`-separated line segments of a text starting
+    /// at a given UTF-16 offset. `components(separatedBy: "\n")` semantics:
+    /// number of segments = number of newlines + 1, so a trailing `\n` yields
+    /// a final empty segment. Both the full and incremental parses consume
+    /// lines through this buffer, so they cannot diverge.
+    struct LineBuffer {
+        private let ns: NSString
+        private(set) var lines: [String] = []
+        private var nextOffset: Int
+        private var exhausted = false
+
+        init(_ text: String, from offset: Int = 0) {
+            self.ns = text as NSString
+            self.nextOffset = offset
+        }
+
+        /// The line at index `i` (buffer-relative), fetching as needed.
+        /// Returns nil past the end of the text.
+        mutating func line(at i: Int) -> String? {
+            while lines.count <= i && !exhausted {
+                fetchNext()
+            }
+            return i < lines.count ? lines[i] : nil
+        }
+
+        private mutating func fetchNext() {
+            guard !exhausted else { return }
+            let remaining = NSRange(location: nextOffset, length: ns.length - nextOffset)
+            let nl = ns.range(of: "\n", options: [], range: remaining)
+            if nl.location == NSNotFound {
+                lines.append(ns.substring(with: remaining))
+                exhausted = true
+            } else {
+                lines.append(ns.substring(
+                    with: NSRange(location: nextOffset, length: nl.location - nextOffset)))
+                nextOffset = nl.upperBound
+                if nextOffset == ns.length {
+                    // Trailing newline: one final empty segment.
+                    lines.append("")
+                    exhausted = true
+                }
+            }
+        }
+    }
+
+    /// Consumes one block starting at line `i`, merging multi-line constructs
+    /// (fences, display math, quote runs, tables). Returns the block's
+    /// content/kind and the index of the line after it.
+    static func consumeBlock(_ buf: inout LineBuffer, at i: Int)
+        -> (content: String, kind: BlockKind, next: Int)? {
+        guard let first = buf.line(at: i) else { return nil }
+
+        // Detect opening code fence
+        if let fence = codeFenceInfo(first) {
+            var merged = [first]
+            var j = i + 1
+            while let line = buf.line(at: j) {
+                merged.append(line)
+                j += 1
+                if isClosingFence(line, char: fence.char, count: fence.count) {
+                    break
+                }
+            }
+            return (merged.joined(separator: "\n"), .fence, j)
+        }
+
+        // Detect display-math fence: a line starting with `$$`.
+        if let closedOnSameLine = displayMathClosedOnSameLine(first) {
+            if closedOnSameLine {
+                return (first, .mathDisplay, i + 1)
+            }
+            var merged = [first]
+            var j = i + 1
+            while let line = buf.line(at: j) {
+                merged.append(line)
+                j += 1
+                if line.contains("$$") { break }
+            }
+            return (merged.joined(separator: "\n"), .mathDisplay, j)
+        }
+
+        // Merge a run of consecutive block-quote lines (`>`) into one block.
+        // This covers callouts and plain multi-line block quotes alike, and
+        // gives the editor one styling/activation unit per quote.
+        if isBlockquoteLine(first) {
+            let isCallout = quoteRunOpensCallout(first)
+            var merged = [first]
+            var j = i + 1
+            while let line = buf.line(at: j), isBlockquoteLine(line) {
+                merged.append(line)
+                j += 1
+            }
+            return (merged.joined(separator: "\n"), .quoteRun(isCallout: isCallout), j)
+        }
+
+        // Detect table: header row followed by separator row
+        if isTableRow(first), let second = buf.line(at: i + 1), isTableSeparator(second) {
+            var merged = [first]
+            var j = i + 1
+            while let line = buf.line(at: j), isTableRow(line) || isTableSeparator(line) {
+                merged.append(line)
+                j += 1
+            }
+            return (merged.joined(separator: "\n"), .table, j)
+        }
+
+        return (first, classifyLine(first), i + 1)
+    }
+
     /// Splits text into paragraphs on single newlines, merging fenced code blocks
     /// and table rows into single multi-line blocks. Each paragraph is tagged
     /// with its `BlockKind`.
     private static func splitParagraphs(_ text: String) -> [(content: String, kind: BlockKind)] {
         if text.isEmpty { return [("", .blank)] }
 
-        let lines = text.components(separatedBy: "\n")
+        var buf = LineBuffer(text)
         var result: [(content: String, kind: BlockKind)] = []
         var i = 0
-
-        while i < lines.count {
-            // Detect opening code fence
-            if let fence = codeFenceInfo(lines[i]) {
-                var merged = [lines[i]]
-                i += 1
-                while i < lines.count {
-                    let line = lines[i]
-                    merged.append(line)
-                    i += 1
-                    if isClosingFence(line, char: fence.char, count: fence.count) {
-                        break
-                    }
-                }
-                result.append((merged.joined(separator: "\n"), .fence))
-                continue
-            }
-
-            // Detect display-math fence: a line starting with `$$`.
-            if let closedOnSameLine = displayMathClosedOnSameLine(lines[i]) {
-                if closedOnSameLine {
-                    result.append((lines[i], .mathDisplay))
-                    i += 1
-                    continue
-                }
-                var merged = [lines[i]]
-                i += 1
-                while i < lines.count {
-                    merged.append(lines[i])
-                    let closes = lines[i].contains("$$")
-                    i += 1
-                    if closes { break }
-                }
-                result.append((merged.joined(separator: "\n"), .mathDisplay))
-                continue
-            }
-
-            // Merge a run of consecutive block-quote lines (`>`) into one block.
-            // This covers callouts and plain multi-line block quotes alike. It is
-            // also required for editing: each block becomes a single NSTextBlock
-            // (one "table cell"), and NSTextView refuses to delete at the boundary
-            // between two adjacent cells — so per-line block-quote cells made the
-            // marker characters undeletable. One cell per quote avoids that.
-            if isBlockquoteLine(lines[i]) {
-                let isCallout = quoteRunOpensCallout(lines[i])
-                var merged = [lines[i]]
-                i += 1
-                while i < lines.count && isBlockquoteLine(lines[i]) {
-                    merged.append(lines[i])
-                    i += 1
-                }
-                result.append((merged.joined(separator: "\n"), .quoteRun(isCallout: isCallout)))
-                continue
-            }
-
-            // Detect table: header row followed by separator row
-            if i + 1 < lines.count && isTableRow(lines[i]) && isTableSeparator(lines[i + 1]) {
-                var merged = [lines[i]]
-                i += 1
-                while i < lines.count && (isTableRow(lines[i]) || isTableSeparator(lines[i])) {
-                    merged.append(lines[i])
-                    i += 1
-                }
-                result.append((merged.joined(separator: "\n"), .table))
-                continue
-            }
-
-            result.append((lines[i], classifyLine(lines[i])))
-            i += 1
+        while let (content, kind, next) = consumeBlock(&buf, at: i) {
+            result.append((content, kind))
+            i = next
         }
-
         return result
     }
 
