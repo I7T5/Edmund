@@ -73,10 +73,13 @@ extension EditorTextView {
         // Force a real line height despite the hidden (0.01pt) dashes.
         ps.minimumLineHeight = lineHeight
         ps.maximumLineHeight = lineHeight
-        // Breathing space above and below — slightly less below, since the line
-        // height already contributes space beneath the centered rule.
-        ps.paragraphSpacingBefore = bodyFont.pointSize * 0.5
-        ps.paragraphSpacing = bodyFont.pointSize * 0.3
+        // Symmetric breathing space. The rule is drawn centered in the
+        // fragment, so paragraphSpacingBefore sits above the line (and the
+        // rule) while paragraphSpacing sits below — equal values keep the
+        // rule visually equidistant from the text on either side.
+        let pad = bodyFont.pointSize * 0.5
+        ps.paragraphSpacingBefore = pad
+        ps.paragraphSpacing = pad
         return ps
     }
 
@@ -440,6 +443,14 @@ extension EditorTextView {
                         applyOverlay(overlay,
                                      anchor: NSRange(location: span.fullRange.location, length: 1),
                                      in: result)
+                        if !display {
+                            // Inline math flows within a text line; reserve the
+                            // line height so a tall equation (e.g. scaled to a
+                            // heading's font) doesn't overlap the line below.
+                            reserveLineHeight(overlay.bounds.height,
+                                              forOverlayAt: span.fullRange.location,
+                                              in: result)
+                        }
                         // Display math sits centered on its own line, with
                         // vertical padding and the image's height reserved on
                         // the (first) line that carries it.

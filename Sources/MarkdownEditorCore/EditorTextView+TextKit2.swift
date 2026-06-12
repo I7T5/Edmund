@@ -287,6 +287,28 @@ extension EditorTextView {
         result.addAttribute(.kern, value: overlay.bounds.width, range: anchor)
         result.addAttribute(.fragmentOverlay, value: overlay, range: anchor)
     }
+
+    /// Reserves vertical room for an overlay taller than the text line that
+    /// carries it. A `FragmentOverlay` only reserves horizontal advance (kern),
+    /// so — unlike the old `NSTextAttachment`, which grew its line fragment —
+    /// a tall image (e.g. inline math scaled to a heading's size) would
+    /// otherwise overlap the line below. Raises the enclosing paragraph's
+    /// `minimumLineHeight` to fit, preserving any other paragraph attributes.
+    func reserveLineHeight(_ height: CGFloat, forOverlayAt location: Int,
+                           in result: NSMutableAttributedString) {
+        guard location < result.length else { return }
+        let ns = result.string as NSString
+        // The enclosing paragraph (between newlines): minimumLineHeight is a
+        // paragraph attribute, and for the heading/inline cases the math sits
+        // on a single line, so this grows exactly the line that needs it.
+        let para = ns.paragraphRange(for: NSRange(location: location, length: 0))
+        let base = (result.attribute(.paragraphStyle, at: location, effectiveRange: nil)
+            as? NSParagraphStyle) ?? bodyParagraphStyle
+        guard height > base.minimumLineHeight else { return }
+        let ps = (base.mutableCopy() as! NSMutableParagraphStyle)
+        ps.minimumLineHeight = height
+        result.addAttribute(.paragraphStyle, value: ps, range: para)
+    }
 }
 
 // MARK: - Stack Construction

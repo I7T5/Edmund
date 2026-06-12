@@ -462,8 +462,12 @@ public class EditorTextView: NSTextView {
     }
 
     /// The line rect for the character at `offset`, in text-container
-    /// coordinates. Lays out only that character's fragment.
-    private func lineRect(forCharacterAt offset: Int) -> CGRect? {
+    /// coordinates. Lays out only the offset's own fragment — forcing layout
+    /// from the document start would lay out (and could OOM on) the whole 1–2
+    /// MB document for a deep caret. For carets in or near the viewport the
+    /// position is exact; for far jumps it may be a TextKit 2 estimate that
+    /// the scroll anchoring + promotion settle once the region is reached.
+    func lineRect(forCharacterAt offset: Int) -> CGRect? {
         guard let tlm = textLayoutManager else { return nil }
         guard let loc = tlm.location(tlm.documentRange.location, offsetBy: offset)
         else { return nil }
@@ -487,17 +491,23 @@ public class EditorTextView: NSTextView {
     /// scroll: lay out just the target's fragment and move the clip view.
     public override func scrollRangeToVisible(_ range: NSRange) {
         guard let scrollView = enclosingScrollView else { return }
-        guard let rect = lineRect(forCharacterAt: range.location) else { return }
-
-        let lineRect = rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        // Bound the range by its two ends so an extended selection follows the
+        // end being modified rather than always its start.
         let visible = scrollView.contentView.bounds
+        guard let startRect = lineRect(forCharacterAt: range.location) else { return }
+        let endRect = range.length > 0
+            ? (lineRect(forCharacterAt: range.upperBound) ?? startRect) : startRect
+        let top = min(startRect.minY, endRect.minY) + textContainerOrigin.y
+        let bottom = max(startRect.maxY, endRect.maxY) + textContainerOrigin.y
         let margin: CGFloat = 8
 
         var targetY = visible.origin.y
-        if lineRect.minY < visible.minY {
-            targetY = lineRect.minY - margin
-        } else if lineRect.maxY > visible.maxY {
-            targetY = lineRect.maxY + margin - visible.height
+        if top < visible.minY {
+            targetY = top - margin
+        } else if bottom > visible.maxY {
+            // Prefer keeping the bottom edge visible; fall back to the top if
+            // the range is taller than the viewport.
+            targetY = min(bottom + margin - visible.height, top - margin)
         } else {
             return  // already visible
         }
