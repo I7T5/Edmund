@@ -83,6 +83,13 @@ extension EditorTextView {
         return ps
     }
 
+    /// How far below the rule fragment's geometric center to draw the hairline.
+    /// Adjacent text sits at its baseline (low in its line box), so a
+    /// center-drawn rule looks too close to the line above; this nudge brings
+    /// it down to the optical midpoint between the surrounding text. Tuned
+    /// against rendered output (see RenderingRegressionTests / screencapture).
+    var thematicBreakCenterOffset: CGFloat { bodyFont.pointSize * 0.3 }
+
     /// Paragraph style for blockquotes: a 2pt text inset matching the width of
     /// the left bar that the `.leftBar` BlockDecoration draws.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
@@ -409,7 +416,8 @@ extension EditorTextView {
                     // Non-active: horizontal hairline decoration, hide raw text
                     result.addAttribute(.paragraphStyle, value: thematicBreakParagraphStyle(), range: span.fullRange)
                     result.addAttribute(.blockDecoration,
-                                        value: BlockDecoration(.horizontalRule(color: .separatorColor)),
+                                        value: BlockDecoration(.horizontalRule(color: .separatorColor,
+                                                                               centerOffset: thematicBreakCenterOffset)),
                                         range: span.fullRange)
                     result.addAttribute(.font, value: hiddenFont, range: span.fullRange)
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)

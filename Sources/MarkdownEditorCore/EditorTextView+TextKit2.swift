@@ -49,8 +49,12 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// table's left edge.
         case tableRow(columnXOffsets: [CGFloat], width: CGFloat,
                       leftInset: CGFloat, separator: Bool)
-        /// Horizontal hairline centered across the text column.
-        case horizontalRule(color: NSColor)
+        /// Horizontal hairline across the text column, drawn `centerOffset`
+        /// points below the fragment's vertical center. The offset compensates
+        /// for adjacent text sitting at its baseline (low in its line box), so
+        /// the rule looks equidistant from the text above and below rather
+        /// than hugging the line above it.
+        case horizontalRule(color: NSColor, centerOffset: CGFloat)
     }
 
     public let kind: Kind
@@ -227,10 +231,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             }
             context.strokePath()
 
-        case .horizontalRule(let color):
+        case .horizontalRule(let color, let centerOffset):
             context.setStrokeColor(color.cgColor)
             context.setLineWidth(1)
-            let y = round(point.y + frame.height / 2) + 0.5
+            let y = round(point.y + frame.height / 2 + centerOffset) + 0.5
             context.move(to: CGPoint(x: columnRect.minX, y: y))
             context.addLine(to: CGPoint(x: columnRect.maxX, y: y))
             context.strokePath()

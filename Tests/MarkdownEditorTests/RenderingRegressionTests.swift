@@ -64,14 +64,39 @@ struct RenderingRegressionTests {
 
     // MARK: Thematic break — symmetric breathing space
 
-    @Test("Thematic break uses symmetric paragraph spacing")
-    @MainActor func thematicBreakSymmetric() {
-        let editor = makeEditor()
-        let styled = editor.styleBlock("---")
-        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        #expect(ps != nil)
-        #expect(abs((ps?.paragraphSpacingBefore ?? 0) - (ps?.paragraphSpacing ?? 0)) < 0.01,
-                "the rule's breathing space must be symmetric so it sits centered")
+    @Test("Thematic break rule is drawn equidistant from the text above and below")
+    @MainActor func thematicBreakBalanced() {
+        let (e, _) = windowed("Text line above the rule.\n---\nText line below the rule.")
+        guard let tlm = e.textLayoutManager else { Issue.record("no tlm"); return }
+
+        // Collect the three fragments: text, rule, text.
+        var frags: [NSTextLayoutFragment] = []
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) {
+            frags.append($0); return frags.count < 3
+        }
+        #expect(frags.count == 3)
+        let (above, rule, below) = (frags[0], frags[1], frags[2])
+
+        // The rule's drawn Y = fragment center + the compensating offset.
+        let ruleY = rule.layoutFragmentFrame.midY + e.thematicBreakCenterOffset
+
+        // Glyph edges of the neighbouring text (container coordinates): the
+        // baseline of the line above, and the cap-top of the line below.
+        func baseline(_ f: NSTextLayoutFragment) -> CGFloat? {
+            guard let line = f.textLineFragments.first else { return nil }
+            return f.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
+        }
+        guard let aboveBaseline = baseline(above),
+              let belowLine = below.textLineFragments.first else {
+            Issue.record("missing line metrics"); return
+        }
+        let belowTop = below.layoutFragmentFrame.minY + belowLine.typographicBounds.minY
+            + belowLine.glyphOrigin.y - e.bodyFont.capHeight
+
+        let gapAbove = ruleY - aboveBaseline
+        let gapBelow = belowTop - ruleY
+        #expect(abs(gapAbove - gapBelow) < 4.0,
+                "rule must sit between the text lines (above=\(gapAbove), below=\(gapBelow))")
     }
 
     // MARK: Scroll targets accurate under lazy layout
