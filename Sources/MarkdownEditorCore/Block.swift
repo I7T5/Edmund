@@ -32,11 +32,17 @@ public struct Block: Identifiable, Sendable {
     public var content: String
     public var range: NSRange
     public var kind: BlockKind
+    /// Whether the text storage currently holds this block's full styling.
+    /// False = the block is pending lazy styling (base attributes, or stale
+    /// styling scheduled for the drain). Maintained by the recompose engine.
+    public var isStyled: Bool
 
-    public init(id: UUID = UUID(), content: String, range: NSRange, kind: BlockKind = .paragraph) {
+    public init(id: UUID = UUID(), content: String, range: NSRange,
+                kind: BlockKind = .paragraph, isStyled: Bool = false) {
         self.id = id
         self.content = content
         self.range = range
         self.kind = kind
+        self.isStyled = isStyled
     }
 }

@@ -56,6 +56,7 @@ public enum BlockParser {
         while prefix < old.count && prefix < new.count
             && old[prefix].content == new[prefix].content {
             new[prefix].id = old[prefix].id
+            new[prefix].isStyled = old[prefix].isStyled
             prefix += 1
         }
 
@@ -64,6 +65,7 @@ public enum BlockParser {
         while suffix < maxSuffix
             && old[old.count - 1 - suffix].content == new[new.count - 1 - suffix].content {
             new[new.count - 1 - suffix].id = old[old.count - 1 - suffix].id
+            new[new.count - 1 - suffix].isStyled = old[old.count - 1 - suffix].isStyled
             suffix += 1
         }
 

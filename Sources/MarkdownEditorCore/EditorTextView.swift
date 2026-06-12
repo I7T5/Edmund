@@ -49,6 +49,11 @@ public class EditorTextView: NSTextView {
     var isUpdating = false
     var displayRanges: [NSRange] = []
     private var pendingRecompose = false
+    /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
+    var progressiveStylingScheduled = false
+    /// Where the idle drain resumes scanning for unstyled blocks (a hint;
+    /// it wraps around and self-corrects after edits shift indices).
+    var drainCursor = 0
 
     // MARK: - Custom Undo/Redo State
 
@@ -197,6 +202,12 @@ public class EditorTextView: NSTextView {
         """)
     }
     #endif
+
+    /// Hook up scroll promotion once the editor lands in its scroll view.
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        installScrollPromotionObserver()
+    }
 
     // MARK: - Appearance
 
@@ -374,9 +385,14 @@ public class EditorTextView: NSTextView {
     /// The caret line's rect in text-container coordinates (TextKit 2: lays
     /// out only the caret's fragment, positions above are estimated).
     private func caretLineRect() -> CGRect? {
+        lineRect(forCharacterAt: selectedRange().location)
+    }
+
+    /// The line rect for the character at `offset`, in text-container
+    /// coordinates. Lays out only that character's fragment.
+    private func lineRect(forCharacterAt offset: Int) -> CGRect? {
         guard let tlm = textLayoutManager else { return nil }
-        let sel = selectedRange()
-        guard let loc = tlm.location(tlm.documentRange.location, offsetBy: sel.location)
+        guard let loc = tlm.location(tlm.documentRange.location, offsetBy: offset)
         else { return nil }
         tlm.ensureLayout(for: NSTextRange(location: loc))
         guard let fragment = tlm.textLayoutFragment(for: loc) else { return nil }
@@ -389,6 +405,33 @@ public class EditorTextView: NSTextView {
         } ?? fragment.textLineFragments.last
         guard let line else { return frame }
         return line.typographicBounds.offsetBy(dx: frame.minX, dy: frame.minY)
+    }
+
+    /// AppKit's TextKit 2 implementation of scroll-to-range kills the process
+    /// on large documents (observed reproducibly at ~1.5 MB; silent kill, no
+    /// crash report). NSTextView calls it internally after every insertion
+    /// (caret autoscroll), so replace it with the minimal fragment-based
+    /// scroll: lay out just the target's fragment and move the clip view.
+    public override func scrollRangeToVisible(_ range: NSRange) {
+        guard let scrollView = enclosingScrollView else { return }
+        guard let rect = lineRect(forCharacterAt: range.location) else { return }
+
+        let lineRect = rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        let visible = scrollView.contentView.bounds
+        let margin: CGFloat = 8
+
+        var targetY = visible.origin.y
+        if lineRect.minY < visible.minY {
+            targetY = lineRect.minY - margin
+        } else if lineRect.maxY > visible.maxY {
+            targetY = lineRect.maxY + margin - visible.height
+        } else {
+            return  // already visible
+        }
+        let maxY = max(0, frame.height - visible.height)
+        let clampedY = min(max(0, targetY), maxY)
+        scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: clampedY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     // MARK: - Link Following

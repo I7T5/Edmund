@@ -164,16 +164,18 @@ func isDimmed(at offset: Int, in result: NSAttributedString) -> Bool {
 // fragment overlays are compared component-wise because fresh compositions
 // create fresh instances that never compare equal by pointer-based isEqual.
 
-/// Composes the editor's document from scratch the way full `recompose` does:
+/// Composes the editor's document from scratch the way full styling does:
 /// base attributes everywhere, then per-block styling (cursor-aware for the
-/// active block).
+/// active block). Blocks pending lazy styling (`isStyled == false`) are left
+/// in base attributes — exactly what the storage must hold for them after a
+/// lazy load.
 @MainActor
 func expectedFullComposition(for editor: EditorTextView) -> NSAttributedString {
     let composed = NSMutableAttributedString(string: editor.rawSource,
                                              attributes: editor.baseAttributes)
     let cursorInRaw = editor.selectedRange().location
     for (i, block) in editor.blocks.enumerated() {
-        guard block.range.upperBound <= composed.length else { continue }
+        guard block.range.upperBound <= composed.length, block.isStyled else { continue }
         let cursorInBlock: Int? = (i == editor.activeBlockIndex)
             ? max(0, cursorInRaw - block.range.location) : nil
         let styled = editor.styleBlock(block.content, cursorPosition: cursorInBlock)
@@ -187,6 +189,16 @@ func expectedFullComposition(for editor: EditorTextView) -> NSAttributedString {
         }
     }
     return composed
+}
+
+/// Runs the idle drain to completion synchronously (lazy-rendering tests).
+@MainActor
+func drainAllStyling(_ editor: EditorTextView, maxSlices: Int = 10_000) {
+    var slices = 0
+    while editor.blocks.contains(where: { !$0.isStyled }), slices < maxSlices {
+        editor.drainStylingSlice()
+        slices += 1
+    }
 }
 
 /// Asserts the live text storage is attribute-equivalent to a from-scratch
