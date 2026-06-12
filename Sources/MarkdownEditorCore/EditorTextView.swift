@@ -34,13 +34,23 @@ public class EditorTextView: NSTextView {
 
     // MARK: - State (internal for @testable import)
 
-    public var rawSource: String = "" {
-        didSet { listIndentUnit = Self.detectListIndentUnit(rawSource) }
-    }
+    public var rawSource: String = ""
     /// Columns of leading whitespace that make up one list-nesting level,
     /// detected from the document (the smallest indent used, or one tab).
     /// Defaults to 4. Used to map a list item's indentation to a nesting depth.
+    /// Maintained incrementally from `listIndentState` on the edit path;
+    /// rebuilt by the whole-document paths (load, undo, indent).
     public var listIndentUnit: Int = 4
+    /// Histogram of indented-list-line indents (see ListIndentState) backing
+    /// the incremental `listIndentUnit`.
+    var listIndentState = ListIndentState()
+
+    /// Rebuilds the indent histogram from the whole document. O(n) — for the
+    /// paths that rebuilt rawSource anyway; the edit path updates per block.
+    func rebuildListIndentState() {
+        listIndentState = ListIndentState.build(from: rawSource)
+        listIndentUnit = listIndentState.unit
+    }
     /// Line ending of the most recently loaded content. The buffer itself is
     /// always LF; this is remembered so saves preserve the file's style.
     public var originalLineEnding: LineEnding = .lf
@@ -164,6 +174,7 @@ public class EditorTextView: NSTextView {
         typingAttributes = baseAttributes
 
         rawSource = ""
+        rebuildListIndentState()
         blocks = BlockParser.parse(rawSource)
         recompose(cursorInRaw: 0)
 
@@ -281,7 +292,7 @@ public class EditorTextView: NSTextView {
         guard let ts = textStorage else { return }
 
         let oldIndentUnit = listIndentUnit
-        rawSource = ts.string   // didSet recomputes listIndentUnit
+        rawSource = ts.string
         let sel = selectedRange()
         let cursorRaw = min(sel.location, (rawSource as NSString).length)
 
@@ -300,8 +311,20 @@ public class EditorTextView: NSTextView {
             #if DEBUG
             verifyIncrementalParse(newBlocks)
             #endif
+            // Update the indent histogram from exactly the replaced blocks
+            // (old) and their replacements (new) — O(edit), same effect as a
+            // whole-document rescan.
+            let suffixCount = newBlocks.count - changed.upperBound
+            for i in changed.lowerBound ..< (oldCount - suffixCount) {
+                listIndentState.remove(blocks[i].content)
+            }
+            for i in changed {
+                listIndentState.add(newBlocks[i].content)
+            }
+            listIndentUnit = listIndentState.unit
         } else {
             (newBlocks, changed) = BlockParser.parseWithDiff(rawSource, previous: blocks)
+            rebuildListIndentState()
         }
         blocks = newBlocks
 
@@ -368,6 +391,14 @@ public class EditorTextView: NSTextView {
 
     @objc private func selectionDidChange(_ notification: Notification) {
         guard !isUpdating else { return }
+        // NSTextView moves the selection DURING an edit, before didChangeText
+        // runs the sync — at that moment `blocks` still has pre-edit ranges.
+        // Styling here would apply stale ranges/content against the new text,
+        // spilling wrong attributes across block boundaries. The pending edit
+        // is exactly the "storage ahead of blocks" signal; didChangeText's
+        // flush styles the active block anyway.
+        if let storage = textStorage as? EditorTextStorage,
+           storage.pendingEdit != nil { return }
         // Don't restyle while an input method is composing (see didChangeText).
         guard !hasMarkedText() else { return }
 
@@ -543,7 +574,7 @@ public class EditorTextView: NSTextView {
         return minSpaces == Int.max ? 4 : minSpaces
     }
 
-    private static func startsWithListMarker(_ s: Substring) -> Bool {
+    nonisolated static func startsWithListMarker(_ s: Substring) -> Bool {
         guard let first = s.first else { return false }
         if first == "-" || first == "*" || first == "+" {
             return s.dropFirst().first == " "
@@ -565,6 +596,7 @@ public class EditorTextView: NSTextView {
         // block parsing and rendering never see a stray `\r`.
         originalLineEnding = LineEnding.detect(in: content)
         rawSource = LineEnding.normalize(content)
+        rebuildListIndentState()
         blocks = BlockParser.parse(rawSource)
         undoStack.removeAll()
         redoStack.removeAll()

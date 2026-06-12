@@ -19,7 +19,7 @@ struct IncrementalParseFuzzTests {
         // Fragments biased toward structure-changing characters.
         let fragments = ["\n", "\n\n", "```", "```\n", "$$", "|", ">", "> ",
                          "# ", "- ", "---\n", "x", "hello **world**",
-                         "| a | b |", "[!note]"]
+                         "| a | b |", "[!note]", "  - indented\n", "\t- tabbed\n"]
 
         for _ in 0..<120 {
             let ns = editor.rawSource as NSString
@@ -50,6 +50,10 @@ struct IncrementalParseFuzzTests {
             if let last = editor.blocks.last {
                 #expect(last.range.upperBound <= total)
             }
+            // The incrementally-maintained indent unit must match the
+            // reference whole-document detector.
+            #expect(editor.listIndentUnit ==
+                    EditorTextView.detectListIndentUnit(editor.rawSource))
         }
 
         // Converged storage must match the styling oracle.

@@ -90,6 +90,7 @@ extension EditorTextView {
             }
         }
         rawSource = parts.joined(separator: blockSeparator)
+        rebuildListIndentState()
 
         // Cursor in startBlock shifts by 1 indent; rawEnd in endBlock
         // shifts by (endBlock - startBlock + 1) indents (one per block).
@@ -146,6 +147,7 @@ extension EditorTextView {
             }
         }
         rawSource = parts.joined(separator: blockSeparator)
+        rebuildListIndentState()
 
         // Adjust rawStart (in startBlock).  No blocks before startBlock
         // were modified, so its start position is unchanged.
