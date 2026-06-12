@@ -10,6 +10,48 @@ import CoreText
 public class EditorTextStorage: NSTextStorage {
     private let backing = NSMutableAttributedString()
 
+    /// The accumulated string mutation since the last consume, expressed as
+    /// "this range of the OLD string was replaced, shifting lengths by
+    /// `delta`". Multiple mutations coalesce into the conservative hull.
+    /// This is the single funnel for all string edits (typing, paste, IME),
+    /// so the incremental block parser can re-split only the affected lines.
+    public struct PendingEdit {
+        public var oldRange: NSRange
+        public var delta: Int
+    }
+    public private(set) var pendingEdit: PendingEdit?
+
+    /// Returns and clears the accumulated edit.
+    public func consumePendingEdit() -> PendingEdit? {
+        defer { pendingEdit = nil }
+        return pendingEdit
+    }
+
+    /// Drops accumulated-edit tracking. Programmatic whole-document
+    /// replacements (recompose after load/undo/indent) call this — they
+    /// re-parse from scratch themselves.
+    public func clearPendingEdit() {
+        pendingEdit = nil
+    }
+
+    /// Coalesces a new edit (given in CURRENT-string coordinates) into the
+    /// pending edit (kept in OLD-string coordinates).
+    private func accumulateEdit(currentRange r: NSRange, delta d: Int) {
+        guard var p = pendingEdit else {
+            pendingEdit = PendingEdit(oldRange: r, delta: d)
+            return
+        }
+        // Map the new edit's bounds back to old-string coordinates and take
+        // the hull. Positions at/after the previous edit's replacement shift
+        // back by the previous delta; the max() keeps positions inside or
+        // before it clamped to the previous old range.
+        let start = min(p.oldRange.location, r.location)
+        let end = max(p.oldRange.upperBound, r.upperBound - p.delta)
+        p.oldRange = NSRange(location: start, length: max(0, end - start))
+        p.delta += d
+        pendingEdit = p
+    }
+
     override public var string: String { backing.string }
 
     override public func attributes(
@@ -19,15 +61,18 @@ public class EditorTextStorage: NSTextStorage {
     }
 
     override public func replaceCharacters(in range: NSRange, with str: String) {
+        let delta = (str as NSString).length - range.length
+        accumulateEdit(currentRange: range, delta: delta)
         backing.replaceCharacters(in: range, with: str)
-        edited(.editedCharacters, range: range,
-               changeInLength: (str as NSString).length - range.length)
+        edited(.editedCharacters, range: range, changeInLength: delta)
     }
 
     override public func replaceCharacters(in range: NSRange, with attrString: NSAttributedString) {
+        let delta = attrString.length - range.length
+        accumulateEdit(currentRange: range, delta: delta)
         backing.replaceCharacters(in: range, with: attrString)
         edited([.editedCharacters, .editedAttributes], range: range,
-               changeInLength: attrString.length - range.length)
+               changeInLength: delta)
     }
 
     override public func setAttributes(

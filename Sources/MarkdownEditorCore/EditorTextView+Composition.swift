@@ -31,6 +31,8 @@ extension EditorTextView {
                              with: NSAttributedString(string: rawSource,
                                                       attributes: baseAttributes))
         ts.endEditing()
+        // Whole-document replacement; blocks are re-parsed by our callers.
+        (ts as? EditorTextStorage)?.clearPendingEdit()
         isUpdating = false
 
         for i in blocks.indices { blocks[i].isStyled = false }
