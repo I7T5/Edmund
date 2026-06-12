@@ -82,12 +82,10 @@ extension EditorTextView {
         if remaining { scheduleProgressiveStyling() }
     }
 
-    /// Synchronously styles any unstyled blocks inside the current viewport
-    /// window. Called when the clip view scrolls.
+    /// Styles any unstyled blocks inside the current viewport window. Forces a
+    /// viewport layout first because callers may run before the next layout
+    /// pass (the viewport range would otherwise be stale).
     func promoteVisibleUnstyledBlocks() {
-        // The bounds-change notification fires before the next layout pass,
-        // so the viewport range is stale at this point — bring it up to date
-        // or promotion would lag one frame behind every scroll.
         textLayoutManager?.textViewportLayoutController.layoutViewport()
         guard let bounds = syncStylingBlockRange() else { return }
         let unstyled = IndexSet(bounds.filter { !blocks[$0].isStyled })
@@ -112,7 +110,18 @@ extension EditorTextView {
     }
 
     @objc private func clipViewBoundsDidChange(_ note: Notification) {
-        guard !isUpdating else { return }
-        promoteVisibleUnstyledBlocks()
+        // Promotion forces a viewport layout and may restyle blocks (changing
+        // their heights). Running that synchronously inside the scroll
+        // notification fights the momentum scroll and makes the viewport
+        // bounce. Defer to the next run-loop turn (coalesced), so each scroll
+        // tick just scrolls and styling catches up between ticks.
+        guard !isUpdating, !pendingPromotion else { return }
+        pendingPromotion = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pendingPromotion = false
+            guard !self.isUpdating else { return }
+            self.promoteVisibleUnstyledBlocks()
+        }
     }
 }

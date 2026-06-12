@@ -68,9 +68,12 @@ struct LazyRenderingTests {
         let last = editor.blocks.count - 1
         #expect(editor.blocks[last].isStyled == false)
 
-        // Jump to the bottom of the document.
+        // Jump to the bottom of the document. The scroll notification defers
+        // promotion off the run loop (so it doesn't fight momentum scrolling);
+        // invoke the worker directly to test the styling itself.
         scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, editor.frame.height - 300)))
         scroll.reflectScrolledClipView(scroll.contentView)
+        editor.promoteVisibleUnstyledBlocks()
 
         #expect(editor.blocks[last].isStyled == true,
                 "scroll promotion must style blocks entering the viewport")

@@ -61,6 +61,9 @@ public class EditorTextView: NSTextView {
     private var pendingRecompose = false
     /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
     var progressiveStylingScheduled = false
+    /// Coalesces scroll-driven promotion onto the next run-loop turn, off the
+    /// scroll notification (see EditorTextView+LazyStyling).
+    var pendingPromotion = false
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0
