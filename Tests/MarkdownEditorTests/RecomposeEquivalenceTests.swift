@@ -143,6 +143,45 @@ struct RecomposeEquivalenceTests {
         assertMatchesFullRecomposeOracle(editor, "after redo")
     }
 
+    @Test("Tab / Shift-Tab indent matches the oracle")
+    @MainActor func indentMatchesOracle() {
+        let editor = loadedEditor()
+        // Cursor inside a list item, then indent and dedent it.
+        let item = (editor.rawSource as NSString).range(of: "first item")
+        editor.setSelectedRange(NSRange(location: item.location, length: 0))
+        editor.recompose(cursorInRaw: item.location)
+        editor.insertTab(nil)
+        assertMatchesFullRecomposeOracle(editor, "after Tab indent")
+        editor.insertBacktab(nil)
+        assertMatchesFullRecomposeOracle(editor, "after Shift-Tab dedent")
+    }
+
+    @Test("Multi-line indent across a selection matches the oracle")
+    @MainActor func multiLineIndentMatchesOracle() {
+        let editor = makeEditor()
+        editor.loadContent("- a\n- b\n- c\n")
+        // Select all three list lines and indent them together.
+        editor.setSelectedRange(NSRange(location: 0, length: (editor.rawSource as NSString).length))
+        editor.insertTab(nil)
+        assertMatchesFullRecomposeOracle(editor, "after multi-line indent")
+        #expect(editor.rawSource == "  - a\n  - b\n  - c\n")
+    }
+
+    @Test("Indent that shifts the global list-indent unit restyles every list item")
+    @MainActor func indentUnitChangeMatchesOracle() {
+        let editor = makeEditor()
+        // Only indented list line is at 4 spaces, so the unit is 4.
+        editor.loadContent("- a\n    - deep\n")
+        #expect(editor.listIndentUnit == 4)
+        // Indent the top-level item by 2: the new minimum indent is 2, so the
+        // unit drops to 2 and every list block's rendered indent changes.
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.recompose(cursorInRaw: 0)
+        editor.insertTab(nil)
+        #expect(editor.listIndentUnit == 2)
+        assertMatchesFullRecomposeOracle(editor, "after unit-shifting indent")
+    }
+
     @Test("Edit sequence on a generated document matches the oracle")
     @MainActor func generatedDocumentEdits() {
         let editor = makeEditor()
