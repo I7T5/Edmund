@@ -75,6 +75,10 @@ class Document: NSDocument {
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = false
         window.isMovableByWindowBackground = true
+        // Don't persist/restore document windows: macOS state restoration
+        // otherwise reopens the last-edited file on the next launch, so a fresh
+        // start (or File ▸ New) shows that document instead of a blank Untitled.
+        window.isRestorable = false
         window.center()
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
