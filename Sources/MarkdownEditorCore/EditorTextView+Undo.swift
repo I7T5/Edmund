@@ -56,6 +56,7 @@ extension EditorTextView {
     private func restoreSnapshot(_ snapshot: UndoSnapshot) {
         isUndoRedoing = true
         rawSource = snapshot.rawSource
+        rebuildListIndentState()
         blocks = BlockParser.parse(rawSource, previous: blocks)
         recompose(cursorInRaw: snapshot.cursorInRaw)
         isUndoRedoing = false

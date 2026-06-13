@@ -206,7 +206,7 @@ struct BlockStylingNonActiveTests {
         #expect(text == "- apples")
         // Bullet `-` renders as a dot attachment
         let a = attrs(at: 0, in: editor)
-        #expect(a[.attachment] is NSTextAttachment)
+        #expect(a[.fragmentOverlay] is FragmentOverlay)
         // Has indent
         let ps = a[.paragraphStyle] as? NSParagraphStyle
         #expect(ps != nil)
@@ -241,7 +241,7 @@ struct BlockStylingNonActiveTests {
         #expect(isHidden(at: 0, in: editor.textStorage!))
         // "[" (offset 2) has a text attachment (circle icon)
         let a = attrs(at: 2, in: editor)
-        #expect(a[.attachment] is NSTextAttachment)
+        #expect(a[.fragmentOverlay] is FragmentOverlay)
         // " ]" (offsets 3-4) are hidden
         let hiddenA = attrs(at: 3, in: editor)
         let hiddenF = hiddenA[.font] as? NSFont
@@ -260,7 +260,7 @@ struct BlockStylingNonActiveTests {
         #expect(isHidden(at: 0, in: editor.textStorage!))
         // "[" (offset 2) has a text attachment (filled circle icon)
         let a = attrs(at: 2, in: editor)
-        #expect(a[.attachment] is NSTextAttachment)
+        #expect(a[.fragmentOverlay] is FragmentOverlay)
         // "x]" (offsets 3-4) are hidden
         let hiddenA = attrs(at: 3, in: editor)
         let hiddenF = hiddenA[.font] as? NSFont
@@ -281,7 +281,7 @@ struct BlockStylingNonActiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "  - nested")
         // The `-` at offset 2 carries the bullet dot attachment
-        #expect(attrs(at: 2, in: editor)[.attachment] is NSTextAttachment)
+        #expect(attrs(at: 2, in: editor)[.fragmentOverlay] is FragmentOverlay)
     }
 
     @Test("Non-active deeply-indented bullet (4 spaces) renders as a dot")
@@ -293,7 +293,7 @@ struct BlockStylingNonActiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "    - deep")
         // The `-` at offset 4 carries the bullet dot attachment
-        #expect(attrs(at: 4, in: editor)[.attachment] is NSTextAttachment)
+        #expect(attrs(at: 4, in: editor)[.fragmentOverlay] is FragmentOverlay)
     }
 
     // MARK: - Blockquotes
@@ -319,18 +319,15 @@ struct BlockStylingNonActiveTests {
         let editor = makeEditor()
         let styled = editor.styleBlock("> wise words")
 
-        // Paragraph style must be on offset 0 (the >) so NSTextView uses it
-        // for the whole paragraph (it reads the style from the first char).
-        let a0 = styled.attributes(at: 0, effectiveRange: nil)
-        let ps0 = a0[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps0 != nil)
-        #expect(!ps0!.textBlocks.isEmpty)
-
-        // Content should also have the same paragraph style
-        let a2 = styled.attributes(at: 2, effectiveRange: nil)
-        let ps2 = a2[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps2 != nil)
-        #expect(!ps2!.textBlocks.isEmpty)
+        // The decoration must be on offset 0 (the >) — the fragment vendor
+        // reads the paragraph's first character.
+        if let d0 = blockDecoration(at: 0, in: styled), case .leftBar = d0.kind {} else {
+            Issue.record("expected a .leftBar decoration at offset 0")
+        }
+        // Content should carry it too (it spans the whole quote).
+        if let d2 = blockDecoration(at: 2, in: styled), case .leftBar = d2.kind {} else {
+            Issue.record("expected a .leftBar decoration at offset 2")
+        }
     }
 
     @Test("Non-active merged blockquote hides each > delimiter")
@@ -346,16 +343,14 @@ struct BlockStylingNonActiveTests {
         #expect(fgColor(at: 8, in: editor) == NSColor.clear)   // line2 `>`
     }
 
-    @Test("Non-active blockquote line has text block style")
+    @Test("Non-active blockquote line carries the left-bar decoration")
     @MainActor func nonActiveBlockquoteLineParagraphStyle() {
         let editor = makeEditor()
         let styled = editor.styleBlock("> wise words")
 
-        // Paragraph style at offset 0 (first char) carries the text block border
-        let a0 = styled.attributes(at: 0, effectiveRange: nil)
-        let ps0 = a0[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps0 != nil)
-        #expect(!ps0!.textBlocks.isEmpty)
+        if let d0 = blockDecoration(at: 0, in: styled), case .leftBar = d0.kind {} else {
+            Issue.record("expected a .leftBar decoration at offset 0")
+        }
     }
 
     // MARK: - Nested Content
@@ -433,16 +428,16 @@ struct TableNonActiveTests {
         activateBlock(1, in: editor)
 
         let base = editor.displayRanges[0].location
-        // All pipes are hidden (vertical borders drawn by TableRowTextBlock)
+        // All pipes are hidden (vertical borders drawn by the .tableRow decoration)
         let outerF = font(at: base, in: editor)!
         #expect(outerF.pointSize < 1.0)
         let innerF = font(at: base + 4, in: editor)!
         #expect(innerF.pointSize < 1.0)
-        // Header row has a paragraph style with text blocks
-        let ts = editor.textStorage!
-        let ps = ts.attribute(.paragraphStyle, at: base, effectiveRange: nil) as? NSParagraphStyle
-        #expect(ps != nil)
-        #expect(!ps!.textBlocks.isEmpty)
+        // Header row carries the .tableRow decoration
+        if let deco = blockDecoration(at: base, in: editor),
+           case .tableRow = deco.kind {} else {
+            Issue.record("expected a .tableRow decoration on the header row")
+        }
     }
 }
 
@@ -627,13 +622,12 @@ struct ThematicBreakNonActiveTests {
         // Raw text still present
         let text = displayText(for: 0, in: editor)
         #expect(text == "---")
-        // Characters are hidden (visual line rendered via NSTextBlock)
+        // Characters are hidden (the rule is a .horizontalRule decoration)
         #expect(isHidden(at: 0, in: editor.textStorage!))
-        // Paragraph style has an NSTextBlock
-        let a = attrs(at: 0, in: editor)
-        let ps = a[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps != nil)
-        #expect(!ps!.textBlocks.isEmpty)
+        if let deco = blockDecoration(at: 0, in: editor),
+           case .horizontalRule = deco.kind {} else {
+            Issue.record("expected a .horizontalRule decoration")
+        }
     }
 
     @Test("Non-active *** is hidden with horizontal line paragraph style")
@@ -645,10 +639,10 @@ struct ThematicBreakNonActiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "***")
         #expect(isHidden(at: 0, in: editor.textStorage!))
-        let a = attrs(at: 0, in: editor)
-        let ps = a[.paragraphStyle] as? NSParagraphStyle
-        #expect(ps != nil)
-        #expect(!ps!.textBlocks.isEmpty)
+        if let deco = blockDecoration(at: 0, in: editor),
+           case .horizontalRule = deco.kind {} else {
+            Issue.record("expected a .horizontalRule decoration")
+        }
     }
 }
 

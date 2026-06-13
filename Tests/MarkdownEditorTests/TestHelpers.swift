@@ -4,21 +4,13 @@ import AppKit
 
 // MARK: - Editor Construction
 
-/// Creates an EditorTextView with a proper text system chain,
-/// mirroring the setup in main.swift.
+/// Creates an EditorTextView with the TextKit 2 text system chain,
+/// mirroring the setup in Document.makeWindowControllers().
 @MainActor
 func makeEditor() -> EditorTextView {
-    let textStorage = EditorTextStorage()
-    let layoutManager = NSLayoutManager()
-    textStorage.addLayoutManager(layoutManager)
-    let textContainer = NSTextContainer(
-        size: NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
-    )
-    textContainer.widthTracksTextView = true
-    layoutManager.addTextContainer(textContainer)
-    let editor = EditorTextView(
+    let editor = EditorTextView.makeTextKit2(
         frame: NSRect(x: 0, y: 0, width: 500, height: 300),
-        textContainer: textContainer
+        containerSize: NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
     )
     // Isolate theme persistence. EditorTextView loads/saves its theme via
     // UserDefaults; without isolation, tests that call `applyTheme` write font
@@ -31,6 +23,26 @@ func makeEditor() -> EditorTextView {
     editor.themeDefaults = defaults
     editor.theme = .load(from: defaults)
     return editor
+}
+
+/// The BlockDecoration attribute at `offset` in the editor's storage, if any.
+@MainActor
+func blockDecoration(at offset: Int, in editor: EditorTextView) -> BlockDecoration? {
+    attrs(at: offset, in: editor)[.blockDecoration] as? BlockDecoration
+}
+
+/// The BlockDecoration attribute at `offset` in a styled string, if any.
+func blockDecoration(at offset: Int, in result: NSAttributedString) -> BlockDecoration? {
+    guard offset < result.length else { return nil }
+    return result.attribute(.blockDecoration, at: offset, effectiveRange: nil) as? BlockDecoration
+}
+
+/// Forces layout of the whole document (TextKit 2). The lazy equivalent of
+/// the old `layoutManager.ensureLayout(for: textContainer)`.
+@MainActor
+func ensureFullLayout(_ editor: EditorTextView) {
+    guard let tlm = editor.textLayoutManager else { return }
+    tlm.ensureLayout(for: tlm.documentRange)
 }
 
 // MARK: - Input Simulation
@@ -140,4 +152,268 @@ func isDimmed(at offset: Int, in result: NSAttributedString) -> Bool {
     let a = result.attributes(at: offset, effectiveRange: nil)
     guard let c = a[.foregroundColor] as? NSColor else { return false }
     return c == NSColor.tertiaryLabelColor
+}
+
+// MARK: - Full-Recompose Oracle
+//
+// The oracle is the reference for what the text storage's attributes should be
+// after ANY sequence of edits/cursor moves: the document composed from scratch
+// exactly the way full `recompose` does it. Incremental paths (dirty-set
+// styling, lazy rendering) must always leave the storage attribute-equivalent
+// to this composition. Comparison is structural: paragraph styles and
+// fragment overlays are compared component-wise because fresh compositions
+// create fresh instances that never compare equal by pointer-based isEqual.
+
+/// Composes the editor's document from scratch the way full styling does:
+/// base attributes everywhere, then per-block styling (cursor-aware for the
+/// active block). Blocks pending lazy styling (`isStyled == false`) are left
+/// in base attributes — exactly what the storage must hold for them after a
+/// lazy load.
+@MainActor
+func expectedFullComposition(for editor: EditorTextView) -> NSAttributedString {
+    let composed = NSMutableAttributedString(string: editor.rawSource,
+                                             attributes: editor.baseAttributes)
+    let cursorInRaw = editor.selectedRange().location
+    for (i, block) in editor.blocks.enumerated() {
+        guard block.range.upperBound <= composed.length, block.isStyled else { continue }
+        let cursorInBlock: Int? = (i == editor.activeBlockIndex)
+            ? max(0, cursorInRaw - block.range.location) : nil
+        let styled = editor.styleBlock(block.content, cursorPosition: cursorInBlock)
+        styled.enumerateAttributes(
+            in: NSRange(location: 0, length: styled.length), options: []
+        ) { attrs, range, _ in
+            let tsRange = NSRange(location: range.location + block.range.location,
+                                  length: range.length)
+            guard tsRange.upperBound <= composed.length else { return }
+            composed.setAttributes(attrs, range: tsRange)
+        }
+    }
+    return composed
+}
+
+/// Runs the idle drain to completion synchronously (lazy-rendering tests).
+@MainActor
+func drainAllStyling(_ editor: EditorTextView, maxSlices: Int = 10_000) {
+    var slices = 0
+    while editor.blocks.contains(where: { !$0.isStyled }), slices < maxSlices {
+        editor.drainStylingSlice()
+        slices += 1
+    }
+}
+
+/// Asserts the live text storage is attribute-equivalent to a from-scratch
+/// full recompose. On mismatch, reports the first differing character with a
+/// description of both attribute sets.
+@MainActor
+func assertMatchesFullRecomposeOracle(
+    _ editor: EditorTextView,
+    _ comment: Comment? = nil,
+    sourceLocation: SourceLocation = #_sourceLocation
+) {
+    guard let ts = editor.textStorage else {
+        Issue.record("editor has no text storage", sourceLocation: sourceLocation)
+        return
+    }
+    let expected = expectedFullComposition(for: editor)
+    #expect(ts.string == expected.string,
+            "storage string diverged from rawSource", sourceLocation: sourceLocation)
+
+    let len = min(ts.length, expected.length)
+    var i = 0
+    while i < len {
+        var rA = NSRange(); var rB = NSRange()
+        let whole = NSRange(location: i, length: len - i)
+        let a = expected.attributes(at: i, longestEffectiveRange: &rA, in: whole)
+        let b = ts.attributes(at: i, longestEffectiveRange: &rB, in: whole)
+        if let diff = attributeDifference(expected: a, actual: b) {
+            let ctx = (ts.string as NSString).substring(
+                with: NSRange(location: max(0, i - 10),
+                              length: min(30, len - max(0, i - 10))))
+            Issue.record(
+                """
+                Oracle mismatch at offset \(i) (near \(String(reflecting: ctx))): \(diff)\
+                \(comment.map { " — \($0)" } ?? "")
+                """,
+                sourceLocation: sourceLocation)
+            return
+        }
+        i = max(min(rA.upperBound, rB.upperBound), i + 1)
+    }
+}
+
+/// Returns a human-readable description of the first differing attribute, or
+/// nil when the two attribute dictionaries are equivalent.
+func attributeDifference(
+    expected: [NSAttributedString.Key: Any],
+    actual: [NSAttributedString.Key: Any]
+) -> String? {
+    let keys = Set(expected.keys).union(actual.keys)
+    for key in keys {
+        let a = expected[key]
+        let b = actual[key]
+        switch (a, b) {
+        case (nil, nil):
+            continue
+        case (nil, .some(let v)):
+            return "\(key.rawValue): unexpected \(String(describing: v))"
+        case (.some(let v), nil):
+            return "\(key.rawValue): missing (expected \(String(describing: v)))"
+        case (.some(let va), .some(let vb)):
+            if let fa = va as? NSFont, let fb = vb as? NSFont {
+                if fa.fontName != fb.fontName || abs(fa.pointSize - fb.pointSize) > 0.01 {
+                    return "font: expected \(fa.fontName)@\(fa.pointSize), got \(fb.fontName)@\(fb.pointSize)"
+                }
+            } else if let pa = va as? NSParagraphStyle, let pb = vb as? NSParagraphStyle {
+                if let diff = paragraphStyleDifference(pa, pb) {
+                    return "paragraphStyle: \(diff)"
+                }
+            } else if let fa = va as? FragmentOverlay, let fb = vb as? FragmentOverlay {
+                // Overlay images are drawn fresh per composition; bounds carry
+                // the comparable geometry.
+                let ba = fa.bounds, bb = fb.bounds
+                if abs(ba.width - bb.width) > 0.5 || abs(ba.height - bb.height) > 0.5
+                    || abs(ba.origin.y - bb.origin.y) > 0.5 {
+                    return "overlay bounds: \(ba) vs \(bb)"
+                }
+            } else if let oa = va as? NSObject, let ob = vb as? NSObject {
+                if !oa.isEqual(ob) {
+                    return "\(key.rawValue): \(oa) vs \(ob)"
+                }
+            }
+        }
+    }
+    return nil
+}
+
+/// Component-wise paragraph style comparison. NSParagraphStyle.isEqual is
+/// unusable here: embedded NSTextBlocks compare by identity, and every
+/// composition creates fresh instances.
+func paragraphStyleDifference(_ a: NSParagraphStyle, _ b: NSParagraphStyle) -> String? {
+    func ne(_ x: CGFloat, _ y: CGFloat) -> Bool { abs(x - y) > 0.01 }
+    if a.alignment != b.alignment { return "alignment \(a.alignment.rawValue) vs \(b.alignment.rawValue)" }
+    if ne(a.lineSpacing, b.lineSpacing) { return "lineSpacing \(a.lineSpacing) vs \(b.lineSpacing)" }
+    if ne(a.paragraphSpacing, b.paragraphSpacing) { return "paragraphSpacing \(a.paragraphSpacing) vs \(b.paragraphSpacing)" }
+    if ne(a.paragraphSpacingBefore, b.paragraphSpacingBefore) { return "paragraphSpacingBefore \(a.paragraphSpacingBefore) vs \(b.paragraphSpacingBefore)" }
+    if ne(a.headIndent, b.headIndent) { return "headIndent \(a.headIndent) vs \(b.headIndent)" }
+    if ne(a.firstLineHeadIndent, b.firstLineHeadIndent) { return "firstLineHeadIndent \(a.firstLineHeadIndent) vs \(b.firstLineHeadIndent)" }
+    if ne(a.tailIndent, b.tailIndent) { return "tailIndent \(a.tailIndent) vs \(b.tailIndent)" }
+    if ne(a.minimumLineHeight, b.minimumLineHeight) { return "minimumLineHeight \(a.minimumLineHeight) vs \(b.minimumLineHeight)" }
+    if ne(a.maximumLineHeight, b.maximumLineHeight) { return "maximumLineHeight \(a.maximumLineHeight) vs \(b.maximumLineHeight)" }
+    if a.tabStops.count != b.tabStops.count { return "tabStops count \(a.tabStops.count) vs \(b.tabStops.count)" }
+    for (ta, tb) in zip(a.tabStops, b.tabStops) where ne(ta.location, tb.location) {
+        return "tabStop \(ta.location) vs \(tb.location)"
+    }
+    if a.textBlocks.count != b.textBlocks.count {
+        return "textBlocks count \(a.textBlocks.count) vs \(b.textBlocks.count)"
+    }
+    for (ba, bb) in zip(a.textBlocks, b.textBlocks) {
+        if let diff = textBlockDifference(ba, bb) { return diff }
+    }
+    return nil
+}
+
+func textBlockDifference(_ a: NSTextBlock, _ b: NSTextBlock) -> String? {
+    if String(describing: type(of: a)) != String(describing: type(of: b)) {
+        return "textBlock class \(type(of: a)) vs \(type(of: b))"
+    }
+    switch (a.backgroundColor, b.backgroundColor) {
+    case (nil, nil): break
+    case (let ca?, let cb?) where ca.isEqual(cb): break
+    default: return "textBlock backgroundColor \(String(describing: a.backgroundColor)) vs \(String(describing: b.backgroundColor))"
+    }
+    let edges: [NSRectEdge] = [.minX, .minY, .maxX, .maxY]
+    for layer in [NSTextBlock.Layer.padding, .border, .margin] {
+        for edge in edges {
+            let wa = a.width(for: layer, edge: edge)
+            let wb = b.width(for: layer, edge: edge)
+            if abs(wa - wb) > 0.01 {
+                return "textBlock \(layer.rawValue)/\(edge.rawValue) width \(wa) vs \(wb)"
+            }
+        }
+    }
+    return nil
+}
+
+// MARK: - Large Document Generator
+
+/// Deterministic RNG (splitmix64) so generated documents are reproducible
+/// across runs and platforms.
+struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+}
+
+/// Generates representative markdown of roughly the requested size: paragraphs
+/// with inline styles, headings, lists (nested, checkboxes), quote runs,
+/// callouts, tables, fenced code, display math, thematic breaks, blank lines.
+func makeLargeMarkdown(approximateBytes: Int, seed: UInt64 = 0xC0FFEE) -> String {
+    var rng = SeededGenerator(seed: seed)
+    let words = ["alpha", "beta", "gamma", "delta", "lorem", "ipsum", "dolor",
+                 "editor", "markdown", "render", "block", "cursor", "style",
+                 "viewport", "layout", "anchor", "fragment", "glyph", "parse"]
+    func sentence(_ n: Int) -> String {
+        var parts: [String] = []
+        for _ in 0..<n {
+            var w = words.randomElement(using: &rng)!
+            switch Int.random(in: 0..<20, using: &rng) {
+            case 0: w = "**\(w)**"
+            case 1: w = "*\(w)*"
+            case 2: w = "`\(w)`"
+            case 3: w = "[\(w)](https://example.com/\(w))"
+            default: break
+            }
+            parts.append(w)
+        }
+        return parts.joined(separator: " ") + "."
+    }
+
+    var chunks: [String] = []
+    var size = 0
+    let calloutTypes = ["note", "tip", "warning", "important", "abstract", "bug"]
+    while size < approximateBytes {
+        let chunk: String
+        switch Int.random(in: 0..<14, using: &rng) {
+        case 0:
+            chunk = "\(String(repeating: "#", count: Int.random(in: 1...4, using: &rng))) \(sentence(4))"
+        case 1:
+            let rows = (0..<Int.random(in: 2...4, using: &rng)).map { _ in
+                "| \(words.randomElement(using: &rng)!) | \(words.randomElement(using: &rng)!) |"
+            }
+            chunk = ([rows[0], "| --- | --- |"] + rows.dropFirst()).joined(separator: "\n")
+        case 2:
+            let lines = (0..<Int.random(in: 2...5, using: &rng)).map { _ in
+                "    let \(words.randomElement(using: &rng)!) = \(Int.random(in: 0..<100, using: &rng))"
+            }
+            chunk = (["```swift"] + lines + ["```"]).joined(separator: "\n")
+        case 3:
+            chunk = "$$\nx_{\(Int.random(in: 0..<9, using: &rng))} = \\frac{a}{b}\n$$"
+        case 4:
+            let body = (0..<Int.random(in: 1...3, using: &rng)).map { _ in "> \(sentence(6))" }
+            chunk = (["> [!\(calloutTypes.randomElement(using: &rng)!)]"] + body).joined(separator: "\n")
+        case 5:
+            chunk = (0..<Int.random(in: 1...3, using: &rng))
+                .map { _ in "> \(sentence(8))" }.joined(separator: "\n")
+        case 6:
+            chunk = (0..<Int.random(in: 2...5, using: &rng)).map { i -> String in
+                let indent = String(repeating: "  ", count: Int.random(in: 0...2, using: &rng))
+                let marker = Bool.random(using: &rng)
+                    ? "- " : (Bool.random(using: &rng) ? "- [ ] " : "\(i + 1). ")
+                return "\(indent)\(marker)\(sentence(5))"
+            }.joined(separator: "\n")
+        case 7:
+            chunk = "---"
+        default:
+            chunk = sentence(Int.random(in: 10...40, using: &rng))
+        }
+        chunks.append(chunk)
+        size += chunk.utf8.count + 2
+    }
+    return chunks.joined(separator: "\n\n")
 }

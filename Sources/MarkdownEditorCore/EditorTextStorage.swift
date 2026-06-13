@@ -1,14 +1,56 @@
 import AppKit
 import CoreText
 
-/// A text storage subclass that preserves `.attachment` attributes on
-/// any character, not just the object replacement character (\u{FFFC}).
+/// A text storage subclass whose `fixAttributes` does font substitution only.
 ///
-/// Standard NSTextStorage strips attachments from non-FFFC characters
-/// during `fixAttributes`. This subclass skips attribute fixing since
-/// the editor explicitly manages all attributes for every character.
+/// The editor explicitly manages every attribute on every character (custom
+/// keys like `.blockDecoration` / `.fragmentOverlay` included), so the
+/// framework's default attribute "fixing" has nothing useful to add — and
+/// historically it stripped attributes the renderer depended on.
 public class EditorTextStorage: NSTextStorage {
     private let backing = NSMutableAttributedString()
+
+    /// The accumulated string mutation since the last consume, expressed as
+    /// "this range of the OLD string was replaced, shifting lengths by
+    /// `delta`". Multiple mutations coalesce into the conservative hull.
+    /// This is the single funnel for all string edits (typing, paste, IME),
+    /// so the incremental block parser can re-split only the affected lines.
+    public struct PendingEdit {
+        public var oldRange: NSRange
+        public var delta: Int
+    }
+    public private(set) var pendingEdit: PendingEdit?
+
+    /// Returns and clears the accumulated edit.
+    public func consumePendingEdit() -> PendingEdit? {
+        defer { pendingEdit = nil }
+        return pendingEdit
+    }
+
+    /// Drops accumulated-edit tracking. Programmatic whole-document
+    /// replacements (recompose after load/undo/indent) call this — they
+    /// re-parse from scratch themselves.
+    public func clearPendingEdit() {
+        pendingEdit = nil
+    }
+
+    /// Coalesces a new edit (given in CURRENT-string coordinates) into the
+    /// pending edit (kept in OLD-string coordinates).
+    private func accumulateEdit(currentRange r: NSRange, delta d: Int) {
+        guard var p = pendingEdit else {
+            pendingEdit = PendingEdit(oldRange: r, delta: d)
+            return
+        }
+        // Map the new edit's bounds back to old-string coordinates and take
+        // the hull. Positions at/after the previous edit's replacement shift
+        // back by the previous delta; the max() keeps positions inside or
+        // before it clamped to the previous old range.
+        let start = min(p.oldRange.location, r.location)
+        let end = max(p.oldRange.upperBound, r.upperBound - p.delta)
+        p.oldRange = NSRange(location: start, length: max(0, end - start))
+        p.delta += d
+        pendingEdit = p
+    }
 
     override public var string: String { backing.string }
 
@@ -19,15 +61,18 @@ public class EditorTextStorage: NSTextStorage {
     }
 
     override public func replaceCharacters(in range: NSRange, with str: String) {
+        let delta = (str as NSString).length - range.length
+        accumulateEdit(currentRange: range, delta: delta)
         backing.replaceCharacters(in: range, with: str)
-        edited(.editedCharacters, range: range,
-               changeInLength: (str as NSString).length - range.length)
+        edited(.editedCharacters, range: range, changeInLength: delta)
     }
 
     override public func replaceCharacters(in range: NSRange, with attrString: NSAttributedString) {
+        let delta = attrString.length - range.length
+        accumulateEdit(currentRange: range, delta: delta)
         backing.replaceCharacters(in: range, with: attrString)
         edited([.editedCharacters, .editedAttributes], range: range,
-               changeInLength: attrString.length - range.length)
+               changeInLength: delta)
     }
 
     override public func setAttributes(
@@ -38,10 +83,9 @@ public class EditorTextStorage: NSTextStorage {
     }
 
     override public func fixAttributes(in range: NSRange) {
-        // We deliberately skip the framework's default attribute fixing because
-        // it strips .attachment from non-FFFC characters — and the editor places
-        // marker icons (bullet dot, checkbox circle, math image) on real
-        // characters like "-", "[", "$".
+        // We deliberately skip the framework's default attribute fixing — the
+        // editor manages all attributes itself, and the default pass has a
+        // history of stripping what the renderer depends on.
         //
         // But one part of fixing is still needed: font substitution. The body
         // font (a serif/mono) has no glyphs for emoji, CJK, etc.; without

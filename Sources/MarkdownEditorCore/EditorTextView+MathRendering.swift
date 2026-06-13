@@ -21,10 +21,10 @@ nonisolated(unsafe) private let mathRenderCache = NSCache<NSString, MathRender>(
 
 extension EditorTextView {
 
-    /// Renders a LaTeX string to an `NSTextAttachment` sized to `fontSize` and
+    /// Renders a LaTeX string to a `FragmentOverlay` sized to `fontSize` and
     /// aligned to the text baseline, or `nil` if SwiftMath can't parse it (the
     /// caller then shows the raw source instead).
-    func mathAttachment(latex: String, display: Bool, fontSize: CGFloat) -> NSTextAttachment? {
+    func mathOverlay(latex: String, display: Bool, fontSize: CGFloat) -> FragmentOverlay? {
         // Resolve the (dynamic) text color against this view's appearance so the
         // math renders in the right shade for light/dark — and so the cache key
         // differs between the two.
@@ -59,9 +59,6 @@ extension EditorTextView {
             mathRenderCache.setObject(render, forKey: key)
         }
 
-        let attachment = NSTextAttachment()
-        attachment.image = render.image
-
         var width = render.image.size.width
         var height = render.image.size.height
         var descent = render.descent
@@ -77,8 +74,8 @@ extension EditorTextView {
         }
         // Drop the image so its baseline (descent above the image bottom) lands
         // on the text baseline.
-        attachment.bounds = CGRect(x: 0, y: -descent, width: width, height: height)
-        return attachment
+        return FragmentOverlay(image: render.image,
+                               bounds: CGRect(x: 0, y: -descent, width: width, height: height))
     }
 
     /// The usable text width for one line — the text container minus its line
@@ -133,16 +130,19 @@ extension EditorTextView {
     }
 
     /// Centered paragraph style for display math. The vertical padding is applied
-    /// only to the attachment's (first) line — a multi-line `$$…$$` block is
+    /// only to the image's (first) line — a multi-line `$$…$$` block is
     /// several paragraphs in the text storage (its hidden inner lines), so
     /// padding every paragraph would multiply into a huge gap.
-    func displayMathParagraphStyle(padded: Bool) -> NSParagraphStyle {
+    /// `imageHeight` reserves the equation's height on that line: the line's
+    /// own characters are hidden (near-zero), so without it the line collapses.
+    func displayMathParagraphStyle(padded: Bool, imageHeight: CGFloat = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.alignment = .center
         ps.lineSpacing = 0
         let pad = padded ? bodyFont.pointSize * 0.9 : 0
         ps.paragraphSpacingBefore = pad
         ps.paragraphSpacing = pad
+        ps.minimumLineHeight = imageHeight
         return ps
     }
 }

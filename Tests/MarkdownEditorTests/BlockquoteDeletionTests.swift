@@ -29,13 +29,13 @@ struct BlockquoteDeletionTests {
         e.loadContent("> [!note]\n> hi\n> there")
         e.setSelectedRange(NSRange(location: 9, length: 0))   // end of "> [!note]"
         e.recompose(cursorInRaw: 9)
-        e.layoutManager?.ensureLayout(for: e.textContainer!)
+        ensureFullLayout(e)
 
         // Delete the whole "[!note]" marker, one char at a time.
         for _ in 0..<7 {
             let before = e.rawSource
             e.deleteBackward(nil)
-            e.layoutManager?.ensureLayout(for: e.textContainer!)
+            ensureFullLayout(e)
             #expect(e.rawSource != before)   // every press must remove a character
         }
         #expect(e.rawSource == "> \n> hi\n> there")
@@ -47,7 +47,7 @@ struct BlockquoteDeletionTests {
         e.loadContent("> aaa\n> bbb")
         e.setSelectedRange(NSRange(location: 5, length: 0))   // end of "> aaa"
         e.recompose(cursorInRaw: 5)
-        e.layoutManager?.ensureLayout(for: e.textContainer!)
+        ensureFullLayout(e)
         let before = e.rawSource
         e.deleteBackward(nil)
         #expect(e.rawSource != before)
