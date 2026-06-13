@@ -126,12 +126,16 @@ extension EditorTextView {
 
     /// Incremental recompose: only re-styles the old and new active blocks.
     /// Used when the cursor moves between blocks without changing content.
-    func recomposeIncremental(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
+    /// `settingSelection` is false when the caller already owns the caret (a
+    /// user-driven cursor move) — re-setting it would trigger AppKit's
+    /// scroll-the-selection-into-view, fighting typewriter centering.
+    func recomposeIncremental(cursorInRaw: Int, selectionInRaw: NSRange? = nil,
+                              settingSelection: Bool = true) {
         var dirty = IndexSet()
         if let oldIdx = activeBlockIndex, oldIdx < blocks.count { dirty.insert(oldIdx) }
         if let newIdx = blockIndexForRawOffset(cursorInRaw) { dirty.insert(newIdx) }
         recomposeDirty(dirty, cursorInRaw: cursorInRaw,
-                       selectionInRaw: selectionInRaw, settingSelection: true)
+                       selectionInRaw: selectionInRaw, settingSelection: settingSelection)
     }
 
     /// Restyles every block in place (attribute-only). For theme and

@@ -180,4 +180,56 @@ struct RenderingRegressionTests {
         let after = scroll.contentView.bounds.origin.y
         #expect(abs(after - before) < 2.0, "moving to an already-visible line must not scroll")
     }
+
+    // MARK: Cursor move while scrolled away doesn't yank the viewport
+
+    @Test("A cross-block cursor move defers the off-screen old block instead of restyling it")
+    @MainActor func offscreenOldActiveDeferred() {
+        // Varied heights so deactivating a far-off block would change a lot of
+        // height (the source of the old viewport yank).
+        var doc = ""
+        for i in 0..<300 {
+            switch i % 3 {
+            case 0: doc += "> [!note]\n> callout \(i)\n> body line\n\n"
+            case 1: doc += "# Heading number \(i)\n\n"
+            default: doc += "paragraph number \(i) with some words\n\n"
+            }
+        }
+        let (e, scroll) = windowed(doc)
+        e.typewriterModeEnabled = false
+
+        // Activate a block near the top, then scroll far away from it.
+        let topBlock = 4
+        let topLoc = e.blocks[topBlock].range.location
+        e.setSelectedRange(NSRange(location: topLoc, length: 0))
+        e.recomposeIncremental(cursorInRaw: topLoc)
+        #expect(e.activeBlockIndex == topBlock)
+
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: e.frame.height / 2))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        e.promoteVisibleUnstyledBlocks()
+        let before = scroll.contentView.bounds.origin.y
+
+        // Move the caret to a visible block in the middle (the old active block
+        // is now far off screen above). This goes through the same dirty-set
+        // logic the async selection handler uses.
+        let midBlock = e.blockIndexForRawOffset(Int(before) / 20 + 10) ?? topBlock
+        let newLoc = e.blocks[midBlock].range.location
+        e.setSelectedRange(NSRange(location: newLoc, length: 0))
+
+        var dirty = IndexSet([midBlock])
+        // The off-screen old active block must be deferred (marked unstyled),
+        // not added to the synchronous dirty set.
+        let vis = e.syncStylingBlockRange()
+        if let v = vis, v.contains(topBlock) { dirty.insert(topBlock) }
+        else { e.blocks[topBlock].isStyled = false }
+        e.recomposeDirty(dirty, cursorInRaw: newLoc)
+
+        // The far-off old block was deferred, so the synchronous restyle didn't
+        // change its (off-screen) height — the viewport must not have jumped.
+        let after = scroll.contentView.bounds.origin.y
+        #expect(e.blocks[topBlock].isStyled == false,
+                "off-screen old active block should be deferred to the drain")
+        #expect(abs(after - before) < 50, "viewport must not yank on a cross-block cursor move")
+    }
 }

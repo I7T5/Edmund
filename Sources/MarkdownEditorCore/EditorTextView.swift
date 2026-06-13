@@ -421,12 +421,41 @@ public class EditorTextView: NSTextView {
                 self.pendingRecompose = false
                 guard !self.isUpdating else { return }
 
-                let currentSel = self.selectedRange()
-                let rawStart = currentSel.location
-                let rawEnd = currentSel.location + currentSel.length
-                let rawSel = NSRange(location: rawStart, length: rawEnd - rawStart)
-                self.recomposeIncremental(cursorInRaw: rawStart, selectionInRaw: rawSel)
+                // Restyle the new active block now. DEFER the old active block
+                // if it's off screen: deactivating it (rendered ↔ raw — callout
+                // box, checklist marker, …) changes its height, and doing that
+                // synchronously while the user is looking elsewhere shifts the
+                // whole viewport. Marking it unstyled hands it to the async
+                // drain, which TextKit 2 lays out without disturbing the
+                // viewport. Don't re-set the selection (that triggers AppKit's
+                // autoscroll-to-selection on stale layout).
+                let loc = self.selectedRange().location
+                let newIdx = self.blockIndexForRawOffset(loc)
+                var dirty = IndexSet()
+                if let n = newIdx { dirty.insert(n) }
+                var deferred = false
+                if let old = self.activeBlockIndex, old != newIdx, old < self.blocks.count {
+                    if let vis = self.syncStylingBlockRange(), vis.contains(old) {
+                        dirty.insert(old)   // visible — restyle in place
+                    } else {
+                        self.blocks[old].isStyled = false   // off screen — defer
+                        deferred = true
+                    }
+                }
+                // Only the new (visible) active block changes height now, so the
+                // caret anchor's delta is small and reliable. Typewriter mode
+                // centers on the post-restyle layout instead.
+                if self.typewriterModeEnabled {
+                    self.recomposeDirty(dirty, cursorInRaw: loc)
+                    self.scrollCursorToCenter()
+                } else {
+                    self.preservingCaretScreenPosition {
+                        self.recomposeDirty(dirty, cursorInRaw: loc)
+                    }
+                }
+                if deferred { self.scheduleProgressiveStyling() }
             }
+            return
         } else if newActiveIndex == activeBlockIndex {
             // Same block — update active token (re-style to show/hide delimiters)
             applyBlockStyle()
@@ -440,6 +469,30 @@ public class EditorTextView: NSTextView {
     /// vertically centered (typewriter scrolling). When false, scrolling is left
     /// to the normal "keep the cursor visible" behavior. Toggled from View menu.
     public var typewriterModeEnabled: Bool = true
+
+    /// The caret line's top in view (scroll-document) coordinates, or nil.
+    private func caretViewY() -> CGFloat? {
+        caretLineRect().map { $0.minY + textContainerOrigin.y }
+    }
+
+    /// Runs `body` (which restyles the active block, changing its height) while
+    /// keeping the caret line at the same on-screen position. The caret offset
+    /// (`selectedRange().location`) is reliable and the caret is on screen here,
+    /// so `lineRect` resolves correctly. With the off-screen old active block
+    /// deferred (see selectionDidChange), only the visible new active block
+    /// changes height, so the delta is small.
+    private func preservingCaretScreenPosition(_ body: () -> Void) {
+        guard let scrollView = enclosingScrollView, let before = caretViewY() else {
+            body(); return
+        }
+        let screenOffset = before - scrollView.contentView.bounds.origin.y
+        body()
+        guard let after = caretViewY() else { return }
+        let newY = max(0, after - screenOffset)
+        guard abs(newY - scrollView.contentView.bounds.origin.y) > 0.5 else { return }
+        scrollView.contentView.scroll(to: NSPoint(x: scrollView.contentView.bounds.origin.x, y: newY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
 
     /// Scrolls the view so the cursor's line fragment is vertically centered
     /// in the visible area.
