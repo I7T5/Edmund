@@ -505,6 +505,20 @@ public class EditorTextView: NSTextView {
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
+    /// Runs a restyle (`body`) while keeping the viewport visually stable: in
+    /// typewriter mode it re-centers on the caret afterward; otherwise it pins
+    /// the viewport top (`preservingViewportAnchor`) so content above the edit
+    /// doesn't shift. The selection-driven cursor-move path uses the same
+    /// split inline; this wraps it for the indent path's two call sites.
+    func stabilizingViewport(_ body: () -> Void) {
+        if typewriterModeEnabled {
+            body()
+            scrollCursorToCenter()
+        } else {
+            preservingViewportAnchor(body)
+        }
+    }
+
     /// Scrolls the view so the cursor's line fragment is vertically centered
     /// in the visible area.
     private func scrollCursorToCenter() {

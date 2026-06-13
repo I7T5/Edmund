@@ -74,6 +74,12 @@ extension EditorTextView {
         let rawEnd = displayOffsetToRawOffset(sel.location + sel.length)
         let indentLen = (Self.indentUnit as NSString).length
 
+        // The pre-edit storage span covering exactly the affected blocks; only
+        // this is replaced so layout above/below — and the viewport — is kept.
+        let oldRange = NSRange(
+            location: blocks[startBlock].range.location,
+            length: blocks[endBlock].range.upperBound - blocks[startBlock].range.location)
+
         // Record undo
         undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: rawStart))
         redoStack.removeAll()
@@ -89,6 +95,8 @@ extension EditorTextView {
                 parts.append(block.content)
             }
         }
+        let newText = parts[startBlock...endBlock].joined(separator: blockSeparator)
+        let oldIndentUnit = listIndentUnit
         rawSource = parts.joined(separator: blockSeparator)
         rebuildListIndentState()
 
@@ -99,13 +107,29 @@ extension EditorTextView {
 
         blocks = BlockParser.parse(rawSource, previous: blocks)
 
-        if sel.length > 0 {
-            let newSel = NSRange(location: newRawStart, length: newRawEnd - newRawStart)
-            recompose(cursorInRaw: newRawStart, selectionInRaw: newSel)
-        } else {
-            recompose(cursorInRaw: newRawStart)
+        let selInRaw = sel.length > 0
+            ? NSRange(location: newRawStart, length: newRawEnd - newRawStart) : nil
+        stabilizingViewport {
+            recomposeReplacing(oldRange: oldRange, with: newText,
+                               dirty: indentDirtySet(startBlock, endBlock,
+                                                     unitChanged: listIndentUnit != oldIndentUnit),
+                               cursorInRaw: newRawStart, selectionInRaw: selInRaw)
         }
         document?.updateChangeCount(.changeDone)
+    }
+
+    /// Blocks to restyle for an indent/dedent: the directly-edited span, plus —
+    /// when the document-global list indent unit moved — every list block,
+    /// whose rendered indentation is derived from that unit.
+    private func indentDirtySet(_ startBlock: Int, _ endBlock: Int,
+                                unitChanged: Bool) -> IndexSet {
+        var dirty = IndexSet(integersIn: startBlock...min(endBlock, blocks.count - 1))
+        if unitChanged {
+            for (i, block) in blocks.enumerated() where block.kind == .listItem {
+                dirty.insert(i)
+            }
+        }
+        return dirty
     }
 
     // MARK: - Dedent (Shift-Tab)
@@ -131,6 +155,12 @@ extension EditorTextView {
         let totalRemoved = removed[startBlock...endBlock].reduce(0, +)
         guard totalRemoved > 0 else { return }
 
+        // The pre-edit storage span covering exactly the affected blocks; only
+        // this is replaced so layout above/below — and the viewport — is kept.
+        let oldRange = NSRange(
+            location: blocks[startBlock].range.location,
+            length: blocks[endBlock].range.upperBound - blocks[startBlock].range.location)
+
         // Record undo
         undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: rawStart))
         redoStack.removeAll()
@@ -146,6 +176,8 @@ extension EditorTextView {
                 parts.append(block.content)
             }
         }
+        let newText = parts[startBlock...endBlock].joined(separator: blockSeparator)
+        let oldIndentUnit = listIndentUnit
         rawSource = parts.joined(separator: blockSeparator)
         rebuildListIndentState()
 
@@ -167,12 +199,13 @@ extension EditorTextView {
 
         blocks = BlockParser.parse(rawSource, previous: blocks)
 
-        if sel.length > 0 {
-            let newSel = NSRange(location: newRawStart,
-                                 length: max(0, newRawEnd - newRawStart))
-            recompose(cursorInRaw: newRawStart, selectionInRaw: newSel)
-        } else {
-            recompose(cursorInRaw: newRawStart)
+        let selInRaw = sel.length > 0
+            ? NSRange(location: newRawStart, length: max(0, newRawEnd - newRawStart)) : nil
+        stabilizingViewport {
+            recomposeReplacing(oldRange: oldRange, with: newText,
+                               dirty: indentDirtySet(startBlock, endBlock,
+                                                     unitChanged: listIndentUnit != oldIndentUnit),
+                               cursorInRaw: newRawStart, selectionInRaw: selInRaw)
         }
         document?.updateChangeCount(.changeDone)
     }

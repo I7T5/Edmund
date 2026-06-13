@@ -40,6 +40,34 @@ extension EditorTextView {
                        selectionInRaw: selectionInRaw, settingSelection: true)
     }
 
+    /// Range-bounded recompose: replaces only `oldRange` (pre-edit storage
+    /// coordinates) with `newText` in base attributes, then restyles the given
+    /// dirty blocks. Unlike `recompose`, the storage — and its TextKit 2 layout
+    /// — outside `oldRange` is untouched, so content above the edit keeps its
+    /// laid-out positions and the viewport can't lurch. For edits that rebuild
+    /// `rawSource` but change only a contiguous span (Tab / Shift-Tab indent):
+    /// callers update `rawSource` and re-parse `blocks` first, then pass the old
+    /// span's range and its replacement text.
+    func recomposeReplacing(oldRange: NSRange, with newText: String,
+                            dirty: IndexSet, cursorInRaw: Int,
+                            selectionInRaw: NSRange? = nil) {
+        guard let ts = textStorage else { return }
+
+        isUpdating = true
+        ts.beginEditing()
+        ts.replaceCharacters(in: oldRange,
+                             with: NSAttributedString(string: newText,
+                                                      attributes: baseAttributes))
+        ts.endEditing()
+        // Programmatic replacement; the incremental parser must not see it.
+        (ts as? EditorTextStorage)?.clearPendingEdit()
+        isUpdating = false
+
+        for idx in dirty where idx < blocks.count { blocks[idx].isStyled = false }
+        recomposeDirty(dirty, cursorInRaw: cursorInRaw,
+                       selectionInRaw: selectionInRaw, settingSelection: true)
+    }
+
     /// Dirty-set recompose: restyles exactly the given block indexes in place.
     /// Attribute-only — the storage string is never touched. This is the
     /// single styling path for edits, activation changes, and theme /
