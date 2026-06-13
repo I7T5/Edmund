@@ -449,7 +449,7 @@ public class EditorTextView: NSTextView {
                     self.recomposeDirty(dirty, cursorInRaw: loc)
                     self.scrollCursorToCenter()
                 } else {
-                    self.preservingCaretScreenPosition {
+                    self.preservingViewportAnchor {
                         self.recomposeDirty(dirty, cursorInRaw: loc)
                     }
                 }
@@ -470,27 +470,38 @@ public class EditorTextView: NSTextView {
     /// to the normal "keep the cursor visible" behavior. Toggled from View menu.
     public var typewriterModeEnabled: Bool = true
 
-    /// The caret line's top in view (scroll-document) coordinates, or nil.
-    private func caretViewY() -> CGFloat? {
-        caretLineRect().map { $0.minY + textContainerOrigin.y }
-    }
-
     /// Runs `body` (which restyles the active block, changing its height) while
-    /// keeping the caret line at the same on-screen position. The caret offset
-    /// (`selectedRange().location`) is reliable and the caret is on screen here,
-    /// so `lineRect` resolves correctly. With the off-screen old active block
-    /// deferred (see selectionDidChange), only the visible new active block
-    /// changes height, so the delta is small.
-    private func preservingCaretScreenPosition(_ body: () -> Void) {
-        guard let scrollView = enclosingScrollView, let before = caretViewY() else {
+    /// pinning the line at the TOP of the viewport to the same screen position
+    /// — so the part of the document the user is looking at doesn't move, even
+    /// when the height change (or a lazy-layout height estimate) is above the
+    /// caret. Anchoring the viewport top rather than the caret is what removes
+    /// the residual lurch: a caret anchor holds the caret but lets the content
+    /// above it slide.
+    ///
+    /// Reliability: `layoutViewport()` first guarantees the on-screen fragments
+    /// are laid out, so the top fragment's character offset is correct; both
+    /// samples then go through `lineRect` (which forces layout) for a
+    /// consistent measurement. A mis-measure degrades to no scroll — never a
+    /// yank or a jump to the document start.
+    func preservingViewportAnchor(_ body: () -> Void) {
+        guard let scrollView = enclosingScrollView, let tlm = textLayoutManager else {
             body(); return
         }
-        let screenOffset = before - scrollView.contentView.bounds.origin.y
+        tlm.textViewportLayoutController.layoutViewport()
+        let visible = scrollView.contentView.bounds
+        let topPoint = CGPoint(x: 0, y: visible.minY - textContainerOrigin.y)
+        guard let frag = tlm.textLayoutFragment(for: topPoint) else { body(); return }
+        let anchorOffset = tlm.offset(from: tlm.documentRange.location,
+                                      to: frag.rangeInElement.location)
+        let beforeY = lineRect(forCharacterAt: anchorOffset)?.minY
+
         body()
-        guard let after = caretViewY() else { return }
-        let newY = max(0, after - screenOffset)
-        guard abs(newY - scrollView.contentView.bounds.origin.y) > 0.5 else { return }
-        scrollView.contentView.scroll(to: NSPoint(x: scrollView.contentView.bounds.origin.x, y: newY))
+
+        guard let beforeY, let afterY = lineRect(forCharacterAt: anchorOffset)?.minY else { return }
+        let delta = afterY - beforeY
+        guard abs(delta) > 0.5 else { return }
+        let newY = max(0, visible.origin.y + delta)
+        scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: newY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
