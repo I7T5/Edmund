@@ -232,4 +232,46 @@ struct RenderingRegressionTests {
                 "off-screen old active block should be deferred to the drain")
         #expect(abs(after - before) < 50, "viewport must not yank on a cross-block cursor move")
     }
+
+    @Test("Activating a height-changing block keeps the viewport top pinned")
+    @MainActor func viewportTopStableOnActivation() {
+        // A document with a callout (rendered ↔ active height differs) sitting
+        // below the top of the viewport.
+        var doc = ""
+        for i in 0..<30 { doc += "filler paragraph number \(i)\n\n" }
+        doc += "> [!note]\n> callout body one\n> callout body two\n\n"
+        for i in 0..<40 { doc += "trailing paragraph \(i)\n\n" }
+        let (e, scroll) = windowed(doc)
+        e.typewriterModeEnabled = false
+
+        // Scroll so the callout is in view but NOT at the very top.
+        let calloutIdx = e.blocks.firstIndex { if case .quoteRun = $0.kind { return true }; return false }!
+        let cy = e.lineRect(forCharacterAt: e.blocks[calloutIdx].range.location)?.minY ?? 0
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, cy - 120)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        e.promoteVisibleUnstyledBlocks(); scroll.reflectScrolledClipView(scroll.contentView)
+
+        // Screen position of the line at the top of the viewport.
+        func topLineScreenY() -> CGFloat {
+            let visible = scroll.contentView.bounds
+            guard let tlm = e.textLayoutManager else { return 0 }
+            let p = CGPoint(x: 0, y: visible.minY - e.textContainerOrigin.y)
+            guard let frag = tlm.textLayoutFragment(for: p) else { return 0 }
+            let off = tlm.offset(from: tlm.documentRange.location, to: frag.rangeInElement.location)
+            return (e.lineRect(forCharacterAt: off)?.minY ?? 0) + e.textContainerOrigin.y - visible.origin.y
+        }
+        let before = topLineScreenY()
+
+        // Activate the callout (height changes), via the viewport anchor path.
+        let loc = e.blocks[calloutIdx].range.location + 2
+        e.setSelectedRange(NSRange(location: loc, length: 0))
+        e.preservingViewportAnchor {
+            e.recomposeDirty(IndexSet([calloutIdx]), cursorInRaw: loc)
+        }
+        scroll.reflectScrolledClipView(scroll.contentView)
+        let after = topLineScreenY()
+        #expect(abs(after - before) < 6.0,
+                "viewport top must stay pinned when a visible block changes height (Δ=\(after - before))")
+    }
+
 }
