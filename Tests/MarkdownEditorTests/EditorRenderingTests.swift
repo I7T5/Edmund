@@ -661,20 +661,24 @@ struct EditorStylingTests {
         #expect(!isHidden(at: 0, in: styled))
     }
 
-    @Test("Code block fences are dimmed, content has monospace+code color")
+    @Test("Code block fences are dimmed; content is monospace and syntax-highlighted")
     @MainActor func codeBlockStyling() {
         let editor = makeEditor()
-        let styled = editor.styleBlock("```\nhello\n```")
-        #expect(styled.string == "```\nhello\n```")
-        // Fences dimmed
+        let styled = editor.styleBlock("```swift\nlet hello = 1\n```")
+        #expect(styled.string == "```swift\nlet hello = 1\n```")
+        // Fences dimmed.
         #expect(isDimmed(at: 0, in: styled))
-        // Content "hello" at offset 4 has code color and monospace
-        let f = styled.attribute(.font, at: 4, effectiveRange: nil) as? NSFont
-        #expect(f != nil)
-        #expect(f!.isFixedPitch)
-        let color = styled.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor
-        #expect(color != nil)
-        #expect(color!.redComponent > 0.5 && color!.greenComponent < 0.2)
+        let ns = styled.string as NSString
+        let kwLoc = ns.range(of: "let").location
+        let plainLoc = ns.range(of: "hello").location
+        // Content is monospace.
+        let f = styled.attribute(.font, at: plainLoc, effectiveRange: nil) as? NSFont
+        #expect(f?.isFixedPitch == true)
+        // The keyword is colored distinctly from a plain identifier.
+        let kw = styled.attribute(.foregroundColor, at: kwLoc, effectiveRange: nil) as? NSColor
+        let plain = styled.attribute(.foregroundColor, at: plainLoc, effectiveRange: nil) as? NSColor
+        #expect(kw != nil && plain != nil)
+        #expect(kw != plain)
     }
 
     // MARK: - Active Token (cursor inside)

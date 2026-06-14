@@ -175,10 +175,10 @@ extension EditorTextView {
                 result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
                 result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: span.contentRange)
 
-            case .codeBlock:
+            case .codeBlock(let language):
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.font, value: codeBlockFont, range: span.contentRange)
-                result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
+                highlightCodeBlock(result, contentRange: span.contentRange, language: language)
 
             case .strikethrough:
                 guard span.contentRange.upperBound <= result.length else { continue }
