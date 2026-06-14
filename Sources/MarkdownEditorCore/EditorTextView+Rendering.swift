@@ -92,14 +92,24 @@ extension EditorTextView {
     /// against rendered output (see RenderingRegressionTests / screencapture).
     var thematicBreakCenterOffset: CGFloat { bodyFont.pointSize * 0.3 }
 
+    /// Width of the `> ` quote marker in body text. Used as the hanging indent
+    /// for blockquotes and callouts so wrapped/continuation lines align after
+    /// the marker (like list items) rather than under the `>`. The marker is
+    /// rendered width-preserved (clear when inactive, dimmed when active) on
+    /// each line's first visual line, so subsequent lines hang by this width.
+    var quoteMarkerWidth: CGFloat {
+        ("> " as NSString).size(withAttributes: [.font: bodyFont]).width
+    }
+
     /// Paragraph style for blockquotes: a 2pt text inset matching the width of
-    /// the left bar that the `.leftBar` BlockDecoration draws.
+    /// the left bar that the `.leftBar` BlockDecoration draws, plus a hanging
+    /// indent so wrapped lines align after the `> ` marker.
     private func blockquoteParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.paragraphSpacing = bodyParagraphStyle.paragraphSpacing
         ps.firstLineHeadIndent = 2
-        ps.headIndent = 2
+        ps.headIndent = 2 + quoteMarkerWidth
         return ps
     }
 

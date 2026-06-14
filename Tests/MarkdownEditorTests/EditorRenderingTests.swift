@@ -838,3 +838,36 @@ struct EditorRecomposeTests {
         #expect(f!.pointSize > 1.0)  // Not hidden
     }
 }
+
+// MARK: - Quote / Callout Hanging Indent
+
+/// Wrapped/continuation lines of a blockquote or callout must hang after the
+/// `> ` marker (like list items), not under the `>`. That is encoded as a
+/// paragraph-style hanging indent: headIndent − firstLineHeadIndent ≈ the
+/// width of the `> ` marker.
+@Suite("Quote/Callout hanging indent")
+struct QuoteCalloutHangingIndentTests {
+
+    @Test("Blockquote wrapped lines hang after the marker")
+    @MainActor func blockquoteHangingIndent() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("> quoted text")
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil)
+        let hang = (ps?.headIndent ?? 0) - (ps?.firstLineHeadIndent ?? 0)
+        #expect(abs(hang - editor.quoteMarkerWidth) < 0.5)
+    }
+
+    @Test("Callout body lines hang after the marker")
+    @MainActor func calloutHangingIndent() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("> [!note]\n> body text")
+        // Inspect the body line's paragraph style (after the header newline).
+        let ns = styled.string as NSString
+        let bodyLoc = ns.range(of: "\n").location + 1
+        let ps = styled.attribute(.paragraphStyle, at: bodyLoc, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil)
+        let hang = (ps?.headIndent ?? 0) - (ps?.firstLineHeadIndent ?? 0)
+        #expect(abs(hang - editor.quoteMarkerWidth) < 0.5)
+    }
+}
