@@ -44,39 +44,28 @@ extension EditorTextView {
 
     // MARK: Marker Icons
 
-    /// Creates a fragment overlay with a circle icon for checkbox rendering.
-    /// Unchecked: gray outlined circle. Checked: filled yellow circle with checkmark.
+    /// Creates a fragment overlay with an SF Symbol for checkbox rendering.
+    /// Unchecked: dim outlined `circle`. Checked: filled `checkmark.circle.fill`.
     private func checkboxOverlay(checked: Bool) -> FragmentOverlay {
         let fontSize = bodyFont.pointSize
-        let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
-            let inset: CGFloat = 1.0
-            let circleRect = bounds.insetBy(dx: inset, dy: inset)
-            let path = NSBezierPath(ovalIn: circleRect)
+        let symbolName = checked ? "checkmark.circle.fill" : "circle"
+        // Checked: white checkmark knocked out of a yellow circle (two palette
+        // layers — checkmark first, circle second). Unchecked: dim outline.
+        let palette: [NSColor] = checked ? [.white, .systemYellow] : [.tertiaryLabelColor]
+        let config = NSImage.SymbolConfiguration(pointSize: fontSize, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: palette))
 
-            if checked {
-                NSColor.systemYellow.setFill()
-                path.fill()
-                // Checkmark
-                let check = NSBezierPath()
-                check.lineWidth = max(1.5, fontSize * 0.1)
-                check.lineCapStyle = .round
-                check.lineJoinStyle = .round
-                let cx = bounds.midX, cy = bounds.midY
-                let r = circleRect.width / 2
-                check.move(to: NSPoint(x: cx - r * 0.35, y: cy + r * 0.05))
-                check.line(to: NSPoint(x: cx - r * 0.08, y: cy + r * 0.35))
-                check.line(to: NSPoint(x: cx + r * 0.38, y: cy - r * 0.30))
-                NSColor.white.setStroke()
-                check.stroke()
-            } else {
-                let lw = max(1.5, fontSize * 0.08)
-                // Inset the stroke path so its outer edge matches the filled circle's edge.
-                let strokeRect = circleRect.insetBy(dx: lw / 2, dy: lw / 2)
-                let strokePath = NSBezierPath(ovalIn: strokeRect)
-                strokePath.lineWidth = lw
-                NSColor.tertiaryLabelColor.setStroke()
-                strokePath.stroke()
-            }
+        // Render the symbol centered in a fontSize-square box so the box (and
+        // therefore list indentation) stays identical to the previous icon.
+        let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        let box = NSSize(width: fontSize, height: fontSize)
+        let image = NSImage(size: box, flipped: false) { _ in
+            guard let symbol else { return true }
+            let s = symbol.size
+            symbol.draw(in: NSRect(x: (box.width - s.width) / 2,
+                                   y: (box.height - s.height) / 2,
+                                   width: s.width, height: s.height))
             return true
         }
 
