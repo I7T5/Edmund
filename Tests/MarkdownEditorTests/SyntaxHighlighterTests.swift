@@ -464,6 +464,26 @@ struct ListItemTests {
             #expect(Bool(false), "Expected listItem")
         }
     }
+
+    @Test("Unchecked todo whose body contains [x] stays unchecked")
+    func uncheckedTodoWithBracketXInBody() {
+        // swift-markdown reports this item's checkbox as `.checked` because it
+        // scans the whole line for `[x]`; the state must come from the leading
+        // `[ ]` marker instead. (Regression: such items rendered struck-through.)
+        for line in ["- [ ] body with [x] later",
+                     "- [ ] body with `[x]` in code",
+                     "- [ ] mentions `- [x]` syntax"] {
+            let spans = SyntaxHighlighter.parse(line)
+            let items = spans.filter { if case .listItem = $0.kind { return true }; return false }
+            #expect(items.count == 1)
+            if case .listItem(_, let checkbox) = items.first?.kind {
+                #expect(checkbox == .unchecked, "expected unchecked for \(line.debugDescription)")
+            } else {
+                #expect(Bool(false), "Expected listItem for \(line.debugDescription)")
+            }
+        }
+    }
+
     @Test("Indented list item (2 spaces) produces a listItem span")
     func indentedTwoSpaces() {
         let spans = SyntaxHighlighter.parse("  - hello")
