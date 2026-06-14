@@ -76,8 +76,10 @@ extension EditorTextView {
         // Symmetric breathing space. The rule is drawn centered in the
         // fragment, so paragraphSpacingBefore sits above the line (and the
         // rule) while paragraphSpacing sits below — equal values keep the
-        // rule visually equidistant from the text on either side.
-        let pad = bodyFont.pointSize * 0.5
+        // rule visually equidistant from the text on either side. Kept small so
+        // the break occupies roughly a body line plus a little air, not a full
+        // blank line above and below.
+        let pad = bodyFont.pointSize * 0.2
         ps.paragraphSpacingBefore = pad
         ps.paragraphSpacing = pad
         return ps
@@ -410,7 +412,11 @@ extension EditorTextView {
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }
                 if cursorInToken {
-                    // Active: show raw dashes, dimmed
+                    // Active: show raw dashes, dimmed — but keep the rendered
+                    // rule's vertical metrics (forced line height + breathing
+                    // space) so clicking in doesn't collapse the block's height
+                    // and shift content below.
+                    result.addAttribute(.paragraphStyle, value: thematicBreakParagraphStyle(), range: span.fullRange)
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
                 } else {
                     // Non-active: horizontal hairline decoration, hide raw text
