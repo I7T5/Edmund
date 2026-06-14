@@ -39,8 +39,13 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
 
     public enum Kind: Equatable {
         /// Filled box across the text column (callouts), with optional borders.
+        /// `bottomPad` extends the fill/border below the fragment's text frame —
+        /// TextKit 2 does not include trailing `paragraphSpacing` in the
+        /// fragment height, so a callout's last line carries the bottom padding
+        /// here (and a matching paragraphSpacing pushes the next block clear).
         case box(background: NSColor, borderColor: NSColor?,
-                 borderEdges: CalloutStyle.Edges, borderWidth: CGFloat)
+                 borderEdges: CalloutStyle.Edges, borderWidth: CGFloat,
+                 bottomPad: CGFloat)
         /// Vertical bar just left of the paragraph's text (plain block quotes).
         case leftBar(color: NSColor, width: CGFloat)
         /// Table-row chrome: vertical column borders at text-relative x
@@ -127,6 +132,25 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         textLayoutManager?.textContainer?.size.width ?? layoutFragmentFrame.width
     }
 
+    /// A box decoration's `bottomPad` grows the fragment's own frame (not just
+    /// its drawing): TextKit 2 leaves trailing `paragraphSpacing` out of the
+    /// fragment, so padding added that way is dead space — clicks there miss the
+    /// text. Making the fragment frame taller means the line fragments stay
+    /// anchored at the top, the extra height is genuine clickable space below
+    /// the last line, the next block tiles clear of it, and the box (drawn over
+    /// the full frame height) covers it. Mirrors how the header's raised
+    /// minimumLineHeight makes the top padding clickable text space.
+    private var boxBottomPad: CGFloat {
+        if case .box(_, _, _, _, let bottomPad)? = decoration?.kind { return bottomPad }
+        return 0
+    }
+
+    override var layoutFragmentFrame: CGRect {
+        var frame = super.layoutFragmentFrame
+        frame.size.height += boxBottomPad
+        return frame
+    }
+
     override var renderingSurfaceBounds: CGRect {
         var bounds = super.renderingSurfaceBounds
         let frame = layoutFragmentFrame
@@ -185,7 +209,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                                 width: containerWidth, height: frame.height)
 
         switch decoration.kind {
-        case .box(let background, let borderColor, let edges, let borderWidth):
+        case .box(let background, let borderColor, let edges, let borderWidth, _):
+            // The fragment frame already includes any box bottomPad (see
+            // layoutFragmentFrame), so columnRect covers the padded area.
             context.setFillColor(background.cgColor)
             context.fill(columnRect)
             if let borderColor, !edges.isEmpty {
