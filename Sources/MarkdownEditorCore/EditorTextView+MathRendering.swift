@@ -79,8 +79,9 @@ extension EditorTextView {
     }
 
     /// The usable text width for one line — the text container minus its line
-    /// fragment padding on both sides. Used to cap over-wide equations.
-    private var availableContentWidth: CGFloat {
+    /// fragment padding on both sides. Used to cap over-wide equations (and
+    /// over-wide images).
+    var availableContentWidth: CGFloat {
         guard let container = textContainer else { return 0 }
         return container.containerSize.width - 2 * container.lineFragmentPadding
     }
