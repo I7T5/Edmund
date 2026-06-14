@@ -125,6 +125,20 @@ extension EditorTextView {
         }
         ts.endEditing()
 
+        // A block whose paragraph style we just changed (e.g. a freshly created
+        // list item's indent) can keep a stale first-line layout: on the edit
+        // path `insertText` already laid the line out with the base typing
+        // attributes, and TextKit 2 doesn't re-measure the first-line indent for
+        // an attribute-only change. Force the restyled blocks to re-lay-out so
+        // the new indent shows immediately instead of after the next cursor move.
+        if let tlm = textLayoutManager {
+            for idx in syncSet where idx < blocks.count {
+                if let range = blockTextRange(blocks[idx].range, tlm) {
+                    tlm.invalidateLayout(for: range)
+                }
+            }
+        }
+
         for idx in deferred where idx < blocks.count {
             blocks[idx].isStyled = false
         }
@@ -150,6 +164,13 @@ extension EditorTextView {
         isUpdating = false
 
         if !deferred.isEmpty { scheduleProgressiveStyling() }
+    }
+
+    /// Maps a block's raw NSRange to an `NSTextRange` for layout invalidation.
+    private func blockTextRange(_ nsRange: NSRange, _ tlm: NSTextLayoutManager) -> NSTextRange? {
+        guard let start = tlm.location(tlm.documentRange.location, offsetBy: nsRange.location),
+              let end = tlm.location(start, offsetBy: nsRange.length) else { return nil }
+        return NSTextRange(location: start, end: end)
     }
 
     /// Incremental recompose: only re-styles the old and new active blocks.
