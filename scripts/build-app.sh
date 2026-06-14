@@ -20,6 +20,7 @@ mkdir -p "${BUNDLE}/Contents/Resources"
 
 cp ".build/release/${EXECUTABLE}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
 cp Info.plist "${BUNDLE}/Contents/"
+cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
 
 # Ad-hoc codesign so macOS doesn't quarantine-block it
 codesign --force --sign - "${BUNDLE}"
