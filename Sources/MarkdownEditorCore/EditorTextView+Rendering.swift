@@ -121,9 +121,9 @@ extension EditorTextView {
         switch kind {
         case .bold, .italic, .boldItalic, .strikethrough, .highlight,
              .code, .link, .image, .lineBreak,
-             .heading, .blockquote:
+             .heading, .blockquote, .footnoteReference:
             return true
-        case .listItem, .table, .codeBlock, .thematicBreak:
+        case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition:
             return false
         case .math(let display):
             // Inline math hides its `$` like other inline tokens; display math
@@ -519,6 +519,26 @@ extension EditorTextView {
                         result.addAttribute(.foregroundColor, value: NSColor.systemRed, range: span.fullRange)
                     }
                 }
+
+            case .footnoteReference:
+                guard span.fullRange.upperBound <= result.length else { continue }
+                // Accent the id; when rendered (cursor outside), raise and shrink
+                // it into a superscript and hide the `[^`/`]` (below). When active,
+                // it stays full size and editable with dimmed delimiters.
+                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                if !cursorInToken {
+                    let small = NSFont(descriptor: bodyFont.fontDescriptor,
+                                       size: bodyFont.pointSize * 0.75) ?? bodyFont
+                    result.addAttribute(.font, value: small, range: span.contentRange)
+                    result.addAttribute(.baselineOffset, value: bodyFont.pointSize * 0.35,
+                                        range: span.contentRange)
+                }
+
+            case .footnoteDefinition:
+                guard span.fullRange.upperBound <= result.length else { continue }
+                // The `[^id]:` marker is dimmed by the delimiter pass below; the
+                // definition text after it stays normal. Nothing to add here.
+                break
 
             case .lineBreak:
                 break  // Delimiter handling done below

@@ -40,6 +40,10 @@ public enum SyntaxHighlighter {
             case thematicBreak
             case lineBreak
             case math(display: Bool)
+            /// An inline `[^id]` footnote reference.
+            case footnoteReference(id: String)
+            /// A `[^id]:` footnote definition marker at the start of a block.
+            case footnoteDefinition(id: String)
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -70,6 +74,9 @@ public enum SyntaxHighlighter {
 
         // Deeply indented list items (4+ spaces) that swift-markdown treats as code.
         parseIndentedListItem(text, into: &walker.spans)
+
+        // [^id] footnote references and [^id]: definition markers.
+        parseFootnotes(text, into: &walker.spans)
 
         return walker.spans.sorted { $0.fullRange.location < $1.fullRange.location }
     }
