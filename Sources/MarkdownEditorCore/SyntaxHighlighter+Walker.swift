@@ -483,9 +483,19 @@ extension SyntaxHighlighter {
             let delims = delimiterRanges(parent: full, children: listItem.children)
             let content = contentRange(full: full, delims: delims)
 
+            // swift-markdown flags an item as a task list item via `checkbox`,
+            // but it reports the STATE by scanning the whole line for `[x]` — so
+            // an unchecked `- [ ]` whose body merely contains `[x]` (e.g. in a
+            // code span) is wrongly reported as checked. Take only the "is this a
+            // task item" signal from swift-markdown and read the actual state
+            // from the leading `[ ]`/`[x]` marker ourselves.
             let checkbox: Span.Kind.CheckboxState?
-            if let cb = listItem.checkbox {
-                checkbox = cb == .checked ? .checked : .unchecked
+            if listItem.checkbox != nil {
+                let markerLen = max(0, content.location - full.location)
+                let marker = (source as NSString).substring(
+                    with: NSRange(location: full.location, length: markerLen))
+                checkbox = Self.leadingCheckboxState(inMarker: marker)
+                    ?? (listItem.checkbox == .checked ? .checked : .unchecked)
             } else {
                 checkbox = nil
             }
@@ -497,6 +507,21 @@ extension SyntaxHighlighter {
                 delimiterRanges: delims
             ))
             descendInto(listItem)
+        }
+
+        /// Reads a task-list checkbox state from the item's leading marker text
+        /// (e.g. `"- [ ] "` → unchecked, `"1. [x] "` → checked) by inspecting the
+        /// character inside the first `[...]`. Returns nil if no bracket is found.
+        private static func leadingCheckboxState(inMarker marker: String)
+            -> Span.Kind.CheckboxState? {
+            let ns = marker as NSString
+            let open = ns.range(of: "[")
+            guard open.location != NSNotFound, open.upperBound < ns.length else { return nil }
+            switch ns.substring(with: NSRange(location: open.upperBound, length: 1)) {
+            case "x", "X": return .checked
+            case " ":      return .unchecked
+            default:       return nil
+            }
         }
 
         // MARK: - Thematic Break
