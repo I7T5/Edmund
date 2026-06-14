@@ -14,6 +14,51 @@ import Markdown
 
 extension SyntaxHighlighter {
 
+    private static let footnoteDefRegex =
+        try! NSRegularExpression(pattern: #"^\[\^([^\]\s]+)\]:"#)
+    private static let footnoteRefRegex =
+        try! NSRegularExpression(pattern: #"\[\^([^\]\s]+)\]"#)
+
+    /// Parses footnotes (not supported by swift-markdown):
+    ///   - `[^id]:` at the start of a block → a `.footnoteDefinition` marker.
+    ///   - `[^id]` elsewhere → a `.footnoteReference`.
+    static func parseFootnotes(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        let whole = NSRange(location: 0, length: ns.length)
+
+        // Definition marker at the very start of the block: `[^id]:`.
+        if let m = footnoteDefRegex.firstMatch(in: text, range: whole) {
+            let marker = m.range(at: 0)   // includes the trailing ":"
+            spans.append(Span(
+                kind: .footnoteDefinition(id: ns.substring(with: m.range(at: 1))),
+                fullRange: marker,
+                contentRange: m.range(at: 1),
+                delimiterRanges: [marker]))
+        }
+
+        // References `[^id]` anywhere — except the definition marker (followed by
+        // ":") and anything overlapping a code span or the definition above.
+        for m in footnoteRefRegex.matches(in: text, range: whole) {
+            let full = m.range(at: 0)
+            if full.upperBound < ns.length && ns.character(at: full.upperBound) == 0x3A { continue }
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock, .footnoteDefinition: break
+                default: return false
+                }
+                return existing.fullRange.location <= full.location
+                    && existing.fullRange.upperBound >= full.upperBound
+            }
+            guard !overlaps else { continue }
+            spans.append(Span(
+                kind: .footnoteReference(id: ns.substring(with: m.range(at: 1))),
+                fullRange: full,
+                contentRange: m.range(at: 1),                                   // the id
+                delimiterRanges: [NSRange(location: full.location, length: 2),  // "[^"
+                                  NSRange(location: full.upperBound - 1, length: 1)]))  // "]"
+        }
+    }
+
     /// Parses ==highlight== spans using regex (not supported by swift-markdown).
     static func parseHighlight(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString
