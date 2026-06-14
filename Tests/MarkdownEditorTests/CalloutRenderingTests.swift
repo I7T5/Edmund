@@ -9,7 +9,7 @@ struct CalloutRenderingTests {
 
     private func boxDecoration(_ deco: BlockDecoration?)
         -> (background: NSColor, borderColor: NSColor?, edges: CalloutStyle.Edges, width: CGFloat)? {
-        guard let deco, case .box(let bg, let border, let edges, let width) = deco.kind
+        guard let deco, case .box(let bg, let border, let edges, let width, _) = deco.kind
         else { return nil }
         return (bg, border, edges, width)
     }
@@ -30,6 +30,23 @@ struct CalloutRenderingTests {
         let box = boxDecoration(blockDecoration(at: 0, in: styled))
         #expect(box != nil)
         #expect(box?.edges.isEmpty == true)
+    }
+
+    @Test("Last line carries the box bottom padding; earlier lines don't")
+    @MainActor func lastLineBottomPad() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("> [!note]\n> first\n> last")
+        func bottomPad(at i: Int) -> CGFloat? {
+            guard case .box(_, _, _, _, let bp)? = blockDecoration(at: i, in: styled)?.kind
+            else { return nil }
+            return bp
+        }
+        let ns = styled.string as NSString
+        let lastStart = ns.range(of: "\n", options: .backwards).upperBound
+        // TextKit 2 omits trailing paragraphSpacing from the fragment frame, so
+        // the bottom breathing room is drawn by extending the last line's box.
+        #expect((bottomPad(at: 0) ?? -1) == 0)             // header line
+        #expect((bottomPad(at: lastStart) ?? 0) > 0)        // last line
     }
 
     @Test("Unknown type stays a plain block quote")

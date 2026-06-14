@@ -10,7 +10,7 @@ struct RecomposeTests {
 
     @MainActor private func calloutBackground(_ ts: NSTextStorage, at i: Int) -> NSColor? {
         guard let deco = ts.attributes(at: i, effectiveRange: nil)[.blockDecoration] as? BlockDecoration,
-              case .box(let background, _, _, _) = deco.kind else { return nil }
+              case .box(let background, _, _, _, _) = deco.kind else { return nil }
         return background
     }
 

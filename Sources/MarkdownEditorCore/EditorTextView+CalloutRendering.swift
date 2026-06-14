@@ -67,26 +67,31 @@ extension EditorTextView {
 
         // The box is drawn by DecoratedTextLayoutFragment behind every
         // paragraph of the callout; the fragments tile into one continuous box.
-        result.addAttribute(
-            .blockDecoration,
-            value: BlockDecoration(.box(background: c.background,
-                                        borderColor: c.border,
-                                        borderEdges: info.style.borderEdges,
-                                        borderWidth: info.style.borderWidth)),
-            range: span.fullRange)
+        func box(bottomPad: CGFloat) -> BlockDecoration {
+            BlockDecoration(.box(background: c.background,
+                                 borderColor: c.border,
+                                 borderEdges: info.style.borderEdges,
+                                 borderWidth: info.style.borderWidth,
+                                 bottomPad: bottomPad))
+        }
+        result.addAttribute(.blockDecoration, value: box(bottomPad: 0),
+                            range: span.fullRange)
         result.addAttribute(.paragraphStyle, value: calloutParagraphStyle(),
                             range: span.fullRange)
-        // Bottom breathing room: paragraph spacing on the last line. The box
-        // covers it (it's inside the last fragment's frame), and clicks there
-        // resolve to the callout's last line — no dead zone.
+        // Bottom breathing room: the last line's box carries a bottomPad, which
+        // grows that fragment's frame (see layoutFragmentFrame). The extra space
+        // is genuine clickable text space below the last line — clicks there
+        // land on the callout, the next block tiles clear, and the box covers
+        // it — no dead zone, no trailing paragraph spacing.
         let ns = result.string as NSString
         var lastLineStart = span.fullRange.location
         let nl = ns.range(of: "\n", options: .backwards,
                           range: span.fullRange)
         if nl.location != NSNotFound { lastLineStart = nl.upperBound }
-        result.addAttribute(.paragraphStyle, value: calloutParagraphStyle(isLastLine: true),
-                            range: NSRange(location: lastLineStart,
-                                           length: span.fullRange.upperBound - lastLineStart))
+        let lastLine = NSRange(location: lastLineStart,
+                               length: span.fullRange.upperBound - lastLineStart)
+        result.addAttribute(.blockDecoration, value: box(bottomPad: calloutBottomPad),
+                            range: lastLine)
 
         let m = info.marker
         if active {
@@ -118,11 +123,9 @@ extension EditorTextView {
             let headerLineEnd = nl.location == NSNotFound ? span.fullRange.upperBound : nl.location
             let headerLine = NSRange(location: span.fullRange.location,
                                      length: headerLineEnd - span.fullRange.location)
-            let headerIsLastLine = nl.location == NSNotFound
             result.addAttribute(
                 .paragraphStyle,
-                value: calloutParagraphStyle(isLastLine: headerIsLastLine,
-                                             minimumLineHeight: overlay.bounds.height + calloutTopPad),
+                value: calloutParagraphStyle(minimumLineHeight: overlay.bounds.height + calloutTopPad),
                 range: headerLine)
         }
     }
@@ -152,8 +155,11 @@ extension EditorTextView {
     /// Top breathing room — baked into the header image so it's part of the
     /// header *line* (clickable text space), not dead block padding.
     private var calloutTopPad: CGFloat { bodyFont.pointSize * 0.8 }
-    /// Bottom breathing room (kept as block padding; slightly less, to balance).
-    private var calloutBottomPad: CGFloat { bodyFont.pointSize * 0.65 }
+    /// Bottom breathing room. Delivered by growing the last line's layout
+    /// fragment frame (a box `bottomPad`), so it is genuine clickable text
+    /// space below the last line — not trailing paragraph spacing, which
+    /// TextKit 2 leaves out of the fragment and which clicks would miss.
+    var calloutBottomPad: CGFloat { bodyFont.pointSize * 0.8 }
 
     // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 
@@ -161,11 +167,10 @@ extension EditorTextView {
     /// kept small so the callout's text lines up with a plain block quote's —
     /// the quote's 2pt bar inset matches this 2pt — and the top breathing room
     /// lives in the header image (clickable text space). The bottom breathing
-    /// room is the last line's paragraph spacing: it's inside the last
-    /// fragment's frame, so the drawn box covers it and clicks there land on
-    /// the callout's last line.
-    private func calloutParagraphStyle(isLastLine: Bool = false,
-                                       minimumLineHeight: CGFloat = 0) -> NSParagraphStyle {
+    /// room is the last line's box `bottomPad` (which grows that fragment's
+    /// frame), so the drawn box covers it and clicks there land on the
+    /// callout's last line — no trailing paragraph spacing needed.
+    private func calloutParagraphStyle(minimumLineHeight: CGFloat = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.firstLineHeadIndent = 2
@@ -173,7 +178,6 @@ extension EditorTextView {
         // matching list items and plain blockquotes.
         ps.headIndent = 2 + quoteMarkerWidth
         ps.tailIndent = -10
-        ps.paragraphSpacing = isLastLine ? calloutBottomPad : 0
         ps.minimumLineHeight = minimumLineHeight
         return ps
     }
