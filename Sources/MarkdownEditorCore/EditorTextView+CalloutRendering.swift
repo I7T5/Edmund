@@ -169,7 +169,9 @@ extension EditorTextView {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.firstLineHeadIndent = 2
-        ps.headIndent = 2
+        // Hanging indent so wrapped body lines align after the `> ` marker,
+        // matching list items and plain blockquotes.
+        ps.headIndent = 2 + quoteMarkerWidth
         ps.tailIndent = -10
         ps.paragraphSpacing = isLastLine ? calloutBottomPad : 0
         ps.minimumLineHeight = minimumLineHeight
