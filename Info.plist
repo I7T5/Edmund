@@ -10,6 +10,8 @@
     <string>com.i7t5.md</string>
     <key>CFBundleExecutable</key>
     <string>md</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>
