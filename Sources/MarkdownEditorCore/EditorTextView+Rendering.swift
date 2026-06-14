@@ -204,11 +204,31 @@ extension EditorTextView {
                     result.addAttribute(.editorLinkURL, value: destination, range: span.contentRange)
                 }
 
-            case .image:
-                guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
-                let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
-                result.addAttribute(.font, value: italic, range: span.contentRange)
+            case .image(let destination):
+                guard span.fullRange.upperBound <= result.length else { continue }
+                if !cursorInToken, let overlay = imageOverlay(destination: destination) {
+                    // Rendered: draw the image at the leading `!` and hide the
+                    // rest of the `![alt](path)` markdown, reserving the line
+                    // height so the picture has room.
+                    let hideStart = span.fullRange.location + 1
+                    let hideLen = span.fullRange.upperBound - hideStart
+                    if hideLen > 0 {
+                        let hideRange = NSRange(location: hideStart, length: hideLen)
+                        result.addAttribute(.font, value: hiddenFont, range: hideRange)
+                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
+                    }
+                    applyOverlay(overlay,
+                                 anchor: NSRange(location: span.fullRange.location, length: 1),
+                                 in: result)
+                    reserveLineHeight(overlay.bounds.height,
+                                      forOverlayAt: span.fullRange.location, in: result)
+                } else {
+                    // Active, or the image couldn't be loaded: show the alt text
+                    // accented (link-like); delimiters are dimmed/hidden below.
+                    result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                    let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+                    result.addAttribute(.font, value: italic, range: span.contentRange)
+                }
 
             case .blockquote:
                 guard span.fullRange.upperBound <= result.length else { continue }
