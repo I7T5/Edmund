@@ -7,7 +7,7 @@ import MarkdownEditorCore
 /// recent documents, and more — all for free.
 ///
 /// The actual editing is delegated entirely to `EditorTextView`.
-class Document: NSDocument {
+class Document: NSDocument, HeadingNavigable {
 
     var editor: EditorTextView!
     private var statusBar: StatusBarView!
@@ -196,6 +196,12 @@ class Document: NSDocument {
             pendingContent = nil
         }
         updateStatusBar()
+    }
+
+    /// Cross-file link following: scroll this document's editor to a heading
+    /// once it's on screen (the content has already loaded in showWindows).
+    func navigateToHeading(_ heading: String) {
+        editor?.scrollToHeading(heading)
     }
 
     // MARK: - Rename & Move (manual — NSDocument's built-in versions
