@@ -268,15 +268,28 @@ extension EditorTextView {
                 let markerText = String(markerStr.dropFirst(leadingWS.count))
                 let markerWidth = (markerText as NSString).size(withAttributes: [.font: bodyFont]).width
                 let firstLineIndent: CGFloat
-                if cursorInToken || ordered {
-                    // Active item, OR an ordered marker: right-align the marker into
-                    // its slot so the content begins at `contentIndent` — the same
-                    // place as the rendered (inactive) form. This keeps the active
-                    // item aligned with the rest of the list at every depth (and
-                    // clicking into an item doesn't shift its text), while leaving
-                    // the raw "- " / "1." / "- [ ]" marker visible and editable.
+                // For an active bullet we left-shift the raw "-" onto the dot's
+                // column; this kern widens its trailing space so the content
+                // still begins at contentIndent (set after the paragraph style).
+                var activeBulletSpaceKern: CGFloat = 0
+                if ordered || (cursorInToken && checkbox != nil) {
+                    // Ordered marker, or an active checkbox: right-align the marker
+                    // into its slot so the content begins at `contentIndent` — the
+                    // same place as the rendered (inactive) form. This keeps the
+                    // item aligned at every depth (and clicking in doesn't shift
+                    // the text), while leaving the raw "1." / "- [ ]" editable.
                     // Wrapped lines hang at contentIndent via headIndent.
                     firstLineIndent = max(2, contentIndent - markerWidth)
+                } else if cursorInToken {
+                    // Active bullet: sit the raw "-" on the dot's column instead of
+                    // right-aligning it into the slot, so the marker doesn't jump
+                    // sideways when you click into the item. The inactive dot is
+                    // centered in a pointSize-wide box at markerStart, so center the
+                    // dash there too; the kern below keeps the content at
+                    // contentIndent.
+                    let dashWidth = ("-" as NSString).size(withAttributes: [.font: bodyFont]).width
+                    firstLineIndent = max(2, markerStart + (bodyFont.pointSize - dashWidth) / 2)
+                    activeBulletSpaceKern = max(0, contentIndent - (firstLineIndent + markerWidth))
                 } else {
                     // Inactive bullet/checkbox: the marker icon sits at markerStart.
                     firstLineIndent = markerStart
@@ -299,6 +312,13 @@ extension EditorTextView {
                 result.addAttribute(.paragraphStyle,
                                     value: listParagraphStyle(firstLineIndent: firstLineIndent, contentIndent: contentIndent),
                                     range: NSRange(location: 0, length: result.length))
+                // Active bullet: widen the marker's trailing space so the content
+                // lands at contentIndent even though the "-" sits on the dot column.
+                if activeBulletSpaceKern > 0, span.contentRange.location > 0,
+                   span.contentRange.location <= result.length {
+                    result.addAttribute(.kern, value: activeBulletSpaceKern,
+                                        range: NSRange(location: span.contentRange.location - 1, length: 1))
+                }
                 // Strikethrough checked items
                 if !ordered, checkbox == .checked {
                     result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
