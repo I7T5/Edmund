@@ -43,17 +43,35 @@ extension EditorTextView {
         } else {
             let mode: MTMathUILabelMode = display ? .display : .text
             let math = MTMathImage(latex: latex, fontSize: fontSize, textColor: color, labelMode: mode)
+            // SwiftMath sizes the image to the exact typographic ascent+descent,
+            // which crops a glyph's ink overshoot below the baseline — the bottom
+            // of a lone `x`/`c` sits flush on the image edge and renders clipped.
+            // A small content inset gives the rasterizer room so the full glyph is
+            // drawn; it's folded into the descent below so alignment is unchanged.
+            let insetPad: CGFloat = 2
+            math.contentInsets = MTEdgeInsets(top: insetPad, left: 0, bottom: insetPad, right: 0)
             let (error, image) = math.asImage()
             guard error == nil, let image else { return nil }
 
-            // Typeset once more via a label to read the descent (the distance from
-            // the math baseline to the bottom of the image), used for alignment.
+            // Typeset once more via a label to read ascent/descent, then compute
+            // the baseline's distance from the image bottom the way SwiftMath's
+            // asImage does — including its `height < fontSize/2` clamp, which
+            // re-centers small glyphs (a lone x/c/n). Ignoring the clamp left
+            // those a pixel below the surrounding text baseline.
             let label = MTMathUILabel()
             label.latex = latex
             label.fontSize = fontSize
             label.labelMode = mode
             label.layout()
-            let descent = label.displayList?.descent ?? 0
+            let asc = label.displayList?.ascent ?? 0
+            let desc = label.displayList?.descent ?? 0
+            let clamped = max(asc + desc, fontSize / 2)
+            // `baselineCorrection`: the rasterized image's pixel height rounds,
+            // nudging its internal baseline ~½pt down relative to the text
+            // baseline. Lift the image by that much so the math sits on the text
+            // baseline (verified pixel-for-pixel against surrounding glyphs).
+            let baselineCorrection: CGFloat = 0.5
+            let descent = (asc + desc - clamped) / 2 + desc + insetPad - baselineCorrection
 
             render = MathRender(image: image, descent: descent)
             mathRenderCache.setObject(render, forKey: key)

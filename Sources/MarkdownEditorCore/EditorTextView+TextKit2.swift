@@ -176,19 +176,18 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         for (offset, overlay) in overlays {
             guard let rect = overlayRect(anchorOffset: offset, overlay: overlay) else { continue }
             let drawRect = rect.offsetBy(dx: point.x, dy: point.y)
-            // Draw the CGImage directly with an explicit vertical flip rather
-            // than NSImage.draw(…respectFlipped:) into an NSGraphicsContext wrapper:
-            // that path dropped the bottom of the image in this flipped TextKit 2
-            // context (clipping math descenders / tall-delimiter bottoms).
-            var proposed = drawRect
-            guard let cgImage = overlay.image.cgImage(forProposedRect: &proposed,
-                                                      context: nil, hints: nil) else { continue }
-            context.saveGState()
-            context.translateBy(x: drawRect.minX, y: drawRect.maxY)
-            context.scaleBy(x: 1, y: -1)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0,
-                                             width: drawRect.width, height: drawRect.height))
-            context.restoreGState()
+            // Draw the (resolution-independent) NSImage into the flipped context,
+            // so it rasterizes at the screen's backing scale — crisp on Retina,
+            // and positioned precisely. (Converting to a CGImage first would bake
+            // it at 1×, then upscale: soft, and quantized a pixel low.) The math
+            // image carries a small transparent inset, so the flipped draw can't
+            // clip a descender at the image edge.
+            let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = nsContext
+            overlay.image.draw(in: drawRect, from: .zero, operation: .sourceOver,
+                               fraction: 1, respectFlipped: true, hints: nil)
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 
