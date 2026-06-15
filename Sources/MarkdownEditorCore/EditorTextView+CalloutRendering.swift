@@ -152,14 +152,17 @@ extension EditorTextView {
 
     // MARK: Padding constants (shared by the box and the header image)
 
-    /// Top breathing room — baked into the header image so it's part of the
-    /// header *line* (clickable text space), not dead block padding.
+    /// Top breathing room — raised on the header line's minimum line height
+    /// (clickable text space), not dead block padding.
     private var calloutTopPad: CGFloat { bodyFont.pointSize * 0.8 }
     /// Bottom breathing room. Delivered by growing the last line's layout
     /// fragment frame (a box `bottomPad`), so it is genuine clickable text
     /// space below the last line — not trailing paragraph spacing, which
     /// TextKit 2 leaves out of the fragment and which clicks would miss.
-    var calloutBottomPad: CGFloat { bodyFont.pointSize * 0.8 }
+    /// Tuned so the *rendered* bottom gap matches the rendered top gap: the
+    /// header overlay sits low in its line, so the top renders ~0.4·pointSize
+    /// larger than `calloutTopPad`, and this makes the bottom match it.
+    var calloutBottomPad: CGFloat { bodyFont.pointSize * 1.14 }
 
     // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 
