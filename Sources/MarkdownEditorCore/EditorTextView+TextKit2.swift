@@ -176,12 +176,19 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         for (offset, overlay) in overlays {
             guard let rect = overlayRect(anchorOffset: offset, overlay: overlay) else { continue }
             let drawRect = rect.offsetBy(dx: point.x, dy: point.y)
-            let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = nsContext
-            overlay.image.draw(in: drawRect, from: .zero, operation: .sourceOver,
-                               fraction: 1, respectFlipped: true, hints: nil)
-            NSGraphicsContext.restoreGraphicsState()
+            // Draw the CGImage directly with an explicit vertical flip rather
+            // than NSImage.draw(…respectFlipped:) into an NSGraphicsContext wrapper:
+            // that path dropped the bottom of the image in this flipped TextKit 2
+            // context (clipping math descenders / tall-delimiter bottoms).
+            var proposed = drawRect
+            guard let cgImage = overlay.image.cgImage(forProposedRect: &proposed,
+                                                      context: nil, hints: nil) else { continue }
+            context.saveGState()
+            context.translateBy(x: drawRect.minX, y: drawRect.maxY)
+            context.scaleBy(x: 1, y: -1)
+            context.draw(cgImage, in: CGRect(x: 0, y: 0,
+                                             width: drawRect.width, height: drawRect.height))
+            context.restoreGState()
         }
     }
 
