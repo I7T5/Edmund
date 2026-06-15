@@ -96,6 +96,24 @@ public class EditorTextView: NSTextView {
 
     public var theme: EditorTheme = .load()
 
+    /// How the document is presented:
+    ///   - `edit`    — live preview; the block under the caret reveals its raw
+    ///                 markdown (the default editing experience).
+    ///   - `reading` — everything rendered, no raw ever revealed; read-only.
+    ///   - `source`  — plain monospaced raw markdown, no styling.
+    public enum ViewMode: Sendable { case edit, reading, source }
+
+    public var viewMode: ViewMode = .edit {
+        didSet {
+            guard oldValue != viewMode else { return }
+            isEditable = (viewMode != .reading)
+            // Re-style every block under the new mode (viewport-first for big docs).
+            guard !blocks.isEmpty else { return }
+            recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
+                           cursorInRaw: selectedRange().location)
+        }
+    }
+
     /// User overrides for callout styles, keyed by lowercased type. Lets a
     /// settings layer customize a built-in type's color / icon / border /
     /// background (or add new types). Empty by default (GitHub styles).

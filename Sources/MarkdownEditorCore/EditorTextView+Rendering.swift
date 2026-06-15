@@ -604,6 +604,19 @@ extension EditorTextView {
         return result
     }
 
+    /// Plain monospaced styling for source mode: the raw markdown with no
+    /// markup interpretation (no hidden delimiters, overlays, or decorations).
+    func sourceStyled(_ markdown: String) -> NSAttributedString {
+        let mono = NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize, weight: .regular)
+        let ps = NSMutableParagraphStyle()
+        ps.lineSpacing = theme.lineSpacing
+        return NSAttributedString(string: markdown, attributes: [
+            .font: mono,
+            .foregroundColor: foregroundColor,
+            .paragraphStyle: ps,
+        ])
+    }
+
     // MARK: - In-Place Block Restyling
 
     /// Re-styles a single block in the text storage in place (no string mutation).
@@ -616,7 +629,12 @@ extension EditorTextView {
         let block = blocks[blockIndex]
         guard block.range.upperBound <= ts.length else { return }
 
-        let styled = styleBlock(block.content, cursorPosition: cursorInBlock)
+        let styled: NSAttributedString
+        switch viewMode {
+        case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock)
+        case .reading: styled = styleBlock(block.content, cursorPosition: nil)
+        case .source:  styled = sourceStyled(block.content)
+        }
         let offset = block.range.location
 
         styled.enumerateAttributes(in: NSRange(location: 0, length: styled.length), options: []) { attrs, range, _ in
