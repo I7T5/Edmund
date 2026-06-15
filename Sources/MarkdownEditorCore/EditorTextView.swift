@@ -618,18 +618,25 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Link Following
 
-    /// Cmd+click on a link's text follows it; any other click edits normally.
+    /// Cmd+click on a link's text follows it: a `[[wikilink]]` resolves to a
+    /// file / heading, a regular link opens its URL. Any other click edits.
     public override func mouseDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command), let url = linkURL(at: event) {
-            NSWorkspace.shared.open(url)
-            return
+        if event.modifierFlags.contains(.command) {
+            if let target = wikiTarget(at: event) {
+                followWikiLink(target)
+                return
+            }
+            if let url = linkURL(at: event) {
+                NSWorkspace.shared.open(url)
+                return
+            }
         }
         super.mouseDown(with: event)
     }
 
-    /// The destination URL of the link under a mouse event, or nil if the click
-    /// doesn't land directly on link text.
-    private func linkURL(at event: NSEvent) -> URL? {
+    /// The storage character index directly under a mouse event, or nil if the
+    /// click doesn't land on a laid-out glyph (e.g. past the end of a line).
+    func clickCharIndex(at event: NSEvent) -> Int? {
         guard let tlm = textLayoutManager,
               let storage = textStorage, storage.length > 0 else { return nil }
 
@@ -650,7 +657,13 @@ public class EditorTextView: NSTextView {
         guard indexInParagraph >= 0,
               let paraStart = fragment.textElement?.elementRange?.location else { return nil }
         let charIndex = tlm.offset(from: tlm.documentRange.location, to: paraStart) + indexInParagraph
-        guard charIndex < storage.length,
+        return charIndex < storage.length ? charIndex : nil
+    }
+
+    /// The destination URL of the regular link under a mouse event, or nil if
+    /// the click doesn't land directly on link text.
+    private func linkURL(at event: NSEvent) -> URL? {
+        guard let storage = textStorage, let charIndex = clickCharIndex(at: event),
               let dest = storage.attribute(.editorLinkURL, at: charIndex, effectiveRange: nil) as? String
         else { return nil }
         return URL(string: dest)

@@ -5,6 +5,9 @@ extension NSAttributedString.Key {
     /// cmd+click can follow it. Kept separate from the system `.link` attribute
     /// to avoid NSTextView's built-in link styling/cursor behavior.
     static let editorLinkURL = NSAttributedString.Key("EditorLinkURL")
+    /// Stores a wikilink's raw `path#heading` target on its visible text so a
+    /// cmd+click can resolve it to a file or in-document heading.
+    static let editorWikiTarget = NSAttributedString.Key("EditorWikiTarget")
 }
 
 // MARK: - Word-Level Styling
@@ -126,6 +129,10 @@ extension EditorTextView {
         case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment:
             // Comments are handled explicitly (dimmed in Edit, hidden in Reading).
             return false
+        case .wikilink:
+            // The `[[`, optional `target|`, and `]]` are hidden when rendered,
+            // dimmed when the cursor is inside (like other inline delimiters).
+            return true
         case .math(let display):
             // Inline math hides its `$` like other inline tokens; display math
             // is block-level and handled specially.
@@ -204,6 +211,17 @@ extension EditorTextView {
                 result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
                 if !destination.isEmpty {
                     result.addAttribute(.editorLinkURL, value: destination, range: span.contentRange)
+                }
+
+            case .wikilink(let target):
+                guard span.contentRange.upperBound <= result.length else { continue }
+                // The display text reads as an accent link; the brackets (and a
+                // `target|` alias prefix) are hidden/dimmed by the delimiter pass.
+                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue,
+                                    range: span.contentRange)
+                if !target.isEmpty {
+                    result.addAttribute(.editorWikiTarget, value: target, range: span.contentRange)
                 }
 
             case .image(let destination):
