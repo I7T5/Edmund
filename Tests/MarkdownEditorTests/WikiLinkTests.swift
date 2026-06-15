@@ -82,9 +82,38 @@ struct WikiLinkTests {
         doc.fileURL = home
         editor.document = doc
 
-        // Obsidian links omit the .md extension.
-        #expect(editor.resolveWikiFile("Target Note")?.standardizedFileURL == target.standardizedFileURL)
-        #expect(editor.resolveWikiFile("Missing Note") == nil)
+        // Obsidian wikilinks omit the .md extension; regular links include it.
+        #expect(editor.resolveLinkedFile("Target Note")?.standardizedFileURL == target.standardizedFileURL)
+        #expect(editor.resolveLinkedFile("Target Note.md")?.standardizedFileURL == target.standardizedFileURL)
+        #expect(editor.resolveLinkedFile("Missing Note") == nil)
+    }
+
+    @Test("splitHeading separates path and the deepest heading component")
+    func splitsHeading() {
+        #expect(EditorTextView.splitHeading("Note#Section").path == "Note")
+        #expect(EditorTextView.splitHeading("Note#Section").heading == "Section")
+        #expect(EditorTextView.splitHeading("Note#H1#H2").heading == "H2")   // deepest
+        #expect(EditorTextView.splitHeading("#OnlyHeading").path == "")
+        #expect(EditorTextView.splitHeading("#OnlyHeading").heading == "OnlyHeading")
+        #expect(EditorTextView.splitHeading("JustAPath").heading == nil)
+    }
+
+    @Test("Regular [](#heading) link scrolls to the heading in this document")
+    func regularAnchorScrolls() {
+        let editor = makeEditor()
+        editor.loadContent("# Top\n\n[jump](#Details)\n\n## Details\n\nbody")
+        editor.followLinkDestination("#Details")
+        let detailsLoc = (editor.rawSource as NSString).range(of: "## Details").location
+        #expect(editor.selectedRange().location == detailsLoc)
+    }
+
+    @Test("Regular link anchor percent-decodes the path")
+    func percentDecodedHeading() {
+        let editor = makeEditor()
+        editor.loadContent("# Top\n\n## My Section\n\nbody")
+        editor.followLinkDestination("#My%20Section")
+        let loc = (editor.rawSource as NSString).range(of: "## My Section").location
+        #expect(editor.selectedRange().location == loc)
     }
 
     @Test("scrollToHeading finds the matching heading block")

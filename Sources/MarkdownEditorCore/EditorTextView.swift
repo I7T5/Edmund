@@ -626,8 +626,8 @@ public class EditorTextView: NSTextView {
                 followWikiLink(target)
                 return
             }
-            if let url = linkURL(at: event) {
-                NSWorkspace.shared.open(url)
+            if let dest = linkDestination(at: event) {
+                followLinkDestination(dest)
                 return
             }
         }
@@ -660,13 +660,12 @@ public class EditorTextView: NSTextView {
         return charIndex < storage.length ? charIndex : nil
     }
 
-    /// The destination URL of the regular link under a mouse event, or nil if
-    /// the click doesn't land directly on link text.
-    private func linkURL(at event: NSEvent) -> URL? {
-        guard let storage = textStorage, let charIndex = clickCharIndex(at: event),
-              let dest = storage.attribute(.editorLinkURL, at: charIndex, effectiveRange: nil) as? String
-        else { return nil }
-        return URL(string: dest)
+    /// The raw destination string of the regular link under a mouse event, or
+    /// nil if the click doesn't land directly on link text. The destination is
+    /// resolved by `followLinkDestination` (external URL, `#heading`, or file).
+    private func linkDestination(at event: NSEvent) -> String? {
+        guard let storage = textStorage, let charIndex = clickCharIndex(at: event) else { return nil }
+        return storage.attribute(.editorLinkURL, at: charIndex, effectiveRange: nil) as? String
     }
 
     // MARK: - Helpers
