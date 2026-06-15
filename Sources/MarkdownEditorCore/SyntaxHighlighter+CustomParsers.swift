@@ -59,6 +59,34 @@ extension SyntaxHighlighter {
         }
     }
 
+    private static let commentRegex =
+        try! NSRegularExpression(pattern: "%%([\\s\\S]*?)%%", options: [])
+
+    /// Parses Obsidian-style `%%comment%%` spans (not supported by
+    /// swift-markdown). Matches across newlines within a block; skips `%%`
+    /// inside code spans / code blocks.
+    static func parseComments(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        for m in commentRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let full = m.range(at: 0)
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock: break
+                default: return false
+                }
+                return existing.fullRange.location <= full.location
+                    && existing.fullRange.upperBound >= full.upperBound
+            }
+            guard !overlaps else { continue }
+            spans.append(Span(
+                kind: .comment,
+                fullRange: full,
+                contentRange: m.range(at: 1),
+                delimiterRanges: [NSRange(location: full.location, length: 2),
+                                  NSRange(location: full.upperBound - 2, length: 2)]))
+        }
+    }
+
     /// Parses ==highlight== spans using regex (not supported by swift-markdown).
     static func parseHighlight(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString

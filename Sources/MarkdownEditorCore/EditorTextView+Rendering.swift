@@ -123,7 +123,8 @@ extension EditorTextView {
              .code, .link, .image, .lineBreak,
              .heading, .blockquote, .footnoteReference:
             return true
-        case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition:
+        case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment:
+            // Comments are handled explicitly (dimmed in Edit, hidden in Reading).
             return false
         case .math(let display):
             // Inline math hides its `$` like other inline tokens; display math
@@ -141,7 +142,8 @@ extension EditorTextView {
     /// - Parameters:
     ///   - markdown: Raw markdown text.
     ///   - cursorPosition: Cursor offset within the markdown (nil = hide all inline delimiters).
-    func styleBlock(_ markdown: String, cursorPosition: Int? = nil) -> NSAttributedString {
+    func styleBlock(_ markdown: String, cursorPosition: Int? = nil,
+                    hideComments: Bool = false) -> NSAttributedString {
         let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
         guard !markdown.isEmpty else { return result }
 
@@ -560,6 +562,19 @@ extension EditorTextView {
                 // definition text after it stays normal. Nothing to add here.
                 break
 
+            case .comment:
+                guard span.fullRange.upperBound <= result.length else { continue }
+                // Reading view hides comments entirely; Edit view dims the whole
+                // `%%…%%` (delimiters dimmed again in the delimiter pass). The
+                // content is opaque (no inner markdown), so dimming fullRange is
+                // enough.
+                if hideComments {
+                    result.addAttribute(.font, value: hiddenFont, range: span.fullRange)
+                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)
+                } else {
+                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.fullRange)
+                }
+
             case .lineBreak:
                 break  // Delimiter handling done below
             }
@@ -607,6 +622,15 @@ extension EditorTextView {
                     if cursorInToken {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
+                } else if case .comment = span.kind {
+                    // Comment `%%`: hidden in reading view, dimmed otherwise —
+                    // matching the content styling above.
+                    if hideComments {
+                        result.addAttribute(.font, value: hiddenFont, range: dr)
+                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
+                    } else {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
+                    }
                 } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
@@ -652,7 +676,7 @@ extension EditorTextView {
         let styled: NSAttributedString
         switch viewMode {
         case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock)
-        case .reading: styled = styleBlock(block.content, cursorPosition: nil)
+        case .reading: styled = styleBlock(block.content, cursorPosition: nil, hideComments: true)
         case .source:  styled = sourceStyled(block.content)
         }
         let offset = block.range.location
