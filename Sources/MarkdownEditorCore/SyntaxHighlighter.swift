@@ -44,6 +44,8 @@ public enum SyntaxHighlighter {
             case footnoteReference(id: String)
             /// A `[^id]:` footnote definition marker at the start of a block.
             case footnoteDefinition(id: String)
+            /// An Obsidian-style `%%comment%%` (hidden in reading view).
+            case comment
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -77,6 +79,21 @@ public enum SyntaxHighlighter {
 
         // [^id] footnote references and [^id]: definition markers.
         parseFootnotes(text, into: &walker.spans)
+
+        // %%comments%%. Comments are opaque: drop any span fully inside one so
+        // its content isn't re-styled as markdown (it's a raw note).
+        parseComments(text, into: &walker.spans)
+        let commentRanges: [NSRange] = walker.spans.compactMap {
+            if case .comment = $0.kind { return $0.fullRange } else { return nil }
+        }
+        if !commentRanges.isEmpty {
+            walker.spans.removeAll { span in
+                if case .comment = span.kind { return false }
+                return commentRanges.contains {
+                    $0.location <= span.fullRange.location && $0.upperBound >= span.fullRange.upperBound
+                }
+            }
+        }
 
         return walker.spans.sorted { $0.fullRange.location < $1.fullRange.location }
     }
