@@ -87,6 +87,55 @@ extension SyntaxHighlighter {
         }
     }
 
+    private static let wikiLinkRegex =
+        try! NSRegularExpression(pattern: #"\[\[([^\[\]\n]+?)\]\]"#)
+
+    /// Parses Obsidian-style `[[target]]`, `[[target#heading]]`, and
+    /// `[[target|alias]]` internal links. The span's `contentRange` is the
+    /// visible display text (the alias when present, else the target); the
+    /// `[[`, an optional `target|`, and the `]]` are delimiter ranges hidden
+    /// when rendered. Skips `[[` inside code spans / code blocks.
+    static func parseWikiLinks(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        for m in wikiLinkRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let full = m.range(at: 0)
+            let inner = m.range(at: 1)
+            let innerNS = ns.substring(with: inner) as NSString
+            guard innerNS.length > 0 else { continue }
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock: break
+                default: return false
+                }
+                return existing.fullRange.location <= full.location
+                    && existing.fullRange.upperBound >= full.upperBound
+            }
+            guard !overlaps else { continue }
+
+            // Split target | alias on the first "|".
+            let pipe = innerNS.range(of: "|")
+            let targetRel = pipe.location == NSNotFound
+                ? NSRange(location: 0, length: innerNS.length)
+                : NSRange(location: 0, length: pipe.location)
+            var displayRel = pipe.location == NSNotFound
+                ? targetRel
+                : NSRange(location: pipe.upperBound, length: innerNS.length - pipe.upperBound)
+            if displayRel.length == 0 { displayRel = targetRel }   // "[[Note|]]" → show target
+
+            let target = innerNS.substring(with: targetRel).trimmingCharacters(in: .whitespaces)
+            guard !target.isEmpty || pipe.location != NSNotFound else { continue }
+
+            let content = NSRange(location: inner.location + displayRel.location, length: displayRel.length)
+            let leading = NSRange(location: full.location, length: content.location - full.location)
+            let trailing = NSRange(location: content.upperBound, length: full.upperBound - content.upperBound)
+            spans.append(Span(
+                kind: .wikilink(target: target),
+                fullRange: full,
+                contentRange: content,
+                delimiterRanges: [leading, trailing]))
+        }
+    }
+
     /// Parses ==highlight== spans using regex (not supported by swift-markdown).
     static func parseHighlight(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString

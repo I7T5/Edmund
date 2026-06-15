@@ -46,6 +46,10 @@ public enum SyntaxHighlighter {
             case footnoteDefinition(id: String)
             /// An Obsidian-style `%%comment%%` (hidden in reading view).
             case comment
+            /// An Obsidian-style `[[target]]` internal link. `target` is the raw
+            /// `path#heading` portion (before any `|alias`); the visible display
+            /// text is the span's contentRange.
+            case wikilink(target: String)
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -80,16 +84,24 @@ public enum SyntaxHighlighter {
         // [^id] footnote references and [^id]: definition markers.
         parseFootnotes(text, into: &walker.spans)
 
-        // %%comments%%. Comments are opaque: drop any span fully inside one so
-        // its content isn't re-styled as markdown (it's a raw note).
+        // %%comments%% and [[wikilinks]]. Both are opaque: their inner text is
+        // a raw note / link target, not markdown — drop any span fully inside
+        // one so the content isn't re-styled.
         parseComments(text, into: &walker.spans)
-        let commentRanges: [NSRange] = walker.spans.compactMap {
-            if case .comment = $0.kind { return $0.fullRange } else { return nil }
+        parseWikiLinks(text, into: &walker.spans)
+        let opaqueRanges: [NSRange] = walker.spans.compactMap { span in
+            switch span.kind {
+            case .comment, .wikilink: return span.fullRange
+            default: return nil
+            }
         }
-        if !commentRanges.isEmpty {
+        if !opaqueRanges.isEmpty {
             walker.spans.removeAll { span in
-                if case .comment = span.kind { return false }
-                return commentRanges.contains {
+                switch span.kind {
+                case .comment, .wikilink: return false
+                default: break
+                }
+                return opaqueRanges.contains {
                     $0.location <= span.fullRange.location && $0.upperBound >= span.fullRange.upperBound
                 }
             }
