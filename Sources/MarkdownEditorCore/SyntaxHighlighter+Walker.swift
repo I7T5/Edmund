@@ -480,7 +480,17 @@ extension SyntaxHighlighter {
                 return
             }
             let full = nsRange(for: range)
-            let delims = delimiterRanges(parent: full, children: listItem.children)
+            var delims = delimiterRanges(parent: full, children: listItem.children)
+            // An empty list item (just "- " / "1. " / "- [ ] " with no content,
+            // e.g. a marker freshly created by pressing Return) has no child
+            // nodes, so `delimiterRanges` finds no marker and the whole item is
+            // treated as content. That collapses the marker's width to zero and
+            // pushes the freshly-typed marker a full slot too deep. Synthesize
+            // the marker delimiter from the leading text so the content begins
+            // after it, matching a non-empty item.
+            if delims.isEmpty, let markerLen = Self.leadingListMarkerLength(in: source, range: full) {
+                delims = [NSRange(location: full.location, length: markerLen)]
+            }
             let content = contentRange(full: full, delims: delims)
 
             // swift-markdown flags an item as a task list item via `checkbox`,
@@ -507,6 +517,22 @@ extension SyntaxHighlighter {
                 delimiterRanges: delims
             ))
             descendInto(listItem)
+        }
+
+        /// Matches a list item's leading marker (optional indentation +
+        /// `-`/`*`/`+` or `N.`, plus an optional `[ ]`/`[x]` checkbox), used to
+        /// recover the marker range for an empty item that has no child nodes.
+        private static let listMarkerRegex = try! NSRegularExpression(
+            pattern: #"^[ \t]*(?:[-*+][ \t]+(?:\[[ xX]\][ \t]*)?|\d+\.[ \t]+)"#)
+
+        /// Length (UTF-16) of the leading list marker within `range` of `source`,
+        /// or nil if the text there doesn't begin with a marker.
+        private static func leadingListMarkerLength(in source: String, range: NSRange) -> Int? {
+            let line = (source as NSString).substring(with: range)
+            let m = listMarkerRegex.firstMatch(
+                in: line, range: NSRange(location: 0, length: (line as NSString).length))
+            guard let m, m.range.location == 0, m.range.length > 0 else { return nil }
+            return m.range.length
         }
 
         /// Reads a task-list checkbox state from the item's leading marker text
