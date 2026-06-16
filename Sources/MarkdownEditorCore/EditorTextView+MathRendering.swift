@@ -66,12 +66,7 @@ extension EditorTextView {
             let asc = label.displayList?.ascent ?? 0
             let desc = label.displayList?.descent ?? 0
             let clamped = max(asc + desc, fontSize / 2)
-            // `baselineCorrection`: the rasterized image's pixel height rounds,
-            // nudging its internal baseline ~½pt down relative to the text
-            // baseline. Lift the image by that much so the math sits on the text
-            // baseline (verified pixel-for-pixel against surrounding glyphs).
-            let baselineCorrection: CGFloat = 0.5
-            let descent = (asc + desc - clamped) / 2 + desc + insetPad - baselineCorrection
+            let descent = (asc + desc - clamped) / 2 + desc + insetPad
 
             render = MathRender(image: image, descent: descent)
             mathRenderCache.setObject(render, forKey: key)
@@ -90,6 +85,14 @@ extension EditorTextView {
             height *= scale
             descent *= scale
         }
+        // The rendered image's baseline sits exactly one device pixel below the
+        // surrounding text baseline (measured constant across font sizes — it's a
+        // fixed rasterization offset, not a size-dependent rounding). Lift the
+        // image by one device pixel so the math rests on the text baseline. Done
+        // here, not in the cached descent, so it tracks the window's scale if it
+        // moves between a Retina and a non-Retina display.
+        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        descent -= 1 / backingScale
         // Drop the image so its baseline (descent above the image bottom) lands
         // on the text baseline.
         return FragmentOverlay(image: render.image,
