@@ -9,9 +9,11 @@ import AppKit
 
 extension EditorTextView {
 
-    /// Leading indent + `>` + an optional single space, at the start of a line.
+    /// Leading indent + one or more `>` levels (each with an optional single
+    /// space), at the start of a line. Captures the *full* nesting depth so a
+    /// nested callout/quote line `> > …` continues as `> > `, not `> `.
     private static let blockquotePrefixRegex = try! NSRegularExpression(
-        pattern: #"^[ \t]*>[ \t]?"#
+        pattern: #"^[ \t]*(?:>[ \t]?)+"#
     )
 
     /// Continues a block quote / callout on Return. Returns true if it handled
@@ -35,12 +37,23 @@ extension EditorTextView {
         let hasContent = m.range.length < lineNS.length
 
         if hasContent {
-            // Continue the quote: newline + the same `> ` prefix.
+            // Continue the quote/callout at the same depth: newline + same prefix.
             insertText("\n" + prefix, replacementRange: NSRange(location: location, length: 0))
         } else {
-            // Empty quote line → break out by removing the prefix.
-            insertText("", replacementRange: NSRange(location: lineStart, length: lineEnd - lineStart))
+            // Empty quote line → step out one nesting level (drop the last `>`).
+            // At the top level this empties the line, breaking out of the quote.
+            insertText(Self.reduceQuotePrefix(prefix),
+                       replacementRange: NSRange(location: lineStart, length: lineEnd - lineStart))
         }
         return true
+    }
+
+    /// Drops the deepest `>` level from a quote prefix: `> > ` → `> `,
+    /// `  > ` → `  ` (indent kept), `> ` → `` (broken out).
+    static func reduceQuotePrefix(_ prefix: String) -> String {
+        let ns = prefix as NSString
+        let lastGT = ns.range(of: ">", options: .backwards)
+        guard lastGT.location != NSNotFound else { return "" }
+        return ns.substring(to: lastGT.location)
     }
 }

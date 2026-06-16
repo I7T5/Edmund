@@ -63,14 +63,21 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
     }
 
     public let kind: Kind
+    /// Horizontal inset (points) from the text column's left and right edges at
+    /// which a `.box` is drawn. Non-zero for boxes nested inside another box
+    /// (e.g. a callout inside a callout), so the inner box sits within the outer
+    /// one. Ignored by `.leftBar` (which draws relative to the indented text
+    /// origin and so already follows nesting) and the other kinds.
+    public let inset: CGFloat
 
-    public init(_ kind: Kind) {
+    public init(_ kind: Kind, inset: CGFloat = 0) {
         self.kind = kind
+        self.inset = inset
     }
 
     public override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? BlockDecoration else { return false }
-        return kind == other.kind
+        return kind == other.kind && inset == other.inset
     }
 
     public override var hash: Int {
@@ -81,6 +88,25 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         case .horizontalRule: return 4
         }
     }
+}
+
+/// An ordered stack of decorations drawn behind one paragraph, outermost
+/// first. Used when nesting puts more than one box/bar on the same line — e.g.
+/// a callout's outer box plus an inner nested callout's box. A single
+/// decoration still uses a bare `BlockDecoration`; the fragment reads either.
+public final class BlockDecorationList: NSObject, @unchecked Sendable {
+    public let decorations: [BlockDecoration]
+
+    public init(_ decorations: [BlockDecoration]) {
+        self.decorations = decorations
+    }
+
+    public override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? BlockDecorationList else { return false }
+        return decorations == other.decorations
+    }
+
+    public override var hash: Int { decorations.count }
 }
 
 /// An image drawn at a character's laid-out position, with attachment-style
@@ -108,14 +134,15 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
 /// text and any `FragmentOverlay` images at their characters' positions.
 final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
-    let decoration: BlockDecoration?
+    /// Decorations drawn behind the paragraph, outermost first.
+    let decorations: [BlockDecoration]
     /// Paragraph-relative anchor offsets and their overlays.
     let overlays: [(offset: Int, overlay: FragmentOverlay)]
 
     init(textElement: NSTextElement, range: NSTextRange?,
-         decoration: BlockDecoration?,
+         decorations: [BlockDecoration],
          overlays: [(offset: Int, overlay: FragmentOverlay)]) {
-        self.decoration = decoration
+        self.decorations = decorations
         self.overlays = overlays
         super.init(textElement: textElement, range: range)
     }
@@ -140,9 +167,15 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// the last line, the next block tiles clear of it, and the box (drawn over
     /// the full frame height) covers it. Mirrors how the header's raised
     /// minimumLineHeight makes the top padding clickable text space.
+    ///
+    /// Padding is *summed* across stacked boxes: when a nested callout is the
+    /// last line of its parent, the line needs the nested box's bottom padding
+    /// *and* the parent's below it (see `draw`), so both fit.
     private var boxBottomPad: CGFloat {
-        if case .box(_, _, _, _, let bottomPad)? = decoration?.kind { return bottomPad }
-        return 0
+        decorations.reduce(0) { acc, deco in
+            if case .box(_, _, _, _, let bottomPad) = deco.kind { return acc + bottomPad }
+            return acc
+        }
     }
 
     override var layoutFragmentFrame: CGRect {
@@ -154,7 +187,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     override var renderingSurfaceBounds: CGRect {
         var bounds = super.renderingSurfaceBounds
         let frame = layoutFragmentFrame
-        if decoration != nil {
+        if !decorations.isEmpty {
             bounds = bounds.union(CGRect(x: containerLeft - 4, y: 0,
                                          width: containerWidth + 8, height: frame.height))
         }
@@ -168,8 +201,17 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
     override func draw(at point: CGPoint, in context: CGContext) {
         context.saveGState()
-        if let decoration {
-            drawDecoration(decoration, at: point, in: context)
+        // Decorations are stacked outermost-first. Each box stops short of the
+        // fragment bottom by the padding of the boxes drawn before it, so an
+        // outer box's bottom padding stays visible *below* an inner nested box
+        // (e.g. the parent callout's padding under a nested callout) instead of
+        // being covered by it.
+        var precedingBottomPad: CGFloat = 0
+        for decoration in decorations {
+            drawDecoration(decoration, at: point, in: context, bottomInset: precedingBottomPad)
+            if case .box(_, _, _, _, let bottomPad) = decoration.kind {
+                precedingBottomPad += bottomPad
+            }
         }
         context.restoreGState()
         super.draw(at: point, in: context)
@@ -208,7 +250,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                       height: overlay.bounds.height)
     }
 
-    private func drawDecoration(_ decoration: BlockDecoration, at point: CGPoint, in context: CGContext) {
+    private func drawDecoration(_ decoration: BlockDecoration, at point: CGPoint,
+                                in context: CGContext, bottomInset: CGFloat = 0) {
         let frame = layoutFragmentFrame
         // Fragment-local rect spanning the full text column for this fragment.
         let columnRect = CGRect(x: point.x + containerLeft, y: point.y,
@@ -217,7 +260,14 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         switch decoration.kind {
         case .box(let background, let borderColor, let edges, let borderWidth, _):
             // The fragment frame already includes any box bottomPad (see
-            // layoutFragmentFrame), so columnRect covers the padded area.
+            // layoutFragmentFrame), so columnRect covers the padded area. A
+            // nested box insets symmetrically so it sits within its parent box,
+            // and stops `bottomInset` short of the frame bottom so the enclosing
+            // box's padding shows below it.
+            var columnRect = decoration.inset > 0
+                ? columnRect.insetBy(dx: decoration.inset, dy: 0)
+                : columnRect
+            columnRect.size.height -= bottomInset
             context.setFillColor(background.cgColor)
             context.fill(columnRect)
             if let borderColor, !edges.isEmpty {
@@ -288,8 +338,15 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                         range: textElement.elementRange)
         }
         let str = paragraph.attributedString
-        let decoration = str.attribute(.blockDecoration, at: 0,
-                                       effectiveRange: nil) as? BlockDecoration
+        let decoValue = str.attribute(.blockDecoration, at: 0, effectiveRange: nil)
+        let decorations: [BlockDecoration]
+        if let list = decoValue as? BlockDecorationList {
+            decorations = list.decorations
+        } else if let single = decoValue as? BlockDecoration {
+            decorations = [single]
+        } else {
+            decorations = []
+        }
         var overlays: [(offset: Int, overlay: FragmentOverlay)] = []
         str.enumerateAttribute(.fragmentOverlay,
                                in: NSRange(location: 0, length: str.length),
@@ -298,13 +355,13 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                 overlays.append((range.location, overlay))
             }
         }
-        guard decoration != nil || !overlays.isEmpty else {
+        guard !decorations.isEmpty || !overlays.isEmpty else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
         }
         return DecoratedTextLayoutFragment(textElement: textElement,
                                            range: textElement.elementRange,
-                                           decoration: decoration,
+                                           decorations: decorations,
                                            overlays: overlays)
     }
 }
