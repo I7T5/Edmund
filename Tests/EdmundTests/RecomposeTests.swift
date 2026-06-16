@@ -17,7 +17,10 @@ struct RecomposeTests {
     @Test("Removing a callout marker clears the stale background on its former body")
     @MainActor func unmergeCalloutClearsBody() {
         let editor = makeEditor()
-        editor.loadContent("> [!note]\n> body line")
+        // A trailing block to park the cursor on, so the callout is *inactive*
+        // and renders its box (an active callout shows raw source, no box).
+        editor.loadContent("> [!note]\n> body line\n\ntrailer")
+        activateBlock(editor.blocks.count - 1, in: editor)
         // Sanity: the body line starts out with the callout background.
         let ts = editor.textStorage!
         #expect(calloutBackground(ts, at: (editor.rawSource as NSString).range(of: "body").location) != nil)
@@ -28,6 +31,7 @@ struct RecomposeTests {
         editor.setSelectedRange(NSRange(location: mk.location, length: 0))
         editor.insertText("", replacementRange: mk)
 
+        activateBlock(editor.blocks.count - 1, in: editor)
         let bodyLoc = (editor.textStorage!.string as NSString).range(of: "body").location
         #expect(calloutBackground(editor.textStorage!, at: bodyLoc) == nil)
     }
@@ -35,14 +39,16 @@ struct RecomposeTests {
     @Test("Adding a callout marker styles the lines it absorbs")
     @MainActor func mergeCalloutStylesAbsorbed() {
         let editor = makeEditor()
-        // Two plain quote lines (separate blocks, no callout background).
-        editor.loadContent(">\n> absorbed")
+        // Two plain quote lines (separate blocks, no callout background), plus a
+        // trailing block to park the cursor on so the callout renders inactive.
+        editor.loadContent(">\n> absorbed\n\ntrailer")
         // Type the marker into the first line, making it a callout opener that
         // merges the second line in.
         let firstLineEnd = 1  // after ">"
         editor.setSelectedRange(NSRange(location: firstLineEnd, length: 0))
         editor.insertText(" [!note]", replacementRange: NSRange(location: firstLineEnd, length: 0))
 
+        activateBlock(editor.blocks.count - 1, in: editor)
         let ts = editor.textStorage!
         let absorbed = (ts.string as NSString).range(of: "absorbed").location
         #expect(calloutBackground(ts, at: absorbed) != nil)

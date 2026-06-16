@@ -23,6 +23,12 @@ extension SyntaxHighlighter {
         var insideEmphasis = false
         var insideStrong = false
         private var insideOrderedList = false
+        /// >0 while walking inside a *plain* block quote. Nested block-level
+        /// constructs (code blocks, headings, lists, tables, rules, nested
+        /// quotes) are left literal there — only inline emphasis renders.
+        /// Callouts are not walked at all (their bodies are rendered
+        /// recursively by the styling layer), so this never counts them.
+        private var plainQuoteDepth = 0
 
         init(source: String) {
             self.source = source
@@ -131,6 +137,7 @@ extension SyntaxHighlighter {
         // MARK: - Visitors
 
         mutating func visitHeading(_ heading: Heading) {
+            if plainQuoteDepth > 0 { return }   // literal inside a plain quote
             guard let range = heading.range else { return }
             let full = nsRange(for: range)
             let delimLen = heading.level + 1
@@ -149,6 +156,7 @@ extension SyntaxHighlighter {
         // MARK: - Code Blocks
 
         mutating func visitCodeBlock(_ codeBlock: CodeBlock) {
+            if plainQuoteDepth > 0 { return }   // literal inside a plain quote
             guard let range = codeBlock.range else { return }
             let full = nsRange(for: range)
             guard full.length > 0 else { return }
@@ -199,6 +207,10 @@ extension SyntaxHighlighter {
         // MARK: - Block Quotes
 
         mutating func visitBlockQuote(_ blockQuote: BlockQuote) {
+            // A block quote nested inside a plain block quote is fully literal:
+            // emit no span and don't descend (matches showing `> [!note]` raw
+            // inside an outer quote).
+            if plainQuoteDepth > 0 { return }
             guard let range = blockQuote.range else {
                 descendInto(blockQuote)
                 return
@@ -236,12 +248,36 @@ extension SyntaxHighlighter {
                 contentRange: content,
                 delimiterRanges: delims
             ))
+
+            // A callout's body is rendered recursively by the styling layer
+            // (which strips the `>` prefixes and re-parses), so don't descend —
+            // doing so would emit nested spans over `>`-prefixed source ranges.
+            // A plain quote descends, but with a depth guard so only its inline
+            // content renders (nested blocks stay literal).
+            if Self.quoteOpensCallout(firstLineOf: full, in: nsSource) { return }
+            plainQuoteDepth += 1
             descendInto(blockQuote)
+            plainQuoteDepth -= 1
+        }
+
+        /// Whether the first line of a block quote (its source `range`) opens a
+        /// callout — `> [!type]` (known or unknown type). Mirrors
+        /// `BlockParser.quoteRunOpensCallout` over an NSRange.
+        private static func quoteOpensCallout(firstLineOf range: NSRange, in source: NSString) -> Bool {
+            let bound = NSRange(location: range.location, length: range.length)
+            let nl = source.range(of: "\n", options: [], range: bound)
+            let lineEnd = nl.location == NSNotFound ? range.upperBound : nl.location
+            let line = source.substring(with: NSRange(location: range.location,
+                                                      length: lineEnd - range.location))
+            let trimmed = line.drop(while: { $0 == " " })
+            guard trimmed.first == ">" else { return false }
+            return Callout.parseMarker(String(trimmed.dropFirst())) != nil
         }
 
         // MARK: - Tables
 
         mutating func visitTable(_ table: Table) {
+            if plainQuoteDepth > 0 { return }   // literal inside a plain quote
             guard let range = table.range else {
                 descendInto(table)
                 return
@@ -286,12 +322,14 @@ extension SyntaxHighlighter {
         // MARK: - Lists
 
         mutating func visitOrderedList(_ orderedList: OrderedList) {
+            if plainQuoteDepth > 0 { return }   // literal inside a plain quote
             insideOrderedList = true
             descendInto(orderedList)
             insideOrderedList = false
         }
 
         mutating func visitListItem(_ listItem: ListItem) {
+            if plainQuoteDepth > 0 { return }   // literal inside a plain quote
             guard let range = listItem.range else {
                 descendInto(listItem)
                 return
@@ -370,6 +408,7 @@ extension SyntaxHighlighter {
         // MARK: - Thematic Break
 
         mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) {
+            if plainQuoteDepth > 0 { return }   // literal inside a plain quote
             guard let range = thematicBreak.range else { return }
             let full = nsRange(for: range)
 

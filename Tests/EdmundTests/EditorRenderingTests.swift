@@ -862,8 +862,8 @@ struct QuoteCalloutHangingIndentTests {
         #expect(abs(hang - editor.quoteMarkerWidth) < 0.5)
     }
 
-    @Test("Callout body lines hang after the marker")
-    @MainActor func calloutHangingIndent() {
+    @Test("Callout body lines are inset one marker width, first and wrapped aligned")
+    @MainActor func calloutBodyIndent() {
         let editor = makeEditor()
         let styled = editor.styleBlock("> [!note]\n> body text")
         // Inspect the body line's paragraph style (after the header newline).
@@ -871,7 +871,12 @@ struct QuoteCalloutHangingIndentTests {
         let bodyLoc = ns.range(of: "\n").location + 1
         let ps = styled.attribute(.paragraphStyle, at: bodyLoc, effectiveRange: nil) as? NSParagraphStyle
         #expect(ps != nil)
-        let hang = (ps?.headIndent ?? 0) - (ps?.firstLineHeadIndent ?? 0)
-        #expect(abs(hang - editor.quoteMarkerWidth) < 0.5)
+        // The callout body is rendered recursively with the `>` prefix hidden
+        // (zero width), so the inset is uniform: content begins one marker width
+        // (plus the 2pt bar inset) into the box, and wrapped lines align with
+        // the first line rather than hanging.
+        let step = 2 + editor.quoteMarkerWidth
+        #expect(abs((ps?.firstLineHeadIndent ?? 0) - step) < 0.5)
+        #expect(abs((ps?.headIndent ?? 0) - (ps?.firstLineHeadIndent ?? 0)) < 0.5)
     }
 }

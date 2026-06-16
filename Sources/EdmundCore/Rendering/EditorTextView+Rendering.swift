@@ -251,9 +251,13 @@ extension EditorTextView {
                 // A block quote whose first line is `[!type]` is a callout
                 // (GitHub-flavored) — render it with an icon, colored label, and
                 // colored bar instead of the plain quote styling.
-                if let callout = calloutInfo(forBlockquote: span, markdown: markdown) {
-                    styleCalloutContent(result, span: span, info: callout, active: cursorInToken)
+                if let callout = calloutInfo(forBlockquote: span, markdown: markdown), !cursorInToken {
+                    styleCalloutContent(result, span: span, info: callout)
                 } else {
+                    // Plain block quote — also the editing form of a callout: when
+                    // the cursor is inside a callout we fall through here so its raw
+                    // `>` / `[!type]` source shows (dimmed) and the markers can be
+                    // edited, instead of the box/header/nested chrome.
                     // Attributes must cover fullRange so the first character of each
                     // paragraph (the `> ` delimiter) carries the style/decoration —
                     // the fragment vendor reads the paragraph's first character.

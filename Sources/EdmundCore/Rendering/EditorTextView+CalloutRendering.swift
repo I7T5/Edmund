@@ -56,12 +56,13 @@ extension EditorTextView {
         return CalloutInfo(marker: marker, style: style, headerRange: headerRange, title: title)
     }
 
-    /// Applies callout styling. `active` shows the raw marker (dimmed, editable);
-    /// otherwise the header is replaced by an icon + title image.
+    /// Applies callout styling: the box, the icon + title header image, and the
+    /// recursively-rendered body. Only called for an *inactive* callout — when
+    /// the cursor is inside, the caller renders the raw `>` source instead so the
+    /// markers stay editable.
     func styleCalloutContent(_ result: NSMutableAttributedString,
                              span: SyntaxHighlighter.Span,
-                             info: CalloutInfo,
-                             active: Bool) {
+                             info: CalloutInfo) {
         guard span.fullRange.upperBound <= result.length else { return }
         let c = resolvedCalloutColors(info.style)
 
@@ -93,41 +94,190 @@ extension EditorTextView {
         result.addAttribute(.blockDecoration, value: box(bottomPad: calloutBottomPad),
                             range: lastLine)
 
-        let m = info.marker
-        if active {
-            // Editing: dim the raw "[!type]" marker; the custom title (if any)
-            // stays as normal, editable text.
-            let markerFull = NSRange(location: m.openBracket.location,
-                                     length: m.closeBracket.upperBound - m.openBracket.location)
-            if markerFull.upperBound <= result.length {
-                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: markerFull)
+        // End of the header (first) line, before any body lines.
+        let headerNL = ns.range(of: "\n", options: [], range: span.fullRange)
+        let headerLineEnd = headerNL.location == NSNotFound
+            ? span.fullRange.upperBound : headerNL.location
+
+        // Hide the whole header, draw an icon + title image at the first
+        // character via a fragment overlay.
+        let header = info.headerRange
+        if header.length > 0, header.upperBound <= result.length {
+            result.addAttribute(.font, value: hiddenFont, range: header)
+            result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
+            if let overlay = calloutHeaderOverlay(symbolName: info.style.symbolName,
+                                                  title: info.title, color: c.accent,
+                                                  iconNudge: info.style.iconBaselineNudge) {
+                applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
+                             in: result)
+                // Top breathing room: a raised minimum line height on the
+                // header line — still clickable text space, box covers it.
+                let headerLine = NSRange(location: span.fullRange.location,
+                                         length: headerLineEnd - span.fullRange.location)
+                result.addAttribute(
+                    .paragraphStyle,
+                    value: calloutParagraphStyle(minimumLineHeight: overlay.bounds.height + calloutTopPad),
+                    range: headerLine)
             }
-            return
         }
 
-        // Rendered: hide the whole header, draw an icon + title image at the
-        // first character via a fragment overlay.
-        let header = info.headerRange
-        guard header.length > 0, header.upperBound <= result.length else { return }
-        result.addAttribute(.font, value: hiddenFont, range: header)
-        result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
-        if let overlay = calloutHeaderOverlay(symbolName: info.style.symbolName,
-                                              title: info.title, color: c.accent,
-                                              iconNudge: info.style.iconBaselineNudge) {
-            applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
-                         in: result)
-            // Top breathing room: a raised minimum line height on the header
-            // line — still clickable text space, the box covers it.
-            let ns = result.string as NSString
-            let nl = ns.range(of: "\n", options: [], range: span.fullRange)
-            let headerLineEnd = nl.location == NSNotFound ? span.fullRange.upperBound : nl.location
-            let headerLine = NSRange(location: span.fullRange.location,
-                                     length: headerLineEnd - span.fullRange.location)
-            result.addAttribute(
-                .paragraphStyle,
-                value: calloutParagraphStyle(minimumLineHeight: overlay.bounds.height + calloutTopPad),
-                range: headerLine)
+        // Render the body (the lines after the header) recursively: strip one
+        // `>` level, re-style the inner markdown, and splice it back so nested
+        // code/quotes/callouts/lists/etc. render inside the box.
+        renderCalloutBody(result, span: span, headerLineEnd: headerLineEnd)
+    }
+
+    /// Renders a callout's body — every line after the header — by stripping one
+    /// level of `>` prefix, running the full `styleBlock` over the stripped
+    /// inner markdown (which recurses into deeper callouts), and splicing the
+    /// resulting attributes back onto the real characters with the prefixes
+    /// hidden. Nested boxes/bars stack with the outer callout's box.
+    private func renderCalloutBody(_ result: NSMutableAttributedString,
+                                   span: SyntaxHighlighter.Span,
+                                   headerLineEnd: Int) {
+        let end = span.fullRange.upperBound
+        // Body starts after the header line's trailing newline.
+        guard headerLineEnd < end else { return }
+        let bodyStart = headerLineEnd + 1   // skip the `\n`
+        guard bodyStart < end else { return }
+
+        let ns = result.string as NSString
+        let space: unichar = 0x20, gt: unichar = 0x3E, newline: unichar = 0x0A
+
+        // Build the stripped inner markdown (UTF-16 units) with a parallel map
+        // back to real offsets, hide each line's `>` prefix, and remember each
+        // line's real and stripped ranges so we can splice paragraph styles and
+        // decorations per line.
+        var units: [unichar] = []
+        var realIndex: [Int] = []           // stripped UTF-16 offset → real offset
+        var lineMap: [(real: NSRange, stripped: NSRange)] = []
+        var cursor = bodyStart
+        while cursor < end {
+            let lineNL = ns.range(of: "\n", options: [],
+                                  range: NSRange(location: cursor, length: end - cursor))
+            let lineEnd = lineNL.location == NSNotFound ? end : lineNL.location
+
+            // Leading `>` prefix: optional spaces, `>`, optional single space.
+            var p = cursor
+            while p < lineEnd, ns.character(at: p) == space { p += 1 }
+            if p < lineEnd, ns.character(at: p) == gt {
+                p += 1
+                if p < lineEnd, ns.character(at: p) == space { p += 1 }
+            }
+            let prefixLen = p - cursor
+            if prefixLen > 0 {
+                let pr = NSRange(location: cursor, length: prefixLen)
+                result.addAttribute(.font, value: hiddenFont, range: pr)
+                result.addAttribute(.foregroundColor, value: NSColor.clear, range: pr)
+            }
+
+            let sStart = units.count
+            for i in p..<lineEnd { units.append(ns.character(at: i)); realIndex.append(i) }
+            lineMap.append((real: NSRange(location: cursor, length: lineEnd - cursor),
+                            stripped: NSRange(location: sStart, length: units.count - sStart)))
+
+            if lineEnd < end {
+                units.append(newline); realIndex.append(lineEnd)   // keep the `\n`
+                cursor = lineEnd + 1
+            } else {
+                cursor = end
+            }
         }
+        guard !units.isEmpty else { return }
+
+        let stripped = String(utf16CodeUnits: units, count: units.count)
+
+        // Segment the stripped body with BlockParser and style each block on
+        // its own — mirroring the top-level pipeline. This enforces strict
+        // `>`-prefix membership: a line without the deeper prefix is its own
+        // block, so swift-markdown's lazy continuation can't pull a `> ` line
+        // into an adjacent `> > ` callout/quote. The body is only rendered for an
+        // inactive callout (the cursor is elsewhere), so inner blocks render
+        // fully — no cursor reveal needed.
+        let sub = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
+        for b in BlockParser.parse(stripped) {
+            guard b.range.upperBound <= sub.length else { continue }
+            let styled = styleBlock(b.content, cursorPosition: nil)
+            styled.enumerateAttributes(in: NSRange(location: 0, length: styled.length),
+                                       options: []) { attrs, r, _ in
+                sub.setAttributes(attrs,
+                                  range: NSRange(location: r.location + b.range.location, length: r.length))
+            }
+        }
+
+        spliceStyledBody(sub, realIndex: realIndex, lineMap: lineMap, into: result)
+    }
+
+    /// Splices an inner-rendered body (`sub`, in stripped space) back onto the
+    /// real characters. Character attributes are mapped per run (skipping the
+    /// hidden prefixes); paragraph styles and block decorations are applied per
+    /// line, inset/stacked so inner content stays inside the outer box.
+    private func spliceStyledBody(_ sub: NSAttributedString,
+                                  realIndex: [Int],
+                                  lineMap: [(real: NSRange, stripped: NSRange)],
+                                  into result: NSMutableAttributedString) {
+        let step = 2 + quoteMarkerWidth   // one nesting level of horizontal inset
+        let subLen = sub.length
+
+        // Character attributes (everything except paragraph style / decoration),
+        // mapped from stripped offsets to real offsets in coalesced runs.
+        sub.enumerateAttributes(in: NSRange(location: 0, length: subLen), options: []) { attrs, sr, _ in
+            var ca = attrs
+            ca[.paragraphStyle] = nil
+            ca[.blockDecoration] = nil
+            guard !ca.isEmpty else { return }
+            var k = sr.location
+            while k < sr.upperBound {
+                let runStart = realIndex[k]
+                var last = runStart
+                var j = k + 1
+                while j < sr.upperBound, realIndex[j] == last + 1 { last = realIndex[j]; j += 1 }
+                result.addAttributes(ca, range: NSRange(location: runStart, length: last - runStart + 1))
+                k = j
+            }
+        }
+
+        // Paragraph styles and decorations, per body line.
+        for lm in lineMap {
+            let ss = lm.stripped.location
+            guard ss < subLen else { continue }
+
+            // Paragraph style: inset by one level so inner content stays inside
+            // the box; preserve any inner style (list indent, centered math, …).
+            let innerPS = (sub.attribute(.paragraphStyle, at: ss, effectiveRange: nil)
+                as? NSParagraphStyle) ?? bodyParagraphStyle
+            let ps = innerPS.mutableCopy() as! NSMutableParagraphStyle
+            ps.firstLineHeadIndent += step
+            ps.headIndent += step
+            if ps.tailIndent == 0 { ps.tailIndent = -10 }
+            result.addAttribute(.paragraphStyle, value: ps, range: lm.real)
+
+            // Decoration: stack any inner box/bar (inset bumped) under the
+            // outer callout box already present on this line.
+            let innerDeco = sub.attribute(.blockDecoration, at: ss, effectiveRange: nil)
+            let bumped = bumpedDecorations(innerDeco, by: step)
+            if !bumped.isEmpty {
+                var stack: [BlockDecoration] = []
+                if let outer = result.attribute(.blockDecoration, at: lm.real.location,
+                                                effectiveRange: nil) as? BlockDecoration {
+                    stack.append(outer)
+                }
+                stack.append(contentsOf: bumped)
+                result.addAttribute(.blockDecoration, value: BlockDecorationList(stack), range: lm.real)
+            }
+        }
+    }
+
+    /// Returns inner decorations with every `.box` inset increased by `step`
+    /// (so a nested box sits within its parent); other kinds are unchanged.
+    private func bumpedDecorations(_ value: Any?, by step: CGFloat) -> [BlockDecoration] {
+        func bump(_ d: BlockDecoration) -> BlockDecoration {
+            if case .box = d.kind { return BlockDecoration(d.kind, inset: d.inset + step) }
+            return d
+        }
+        if let list = value as? BlockDecorationList { return list.decorations.map(bump) }
+        if let single = value as? BlockDecoration { return [bump(single)] }
+        return []
     }
 
     // MARK: Colors (appearance-aware)
