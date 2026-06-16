@@ -58,4 +58,39 @@ struct BlockquoteContinuationTests {
         editor.insertNewline(nil)
         #expect(editor.rawSource == "  > note\n  > ")
     }
+
+    @Test("A nested callout line continues at its depth ('> > ')")
+    @MainActor func continueNestedCallout() {
+        let editor = makeEditor()
+        editor.loadContent("> [!note] Note\n> > tip body")
+        editor.setSelectedRange(NSRange(location: (editor.rawSource as NSString).length, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "> [!note] Note\n> > tip body\n> > ")
+    }
+
+    @Test("A nested plain quote line continues at its depth ('> > ')")
+    @MainActor func continueNestedQuote() {
+        let editor = makeEditor()
+        editor.loadContent("> outer\n> > inner")
+        editor.setSelectedRange(NSRange(location: (editor.rawSource as NSString).length, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "> outer\n> > inner\n> > ")
+    }
+
+    @Test("Enter on an empty nested line steps out one level")
+    @MainActor func stepOutOneLevel() {
+        let editor = makeEditor()
+        editor.loadContent("> [!note]\n> > body\n> > ")
+        editor.setSelectedRange(NSRange(location: (editor.rawSource as NSString).length, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "> [!note]\n> > body\n> ")
+    }
+
+    @Test("reduceQuotePrefix drops the deepest level")
+    @MainActor func reduceQuotePrefix() {
+        #expect(EditorTextView.reduceQuotePrefix("> > ") == "> ")
+        #expect(EditorTextView.reduceQuotePrefix("> ") == "")
+        #expect(EditorTextView.reduceQuotePrefix("  > > ") == "  > ")
+        #expect(EditorTextView.reduceQuotePrefix("  > ") == "  ")
+    }
 }
