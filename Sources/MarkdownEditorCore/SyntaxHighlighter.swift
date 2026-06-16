@@ -107,7 +107,38 @@ public enum SyntaxHighlighter {
             }
         }
 
+        // A callout's body is rendered recursively by the styling layer (it
+        // strips the `>` prefixes and re-parses the inner markdown), so drop any
+        // other span the custom parsers placed inside a callout — keeping it
+        // would double-style the body. Plain block quotes are unaffected: their
+        // inline spans are intentionally kept.
+        let calloutRanges: [NSRange] = walker.spans.compactMap { span in
+            guard case .blockquote = span.kind,
+                  isCalloutFirstLine(of: span.fullRange, in: text) else { return nil }
+            return span.fullRange
+        }
+        if !calloutRanges.isEmpty {
+            walker.spans.removeAll { span in
+                if case .blockquote = span.kind { return false }
+                return calloutRanges.contains {
+                    $0.location <= span.fullRange.location && $0.upperBound >= span.fullRange.upperBound
+                }
+            }
+        }
+
         return walker.spans.sorted { $0.fullRange.location < $1.fullRange.location }
+    }
+
+    /// Whether the first line of `range` in `text` opens a callout (`> [!type]`).
+    private static func isCalloutFirstLine(of range: NSRange, in text: String) -> Bool {
+        let ns = text as NSString
+        let nl = ns.range(of: "\n", options: [], range: range)
+        let lineEnd = nl.location == NSNotFound ? range.upperBound : nl.location
+        let line = ns.substring(with: NSRange(location: range.location,
+                                              length: lineEnd - range.location))
+        let trimmed = line.drop(while: { $0 == " " })
+        guard trimmed.first == ">" else { return false }
+        return Callout.parseMarker(String(trimmed.dropFirst())) != nil
     }
 
 }
