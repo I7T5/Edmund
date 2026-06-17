@@ -22,6 +22,20 @@ cp ".build/release/${EXECUTABLE}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
 cp Info.plist "${BUNDLE}/Contents/"
 cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
 
+# Compile the asset catalog so the app's AccentColor (our brown) is available.
+# macOS uses it only when the user's system accent is "Multicolor"; a specific
+# system accent still wins, which is the behavior we want.
+# `actool` ships with full Xcode, not the Command Line Tools, so fall back to
+# Xcode.app's copy when xcode-select points at the CLT.
+echo "Compiling asset catalog..."
+ACTOOL="$(xcrun --find actool 2>/dev/null || echo /Applications/Xcode.app/Contents/Developer/usr/bin/actool)"
+"$ACTOOL" Resources/Assets.xcassets \
+    --compile "${BUNDLE}/Contents/Resources" \
+    --platform macosx \
+    --minimum-deployment-target 14.0 \
+    --output-partial-info-plist "$(mktemp)" \
+    >/dev/null
+
 # Ad-hoc codesign so macOS doesn't quarantine-block it
 codesign --force --sign - "${BUNDLE}"
 
