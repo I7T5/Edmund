@@ -24,8 +24,7 @@ final class FontSettings: NSObject, ObservableObject {
         let theme = EditorTheme.load()
         self.theme = theme
         standardFont = theme.bodyFont
-        monospaceFont = NSFont(name: AppSettings.monospaceFontName, size: AppSettings.monospaceFontSize)
-            ?? .monospacedSystemFont(ofSize: AppSettings.monospaceFontSize, weight: .regular)
+        monospaceFont = theme.monospaceFont()
         let size = theme.bodyFont.pointSize
         lineHeight = size > 0 ? max(1, min(3, (size + theme.lineSpacing) / size)) : 1
         super.init()
@@ -44,7 +43,7 @@ final class FontSettings: NSObject, ObservableObject {
 
     func setMonospaceSize(_ size: CGFloat) {
         monospaceFont = NSFont(descriptor: monospaceFont.fontDescriptor, size: size) ?? monospaceFont
-        persistMonospace()
+        applyMonospace()
     }
 
     func setLineHeight(_ value: CGFloat) {
@@ -59,7 +58,7 @@ final class FontSettings: NSObject, ObservableObject {
             applyTheme()
         case .monospace:
             monospaceFont = sender.convert(monospaceFont)
-            persistMonospace()
+            applyMonospace()
         }
     }
 
@@ -72,9 +71,13 @@ final class FontSettings: NSObject, ObservableObject {
         manager.orderFrontFontPanel(nil)
     }
 
-    private func persistMonospace() {
-        AppSettings.monospaceFontName = monospaceFont.fontName
-        AppSettings.monospaceFontSize = monospaceFont.pointSize
+    private func applyMonospace() {
+        var updated = theme
+        updated.monospaceFontName = monospaceFont.fontName
+        updated.monospaceFontSize = monospaceFont.pointSize
+        theme = updated
+        updated.save()
+        applyToDocuments(updated)
     }
 
     private func applyTheme() {

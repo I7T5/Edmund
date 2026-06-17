@@ -54,8 +54,6 @@ enum AppSettings {
         static let conflictResolution = "settings.general.conflictResolution"
         static let standardAntialias = "settings.appearance.standardAntialias"
         static let standardLigatures = "settings.appearance.standardLigatures"
-        static let monospaceFontName = "settings.appearance.monospaceFontName"
-        static let monospaceFontSize = "settings.appearance.monospaceFontSize"
         static let monospaceAntialias = "settings.appearance.monospaceAntialias"
         static let monospaceLigatures = "settings.appearance.monospaceLigatures"
         static let appearanceMode = "settings.appearance.mode"
@@ -117,22 +115,6 @@ enum AppSettings {
             return UserDefaults.standard.bool(forKey: Key.standardLigatures)
         }
         set { UserDefaults.standard.set(newValue, forKey: Key.standardLigatures) }
-    }
-
-    static var monospaceFontName: String {
-        get {
-            UserDefaults.standard.string(forKey: Key.monospaceFontName)
-                ?? NSFont.monospacedSystemFont(ofSize: 14, weight: .regular).fontName
-        }
-        set { UserDefaults.standard.set(newValue, forKey: Key.monospaceFontName) }
-    }
-
-    static var monospaceFontSize: CGFloat {
-        get {
-            let size = CGFloat(UserDefaults.standard.float(forKey: Key.monospaceFontSize))
-            return size > 0 ? size : 14
-        }
-        set { UserDefaults.standard.set(Float(newValue), forKey: Key.monospaceFontSize) }
     }
 
     static var monospaceAntialias: Bool {

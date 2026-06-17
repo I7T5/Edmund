@@ -12,6 +12,11 @@ public struct EditorTheme: Equatable, Sendable {
     public var fontName: String
     public var fontSize: CGFloat
 
+    /// Monospaced font for code (inline, blocks, tables). An empty name means the
+    /// system monospaced font.
+    public var monospaceFontName: String
+    public var monospaceFontSize: CGFloat
+
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
     public var accentHex: String
@@ -28,7 +33,8 @@ public struct EditorTheme: Equatable, Sendable {
 
     public init(fontName: String, fontSize: CGFloat, accentHex: String, codeHex: String,
                 lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat,
-                mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800") {
+                mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
+                monospaceFontName: String = "", monospaceFontSize: CGFloat = 14) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.accentHex = accentHex
@@ -37,6 +43,8 @@ public struct EditorTheme: Equatable, Sendable {
         self.paragraphSpacingBefore = paragraphSpacingBefore
         self.mathOperatorHex = mathOperatorHex
         self.mathNumberHex = mathNumberHex
+        self.monospaceFontName = monospaceFontName
+        self.monospaceFontSize = monospaceFontSize
     }
 
     // MARK: - Defaults
@@ -54,6 +62,17 @@ public struct EditorTheme: Equatable, Sendable {
 
     @MainActor public var bodyFont: NSFont {
         NSFont(name: fontName, size: fontSize) ?? .systemFont(ofSize: fontSize)
+    }
+
+    /// The monospaced font, at `size` (default: the theme's monospace size).
+    /// Falls back to the system monospaced font when no family is set or it can't
+    /// be loaded.
+    @MainActor public func monospaceFont(ofSize size: CGFloat? = nil) -> NSFont {
+        let resolved = size ?? monospaceFontSize
+        if !monospaceFontName.isEmpty, let font = NSFont(name: monospaceFontName, size: resolved) {
+            return font
+        }
+        return .monospacedSystemFont(ofSize: resolved, weight: .regular)
     }
 
     @MainActor public var accentColor: NSColor {
@@ -77,6 +96,8 @@ public struct EditorTheme: Equatable, Sendable {
     private enum Keys {
         static let fontName = "EditorFontName"
         static let fontSize = "EditorFontSize"
+        static let monospaceFontName = "EditorMonospaceFontName"
+        static let monospaceFontSize = "EditorMonospaceFontSize"
         static let accentHex = "EditorAccentHex"
         static let codeHex = "EditorCodeHex"
         static let mathOperatorHex = "EditorMathOperatorHex"
@@ -98,6 +119,11 @@ public struct EditorTheme: Equatable, Sendable {
         // stale persisted value (e.g. left over from the removed in-app accent
         // picker) can't leak in and recolor links.
         let accentHex = def.accentHex
+        let monospaceFontName = d.string(forKey: Keys.monospaceFontName) ?? def.monospaceFontName
+        let monospaceFontSize: CGFloat = {
+            let v = CGFloat(d.float(forKey: Keys.monospaceFontSize))
+            return v > 0 ? v : def.monospaceFontSize
+        }()
         let codeHex = d.string(forKey: Keys.codeHex) ?? def.codeHex
         let mathOperatorHex = d.string(forKey: Keys.mathOperatorHex) ?? def.mathOperatorHex
         let mathNumberHex = d.string(forKey: Keys.mathNumberHex) ?? def.mathNumberHex
@@ -116,7 +142,9 @@ public struct EditorTheme: Equatable, Sendable {
             lineSpacing: lineSpacing,
             paragraphSpacingBefore: paragraphSpacingBefore,
             mathOperatorHex: mathOperatorHex,
-            mathNumberHex: mathNumberHex
+            mathNumberHex: mathNumberHex,
+            monospaceFontName: monospaceFontName,
+            monospaceFontSize: monospaceFontSize
         )
     }
 
@@ -124,6 +152,8 @@ public struct EditorTheme: Equatable, Sendable {
         let d = defaults
         d.set(fontName, forKey: Keys.fontName)
         d.set(Float(fontSize), forKey: Keys.fontSize)
+        d.set(monospaceFontName, forKey: Keys.monospaceFontName)
+        d.set(Float(monospaceFontSize), forKey: Keys.monospaceFontSize)
         d.set(accentHex, forKey: Keys.accentHex)
         d.set(codeHex, forKey: Keys.codeHex)
         d.set(mathOperatorHex, forKey: Keys.mathOperatorHex)

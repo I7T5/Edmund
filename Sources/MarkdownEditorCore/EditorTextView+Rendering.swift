@@ -42,23 +42,17 @@ extension EditorTextView {
     var codeColor: NSColor { theme.codeColor }
 
     /// Monospaced font for tables.
-    var tableFont: NSFont {
-        NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
-    }
+    var tableFont: NSFont { theme.monospaceFont() }
 
     /// Monospaced font for code blocks.
-    var codeBlockFont: NSFont {
-        NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
-    }
+    var codeBlockFont: NSFont { theme.monospaceFont() }
 
     /// Font used to visually hide delimiter characters.
     /// Near-zero size makes them effectively invisible and zero-width.
     var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
 
-    /// Monospaced font for inline code spans, same size as body text.
-    var inlineCodeFont: NSFont {
-        NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize * 0.9, weight: .regular)
-    }
+    /// Monospaced font for inline code spans.
+    var inlineCodeFont: NSFont { theme.monospaceFont() }
 
     /// Subtle background color for inline code spans.
     var inlineCodeBackground: NSColor {
@@ -669,7 +663,7 @@ extension EditorTextView {
     /// Plain monospaced styling for source mode: the raw markdown with no
     /// markup interpretation (no hidden delimiters, overlays, or decorations).
     func sourceStyled(_ markdown: String) -> NSAttributedString {
-        let mono = NSFont.monospacedSystemFont(ofSize: bodyFont.pointSize, weight: .regular)
+        let mono = theme.monospaceFont(ofSize: bodyFont.pointSize)
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = theme.lineSpacing
         return NSAttributedString(string: markdown, attributes: [
