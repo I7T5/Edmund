@@ -30,6 +30,10 @@ final class SettingsTabViewController: NSTabViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         tabStyle = .toolbar
+        // The window title follows this controller's title; keep it "Settings"
+        // (NSTabViewController otherwise blanks it to the selected pane's nil title
+        // on each switch, showing "Untitled").
+        title = "Settings"
 
         addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
         addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
@@ -47,6 +51,7 @@ final class SettingsTabViewController: NSTabViewController {
 
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         super.tabView(tabView, didSelect: tabViewItem)
+        title = "Settings"   // re-assert after super resets it to the pane's nil title
         guard let tabViewItem else { return }
         switchPane(to: tabViewItem)
     }
