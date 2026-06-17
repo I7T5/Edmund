@@ -39,7 +39,7 @@ struct GeneralSettingsView: View {
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 360, alignment: .leading)
+                        .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }

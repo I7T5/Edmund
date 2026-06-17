@@ -1,152 +1,86 @@
-// SettingsWindowController — the AppKit window + preference toolbar that hosts
-// each SwiftUI pane in an NSHostingController and animates pane switches.
+// SettingsWindowController — the Settings window.
+//
+// Built on NSTabViewController (`.toolbar` style), which provides the native
+// preference toolbar, pane selection, and per-pane window sizing. Each pane is a
+// SwiftUI view hosted in an NSHostingController. Pane switching mirrors
+// CotEditor: hide the content, animate the window resize, then reveal it.
 
 import AppKit
 import SwiftUI
 
-/// A CotEditor-style Settings window. The window chrome and the pane-switching
-/// preference toolbar stay AppKit; each pane's content is a SwiftUI view hosted
-/// in an `NSHostingController`, which owns all of the layout.
-final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
-    private enum Pane {
-        case general
-        case appearance
-
-        var title: String {
-            switch self {
-            case .general: return "General"
-            case .appearance: return "Appearance"
-            }
-        }
-
-        var identifier: NSToolbarItem.Identifier {
-            switch self {
-            case .general: return Self.generalID
-            case .appearance: return Self.appearanceID
-            }
-        }
-
-        static let generalID = NSToolbarItem.Identifier("settings.general")
-        static let appearanceID = NSToolbarItem.Identifier("settings.appearance")
-    }
-
-    /// Owns the editor font / line-height state and the font-panel plumbing.
-    /// Shared across pane rebuilds so the font panel keeps targeting it.
-    private let fonts = FontSettings()
-
+final class SettingsWindowController: NSWindowController {
     convenience init() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 360),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
+        let tabController = SettingsTabViewController()
+        let window = NSWindow(contentViewController: tabController)
+        window.styleMask = [.titled, .closable]
+        window.title = "Settings"
+        window.toolbarStyle = .preference
         window.center()
         window.isReleasedWhenClosed = false
-
         self.init(window: window)
-        setupWindow()
-        showPane(.general, animated: false)
+    }
+}
+
+/// Hosts the Settings panes as toolbar tabs and animates the window resize on
+/// each switch.
+final class SettingsTabViewController: NSTabViewController {
+    /// Owns the editor font / line-height state and the font-panel plumbing.
+    private let fonts = FontSettings()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        tabStyle = .toolbar
+
+        addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
+        addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
     }
 
-    private func setupWindow() {
-        guard let window else { return }
-        window.titleVisibility = .visible
-        window.titlebarSeparatorStyle = .line
-
-        let toolbar = NSToolbar(identifier: "SettingsToolbar")
-        toolbar.delegate = self
-        toolbar.displayMode = .iconAndLabel
-        toolbar.allowsUserCustomization = false
-        toolbar.autosavesConfiguration = false
-        toolbar.selectedItemIdentifier = Pane.generalID
-        window.toolbar = toolbar
-        window.toolbarStyle = .preference
-    }
-
-    // MARK: - Toolbar
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Pane.generalID, Pane.appearanceID]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
-    }
-
-    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
-    }
-
-    func toolbar(_ toolbar: NSToolbar,
-                 itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        item.target = self
-        item.action = #selector(selectPane(_:))
-
-        switch itemIdentifier {
-        case Pane.generalID:
-            item.label = "General"
-            item.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "General")
-        case Pane.appearanceID:
-            item.label = "Appearance"
-            item.image = NSImage(systemSymbolName: "eyeglasses", accessibilityDescription: "Appearance")
-        default:
-            return nil
-        }
-        item.paletteLabel = item.label
-        return item
-    }
-
-    @objc private func selectPane(_ sender: NSToolbarItem) {
-        switch sender.itemIdentifier {
-        case Pane.generalID: showPane(.general, animated: true)
-        case Pane.appearanceID: showPane(.appearance, animated: true)
-        default: break
-        }
-    }
-
-    // MARK: - Panes
-
-    private func showPane(_ pane: Pane, animated: Bool) {
-        guard let window else { return }
-        window.title = pane.title
-        window.toolbar?.selectedItemIdentifier = pane.identifier
-
-        let root: AnyView = switch pane {
-        case .general: AnyView(GeneralSettingsView())
-        case .appearance: AnyView(AppearanceSettingsView(fonts: fonts))
-        }
-        let hosting = NSHostingController(rootView: root)
-        // `.preferredContentSize` makes the window reliably size itself to the
-        // SwiftUI content (manually reading `fittingSize` before the view is in a
-        // window yields zero — and a zero-width window).
+    private func addPane(_ view: some View, label: String, symbol: String) {
+        let hosting = NSHostingController(rootView: view)
+        // Report a definite size so the tab controller can size the window to it.
         hosting.sizingOptions = [.preferredContentSize]
+        let item = NSTabViewItem(viewController: hosting)
+        item.label = label
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        addTabViewItem(item)
+    }
 
-        let topY = window.frame.maxY
-        let startFrame = window.frame
+    override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        super.tabView(tabView, didSelect: tabViewItem)
+        guard let tabViewItem else { return }
+        switchPane(to: tabViewItem)
+    }
 
-        // Swap in the new pane and let the window resize to it, then compute the
-        // target frame with the top edge kept fixed. Screen updates are coalesced
-        // so the intermediate (bottom-anchored) resize never flashes on screen.
-        window.disableScreenUpdatesUntilFlush()
-        window.contentViewController = hosting
-        window.layoutIfNeeded()
-        var endFrame = window.frame
-        endFrame.origin.y = topY - endFrame.height
+    /// Resize the window to fit the newly selected pane, keeping the top-left
+    /// fixed. The content is hidden during the resize so nothing stretches
+    /// mid-animation, then revealed once the window is at its final size.
+    private func switchPane(to tabViewItem: NSTabViewItem) {
+        guard let window = view.window,
+              let contentSize = tabViewItem.view?.frame.size else { return }
 
-        if animated, window.isVisible {
-            // Animate only the window frame (width is constant between panes), so
-            // the new content simply reveals as the height changes — no fade, no
-            // competing resize.
-            window.setFrame(startFrame, display: false)
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.2
-                window.animator().setFrame(endFrame, display: true)
-            }
-        } else {
-            window.setFrame(endFrame, display: false)
+        let frame = window.frameRect(forContentSize: contentSize)
+
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            window.setFrame(frame, display: true)
+            return
         }
+
+        view.isHidden = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.allowsImplicitAnimation = true
+            context.duration = window.animationResizeTime(frame)
+            window.setFrame(frame, display: true)
+        } completionHandler: { [weak self] in
+            self?.view.isHidden = false
+        }
+    }
+}
+
+private extension NSWindow {
+    /// The window frame for the given content size, keeping the top-left fixed.
+    func frameRect(forContentSize contentSize: NSSize) -> NSRect {
+        let frameSize = frameRect(forContentRect: NSRect(origin: .zero, size: contentSize)).size
+        return NSRect(origin: frame.origin, size: frameSize)
+            .offsetBy(dx: 0, dy: frame.height - frameSize.height)
     }
 }
