@@ -94,7 +94,10 @@ public struct EditorTheme: Equatable, Sendable {
             let v = CGFloat(d.float(forKey: Keys.fontSize))
             return v > 0 ? v : def.fontSize
         }()
-        let accentHex = d.string(forKey: Keys.accentHex) ?? def.accentHex
+        // The accent color is not user-customizable; always use the default so a
+        // stale persisted value (e.g. left over from the removed in-app accent
+        // picker) can't leak in and recolor links.
+        let accentHex = def.accentHex
         let codeHex = d.string(forKey: Keys.codeHex) ?? def.codeHex
         let mathOperatorHex = d.string(forKey: Keys.mathOperatorHex) ?? def.mathOperatorHex
         let mathNumberHex = d.string(forKey: Keys.mathNumberHex) ?? def.mathNumberHex
