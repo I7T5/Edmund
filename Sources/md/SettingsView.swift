@@ -9,7 +9,6 @@ struct GeneralSettingsView: View {
     @AppStorage(AppSettings.Key.startupAction) private var startupAction = AppSettings.StartupAction.createNewDocument
     @AppStorage(AppSettings.Key.autoSaveWithVersions) private var autoSave = true
     @AppStorage(AppSettings.Key.conflictResolution) private var conflict = AppSettings.ConflictResolution.ask
-    @AppStorage(AppSettings.Key.accentColor) private var accentColor = AppSettings.AccentColor.brown
     @State private var showingWarnings = false
 
     var body: some View {
@@ -64,7 +63,7 @@ struct GeneralSettingsView: View {
                 Button("Manage Warnings…") { showingWarnings = true }
             }
         }
-        .tint(accentColor.color)
+        .accentTinted()
         .scenePadding()
         .padding(8)
         .frame(width: 560, alignment: .leading)
@@ -82,6 +81,7 @@ struct AppearanceSettingsView: View {
     @ObservedObject var fonts: FontSettings
     @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
     @AppStorage(AppSettings.Key.accentColor) private var accentColor = AppSettings.AccentColor.brown
+    @AppStorage(AppSettings.Key.customAccentHex) private var customAccentHex = AppSettings.defaultCustomHex
     @AppStorage(AppSettings.Key.highlightColor) private var highlightColor = AppSettings.HighlightColor.accent
     @AppStorage(AppSettings.Key.standardAntialias) private var standardAntialias = true
     @AppStorage(AppSettings.Key.standardLigatures) private var standardLigatures = true
@@ -106,7 +106,7 @@ struct AppearanceSettingsView: View {
             GridRow {
                 Text("Accent color:")
                     .gridColumnAlignment(.trailing)
-                AccentColorPicker(selection: $accentColor)
+                AccentColorPicker(selection: $accentColor, customHex: $customAccentHex)
             }
 
             GridRow {
@@ -173,7 +173,7 @@ struct AppearanceSettingsView: View {
                 }
             }
         }
-        .tint(accentColor.color)
+        .accentTinted()
         .scenePadding()
         .padding(8)
         .frame(width: 560, alignment: .leading)
@@ -197,49 +197,114 @@ struct AppearanceSettingsView: View {
 
 // MARK: - Accent color
 
-/// A System-Settings-style row of accent swatches; the selected swatch gets a ring.
+/// A Reminders-style accent picker: two rows of swatches, the selected one shown
+/// with a white center ring, and a trailing custom-color well.
 private struct AccentColorPicker: View {
     @Binding var selection: AppSettings.AccentColor
+    @Binding var customHex: String
+
+    private static let perRow = 6
 
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(AppSettings.AccentColor.allCases) { accent in
-                Button {
-                    selection = accent
-                } label: {
-                    Circle()
-                        .fill(accent.color)
-                        .frame(width: 18, height: 18)
-                        .overlay { Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5) }
-                        .padding(3)
-                        .overlay {
-                            if selection == accent {
-                                Circle().strokeBorder(Color(nsColor: .tertiaryLabelColor), lineWidth: 2)
-                            }
-                        }
+        Grid(horizontalSpacing: 10, verticalSpacing: 10) {
+            ForEach(rows, id: \.first) { row in
+                GridRow {
+                    ForEach(row) { swatch($0) }
                 }
-                .buttonStyle(.plain)
-                .help(accent.rawValue.capitalized)
             }
+        }
+    }
+
+    private var rows: [[AppSettings.AccentColor]] {
+        let all = AppSettings.AccentColor.allCases
+        return stride(from: 0, to: all.count, by: Self.perRow).map {
+            Array(all[$0..<min($0 + Self.perRow, all.count)])
+        }
+    }
+
+    @ViewBuilder
+    private func swatch(_ accent: AppSettings.AccentColor) -> some View {
+        if accent == .custom {
+            ColorPicker("", selection: Binding(
+                get: { Color(hexString: customHex) },
+                set: { customHex = $0.hexString; selection = .custom }
+            ), supportsOpacity: false)
+            .labelsHidden()
+        } else {
+            Button {
+                selection = accent
+            } label: {
+                Circle()
+                    .fill(accent.color)
+                    .frame(width: 22, height: 22)
+                    .overlay { Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5) }
+                    .overlay {
+                        if selection == accent {
+                            Circle().inset(by: 3).strokeBorder(.white, lineWidth: 2)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .help(accent.rawValue.capitalized)
         }
     }
 }
 
 extension AppSettings.AccentColor {
-    /// The swatch / tint color. `brown` is a rich chocolate.
+    /// The swatch / tint color. `brown` is our signature #895129; `custom` is a
+    /// fallback (the live custom color is resolved from its stored hex).
     var color: Color {
         switch self {
-        case .brown: return Color(red: 0.42, green: 0.26, blue: 0.15)
-        case .blue: return Color(nsColor: .systemBlue)
-        case .purple: return Color(nsColor: .systemPurple)
-        case .pink: return Color(nsColor: .systemPink)
         case .red: return Color(nsColor: .systemRed)
         case .orange: return Color(nsColor: .systemOrange)
         case .yellow: return Color(nsColor: .systemYellow)
         case .green: return Color(nsColor: .systemGreen)
-        case .graphite: return Color(nsColor: .systemGray)
+        case .mint: return Color(nsColor: .systemMint)
+        case .blue: return Color(nsColor: .systemBlue)
+        case .indigo: return Color(nsColor: .systemIndigo)
+        case .purple: return Color(nsColor: .systemPurple)
+        case .pink: return Color(nsColor: .systemPink)
+        case .lightGray: return Color(hexString: "C4C4C4")
+        case .brown, .custom: return Color(hexString: AppSettings.defaultCustomHex)
         }
     }
+}
+
+extension Color {
+    /// Creates an opaque sRGB color from an "RRGGBB" (or "#RRGGBB") string.
+    init(hexString: String) {
+        var string = hexString
+        if string.hasPrefix("#") { string.removeFirst() }
+        var value: UInt64 = 0
+        Scanner(string: string).scanHexInt64(&value)
+        self = Color(red: Double((value >> 16) & 0xFF) / 255,
+                     green: Double((value >> 8) & 0xFF) / 255,
+                     blue: Double(value & 0xFF) / 255)
+    }
+
+    /// The color as an uppercase "RRGGBB" hex string.
+    var hexString: String {
+        let ns = NSColor(self).usingColorSpace(.sRGB) ?? .black
+        return String(format: "%02X%02X%02X",
+                      Int((ns.redComponent * 255).rounded()),
+                      Int((ns.greenComponent * 255).rounded()),
+                      Int((ns.blueComponent * 255).rounded()))
+    }
+}
+
+/// Applies the user's accent color as the SwiftUI `tint`, so checkboxes, radio
+/// pickers, and pop-up selections in Settings all follow it.
+private struct AccentTint: ViewModifier {
+    @AppStorage(AppSettings.Key.accentColor) private var accent = AppSettings.AccentColor.brown
+    @AppStorage(AppSettings.Key.customAccentHex) private var customHex = AppSettings.defaultCustomHex
+
+    func body(content: Content) -> some View {
+        content.tint(accent == .custom ? Color(hexString: customHex) : accent.color)
+    }
+}
+
+extension View {
+    func accentTinted() -> some View { modifier(AccentTint()) }
 }
 
 // MARK: - Font / theme state

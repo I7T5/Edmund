@@ -45,20 +45,17 @@ enum AppSettings {
         static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
     }
 
-    /// The app accent. `brown` is the default — a rich chocolate that replaces
-    /// the system "Multicolor" slot.
+    /// The app accent palette (two rows). `brown` (our signature #895129) is the
+    /// default; `custom` opens a color picker. The last three slots are, in order,
+    /// light grey, our brown, and custom.
     enum AccentColor: String, CaseIterable, Identifiable {
-        case brown
-        case blue
-        case purple
-        case pink
-        case red
-        case orange
-        case yellow
-        case green
-        case graphite
+        case red, orange, yellow, green, mint, blue
+        case indigo, purple, pink, lightGray, brown, custom
         var id: Self { self }
     }
+
+    /// Default custom-accent hex (our signature brown), used until the user picks one.
+    static let defaultCustomHex = "895129"
 
     enum HighlightColor: String, CaseIterable, Identifiable {
         case accent
@@ -85,6 +82,7 @@ enum AppSettings {
         static let monospaceLigatures = "settings.appearance.monospaceLigatures"
         static let appearanceMode = "settings.appearance.mode"
         static let accentColor = "settings.appearance.accentColor"
+        static let customAccentHex = "settings.appearance.customAccentHex"
         static let highlightColor = "settings.appearance.highlightColor"
     }
 
@@ -196,6 +194,11 @@ enum AppSettings {
             return color
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.accentColor) }
+    }
+
+    static var customAccentHex: String {
+        get { UserDefaults.standard.string(forKey: Key.customAccentHex) ?? defaultCustomHex }
+        set { UserDefaults.standard.set(newValue, forKey: Key.customAccentHex) }
     }
 
     static var highlightColor: HighlightColor {
