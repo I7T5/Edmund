@@ -33,6 +33,10 @@ class Document: NSDocument, HeadingNavigable {
         ["net.daringfireball.markdown", "public.plain-text"]
     }
 
+    override class var autosavesInPlace: Bool {
+        AppSettings.autoSaveWithVersions
+    }
+
     override class func isNativeType(_ name: String) -> Bool {
         return readableTypes.contains(name)
     }
@@ -80,7 +84,7 @@ class Document: NSDocument, HeadingNavigable {
         // Don't persist/restore document windows: macOS state restoration
         // otherwise reopens the last-edited file on the next launch, so a fresh
         // start (or File ▸ New) shows that document instead of a blank Untitled.
-        window.isRestorable = false
+        window.isRestorable = AppSettings.reopenWindows
         window.center()
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor

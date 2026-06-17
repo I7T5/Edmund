@@ -18,6 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppSettings.applyAppearance()
         setupMenuBar()
 
         // Open file from command-line argument. When a file is given,
@@ -33,11 +34,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // Auto-open a blank document on launch only when no file was passed on the
     // command line (otherwise the file arg + the blank doc make two windows).
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        CommandLine.arguments.count <= 1
+        CommandLine.arguments.count <= 1 && AppSettings.startupAction == .createNewDocument
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
-        true
+        AppSettings.reopenWindows
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -47,7 +48,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // Reopen a new untitled document when the app is activated with no windows.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            NSDocumentController.shared.newDocument(nil)
+            if AppSettings.startupAction == .createNewDocument {
+                NSDocumentController.shared.newDocument(nil)
+            }
         }
         return true
     }
