@@ -1,6 +1,8 @@
+// AppSettings — UserDefaults-backed model for every Settings value.
+// The rest of the app reads these accessors; the SwiftUI panes bind to the
+// same keys via @AppStorage.
+
 import AppKit
-import SwiftUI
-import MarkdownEditorCore
 
 enum AppSettings {
     enum StartupAction: String, CaseIterable, Identifiable {
@@ -45,30 +47,6 @@ enum AppSettings {
         static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
     }
 
-    /// The app accent palette (two rows). `brown` (our signature #895129) is the
-    /// default; `custom` opens a color picker. The last three slots are, in order,
-    /// light grey, our brown, and custom.
-    enum AccentColor: String, CaseIterable, Identifiable {
-        case red, orange, yellow, green, mint, blue
-        case indigo, purple, pink, lightGray, brown, custom
-        var id: Self { self }
-    }
-
-    /// Default custom-accent hex (our signature brown), used until the user picks one.
-    static let defaultCustomHex = "895129"
-
-    enum HighlightColor: String, CaseIterable, Identifiable {
-        case accent
-        case system
-        var id: Self { self }
-        var label: String {
-            switch self {
-            case .accent: return "Accent color"
-            case .system: return "System color"
-            }
-        }
-    }
-
     enum Key {
         static let reopenWindows = "settings.general.reopenWindows"
         static let startupAction = "settings.general.startupAction"
@@ -81,9 +59,7 @@ enum AppSettings {
         static let monospaceAntialias = "settings.appearance.monospaceAntialias"
         static let monospaceLigatures = "settings.appearance.monospaceLigatures"
         static let appearanceMode = "settings.appearance.mode"
-        static let accentColor = "settings.appearance.accentColor"
-        static let customAccentHex = "settings.appearance.customAccentHex"
-        static let highlightColor = "settings.appearance.highlightColor"
+        static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
     }
 
     static var reopenWindows: Bool {
@@ -185,33 +161,6 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.appearanceMode) }
     }
 
-    static var accentColor: AccentColor {
-        get {
-            guard let raw = UserDefaults.standard.string(forKey: Key.accentColor),
-                  let color = AccentColor(rawValue: raw) else {
-                return .brown
-            }
-            return color
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.accentColor) }
-    }
-
-    static var customAccentHex: String {
-        get { UserDefaults.standard.string(forKey: Key.customAccentHex) ?? defaultCustomHex }
-        set { UserDefaults.standard.set(newValue, forKey: Key.customAccentHex) }
-    }
-
-    static var highlightColor: HighlightColor {
-        get {
-            guard let raw = UserDefaults.standard.string(forKey: Key.highlightColor),
-                  let color = HighlightColor(rawValue: raw) else {
-                return .accent
-            }
-            return color
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.highlightColor) }
-    }
-
     @MainActor static func applyAppearance() {
         switch appearanceMode {
         case .matchSystem:
@@ -221,124 +170,5 @@ enum AppSettings {
         case .dark:
             NSApp.appearance = NSAppearance(named: .darkAqua)
         }
-    }
-}
-
-/// A CotEditor-style Settings window. The window chrome and the pane-switching
-/// preference toolbar stay AppKit; each pane's content is a SwiftUI view hosted
-/// in an `NSHostingController`, which owns all of the layout.
-final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
-    private enum Pane {
-        case general
-        case appearance
-
-        var title: String {
-            switch self {
-            case .general: return "General"
-            case .appearance: return "Appearance"
-            }
-        }
-
-        var identifier: NSToolbarItem.Identifier {
-            switch self {
-            case .general: return Self.generalID
-            case .appearance: return Self.appearanceID
-            }
-        }
-
-        static let generalID = NSToolbarItem.Identifier("settings.general")
-        static let appearanceID = NSToolbarItem.Identifier("settings.appearance")
-    }
-
-    /// Owns the editor font / line-height state and the font-panel plumbing.
-    /// Shared across pane rebuilds so the font panel keeps targeting it.
-    private let fonts = FontSettings()
-
-    convenience init() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 360),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.center()
-        window.isReleasedWhenClosed = false
-
-        self.init(window: window)
-        setupWindow()
-        showPane(.general)
-    }
-
-    private func setupWindow() {
-        guard let window else { return }
-        window.titleVisibility = .visible
-        window.titlebarSeparatorStyle = .line
-
-        let toolbar = NSToolbar(identifier: "SettingsToolbar")
-        toolbar.delegate = self
-        toolbar.displayMode = .iconAndLabel
-        toolbar.allowsUserCustomization = false
-        toolbar.autosavesConfiguration = false
-        toolbar.selectedItemIdentifier = Pane.generalID
-        window.toolbar = toolbar
-        window.toolbarStyle = .preference
-    }
-
-    // MARK: - Toolbar
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Pane.generalID, Pane.appearanceID]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
-    }
-
-    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
-    }
-
-    func toolbar(_ toolbar: NSToolbar,
-                 itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        item.target = self
-        item.action = #selector(selectPane(_:))
-
-        switch itemIdentifier {
-        case Pane.generalID:
-            item.label = "General"
-            item.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "General")
-        case Pane.appearanceID:
-            item.label = "Appearance"
-            item.image = NSImage(systemSymbolName: "eyeglasses", accessibilityDescription: "Appearance")
-        default:
-            return nil
-        }
-        item.paletteLabel = item.label
-        return item
-    }
-
-    @objc private func selectPane(_ sender: NSToolbarItem) {
-        switch sender.itemIdentifier {
-        case Pane.generalID: showPane(.general)
-        case Pane.appearanceID: showPane(.appearance)
-        default: break
-        }
-    }
-
-    // MARK: - Panes
-
-    private func showPane(_ pane: Pane) {
-        window?.title = pane.title
-        window?.toolbar?.selectedItemIdentifier = pane.identifier
-
-        let root: AnyView = switch pane {
-        case .general: AnyView(GeneralSettingsView())
-        case .appearance: AnyView(AppearanceSettingsView(fonts: fonts))
-        }
-        let hosting = NSHostingController(rootView: root)
-        hosting.sizingOptions = [.preferredContentSize]
-        window?.contentViewController = hosting
     }
 }
