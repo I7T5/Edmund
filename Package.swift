@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "md",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.5.0"),
         .package(url: "https://github.com/mgriebling/SwiftMath.git", from: "1.7.0"),
