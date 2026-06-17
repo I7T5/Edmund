@@ -22,9 +22,10 @@ struct AntialiasingText: NSViewRepresentable {
         nsView.allowsExpansionToolTips = true
         nsView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        // Keep the field at its initial (default-font) height regardless of the
-        // previewed font's size.
-        nsView.heightAnchor.constraint(equalToConstant: nsView.frame.height).isActive = true
+        // Keep the field at a stable height (a couple points taller than the
+        // default so a 16pt preview has a little breathing room) regardless of
+        // the previewed font's size.
+        nsView.heightAnchor.constraint(equalToConstant: nsView.frame.height + 4).isActive = true
 
         return nsView
     }

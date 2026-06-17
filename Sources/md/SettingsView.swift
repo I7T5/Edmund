@@ -9,6 +9,7 @@ struct GeneralSettingsView: View {
     @AppStorage(AppSettings.Key.startupAction) private var startupAction = AppSettings.StartupAction.createNewDocument
     @AppStorage(AppSettings.Key.autoSaveWithVersions) private var autoSave = true
     @AppStorage(AppSettings.Key.conflictResolution) private var conflict = AppSettings.ConflictResolution.ask
+    @AppStorage(AppSettings.Key.accentColor) private var accentColor = AppSettings.AccentColor.brown
     @State private var showingWarnings = false
 
     var body: some View {
@@ -63,8 +64,10 @@ struct GeneralSettingsView: View {
                 Button("Manage Warnings…") { showingWarnings = true }
             }
         }
+        .tint(accentColor.color)
         .scenePadding()
-        .frame(width: 520, alignment: .leading)
+        .padding(8)
+        .frame(width: 560, alignment: .leading)
         .alert("No Dialog Warnings", isPresented: $showingWarnings) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -77,14 +80,50 @@ struct GeneralSettingsView: View {
 
 struct AppearanceSettingsView: View {
     @ObservedObject var fonts: FontSettings
+    @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
+    @AppStorage(AppSettings.Key.accentColor) private var accentColor = AppSettings.AccentColor.brown
+    @AppStorage(AppSettings.Key.highlightColor) private var highlightColor = AppSettings.HighlightColor.accent
     @AppStorage(AppSettings.Key.standardAntialias) private var standardAntialias = true
     @AppStorage(AppSettings.Key.standardLigatures) private var standardLigatures = true
     @AppStorage(AppSettings.Key.monospaceAntialias) private var monospaceAntialias = true
     @AppStorage(AppSettings.Key.monospaceLigatures) private var monospaceLigatures = false
-    @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
+            // System-level appearance
+            GridRow {
+                Text("Appearance:")
+                    .gridColumnAlignment(.trailing)
+                Picker("", selection: $appearanceMode) {
+                    ForEach(AppSettings.AppearanceMode.displayOrder) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.radioGroup)
+                .horizontalRadioGroupLayout()
+                .labelsHidden()
+                .onChange(of: appearanceMode) { AppSettings.applyAppearance() }
+            }
+
+            GridRow {
+                Text("Accent color:")
+                    .gridColumnAlignment(.trailing)
+                AccentColorPicker(selection: $accentColor)
+            }
+
+            GridRow {
+                Text("Highlight color:")
+                    .gridColumnAlignment(.trailing)
+                Picker("", selection: $highlightColor) {
+                    ForEach(AppSettings.HighlightColor.allCases) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+
+            // Fonts
             GridRow {
                 Text("Standard font:")
                     .gridColumnAlignment(.trailing)
@@ -133,20 +172,11 @@ struct AppearanceSettingsView: View {
                     Text("times")
                 }
             }
-
-            GridRow {
-                Text("Appearance:")
-                    .gridColumnAlignment(.trailing)
-                Picker("", selection: $appearanceMode) {
-                    ForEach(AppSettings.AppearanceMode.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.radioGroup)
-                .labelsHidden()
-                .onChange(of: appearanceMode) { AppSettings.applyAppearance() }
-            }
         }
+        .tint(accentColor.color)
         .scenePadding()
-        .frame(width: 520, alignment: .leading)
+        .padding(8)
+        .frame(width: 560, alignment: .leading)
     }
 
     @ViewBuilder
@@ -156,11 +186,58 @@ struct AppearanceSettingsView: View {
             AntialiasingText(summary)
                 .antialiasDisabled(!antialias)
                 .font(nsFont: font)
-                .frame(width: 210)
+                .frame(width: 240)
             Stepper("", value: size, in: 8...72, step: 1)
                 .labelsHidden()
             Button("Select…", action: select)
                 .fixedSize()
+        }
+    }
+}
+
+// MARK: - Accent color
+
+/// A System-Settings-style row of accent swatches; the selected swatch gets a ring.
+private struct AccentColorPicker: View {
+    @Binding var selection: AppSettings.AccentColor
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(AppSettings.AccentColor.allCases) { accent in
+                Button {
+                    selection = accent
+                } label: {
+                    Circle()
+                        .fill(accent.color)
+                        .frame(width: 18, height: 18)
+                        .overlay { Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5) }
+                        .padding(3)
+                        .overlay {
+                            if selection == accent {
+                                Circle().strokeBorder(Color(nsColor: .tertiaryLabelColor), lineWidth: 2)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .help(accent.rawValue.capitalized)
+            }
+        }
+    }
+}
+
+extension AppSettings.AccentColor {
+    /// The swatch / tint color. `brown` is a rich chocolate.
+    var color: Color {
+        switch self {
+        case .brown: return Color(red: 0.42, green: 0.26, blue: 0.15)
+        case .blue: return Color(nsColor: .systemBlue)
+        case .purple: return Color(nsColor: .systemPurple)
+        case .pink: return Color(nsColor: .systemPink)
+        case .red: return Color(nsColor: .systemRed)
+        case .orange: return Color(nsColor: .systemOrange)
+        case .yellow: return Color(nsColor: .systemYellow)
+        case .green: return Color(nsColor: .systemGreen)
+        case .graphite: return Color(nsColor: .systemGray)
         }
     }
 }

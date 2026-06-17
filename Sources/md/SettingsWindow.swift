@@ -41,6 +41,35 @@ enum AppSettings {
             case .dark: return "Dark"
             }
         }
+        /// Display order in the Appearance pane (left to right).
+        static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
+    }
+
+    /// The app accent. `brown` is the default — a rich chocolate that replaces
+    /// the system "Multicolor" slot.
+    enum AccentColor: String, CaseIterable, Identifiable {
+        case brown
+        case blue
+        case purple
+        case pink
+        case red
+        case orange
+        case yellow
+        case green
+        case graphite
+        var id: Self { self }
+    }
+
+    enum HighlightColor: String, CaseIterable, Identifiable {
+        case accent
+        case system
+        var id: Self { self }
+        var label: String {
+            switch self {
+            case .accent: return "Accent color"
+            case .system: return "System color"
+            }
+        }
     }
 
     enum Key {
@@ -55,6 +84,8 @@ enum AppSettings {
         static let monospaceAntialias = "settings.appearance.monospaceAntialias"
         static let monospaceLigatures = "settings.appearance.monospaceLigatures"
         static let appearanceMode = "settings.appearance.mode"
+        static let accentColor = "settings.appearance.accentColor"
+        static let highlightColor = "settings.appearance.highlightColor"
     }
 
     static var reopenWindows: Bool {
@@ -154,6 +185,28 @@ enum AppSettings {
             return mode
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.appearanceMode) }
+    }
+
+    static var accentColor: AccentColor {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.accentColor),
+                  let color = AccentColor(rawValue: raw) else {
+                return .brown
+            }
+            return color
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.accentColor) }
+    }
+
+    static var highlightColor: HighlightColor {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.highlightColor),
+                  let color = HighlightColor(rawValue: raw) else {
+                return .accent
+            }
+            return color
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.highlightColor) }
     }
 
     @MainActor static func applyAppearance() {
