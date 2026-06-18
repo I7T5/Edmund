@@ -15,6 +15,10 @@ final class FontSettings: NSObject, ObservableObject {
     @Published var standardFont: NSFont
     @Published var monospaceFont: NSFont
     @Published var lineHeight: CGFloat
+    @Published var standardLigatures: Bool { didSet { applyLigatures() } }
+    @Published var monospaceLigatures: Bool { didSet { applyLigatures() } }
+    /// A single editor-wide antialias setting (both font toggles share it).
+    @Published var antialias: Bool { didSet { applyAntialias() } }
 
     private var theme: EditorTheme
     private enum Target { case standard, monospace }
@@ -25,6 +29,9 @@ final class FontSettings: NSObject, ObservableObject {
         self.theme = theme
         standardFont = theme.bodyFont
         monospaceFont = theme.monospaceFont()
+        standardLigatures = theme.standardLigatures
+        monospaceLigatures = theme.monospaceLigatures
+        antialias = theme.antialias
         let size = theme.bodyFont.pointSize
         lineHeight = size > 0 ? max(1, min(3, (size + theme.lineSpacing) / size)) : 1
         super.init()
@@ -75,6 +82,23 @@ final class FontSettings: NSObject, ObservableObject {
         var updated = theme
         updated.monospaceFontName = monospaceFont.fontName
         updated.monospaceFontSize = monospaceFont.pointSize
+        theme = updated
+        updated.save()
+        applyToDocuments(updated)
+    }
+
+    private func applyLigatures() {
+        var updated = theme
+        updated.standardLigatures = standardLigatures
+        updated.monospaceLigatures = monospaceLigatures
+        theme = updated
+        updated.save()
+        applyToDocuments(updated)
+    }
+
+    private func applyAntialias() {
+        var updated = theme
+        updated.antialias = antialias
         theme = updated
         updated.save()
         applyToDocuments(updated)

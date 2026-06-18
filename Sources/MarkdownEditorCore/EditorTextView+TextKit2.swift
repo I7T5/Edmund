@@ -111,12 +111,16 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     let decoration: BlockDecoration?
     /// Paragraph-relative anchor offsets and their overlays.
     let overlays: [(offset: Int, overlay: FragmentOverlay)]
+    /// Whether the text is antialiased (editor-wide setting).
+    let antialias: Bool
 
     init(textElement: NSTextElement, range: NSTextRange?,
          decoration: BlockDecoration?,
-         overlays: [(offset: Int, overlay: FragmentOverlay)]) {
+         overlays: [(offset: Int, overlay: FragmentOverlay)],
+         antialias: Bool) {
         self.decoration = decoration
         self.overlays = overlays
+        self.antialias = antialias
         super.init(textElement: textElement, range: range)
     }
 
@@ -172,7 +176,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             drawDecoration(decoration, at: point, in: context)
         }
         context.restoreGState()
+        context.saveGState()
+        context.setShouldAntialias(antialias)
         super.draw(at: point, in: context)
+        context.restoreGState()
         for (offset, overlay) in overlays {
             guard let rect = overlayRect(anchorOffset: offset, overlay: overlay) else { continue }
             let drawRect = rect.offsetBy(dx: point.x, dy: point.y)
@@ -298,14 +305,18 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                 overlays.append((range.location, overlay))
             }
         }
-        guard decoration != nil || !overlays.isEmpty else {
+        // A plain fragment suffices only when there's nothing to draw over the
+        // text and antialiasing is on (the default); otherwise vend the custom
+        // fragment so its draw can disable antialiasing.
+        guard decoration != nil || !overlays.isEmpty || !textAntialias else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
         }
         return DecoratedTextLayoutFragment(textElement: textElement,
                                            range: textElement.elementRange,
                                            decoration: decoration,
-                                           overlays: overlays)
+                                           overlays: overlays,
+                                           antialias: textAntialias)
     }
 }
 

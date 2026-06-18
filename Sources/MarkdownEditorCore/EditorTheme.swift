@@ -17,6 +17,13 @@ public struct EditorTheme: Equatable, Sendable {
     public var monospaceFontName: String
     public var monospaceFontSize: CGFloat
 
+    /// Whether ligatures are enabled for the standard (body) and monospaced fonts.
+    public var standardLigatures: Bool
+    public var monospaceLigatures: Bool
+
+    /// Whether editor text is antialiased (a single editor-wide setting).
+    public var antialias: Bool
+
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
     public var accentHex: String
@@ -34,7 +41,9 @@ public struct EditorTheme: Equatable, Sendable {
     public init(fontName: String, fontSize: CGFloat, accentHex: String, codeHex: String,
                 lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat,
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
-                monospaceFontName: String = "", monospaceFontSize: CGFloat = 14) {
+                monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
+                standardLigatures: Bool = true, monospaceLigatures: Bool = false,
+                antialias: Bool = true) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.accentHex = accentHex
@@ -45,6 +54,9 @@ public struct EditorTheme: Equatable, Sendable {
         self.mathNumberHex = mathNumberHex
         self.monospaceFontName = monospaceFontName
         self.monospaceFontSize = monospaceFontSize
+        self.standardLigatures = standardLigatures
+        self.monospaceLigatures = monospaceLigatures
+        self.antialias = antialias
     }
 
     // MARK: - Defaults
@@ -61,7 +73,8 @@ public struct EditorTheme: Equatable, Sendable {
     // MARK: - Derived Properties
 
     @MainActor public var bodyFont: NSFont {
-        NSFont(name: fontName, size: fontSize) ?? .systemFont(ofSize: fontSize)
+        let base = NSFont(name: fontName, size: fontSize) ?? .systemFont(ofSize: fontSize)
+        return Self.applyingLigatures(standardLigatures, to: base)
     }
 
     /// The monospaced font, at `size` (default: the theme's monospace size).
@@ -69,10 +82,35 @@ public struct EditorTheme: Equatable, Sendable {
     /// be loaded.
     @MainActor public func monospaceFont(ofSize size: CGFloat? = nil) -> NSFont {
         let resolved = size ?? monospaceFontSize
-        if !monospaceFontName.isEmpty, let font = NSFont(name: monospaceFontName, size: resolved) {
-            return font
-        }
-        return .monospacedSystemFont(ofSize: resolved, weight: .regular)
+        let base: NSFont = {
+            if !monospaceFontName.isEmpty, let font = NSFont(name: monospaceFontName, size: resolved) {
+                return font
+            }
+            // Default when no family is chosen: Input Mono Narrow, then Input Mono,
+            // then the system monospaced font — all Regular.
+            for name in ["InputMonoNarrow-Regular", "InputMono-Regular"] {
+                if let font = NSFont(name: name, size: resolved) { return font }
+            }
+            return .monospacedSystemFont(ofSize: resolved, weight: .regular)
+        }()
+        return Self.applyingLigatures(monospaceLigatures, to: base)
+    }
+
+    /// Returns `font` with ligatures disabled (when `on` is false) by turning off
+    /// both common ligatures and contextual alternates in its descriptor — the
+    /// latter is what drives programming ligatures like Fira Code's `=>`/`==`.
+    /// Baking it into the font (rather than the `.ligature` attribute) is what the
+    /// editor's TextKit 2 pipeline reliably honors.
+    private static func applyingLigatures(_ on: Bool, to font: NSFont) -> NSFont {
+        guard !on else { return font }
+        let kContextualAlternatesType = 36
+        let kContextualAlternatesOffSelector = 1
+        let settings: [[NSFontDescriptor.FeatureKey: Int]] = [
+            [.typeIdentifier: kLigaturesType, .selectorIdentifier: kCommonLigaturesOffSelector],
+            [.typeIdentifier: kContextualAlternatesType, .selectorIdentifier: kContextualAlternatesOffSelector],
+        ]
+        let descriptor = font.fontDescriptor.addingAttributes([.featureSettings: settings])
+        return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
     }
 
     @MainActor public var accentColor: NSColor {
@@ -98,6 +136,9 @@ public struct EditorTheme: Equatable, Sendable {
         static let fontSize = "EditorFontSize"
         static let monospaceFontName = "EditorMonospaceFontName"
         static let monospaceFontSize = "EditorMonospaceFontSize"
+        static let standardLigatures = "EditorStandardLigatures"
+        static let monospaceLigatures = "EditorMonospaceLigatures"
+        static let antialias = "EditorAntialias"
         static let accentHex = "EditorAccentHex"
         static let codeHex = "EditorCodeHex"
         static let mathOperatorHex = "EditorMathOperatorHex"
@@ -124,6 +165,9 @@ public struct EditorTheme: Equatable, Sendable {
             let v = CGFloat(d.float(forKey: Keys.monospaceFontSize))
             return v > 0 ? v : def.monospaceFontSize
         }()
+        let standardLigatures = d.object(forKey: Keys.standardLigatures) as? Bool ?? def.standardLigatures
+        let monospaceLigatures = d.object(forKey: Keys.monospaceLigatures) as? Bool ?? def.monospaceLigatures
+        let antialias = d.object(forKey: Keys.antialias) as? Bool ?? def.antialias
         let codeHex = d.string(forKey: Keys.codeHex) ?? def.codeHex
         let mathOperatorHex = d.string(forKey: Keys.mathOperatorHex) ?? def.mathOperatorHex
         let mathNumberHex = d.string(forKey: Keys.mathNumberHex) ?? def.mathNumberHex
@@ -144,7 +188,10 @@ public struct EditorTheme: Equatable, Sendable {
             mathOperatorHex: mathOperatorHex,
             mathNumberHex: mathNumberHex,
             monospaceFontName: monospaceFontName,
-            monospaceFontSize: monospaceFontSize
+            monospaceFontSize: monospaceFontSize,
+            standardLigatures: standardLigatures,
+            monospaceLigatures: monospaceLigatures,
+            antialias: antialias
         )
     }
 
@@ -154,6 +201,9 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(Float(fontSize), forKey: Keys.fontSize)
         d.set(monospaceFontName, forKey: Keys.monospaceFontName)
         d.set(Float(monospaceFontSize), forKey: Keys.monospaceFontSize)
+        d.set(standardLigatures, forKey: Keys.standardLigatures)
+        d.set(monospaceLigatures, forKey: Keys.monospaceLigatures)
+        d.set(antialias, forKey: Keys.antialias)
         d.set(accentHex, forKey: Keys.accentHex)
         d.set(codeHex, forKey: Keys.codeHex)
         d.set(mathOperatorHex, forKey: Keys.mathOperatorHex)

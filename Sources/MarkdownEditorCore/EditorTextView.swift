@@ -94,7 +94,13 @@ public class EditorTextView: NSTextView {
     /// domain (and from each other under parallel execution).
     public var themeDefaults: UserDefaults = .standard
 
-    public var theme: EditorTheme = .load()
+    public var theme: EditorTheme = .load() {
+        didSet { textAntialias = theme.antialias }
+    }
+
+    /// Mirror of `theme.antialias`, readable from the `nonisolated`
+    /// layout-fragment vendor.
+    nonisolated(unsafe) var textAntialias = true
 
     /// How the document is presented:
     ///   - `edit`    — live preview; the block under the caret reveals its raw
@@ -145,10 +151,16 @@ public class EditorTextView: NSTextView {
 
     /// Apply a new theme, persist it, and restyle every block in place.
     public func applyTheme(_ newTheme: EditorTheme) {
+        let antialiasChanged = theme.antialias != newTheme.antialias
         theme = newTheme
         theme.save(to: themeDefaults)
         typingAttributes = baseAttributes
         recomposeAllDirty()
+        // Antialiasing isn't a text attribute, so a recompose alone won't re-vend
+        // the layout fragments — force a full re-layout when it changes.
+        if antialiasChanged, let tlm = textLayoutManager {
+            tlm.invalidateLayout(for: tlm.documentRange)
+        }
     }
 
     var baseAttributes: [NSAttributedString.Key: Any] {
@@ -186,6 +198,7 @@ public class EditorTextView: NSTextView {
         isAutomaticSpellingCorrectionEnabled = false
         allowsUndo = false
 
+        textAntialias = theme.antialias
         backgroundColor = editorBackgroundColor
         insertionPointColor = foregroundColor
         selectedTextAttributes = [

@@ -52,10 +52,6 @@ enum AppSettings {
         static let startupAction = "settings.general.startupAction"
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
         static let conflictResolution = "settings.general.conflictResolution"
-        static let standardAntialias = "settings.appearance.standardAntialias"
-        static let standardLigatures = "settings.appearance.standardLigatures"
-        static let monospaceAntialias = "settings.appearance.monospaceAntialias"
-        static let monospaceLigatures = "settings.appearance.monospaceLigatures"
         static let appearanceMode = "settings.appearance.mode"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
     }
@@ -97,41 +93,6 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.conflictResolution) }
     }
 
-    static var standardAntialias: Bool {
-        get {
-            guard UserDefaults.standard.object(forKey: Key.standardAntialias) != nil else {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: Key.standardAntialias)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: Key.standardAntialias) }
-    }
-
-    static var standardLigatures: Bool {
-        get {
-            guard UserDefaults.standard.object(forKey: Key.standardLigatures) != nil else {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: Key.standardLigatures)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: Key.standardLigatures) }
-    }
-
-    static var monospaceAntialias: Bool {
-        get {
-            guard UserDefaults.standard.object(forKey: Key.monospaceAntialias) != nil else {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: Key.monospaceAntialias)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: Key.monospaceAntialias) }
-    }
-
-    static var monospaceLigatures: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.monospaceLigatures) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.monospaceLigatures) }
-    }
-
     static var appearanceMode: AppearanceMode {
         get {
             guard let raw = UserDefaults.standard.string(forKey: Key.appearanceMode),
@@ -141,6 +102,11 @@ enum AppSettings {
             return mode
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.appearanceMode) }
+    }
+
+    static var suppressInconsistentLineEndingWarning: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.suppressInconsistentLineEndingWarning) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.suppressInconsistentLineEndingWarning) }
     }
 
     @MainActor static func applyAppearance() {

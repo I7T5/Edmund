@@ -9,10 +9,6 @@ import MarkdownEditorCore
 struct AppearanceSettingsView: View {
     @ObservedObject var fonts: FontSettings
     @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
-    @AppStorage(AppSettings.Key.standardAntialias) private var standardAntialias = true
-    @AppStorage(AppSettings.Key.standardLigatures) private var standardLigatures = true
-    @AppStorage(AppSettings.Key.monospaceAntialias) private var monospaceAntialias = true
-    @AppStorage(AppSettings.Key.monospaceLigatures) private var monospaceLigatures = false
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
@@ -38,13 +34,13 @@ struct AppearanceSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.standardSummary,
                             font: fonts.standardFont,
-                            antialias: standardAntialias,
+                            antialias: fonts.antialias,
                             size: Binding(get: { Double(fonts.standardFont.pointSize) },
                                           set: { fonts.setStandardSize(CGFloat($0)) }),
                             select: fonts.selectStandardFont)
                     HStack(spacing: 16) {
-                        Toggle("Antialias", isOn: $standardAntialias)
-                        Toggle("Ligatures", isOn: $standardLigatures)
+                        Toggle("Antialias", isOn: $fonts.antialias)
+                        Toggle("Ligatures", isOn: $fonts.standardLigatures)
                     }
                 }
             }
@@ -55,13 +51,13 @@ struct AppearanceSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.monospaceSummary,
                             font: fonts.monospaceFont,
-                            antialias: monospaceAntialias,
+                            antialias: fonts.antialias,
                             size: Binding(get: { Double(fonts.monospaceFont.pointSize) },
                                           set: { fonts.setMonospaceSize(CGFloat($0)) }),
                             select: fonts.selectMonospaceFont)
                     HStack(spacing: 16) {
-                        Toggle("Antialias", isOn: $monospaceAntialias)
-                        Toggle("Ligatures", isOn: $monospaceLigatures)
+                        Toggle("Antialias", isOn: $fonts.antialias)
+                        Toggle("Ligatures", isOn: $fonts.monospaceLigatures)
                     }
                 }
             }
