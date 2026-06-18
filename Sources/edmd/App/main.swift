@@ -1,6 +1,12 @@
 import AppKit
 import EdmundCore
 
+// Entry point for the app the user knows as "Edmund" (CFBundleName). The
+// executable target — and so this binary at Edmund.app/Contents/MacOS/edmd — is
+// named `edmd`, an expansion of "Editor for Markdown". The backronym is the
+// app's original working name; it survives only here and in Package.swift, never
+// in anything user-facing.
+
 // --- App Delegate -----------------------------------------------------------
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {

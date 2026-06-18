@@ -25,6 +25,8 @@ extension NSAttributedString.Key {
 //     stripped, so editing stays WYSIWYG-ish and round-trips losslessly.
 //
 // Larger, self-contained pieces live in sibling files to keep this one focused:
+//   - EditorTextView+ListMarkerRendering.swift — the `.listItem` styling case
+//   - EditorTextView+TableRendering.swift      — the `.table` styling case
 //   - EditorTextView+ListRendering.swift  — list/checkbox/bullet markers + indent
 //   - EditorTextView+TableSupport.swift   — table border blocks + row parsing
 //   - EditorTextView+MathRendering.swift  — `$…$` / `$$…$$` rendering + raw coloring
@@ -264,214 +266,13 @@ extension EditorTextView {
 
             case .listItem(let ordered, let checkbox):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                // Indentation model (Apple Notes style): each nesting level steps
-                // in by one marker "slot" (pointSize-wide icon + a space), so a
-                // child's marker lands under its parent's content. All list types
-                // share the same slot, so their text lines up. The leading
-                // whitespace is hidden (by the delimiter styling) and the indent
-                // comes entirely from the paragraph style.
-                let markerStr = (markdown as NSString).substring(to: span.contentRange.location)
-                let leadingWS = markerStr.prefix(while: { $0 == " " || $0 == "\t" })
-                let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
-                let slotWidth = bodyFont.pointSize + spaceWidth
-                let depth = listDepth(leadingWhitespace: String(leadingWS))
-                let markerStart = listPadding + CGFloat(depth) * slotWidth
-                let contentIndent = markerStart + slotWidth
-                // The visible marker text ("- ", "1. ", "- [ ] "), without the
-                // leading whitespace (which we hide below).
-                let markerText = String(markerStr.dropFirst(leadingWS.count))
-                let markerWidth = (markerText as NSString).size(withAttributes: [.font: bodyFont]).width
-                let firstLineIndent: CGFloat
-                // For an active bullet we left-shift the raw "-" onto the dot's
-                // column; this kern widens its trailing space so the content
-                // still begins at contentIndent (set after the paragraph style).
-                var activeBulletSpaceKern: CGFloat = 0
-                if ordered || (cursorInToken && checkbox != nil) {
-                    // Ordered marker, or an active checkbox: right-align the marker
-                    // into its slot so the content begins at `contentIndent` — the
-                    // same place as the rendered (inactive) form. This keeps the
-                    // item aligned at every depth (and clicking in doesn't shift
-                    // the text), while leaving the raw "1." / "- [ ]" editable.
-                    // Wrapped lines hang at contentIndent via headIndent.
-                    firstLineIndent = max(2, contentIndent - markerWidth)
-                } else if cursorInToken {
-                    // Active bullet: sit the raw "-" on the dot's column instead of
-                    // right-aligning it into the slot, so the marker doesn't jump
-                    // sideways when you click into the item. The inactive dot is
-                    // centered in a pointSize-wide box at markerStart, so center the
-                    // dash there too; the kern below keeps the content at
-                    // contentIndent.
-                    let dashWidth = ("-" as NSString).size(withAttributes: [.font: bodyFont]).width
-                    firstLineIndent = max(2, markerStart + (bodyFont.pointSize - dashWidth) / 2)
-                    activeBulletSpaceKern = max(0, contentIndent - (firstLineIndent + markerWidth))
-                } else {
-                    // Inactive bullet/checkbox: the marker icon sits at markerStart.
-                    firstLineIndent = markerStart
-                }
-                // Hide the leading indentation — the indent is provided entirely by
-                // the paragraph style. swift-markdown's list-item delimiter range
-                // starts at the marker and excludes this whitespace, so without
-                // hiding it here those spaces render visibly and push the first line
-                // right, breaking alignment with the hanging (wrapped-line) indent.
-                // (The deep-indent rescue parser already includes the whitespace in
-                // its delimiter; the delimiter styling below avoids re-showing it.)
-                let wsLen = leadingWS.count
-                if wsLen > 0 {
-                    let lead = NSRange(location: 0, length: wsLen)
-                    result.addAttribute(.font, value: hiddenFont, range: lead)
-                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: lead)
-                }
-                // Apply paragraph style from position 0 — NSTextView uses the paragraph
-                // style from the first character of a paragraph.
-                result.addAttribute(.paragraphStyle,
-                                    value: listParagraphStyle(firstLineIndent: firstLineIndent, contentIndent: contentIndent),
-                                    range: NSRange(location: 0, length: result.length))
-                // Active bullet: widen the marker's trailing space so the content
-                // lands at contentIndent even though the "-" sits on the dot column.
-                if activeBulletSpaceKern > 0, span.contentRange.location > 0,
-                   span.contentRange.location <= result.length {
-                    result.addAttribute(.kern, value: activeBulletSpaceKern,
-                                        range: NSRange(location: span.contentRange.location - 1, length: 1))
-                }
-                // Strikethrough checked items
-                if !ordered, checkbox == .checked {
-                    result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
-                    result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.contentRange)
-                }
+                styleListItemSpan(result, span: span, markdown: markdown,
+                                  ordered: ordered, checkbox: checkbox,
+                                  cursorInToken: cursorInToken)
 
             case .table:
                 guard span.fullRange.upperBound <= result.length else { continue }
-                if cursorInToken {
-                    // Active: monospace, all pipes dimmed
-                    result.addAttribute(.font, value: tableFont, range: span.fullRange)
-                    let nsStr = (result.string as NSString)
-                    var sr = span.fullRange
-                    while sr.length > 0 {
-                        let pr = nsStr.range(of: "|", options: [], range: sr)
-                        guard pr.location != NSNotFound else { break }
-                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: pr)
-                        let ns = pr.upperBound
-                        sr = NSRange(location: ns, length: max(0, span.fullRange.upperBound - ns))
-                    }
-                } else {
-                    // Non-active: bold header, hidden pipes, column-width alignment
-                    // via kern, drawn vertical + horizontal borders via TableRowTextBlock,
-                    // with cell padding for breathing room.
-                    let tableNS = (result.string as NSString)
-                    let tableStr = tableNS.substring(with: span.fullRange)
-                    let lines = tableStr.components(separatedBy: "\n")
-
-                    let boldFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                    let cellHPad = bodyFont.pointSize * 0.3
-                    let cellVPad = bodyFont.pointSize * 0.15
-
-                    // --- Compute column widths (max cell width + horizontal padding) ---
-                    let headerCells = splitTableRow(lines[0])
-                    let numCols = headerCells.count
-                    guard numCols > 0 else { break }
-                    var colWidths = [CGFloat](repeating: 0, count: numCols)
-                    for (li, line) in lines.enumerated() {
-                        guard li != 1 else { continue }
-                        let cells = splitTableRow(line)
-                        let f: NSFont = (li == 0) ? boldFont : bodyFont
-                        for ci in 0..<min(cells.count, numCols) {
-                            let w = (cells[ci] as NSString).size(withAttributes: [.font: f]).width
-                            colWidths[ci] = max(colWidths[ci], w)
-                        }
-                    }
-                    // Add horizontal padding to each column (space after cell text).
-                    for ci in 0..<numCols {
-                        colWidths[ci] += 2 * cellHPad
-                    }
-
-                    // Column-border X offsets (between columns) and total width.
-                    // Each border is drawn cellHPad before the column boundary
-                    // so the 2*cellHPad per column splits evenly: hPad of right
-                    // padding for the current cell, hPad of left padding for the next.
-                    var borderXOffsets: [CGFloat] = []
-                    var cumX: CGFloat = 0
-                    for ci in 0..<numCols {
-                        cumX += colWidths[ci]
-                        if ci < numCols - 1 { borderXOffsets.append(cumX - cellHPad) }
-                    }
-                    let totalWidth = cumX
-
-                    // --- Style each row ---
-                    var lineOffset = span.fullRange.location
-                    for (i, line) in lines.enumerated() {
-                        let lineLen = (line as NSString).length
-                        let lineRange = NSRange(location: lineOffset, length: lineLen)
-                        guard lineRange.upperBound <= result.length else { break }
-
-                        let rowFont: NSFont = (i == 0) ? boldFont : bodyFont
-
-                        // Row geometry via the paragraph style; the borders are
-                        // drawn by a .tableRow BlockDecoration. Vertical padding
-                        // becomes paragraph spacing (row gap = trailing + leading
-                        // spacing = 2*cellVPad, same as the old block padding).
-                        let ps = NSMutableParagraphStyle()
-                        ps.lineSpacing = 0
-                        ps.firstLineHeadIndent = cellHPad
-                        ps.headIndent = cellHPad
-                        if i == 1 {
-                            // Separator row: its text is hidden; force a thin
-                            // strip and draw the horizontal rule through it.
-                            ps.minimumLineHeight = 4
-                            ps.maximumLineHeight = 4
-                            ps.paragraphSpacingBefore = 0
-                            ps.paragraphSpacing = 0
-                        } else {
-                            ps.paragraphSpacingBefore = cellVPad + ((i == 0)
-                                ? bodyParagraphStyle.paragraphSpacingBefore : 0)
-                            ps.paragraphSpacing = cellVPad
-                        }
-                        result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
-                        result.addAttribute(
-                            .blockDecoration,
-                            value: BlockDecoration(.tableRow(columnXOffsets: borderXOffsets,
-                                                             width: totalWidth,
-                                                             leftInset: cellHPad,
-                                                             separator: i == 1)),
-                            range: lineRange)
-
-                        if i == 0 {
-                            result.addAttribute(.font, value: boldFont, range: lineRange)
-                        }
-
-                        if i == 1 {
-                            // Separator row: hide all text
-                            result.addAttribute(.font, value: hiddenFont, range: lineRange)
-                            result.addAttribute(.foregroundColor, value: NSColor.clear, range: lineRange)
-                        }
-
-                        // Hide all pipes (zero-width + clear)
-                        let lineNS = line as NSString
-                        for ci in 0..<lineNS.length {
-                            if lineNS.character(at: ci) == 0x7C {
-                                let pipeRange = NSRange(location: lineOffset + ci, length: 1)
-                                result.addAttribute(.font, value: hiddenFont, range: pipeRange)
-                                result.addAttribute(.foregroundColor, value: NSColor.clear, range: pipeRange)
-                            }
-                        }
-
-                        // Kern-pad each cell to its column width (skip separator)
-                        if i != 1 {
-                            let ranges = cellRanges(in: lineNS)
-                            for ci in 0..<min(ranges.count, numCols) {
-                                let cr = ranges[ci]
-                                let cellText = lineNS.substring(with: NSRange(location: cr.start, length: cr.end - cr.start))
-                                let cellWidth = (cellText as NSString).size(withAttributes: [.font: rowFont]).width
-                                let padding = colWidths[ci] - cellWidth
-                                if padding > 0.5 {
-                                    let kernLoc = lineOffset + cr.end - 1
-                                    result.addAttribute(.kern, value: padding, range: NSRange(location: kernLoc, length: 1))
-                                }
-                            }
-                        }
-
-                        lineOffset += lineLen + 1
-                    }
-                }
+                styleTableSpan(result, span: span, cursorInToken: cursorInToken)
 
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }
