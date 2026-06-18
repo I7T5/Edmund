@@ -24,6 +24,17 @@ cp ".build/release/${EXECUTABLE}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
 cp Info.plist "${BUNDLE}/Contents/"
 cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
 
+# SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
+# per-target bundle next to the binary. SwiftMath's generated Bundle.module
+# accessor looks for it at Bundle.main.bundleURL — i.e. the .app root — and only
+# otherwise at a hardcoded absolute .build path that doesn't exist once the app is
+# installed. Copy the bundle into the .app root so it's self-contained; without
+# this the app crashes the moment it renders any LaTeX.
+echo "Copying SwiftPM resource bundles..."
+for bundle in .build/release/*.bundle; do
+    [ -e "$bundle" ] && cp -R "$bundle" "${BUNDLE}/"
+done
+
 # Compile the asset catalog so the app's AccentColor (our brown) is available.
 # macOS uses it only when the user's system accent is "Multicolor"; a specific
 # system accent still wins, which is the behavior we want.

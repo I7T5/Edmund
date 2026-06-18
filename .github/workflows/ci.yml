@@ -32,8 +32,11 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .build
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+          # v2: the repo was renamed md -> Edmund, which changed the checkout
+          # path and invalidated absolute paths baked into the cached module
+          # cache. Bump this token to discard any pre-rename .build cache.
+          key: spm-v2-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-v2-${{ runner.os }}-
 
       - name: Test
         run: swift test
