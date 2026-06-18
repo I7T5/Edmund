@@ -2,24 +2,28 @@
 import PackageDescription
 
 let package = Package(
-    name: "md",
-    platforms: [.macOS(.v13)],
+    name: "Edmund",
+    platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.5.0"),
         .package(url: "https://github.com/mgriebling/SwiftMath.git", from: "1.7.0"),
     ],
     targets: [
         .target(
-            name: "MarkdownEditorCore",
+            name: "EdmundCore",
             dependencies: [
                 .product(name: "Markdown", package: "swift-markdown"),
                 .product(name: "SwiftMath", package: "SwiftMath"),
             ]),
+        // The user-facing app is "Edmund" (CFBundleName); the executable target —
+        // and so the Mach-O binary at Edmund.app/Contents/MacOS/edmd — is "edmd",
+        // an expansion of "Editor for Markdown". A quiet backronym for anyone who
+        // peeks inside the bundle or runs `swift run edmd`.
         .executableTarget(
-            name: "md",
-            dependencies: ["MarkdownEditorCore"]),
+            name: "edmd",
+            dependencies: ["EdmundCore"]),
         .testTarget(
-            name: "MarkdownEditorTests",
-            dependencies: ["MarkdownEditorCore"]),
+            name: "EdmundTests",
+            dependencies: ["EdmundCore"]),
     ]
 )
