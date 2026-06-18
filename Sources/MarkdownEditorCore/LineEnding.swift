@@ -35,6 +35,16 @@ public enum LineEnding: String, Sendable {
         return .lf
     }
 
+    /// Whether `text` mixes more than one line-ending style (e.g. some CRLF and
+    /// some LF) — the case the "inconsistent line endings" warning flags.
+    public static func isInconsistent(in text: String) -> Bool {
+        let hasCRLF = text.contains("\r\n")
+        let withoutCRLF = text.replacingOccurrences(of: "\r\n", with: "")
+        let hasCR = withoutCRLF.contains("\r")
+        let hasLF = withoutCRLF.contains("\n")
+        return [hasCRLF, hasCR, hasLF].filter { $0 }.count > 1
+    }
+
     /// Converts every line ending in `text` to LF (`\n`).
     public static func normalize(_ text: String) -> String {
         text.replacingOccurrences(of: "\r\n", with: "\n")

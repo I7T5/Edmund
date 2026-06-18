@@ -198,8 +198,30 @@ class Document: NSDocument, HeadingNavigable {
         if let content = pendingContent {
             editor?.loadContent(content)
             pendingContent = nil
+            warnIfInconsistentLineEndings(in: content)
         }
         updateStatusBar()
+    }
+
+    /// Warn (once, suppressibly) when an opened file mixed line-ending styles.
+    /// The buffer has already been normalized to a single style for editing.
+    private func warnIfInconsistentLineEndings(in content: String) {
+        guard LineEnding.isInconsistent(in: content),
+              !AppSettings.suppressInconsistentLineEndingWarning,
+              let window = windowControllers.first?.window else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Inconsistent Line Endings"
+        alert.informativeText = "This document mixes different line endings. "
+            + "It will be saved using \(editor?.originalLineEnding.displayName ?? "LF") throughout."
+        alert.addButton(withTitle: "OK")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Do not warn about inconsistent line endings"
+        alert.beginSheetModal(for: window) { _ in
+            if alert.suppressionButton?.state == .on {
+                AppSettings.suppressInconsistentLineEndingWarning = true
+            }
+        }
     }
 
     /// Cross-file link following: scroll this document's editor to a heading
