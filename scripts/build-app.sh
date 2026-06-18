@@ -1,14 +1,16 @@
 #!/bin/bash
-# Build md.app — a standalone macOS application bundle.
+# Build Edmund.app — a standalone macOS application bundle.
 # Usage: ./scripts/build-app.sh
-# Output: build/md.app (ready to drag into /Applications)
+# Output: build/Edmund.app (ready to drag into /Applications)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_NAME="md"
+APP_NAME="Edmund"
 BUNDLE="build/${APP_NAME}.app"
-EXECUTABLE="md"
+# The executable target is "edmd" (see Package.swift); the binary keeps that name
+# inside the bundle even though the app presents as "Edmund".
+EXECUTABLE="edmd"
 
 echo "Building release binary..."
 swift build -c release 2>&1 | tail -3
