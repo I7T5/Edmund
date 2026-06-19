@@ -167,7 +167,7 @@ extension EditorTextView {
     }
 
     /// Maps a block's raw NSRange to an `NSTextRange` for layout invalidation.
-    private func blockTextRange(_ nsRange: NSRange, _ tlm: NSTextLayoutManager) -> NSTextRange? {
+    func blockTextRange(_ nsRange: NSRange, _ tlm: NSTextLayoutManager) -> NSTextRange? {
         guard let start = tlm.location(tlm.documentRange.location, offsetBy: nsRange.location),
               let end = tlm.location(start, offsetBy: nsRange.length) else { return nil }
         return NSTextRange(location: start, end: end)
