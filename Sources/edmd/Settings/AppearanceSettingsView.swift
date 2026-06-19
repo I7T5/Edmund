@@ -26,14 +26,14 @@ struct AppearanceSettingsView: View {
             }
 
             GridRow {
-                Text("Content width:")
+                Text("Max content width:")
                     .gridColumnAlignment(.trailing)
                 HStack(spacing: 8) {
                     Slider(value: $contentWidth, in: 0...1)
                         .frame(width: 200)
                     Text("\(Int((contentWidth * 100).rounded()))%")
                         .monospacedDigit()
-                        .frame(width: 36, alignment: .trailing)
+                        .frame(width: 48, alignment: .trailing)
                 }
                 .onChange(of: contentWidth) { applyContentWidthToOpenDocuments() }
             }
