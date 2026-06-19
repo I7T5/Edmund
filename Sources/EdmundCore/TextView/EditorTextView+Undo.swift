@@ -58,7 +58,34 @@ extension EditorTextView {
         rawSource = snapshot.rawSource
         rebuildListIndentState()
         blocks = BlockParser.parse(rawSource, previous: blocks)
-        recompose(cursorInRaw: snapshot.cursorInRaw)
+
+        // Drive the viewport deliberately so undo/redo doesn't lurch.
+        if typewriterModeEnabled {
+            // Typewriter: the caret is always centered, so re-center on it.
+            recompose(cursorInRaw: snapshot.cursorInRaw)
+            centerViewportOnCaret()
+        } else if let scrollView = enclosingScrollView {
+            // Remember exactly where the viewport was, recompose, then: if the
+            // restored caret (the change being undone) is already on screen,
+            // hold the viewport perfectly still — no measured-delta nudge, so no
+            // residual jump. Only when the edit is off-screen do we scroll, and
+            // then we put the caret at the exact vertical center.
+            let savedOrigin = scrollView.contentView.bounds.origin
+            recompose(cursorInRaw: snapshot.cursorInRaw)
+            // Lay out the caret's real geometry before deciding visible-vs-center,
+            // otherwise an off-screen caret's estimated position can look "visible"
+            // and the viewport wrongly holds instead of centering.
+            ensureCaretRegionLaidOut()
+            if caretIsVisible(forViewportOrigin: savedOrigin) {
+                scrollView.contentView.scroll(to: savedOrigin)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            } else {
+                centerViewportOnCaret()
+            }
+        } else {
+            recompose(cursorInRaw: snapshot.cursorInRaw)
+        }
+
         isUndoRedoing = false
         lastEditType = .other
         lastEditBlockIndex = nil

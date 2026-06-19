@@ -43,6 +43,14 @@ extension EditorTextView {
         let nsString = ts.string as NSString
         let cursor = selectedRange().location
         var remaining = false
+        // Blocks restyled this slice need their TextKit 2 layout invalidated
+        // afterward: restyling is attribute-only, and TextKit 2 doesn't
+        // re-measure a fragment's geometry (height, first-line indent) for an
+        // attribute-only change — so a deferred block whose styled height differs
+        // from its base/estimated height would otherwise keep a stale fragment,
+        // leaving an empty band on screen. `recomposeDirty` invalidates its
+        // synchronously-styled blocks for the same reason.
+        var restyled = IndexSet()
         // Explicit pool: styling churns through transient images/attributed
         // strings, and a caller may run many slices without a run-loop turn.
         autoreleasepool {
@@ -61,6 +69,7 @@ extension EditorTextView {
                         ? max(0, cursor - blocks[idx].range.location) : nil
                     restyleBlock(idx, cursorInBlock: cursorInBlock)
                     blocks[idx].isStyled = true
+                    restyled.insert(idx)
                     let sep = blocks[idx].range.upperBound
                     if sep < nsString.length && nsString.character(at: sep) == 0x0A {
                         ts.setAttributes(baseAttributes, range: NSRange(location: sep, length: 1))
@@ -76,6 +85,14 @@ extension EditorTextView {
             }
             drainCursor = idx
             ts.endEditing()
+        }
+
+        if let tlm = textLayoutManager {
+            for idx in restyled where idx < blocks.count {
+                if let range = blockTextRange(blocks[idx].range, tlm) {
+                    tlm.invalidateLayout(for: range)
+                }
+            }
         }
         isUpdating = false
 

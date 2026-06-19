@@ -56,11 +56,26 @@ extension EditorTextView {
     }
 
     /// Scrolls the view so the cursor's line fragment is vertically centered
-    /// in the visible area.
+    /// in the visible area — but only in typewriter mode.
     func scrollCursorToCenter() {
         guard typewriterModeEnabled else { return }
-        guard let scrollView = enclosingScrollView,
-              let lineRect = caretLineRect() else { return }
+        centerViewportOnCaret()
+    }
+
+    /// Scrolls the view so the caret's line fragment is vertically centered in
+    /// the visible area, regardless of typewriter mode. Used by typewriter
+    /// centering and by undo/redo when the restored edit is off-screen.
+    ///
+    /// The caret's geometry must be laid out for real first — a TextKit 2
+    /// estimate for an off-screen caret would center on the wrong place (or not
+    /// move at all). When the caret is too far from the viewport to lay out
+    /// cheaply, fall back to a plain reveal rather than risk a huge layout.
+    func centerViewportOnCaret() {
+        guard let scrollView = enclosingScrollView else { return }
+        guard ensureCaretRegionLaidOut() else {
+            scrollRangeToVisible(selectedRange()); return
+        }
+        guard let lineRect = caretLineRect() else { return }
         let cursorY = lineRect.midY + textContainerOrigin.y
 
         let visibleHeight = scrollView.contentView.bounds.height
@@ -70,6 +85,49 @@ extension EditorTextView {
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    /// Lays out the span between the current viewport and the caret so the
+    /// caret's line geometry is real rather than a TextKit 2 estimate. Returns
+    /// false when that span is too large to lay out cheaply (the caller should
+    /// fall back to a plain reveal) — this is the guard that keeps a deep caret
+    /// in a 1–2 MB document from triggering the process-killing full-document
+    /// layout that motivated the rest of this file.
+    @discardableResult
+    func ensureCaretRegionLaidOut() -> Bool {
+        guard let tlm = textLayoutManager else { return false }
+        let caretOffset = selectedRange().location
+        tlm.textViewportLayoutController.layoutViewport()
+
+        let lo: Int, hi: Int
+        if let vp = tlm.textViewportLayoutController.viewportRange {
+            let vpStart = tlm.offset(from: tlm.documentRange.location, to: vp.location)
+            let vpEnd = tlm.offset(from: tlm.documentRange.location, to: vp.endLocation)
+            lo = min(vpStart, caretOffset); hi = max(vpEnd, caretOffset)
+        } else {
+            // No viewport yet (first layout): lay out from the document start.
+            lo = 0; hi = caretOffset
+        }
+
+        let cap = 60_000   // ~a few screenfuls; bounds the layout cost
+        guard hi - lo <= cap,
+              let a = tlm.location(tlm.documentRange.location, offsetBy: max(0, lo)),
+              let b = tlm.location(tlm.documentRange.location, offsetBy: hi),
+              let range = NSTextRange(location: a, end: b) else { return false }
+        tlm.ensureLayout(for: range)
+        return true
+    }
+
+    /// Whether the caret's line fragment lies within the viewport defined by
+    /// `origin` (a clip-view bounds origin), in view coordinates.
+    func caretIsVisible(forViewportOrigin origin: CGPoint) -> Bool {
+        guard let scrollView = enclosingScrollView,
+              let lineRect = caretLineRect() else { return false }
+        let visible = CGRect(origin: origin, size: scrollView.contentView.bounds.size)
+        let caretInView = CGRect(x: visible.minX,
+                                 y: lineRect.minY + textContainerOrigin.y,
+                                 width: 1, height: lineRect.height)
+        return visible.intersects(caretInView)
     }
 
     /// The caret line's rect in text-container coordinates (TextKit 2: lays
