@@ -90,14 +90,43 @@ struct CalloutRenderingTests {
         #expect(boxDecoration(blockDecoration(at: bodyIdx, in: styled)) != nil)
     }
 
-    @Test("Custom title text is hidden (drawn in the header image)")
-    @MainActor func customTitleHidden() {
+    @Test("Custom title renders as live bold, tinted text (so it can wrap)")
+    @MainActor func customTitleVisible() {
         let editor = makeEditor()
         let styled = editor.styleBlock("> [!note] My Title\n> body")
-        // "My Title" (after the marker) is part of the hidden header.
-        let r = (styled.string as NSString).range(of: "My Title")
+        let s = styled.string as NSString
+        let r = s.range(of: "My Title")
         #expect(r.location != NSNotFound)
-        #expect(isHidden(at: r.location, in: styled))
+        // No longer baked into a fixed-width image — it's real text that wraps.
+        #expect(!isHidden(at: r.location, in: styled))
+        let f = styled.attribute(.font, at: r.location, effectiveRange: nil) as? NSFont
+        #expect(f?.fontDescriptor.symbolicTraits.contains(.bold) == true)
+        let color = styled.attribute(.foregroundColor, at: r.location, effectiveRange: nil) as? NSColor
+        #expect(color != nil && color != .clear && color != .textColor)
+        // The `[!note]` marker before the title is still hidden.
+        let marker = s.range(of: "[!note]")
+        #expect(isHidden(at: marker.location, in: styled))
+    }
+
+    @Test("A long custom title wraps to multiple lines instead of clipping")
+    @MainActor func longCustomTitleWraps() {
+        let editor = makeEditor()   // ~500pt container
+        let longTitle = "Does the title of callouts wrap around when the window "
+            + "is too small to fit it on a single line of text"
+        editor.loadContent("> [!question] \(longTitle)\n> body\n")
+        ensureFullLayout(editor)
+
+        let off = (editor.rawSource as NSString).range(of: "Does the title").location
+        #expect(off != NSNotFound)
+        guard let tlm = editor.textLayoutManager,
+              let loc = tlm.location(tlm.documentRange.location, offsetBy: off),
+              let frag = tlm.textLayoutFragment(for: loc) else {
+            Issue.record("no header fragment"); return
+        }
+        // Real wrapping text → the header paragraph lays out on 2+ line fragments.
+        // (The old fixed-width title image was a single non-wrapping line.)
+        #expect(frag.textLineFragments.count >= 2,
+                "expected the title to wrap, got \(frag.textLineFragments.count) line(s)")
     }
 
     @Test("Style overrides change the bar color and border edges")
