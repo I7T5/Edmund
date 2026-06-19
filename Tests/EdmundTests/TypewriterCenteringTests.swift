@@ -34,6 +34,12 @@ struct TypewriterCenteringTests {
     private func offFromCenter(_ editor: EditorTextView, _ scroll: NSScrollView,
                                caretOffset off: Int) -> CGFloat {
         editor.setSelectedRange(NSRange(location: off, length: 0))
+        // Center, settle the real (non-estimated) heights, then center again on
+        // that settled layout — so the measurement isn't comparing two different
+        // height estimates. (In the app the layout is already stable; the test
+        // forces convergence because ensureFullLayout / inset changes here churn it.)
+        editor.scrollCursorToCenter()
+        ensureFullLayout(editor)
         editor.scrollCursorToCenter()
         editor.layoutSubtreeIfNeeded()
         guard let lr = editor.lineRect(forCharacterAt: off) else { return .greatestFiniteMagnitude }

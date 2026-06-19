@@ -9,6 +9,7 @@ import EdmundCore
 struct AppearanceSettingsView: View {
     @ObservedObject var fonts: FontSettings
     @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
+    @AppStorage(AppSettings.Key.contentWidthFraction) private var contentWidth = 0.6
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
@@ -22,6 +23,19 @@ struct AppearanceSettingsView: View {
                 .horizontalRadioGroupLayout()
                 .labelsHidden()
                 .onChange(of: appearanceMode) { AppSettings.applyAppearance() }
+            }
+
+            GridRow {
+                Text("Content width:")
+                    .gridColumnAlignment(.trailing)
+                HStack(spacing: 8) {
+                    Slider(value: $contentWidth, in: 0...1)
+                        .frame(width: 200)
+                    Text("\(Int((contentWidth * 100).rounded()))%")
+                        .monospacedDigit()
+                        .frame(width: 36, alignment: .trailing)
+                }
+                .onChange(of: contentWidth) { applyContentWidthToOpenDocuments() }
             }
 
             GridRow {
@@ -78,6 +92,14 @@ struct AppearanceSettingsView: View {
             }
         }
         .settingsPanePadding()
+    }
+
+    /// Pushes a content-width change to every open editor live (mirrors the
+    /// font/line-height broadcast in FontSettings).
+    private func applyContentWidthToOpenDocuments() {
+        for case let document as Document in NSDocumentController.shared.documents {
+            document.editor?.applyContentWidth(CGFloat(contentWidth))
+        }
     }
 
     @ViewBuilder

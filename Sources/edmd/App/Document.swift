@@ -101,6 +101,10 @@ class Document: NSDocument, HeadingNavigable {
         editor.isHorizontallyResizable = false
         editor.autoresizingMask = [.width]
         editor.textContainerInset = NSSize(width: 24, height: 18)
+        // Centered reading column (see EditorTextView+ContentWidth); applies the
+        // persisted fraction now and recomputes the inset on every resize.
+        editor.contentWidthFraction = CGFloat(AppSettings.contentWidthFraction)
+        editor.updateContentInset()
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         editor.document = self
 

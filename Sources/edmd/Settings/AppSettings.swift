@@ -53,7 +53,21 @@ enum AppSettings {
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
         static let conflictResolution = "settings.general.conflictResolution"
         static let appearanceMode = "settings.appearance.mode"
+        static let contentWidthFraction = "settings.appearance.contentWidthFraction"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
+    }
+
+    /// Text-column width as a fraction of the available width (`0...1`). `1`
+    /// fills the width; lower narrows toward a mobile-ish minimum, centered.
+    /// Defaults below 1 so full-screen windows get readable margins out of the box.
+    static var contentWidthFraction: Double {
+        get {
+            guard UserDefaults.standard.object(forKey: Key.contentWidthFraction) != nil else {
+                return 0.6
+            }
+            return UserDefaults.standard.double(forKey: Key.contentWidthFraction)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Key.contentWidthFraction) }
     }
 
     static var reopenWindows: Bool {

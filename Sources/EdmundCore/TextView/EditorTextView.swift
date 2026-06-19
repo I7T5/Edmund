@@ -133,6 +133,19 @@ public class EditorTextView: NSTextView {
     /// scrolling logic lives in EditorTextView+TypewriterScroll.
     public var typewriterModeEnabled: Bool = true
 
+    /// Fraction of the available width the text column occupies, in `0...1`.
+    /// `1` fills the width (the base inset only — today's look); lower values
+    /// give a narrower, centered column with symmetric margins that grow on
+    /// wide/full-screen windows, down to a mobile-ish minimum. Applied as a
+    /// symmetric `textContainerInset.width`, recomputed on resize. See
+    /// EditorTextView+ContentWidth.
+    public var contentWidthFraction: CGFloat = 1.0 {
+        didSet {
+            guard oldValue != contentWidthFraction else { return }
+            updateContentInset()
+        }
+    }
+
     // MARK: - Derived Visual Properties
 
     var accentColor: NSColor { theme.accentColor }
