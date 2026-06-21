@@ -148,7 +148,12 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Derived Visual Properties
 
-    var accentColor: NSColor { theme.accentColor }
+    /// The app accent: the macOS system accent (`controlAccentColor`), which
+    /// resolves to the app's AccentColor asset — our brown — when the bundle
+    /// ships the compiled asset catalog, and to the user's System Settings accent
+    /// otherwise. Drives links, the checked-checkbox icon, the insertion point,
+    /// and the selection tint so the editor matches the native AppKit controls.
+    var accentColor: NSColor { .controlAccentColor }
 
     /// Foreground color for all body text. Uses the system text color so it
     /// flips automatically between near-black (light) and near-white (dark).
@@ -221,7 +226,7 @@ public class EditorTextView: NSTextView {
 
         textAntialias = theme.antialias
         backgroundColor = editorBackgroundColor
-        insertionPointColor = foregroundColor
+        insertionPointColor = accentColor
         selectedTextAttributes = [
             .backgroundColor: accentColor.withAlphaComponent(0.3),
             .foregroundColor: foregroundColor,
@@ -281,7 +286,7 @@ public class EditorTextView: NSTextView {
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         backgroundColor = editorBackgroundColor
-        insertionPointColor = foregroundColor
+        insertionPointColor = accentColor
         selectedTextAttributes = [
             .backgroundColor: accentColor.withAlphaComponent(0.3),
             .foregroundColor: foregroundColor,
