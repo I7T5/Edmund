@@ -49,9 +49,9 @@ extension EditorTextView {
     private func checkboxOverlay(checked: Bool) -> FragmentOverlay {
         let fontSize = bodyFont.pointSize
         let symbolName = checked ? "checkmark.circle.fill" : "circle"
-        // Checked: white checkmark knocked out of a yellow circle (two palette
-        // layers — checkmark first, circle second). Unchecked: dim outline.
-        let palette: [NSColor] = checked ? [.white, .systemYellow] : [.tertiaryLabelColor]
+        // Checked: white checkmark knocked out of an accent-tinted circle (two
+        // palette layers — checkmark first, circle second). Unchecked: dim outline.
+        let palette: [NSColor] = checked ? [.white, accentColor] : [.tertiaryLabelColor]
         let config = NSImage.SymbolConfiguration(pointSize: fontSize, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: palette))
 
