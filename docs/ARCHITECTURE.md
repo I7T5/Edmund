@@ -1,0 +1,238 @@
+# Edmund — architecture & agent onboarding
+
+A native macOS Markdown editor with live preview (AppKit + TextKit 2, SPM,
+macOS 14+). This doc gets an AI agent productive fast: read it before any
+non-trivial change. **Keep it updated** — when you learn something non-obvious
+or change an invariant, edit this file in the same PR.
+
+---
+
+## 1. Build / run / test
+
+```bash
+swift build                 # debug build of both targets
+swift test                  # full suite (≈630+ tests, ~10s)
+swift test --filter Callout # one suite
+./scripts/build-app.sh      # builds build/Edmund.app (release + bundles + icon + codesign)
+```
+
+Run the app for visual checks (see §8 for the gotchas):
+```bash
+pkill -x edmd; build/Edmund.app/Contents/MacOS/edmd /path/to/file.md &
+```
+
+Two SPM targets (see `Package.swift`):
+- **`EdmundCore`** — the library: all editor logic, parsing, rendering, the
+  `EditorTextView`. Has the tests. **Most work happens here.**
+- **`edmd`** — the executable: `NSDocument` app shell, Settings (SwiftUI),
+  menus, window setup. Depends on EdmundCore.
+
+Dependencies: `swift-markdown` (CommonMark/GFM parsing) and `SwiftMath` (LaTeX).
+
+---
+
+## 2. The two non-negotiable invariants
+
+Break either and the whole editor misbehaves in subtle ways.
+
+1. **Text storage always equals `rawSource`.** Rendering is *attribute-only* —
+   we never insert/delete display characters. Delimiters (`**`, `` ` ``,
+   `[!note]`, etc.) are *hidden* (near-zero font + clear color), never stripped.
+   Consequences: no `NSTextAttachment` (TextKit 2 only honors them on U+FFFC,
+   which `rawSource` never contains — so images/icons are drawn as overlays
+   instead, see §5); display offset == raw offset (identity mapping).
+
+2. **TextKit 2 only.** Never touch `NSTextView.layoutManager` and never store
+   `NSTextBlock`/`NSTextTable` attributes — either silently reverts the view to
+   TextKit 1 for good. A DEBUG tripwire asserts if TK1 is engaged. Layout is
+   viewport-based (only on-screen content is laid out), which is what makes big
+   documents fast.
+
+---
+
+## 3. Rendering pipeline (the core loop)
+
+```
+rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──▶ attributed runs
+                                          │
+                                          ├─ SyntaxHighlighter (swift-markdown
+                                          │   Walker + custom parsers for
+                                          │   callouts, ==highlight==, wikilinks,
+                                          │   comments, footnotes, math)
+                                          └─ writes attributes into textStorage
+```
+
+- **`BlockParser`** (`Parsing/`) splits `rawSource` into `Block`s (one per
+  logical block: paragraph, heading, list run, quote/callout run, code fence,
+  table…). `Block.kind` is a `BlockKind` enum (e.g. `.quoteRun(isCallout:)`).
+- **`SyntaxHighlighter`** + `+Walker`/`+WalkerInline`/`+CustomParsers` produce
+  styling spans. The custom parsers handle the non-CommonMark syntax.
+- **`styleBlock(_:cursorPosition:)`** (`Rendering/EditorTextView+Rendering.swift`)
+  renders ONE block to an attributed string. Each feature has a `Rendering/`
+  extension: Callout, Code, Image, List, ListMarker, Math, Table, WikiLinks.
+- **Recompose** (`TextView/EditorTextView+Composition.swift`) drives styling:
+  - `recompose(cursorInRaw:)` — full: replaces storage with rawSource, restyles
+    all blocks (load, undo, indent).
+  - `recomposeDirty(_:cursorInRaw:)` — restyles a specific set of block indices
+    in place (the workhorse; attribute-only).
+  - `recomposeIncremental(...)` — restyles just the block(s) the cursor moved
+    between (most cursor moves).
+  - **Active block**: the block under the caret renders its *raw* markdown
+    (delimiters visible/editable); all others render styled. This is the "live
+    preview reveals the active line" behavior.
+
+- **Lazy styling** (`TextView/EditorTextView+LazyStyling.swift`): a large dirty
+  set styles only the viewport synchronously; the rest is finished by the
+  **idle drain** (time-budgeted main-thread slices) and **scroll promotion**
+  (style blocks as they enter the viewport). Keeps large docs responsive.
+
+---
+
+## 4. Edit flow & undo
+
+- Edits go through NSTextView's normal path: `shouldChangeText` records a
+  coalesced undo snapshot → NSTextView mutates storage → `didChangeText` syncs
+  `rawSource` and restyles the edited block(s) (`+EditFlow`, `+Composition`).
+- **Incremental parsing**: edits capture a pending edit on `EditorTextStorage`
+  and reparse a window, not the whole doc.
+- **Undo/redo** is custom: stacks of `rawSource` snapshots (`+Undo.swift`),
+  bypassing NSTextView's built-in undo. Restoring a snapshot manages the
+  viewport deliberately (hold if on-screen, else center on the caret).
+- **Cursor tracking** (`+SelectionTracking`): moving between blocks restyles
+  both; moving within a block updates which token's delimiters are revealed.
+
+---
+
+## 5. TextKit 2 specifics (how visuals are drawn)
+
+- **`DecoratedTextLayoutFragment`** (custom `NSTextLayoutFragment`, in
+  `+TextKit2.swift`) draws two kinds of custom attributes behind/over the text:
+  - **`.blockDecoration`** (paragraph-level): callout boxes, quote bars, table
+    borders, thematic-break rules, code-block backgrounds. Fragments tile
+    vertically, so a multi-line run renders as one continuous box/bar. A box's
+    `bottomPad` grows the *last* fragment's frame (TextKit 2 omits trailing
+    paragraph spacing from the fragment, so padding done that way would be dead
+    space).
+  - **`.fragmentOverlay`** (character-level): an image drawn at a character's
+    laid-out position — rendered math, list bullets/checkboxes, the callout
+    header icon+name image. The anchor glyph is hidden and `.kern` reserves the
+    image's advance width (the same trick the table renderer uses).
+- **Hiding** text = `hiddenFont` (≈0.01pt) + clear `foregroundColor`. This is
+  how delimiters and synthesized-but-in-source markers vanish without changing
+  the string.
+- **Overlays only work on single-line fragments.** Drawing an image on a
+  *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it to
+  one line. This is why a wrapping callout *custom title* has no icon — see
+  `docs/callout-title-wrap-investigation.md` for the full saga.
+
+---
+
+## 6. Feature map (where to look)
+
+| Area | Files |
+| --- | --- |
+| Editor core / state | `TextView/EditorTextView.swift` (+ many extensions) |
+| Parsing | `Parsing/BlockParser.swift`, `SyntaxHighlighter*.swift`, `CodeHighlighter.swift` |
+| Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift` |
+| Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
+| Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift` |
+| Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
+| App shell | `edmd/App/{main,Document,DocumentController}.swift` |
+| Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General views) |
+| Status bar | `edmd/Views/StatusBarView.swift` |
+| Build/packaging | `scripts/build-app.sh`, `Package.swift`, `Info.plist`, `Resources/` |
+
+Notable subsystems: **typewriter scroll** (keeps caret vertically centered;
+must lay out the viewport↔caret span before measuring or it reads stale TK2
+height estimates), **content width** (`+ContentWidth.swift`: a settings slider
+sets a symmetric `textContainerInset.width` for a centered reading column,
+recomputed on resize).
+
+---
+
+## 7. Settings & persistence
+
+- `AppSettings` (`edmd/Settings`) defines UserDefaults keys + typed accessors.
+  SwiftUI panes use `@AppStorage`. Live changes broadcast to every open
+  `Document.editor` (see the font/line-height/content-width `applyTo…` helpers).
+- Theme/appearance/fonts flow into `EditorTheme` → the editor's derived
+  `bodyFont`, colors, paragraph styles.
+
+---
+
+## 8. Quirks & gotchas (will bite you)
+
+- **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app` root
+  (it does). Without it, the app **crashes the instant it renders any LaTeX**.
+- **Stale release builds**: `swift build -c release` / `build-app.sh` sometimes
+  reuses stale object files (you'll run an old binary and be baffled). If a
+  visual change "doesn't take," `rm -rf .build` and rebuild. `shasum` the binary
+  to confirm it changed.
+- **`open Edmund.app` foregrounds a *running* instance instead of relaunching.**
+  Always `pkill -x edmd` first, or launch the binary directly
+  (`build/Edmund.app/Contents/MacOS/edmd file.md &`).
+- **Screencapture for visual verification**: capture a specific window by id
+  (reliable even if not frontmost) via Quartz:
+  `CGWindowListCopyWindowInfo` → find the window by `kCGWindowName` → `screencapture -x -o -l<id> out.png`.
+  The desktop wallpaper defeats brightness-based auto-cropping; crop by the
+  detected window bounds instead. Window-server state can glitch (tiny windows,
+  state restoration) after many rapid launch/kill cycles — `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState` and relaunch.
+- **Width not known at first styling**: on load the view may be unsized, so
+  anything that bakes the content width (e.g. callout header images) renders at
+  a fallback width until a width-settled re-render. Prefer real wrapping text
+  over width-baked images where possible.
+- **Attribute-only changes don't re-measure geometry in TK2**: after restyling a
+  block whose height/indent changed, you must `invalidateLayout(for:)` its range
+  or the fragment keeps a stale frame (empty bands / clipped lines). `recompose
+  Dirty` and the idle drain already do this; new paths must too.
+
+---
+
+## 9. Known issues / lurking problems
+
+- **Callout custom title can't show the type icon** (TextKit 2 multi-line +
+  image wedge). Shipped workaround: custom titles wrap as real text *without*
+  an icon; default callouts keep theirs. Full investigation + a preserved
+  (non-working) image-based alternative on branch `fix/callout-title-image`:
+  `docs/callout-title-wrap-investigation.md`.
+- *(Add new ones here as you find them — with a one-line repro and a pointer to
+  any deeper write-up in `docs/`.)*
+
+## 10. Still to address
+
+- Revisit the callout icon limitation if a newer macOS/TextKit 2 fixes the
+  reentrancy (reproduce first; would require bumping the deployment target off
+  macOS 14).
+- *(Track larger roadmap items in README/ROADMAP; track code-debt here.)*
+
+---
+
+## 11. Quick start for an agent
+
+1. Skim README (what/why), then this doc (how).
+2. `swift build && swift test` — confirm green before changing anything.
+3. Find the feature's `Rendering/` or `TextView/` extension via §6.
+4. Make the change; add/adjust tests in `Tests/EdmundTests` (helpers:
+   `makeEditor()`, `ensureFullLayout()`, `styleBlock()`).
+5. Verify per §12 before committing.
+
+---
+
+## 12. Working agreements (pre-commit checklist)
+
+Do these **before every commit** (this is the workflow that worked; deviate
+only with reason):
+
+1. **`swift test` is green** (all pass). Add tests for new behavior / bug repros.
+2. **Visual changes are eyeballed** — build the app and `screencapture` the
+   result (§8), or render offscreen to a PNG. Don't trust headless layout alone
+   for anything that draws.
+3. **Small, logical commits** — one feature/fix each. End commit messages with
+   the `Co-Authored-By` trailer.
+4. **Don't auto-commit, push, PR, or merge unless asked.** Branch off `main`
+   (don't commit straight to it); each fix on its own branch.
+5. Touch only what the task needs; match surrounding style; don't refactor
+   unrelated code.
+
+If you (the agent) improve this workflow or discover a better verification
+trick, update this section.
