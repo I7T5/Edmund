@@ -63,6 +63,11 @@ public class EditorTextView: NSTextView {
     var pendingRecompose = false
     /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
     var progressiveStylingScheduled = false
+    /// WIP (callout image titles): width the header images last rendered at, plus
+    /// a coalescing flag — baked images re-render when the width changes (see
+    /// scheduleCalloutWidthRestyle).
+    var lastCalloutRenderWidth: CGFloat = 0
+    var calloutRestyleScheduled = false
     /// Coalesces scroll-driven promotion onto the next run-loop turn, off the
     /// scroll notification (see EditorTextView+LazyStyling).
     var pendingPromotion = false
@@ -398,6 +403,10 @@ public class EditorTextView: NSTextView {
         undoStack.removeAll()
         redoStack.removeAll()
         recompose(cursorInRaw: 0)
+        // WIP: callout header images render at a fallback width if the view isn't
+        // sized yet; re-render once the width settles (next run-loop turn).
+        lastCalloutRenderWidth = 0
+        scheduleCalloutWidthRestyle()
     }
 }
 

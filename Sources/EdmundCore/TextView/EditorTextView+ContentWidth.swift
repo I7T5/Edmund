@@ -37,6 +37,9 @@ extension EditorTextView {
         if abs(textContainerInset.width - target) > 0.5 {
             textContainerInset = NSSize(width: target, height: textContainerInset.height)
         }
+        // WIP: callout header titles are baked images sized to the box; re-render
+        // them when the usable width changes.
+        scheduleCalloutWidthRestyle()
     }
 
     /// Sets the column fraction and applies it immediately. Called from the

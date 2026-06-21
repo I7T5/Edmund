@@ -115,69 +115,27 @@ extension EditorTextView {
         let headerLineEnd = headerNL.location == NSNotFound
             ? span.fullRange.upperBound : headerNL.location
 
+        // WIP (image approach): hide the whole header and draw icon + title as
+        // ONE image, wrapping the title inside the image. Baking it keeps the
+        // header a single-line fragment, sidestepping the multi-line image wedge.
+        // Known issues (see docs/callout-title-wrap-investigation.md): the header
+        // fragment lays out ~2× the minimumLineHeight (title sits too low) and a
+        // width-timing race can show a one-line image until re-rendered.
         let header = info.headerRange
         let headerLine = NSRange(location: span.fullRange.location,
                                  length: headerLineEnd - span.fullRange.location)
         if header.length > 0, header.upperBound <= result.length {
-            if let titleRange = info.customTitleRange, titleRange.upperBound <= result.length {
-                // Custom title: hide only the `[!type]` marker (plus the leading
-                // space), keep the title as real bold + tinted text so it WRAPS
-                // inside the box. An icon overlay sits in the indent to its left.
-                let markerHide = NSRange(location: header.location,
-                                         length: titleRange.location - header.location)
-                if markerHide.length > 0 {
-                    result.addAttribute(.font, value: hiddenFont, range: markerHide)
-                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: markerHide)
-                }
-                let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                result.addAttribute(.font, value: titleFont, range: titleRange)
-                result.addAttribute(.foregroundColor, value: c.accent, range: titleRange)
-
-                if let (overlay, lead) = calloutIconOverlay(symbolName: info.style.symbolName,
-                                                            color: c.accent,
-                                                            iconNudge: info.style.iconBaselineNudge) {
-                    // Anchor the icon WITHOUT applyOverlay's kern: the icon is
-                    // drawn in the indent margin to the left (bounds.minX), so it
-                    // must not reserve inline advance — kern would push the title
-                    // text right and misalign it from the wrapped lines. The
-                    // anchor char is already hidden by `markerHide` above.
-                    result.addAttribute(.fragmentOverlay, value: overlay,
-                                        range: NSRange(location: header.location, length: 1))
-                    // Title starts past the icon; wrapped title lines align under
-                    // the title (hanging indent at the same lead) — never under
-                    // the icon, like a list item's wrapped lines. The title keeps
-                    // its normal (near-single) line height; the top breathing room
-                    // sits above the first line only, via paragraphSpacingBefore,
-                    // which the box covers.
-                    // The first line carries the width-preserved `> ` marker
-                    // before the (zero-width hidden) `[!type]`, so its title text
-                    // starts `quoteMarkerWidth` past firstLineHeadIndent. Wrapped
-                    // lines have no marker, so headIndent adds that width to align
-                    // them under the title — never under the icon.
-                    let ps = NSMutableParagraphStyle()
-                    ps.lineSpacing = bodyParagraphStyle.lineSpacing
-                    ps.firstLineHeadIndent = lead
-                    ps.headIndent = lead + quoteMarkerWidth
-                    ps.tailIndent = -10
-                    ps.paragraphSpacingBefore = calloutTopPad
-                    result.addAttribute(.paragraphStyle, value: ps, range: headerLine)
-                }
-            } else {
-                // Default title (synthesized type name, not in the source, and
-                // short enough never to wrap): hide the whole header and draw the
-                // icon + name as one compact overlay image.
-                result.addAttribute(.font, value: hiddenFont, range: header)
-                result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
-                if let overlay = calloutHeaderOverlay(symbolName: info.style.symbolName,
-                                                      title: info.title, color: c.accent,
-                                                      iconNudge: info.style.iconBaselineNudge) {
-                    applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
-                                 in: result)
-                    result.addAttribute(
-                        .paragraphStyle,
-                        value: calloutParagraphStyle(minimumLineHeight: overlay.bounds.height + calloutTopPad),
-                        range: headerLine)
-                }
+            result.addAttribute(.font, value: hiddenFont, range: header)
+            result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
+            if let overlay = calloutHeaderOverlay(symbolName: info.style.symbolName,
+                                                  title: info.title, color: c.accent,
+                                                  iconNudge: info.style.iconBaselineNudge) {
+                applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
+                             in: result)
+                result.addAttribute(
+                    .paragraphStyle,
+                    value: calloutParagraphStyle(minimumLineHeight: overlay.bounds.height + calloutTopPad),
+                    range: headerLine)
             }
         }
 
@@ -395,45 +353,36 @@ extension EditorTextView {
         return ps
     }
 
-    // MARK: Header image (icon + title)
-
-    /// An icon-only overlay for a custom-title callout, plus the head indent the
-    /// title text should sit at (just past the icon). The overlay is offset to
-    /// the LEFT of its anchor (the hidden marker, laid out at `lead`) so the icon
-    /// lands at the callout's left padding while the real title text wraps
-    /// beneath itself at `lead`. Returns `nil` if the symbol can't resolve.
-    private func calloutIconOverlay(symbolName: String, color: NSColor,
-                                    iconNudge: CGFloat) -> (overlay: FragmentOverlay, lead: CGFloat)? {
-        let pointSize = bodyFont.pointSize
-        let symConfig = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(symConfig) else { return nil }
-
-        let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-        let gap = pointSize * 0.3
-        let symW = symbol.size.width, symH = symbol.size.height
-        let contentHeight = ceil(max(symH, titleFont.ascender - titleFont.descender))
-
-        let image = NSImage(size: NSSize(width: symW, height: contentHeight), flipped: false) { _ in
-            // Center the icon on the title's cap height (matches the header image).
-            let baseline = abs(titleFont.descender)
-            let capCenter = baseline + titleFont.capHeight / 2
-            symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2 + iconNudge, width: symW, height: symH))
-            return true
+    /// WIP: re-renders callout header images at the current width when it
+    /// changes — the header title is baked into an image sized to the box, so a
+    /// width change needs a re-render. Coalesced/deferred. Called from
+    /// `updateContentInset` and after load.
+    func scheduleCalloutWidthRestyle() {
+        guard !calloutRestyleScheduled else { return }
+        calloutRestyleScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.calloutRestyleScheduled = false
+            let w = self.bounds.width
+            guard w > 0, abs(w - self.lastCalloutRenderWidth) > 0.5 else { return }
+            self.lastCalloutRenderWidth = w
+            var dirty = IndexSet()
+            for (i, b) in self.blocks.enumerated() {
+                if case .quoteRun(let isCallout) = b.kind, isCallout { dirty.insert(i) }
+            }
+            guard !dirty.isEmpty else { return }
+            self.recomposeDirty(dirty, cursorInRaw: self.selectedRange().location)
         }
-
-        let lead = 2 + symW + gap
-        let overlay = FragmentOverlay(image: image,
-                                      bounds: CGRect(x: -(symW + gap), y: -pointSize * 0.15,
-                                                     width: symW, height: contentHeight))
-        return (overlay, lead)
     }
 
+    // MARK: Header image (icon + title)
+
     /// Draws "icon  Title" into one image, tinted to the callout color, and
-    /// wraps it in a `FragmentOverlay`. Returns `nil` if the SF Symbol can't
-    /// be resolved. The top breathing room is NOT in the image — the caller
-    /// raises the header line's minimum line height instead.
+    /// wraps it in a `FragmentOverlay`. A long title WRAPS inside the image (sized
+    /// to the box width). Returns `nil` if the SF Symbol can't resolve. The top
+    /// breathing room is NOT in the image — the caller raises the header line's
+    /// minimum line height instead. (WIP — see the known issues in
+    /// docs/callout-title-wrap-investigation.md.)
     private func calloutHeaderOverlay(symbolName: String, title: String, color: NSColor,
                                       iconNudge: CGFloat) -> FragmentOverlay? {
         let pointSize = bodyFont.pointSize
@@ -445,21 +394,37 @@ extension EditorTextView {
         let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
         let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: color]
         let titleStr = NSAttributedString(string: title, attributes: titleAttrs)
-        let titleSize = titleStr.size()
 
         let gap = pointSize * 0.3
         let symW = symbol.size.width, symH = symbol.size.height
-        let contentHeight = ceil(max(symH, titleSize.height))
-        let width = ceil(symW + gap + titleSize.width)
 
-        let image = NSImage(size: NSSize(width: width, height: contentHeight), flipped: false) { _ in
-            let titleY = (contentHeight - titleSize.height) / 2
-            titleStr.draw(at: NSPoint(x: symW + gap, y: titleY))
-            // Center the icon on the title's cap height (its optical middle) rather
-            // than the full line box, so tall-glyph symbols don't sit high.
-            let baseline = titleY + abs(titleFont.descender)
-            let capCenter = baseline + titleFont.capHeight / 2
-            symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2 + iconNudge, width: symW, height: symH))
+        // The title wraps within the box text width, right of the icon. Use the
+        // editor's settled frame width (the container can be unsized when callouts
+        // are styled on load); fall back to the title's natural width otherwise.
+        let natural = ceil(titleStr.size().width)
+        let pad = textContainer?.lineFragmentPadding ?? 5
+        let avail = bounds.width - 2 * textContainerInset.width - 2 * pad
+        let titleAreaW = (avail > symW + gap + 60)
+            ? max(40, avail - calloutHeaderRightInset - symW - gap)
+            : natural
+        let measured = titleStr.boundingRect(
+            with: NSSize(width: titleAreaW, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading])
+        let titleW = min(titleAreaW, ceil(measured.width))
+        let titleH = ceil(measured.height)
+
+        let contentHeight = ceil(max(symH, titleH))
+        let width = ceil(symW + gap + titleW)
+
+        let image = NSImage(size: NSSize(width: width, height: contentHeight), flipped: true) { _ in
+            // Flipped (top-down): the title wraps from the top in the area right
+            // of the icon; the icon sits on the first line's cap height.
+            titleStr.draw(with: NSRect(x: symW + gap, y: 0, width: titleW, height: contentHeight),
+                          options: [.usesLineFragmentOrigin, .usesFontLeading])
+            let capCenter = titleFont.ascender - titleFont.capHeight / 2
+            symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2 + iconNudge, width: symW, height: symH),
+                        from: .zero, operation: .sourceOver, fraction: 1,
+                        respectFlipped: true, hints: nil)
             return true
         }
 
@@ -467,4 +432,8 @@ extension EditorTextView {
                                bounds: CGRect(x: 0, y: -pointSize * 0.15,
                                               width: width, height: contentHeight))
     }
+
+    /// Right-edge inset for the wrapped header title, matching the callout's
+    /// `tailIndent` so the title wraps at the same right margin as the body.
+    private var calloutHeaderRightInset: CGFloat { 12 }
 }
