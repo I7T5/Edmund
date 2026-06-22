@@ -361,10 +361,11 @@ extension EditorTextView {
 
             case .footnoteReference:
                 guard span.fullRange.upperBound <= result.length else { continue }
-                // Accent the id; when rendered (cursor outside), raise and shrink
-                // it into a superscript and hide the `[^`/`]` (below). When active,
-                // it stays full size and editable with dimmed delimiters.
-                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                // Dim the id like other syntax markers (bullets, etc.) rather than
+                // coloring it like a link; when rendered (cursor outside), raise and
+                // shrink it into a superscript and hide the `[^`/`]` (below). When
+                // active, it stays full size and editable with dimmed delimiters.
+                result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.contentRange)
                 if !cursorInToken {
                     let small = NSFont(descriptor: bodyFont.fontDescriptor,
                                        size: bodyFont.pointSize * 0.75) ?? bodyFont
