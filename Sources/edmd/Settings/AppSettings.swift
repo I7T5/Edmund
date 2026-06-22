@@ -47,6 +47,19 @@ enum AppSettings {
         static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
     }
 
+    /// Content-width slider bounds. The stored value is a fraction of the
+    /// available width (see `EditorTextView+ContentWidth`): the slider runs
+    /// continuously from the Mobile minimum to full width, with a magnetic snap
+    /// only at the default (≈ Obsidian) reading width.
+    enum ContentWidth {
+        /// Slider floor — the "Mobile" width (narrowest readable column).
+        static let minFraction = 0.0
+        /// Out-of-the-box default — ≈ Obsidian's default reading width.
+        static let defaultFraction = 0.25
+        /// How close to the default the marker must get to snap onto it.
+        static let snapTolerance = 0.02
+    }
+
     enum Key {
         static let reopenWindows = "settings.general.reopenWindows"
         static let startupAction = "settings.general.startupAction"
@@ -59,11 +72,12 @@ enum AppSettings {
 
     /// Text-column width as a fraction of the available width (`0...1`). `1`
     /// fills the width; lower narrows toward a mobile-ish minimum, centered.
-    /// Defaults below 1 so full-screen windows get readable margins out of the box.
+    /// Defaults to the Narrower (≈ Obsidian) width so full-screen windows get
+    /// readable margins out of the box.
     static var contentWidthFraction: Double {
         get {
             guard UserDefaults.standard.object(forKey: Key.contentWidthFraction) != nil else {
-                return 0.6
+                return ContentWidth.defaultFraction
             }
             return UserDefaults.standard.double(forKey: Key.contentWidthFraction)
         }

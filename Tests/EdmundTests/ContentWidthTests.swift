@@ -46,6 +46,29 @@ struct ContentWidthTests {
         #expect(wide > narrow)
     }
 
+    @Test("contentCoverage: fraction 1 ≈ whole screen; fraction 0 is the floor share")
+    func coverage() {
+        let w: CGFloat = 1512
+        let full = EditorTextView.contentCoverage(viewWidth: w, fraction: 1)
+        let mobile = EditorTextView.contentCoverage(viewWidth: w, fraction: 0)
+        // Full = the whole width minus the base inset on each side.
+        #expect(abs(full - (w - 2 * base) / w) < 0.001)
+        // Mobile = the fixed minimum column as a share of the screen (never 0).
+        #expect(abs(mobile - minW / w) < 0.001)
+        #expect(mobile > 0.2 && full < 1.0 && full > mobile)
+    }
+
+    @Test("fraction(forCoverage:) inverts contentCoverage")
+    func coverageRoundTrip() {
+        let w: CGFloat = 1512
+        for tenth in 0...10 {
+            let f = CGFloat(tenth) / 10
+            let cov = EditorTextView.contentCoverage(viewWidth: w, fraction: f)
+            let back = EditorTextView.fraction(forCoverage: cov, viewWidth: w)
+            #expect(abs(back - f) < 0.001)
+        }
+    }
+
     @Test("Narrow windows just fill (base inset)")
     func narrowFills() {
         // Available width below the minimum column → no room to center; fill.
