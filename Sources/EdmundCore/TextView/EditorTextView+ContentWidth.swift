@@ -28,6 +28,27 @@ extension EditorTextView {
         return contentBaseInset + (available - column) / 2
     }
 
+    /// The fraction of `viewWidth` the text column actually occupies for a given
+    /// `fraction` — i.e. how much of the screen the content covers. The settings
+    /// slider uses this to show a meaningful percentage (the column at its
+    /// narrowest still covers a sizeable share of the screen, never 0%).
+    public static func contentCoverage(viewWidth: CGFloat, fraction: CGFloat) -> CGFloat {
+        guard viewWidth > 0 else { return 1 }
+        let inset = horizontalInset(viewWidth: viewWidth, fraction: fraction)
+        return (viewWidth - 2 * inset) / viewWidth
+    }
+
+    /// The inverse of `contentCoverage`: the `fraction` that makes the column
+    /// cover `coverage` of `viewWidth`. Lets the settings stepper work in whole
+    /// coverage-percent steps. Clamped to `0...1`.
+    public static func fraction(forCoverage coverage: CGFloat, viewWidth: CGFloat) -> CGFloat {
+        let available = viewWidth - 2 * contentBaseInset
+        guard available > contentMinWidth else { return 1 }
+        let column = coverage * viewWidth
+        let f = (column - contentMinWidth) / (available - contentMinWidth)
+        return min(1, max(0, f))
+    }
+
     /// Recomputes the horizontal text inset from the current width + fraction,
     /// preserving the vertical inset. Cheap (no recompose) — only the inset and
     /// the resulting re-layout change.

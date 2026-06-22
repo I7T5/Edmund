@@ -9,7 +9,7 @@ import EdmundCore
 struct AppearanceSettingsView: View {
     @ObservedObject var fonts: FontSettings
     @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
-    @AppStorage(AppSettings.Key.contentWidthFraction) private var contentWidth = 0.6
+    @AppStorage(AppSettings.Key.contentWidthFraction) private var contentWidth = AppSettings.ContentWidth.defaultFraction
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
@@ -29,11 +29,25 @@ struct AppearanceSettingsView: View {
                 Text("Max content width:")
                     .gridColumnAlignment(.trailing)
                 HStack(spacing: 8) {
-                    Slider(value: $contentWidth, in: 0...1)
+                    // Continuous from the Mobile minimum to full width, with a
+                    // magnetic snap onto the default (≈ Obsidian) width.
+                    let value = Binding(
+                        get: { contentWidth },
+                        set: { newValue in
+                            let d = AppSettings.ContentWidth.defaultFraction
+                            contentWidth = abs(newValue - d) < AppSettings.ContentWidth.snapTolerance
+                                ? d : newValue
+                        }
+                    )
+                    Slider(value: value, in: AppSettings.ContentWidth.minFraction...1.0)
                         .frame(width: 200)
-                    Text("\(Int((contentWidth * 100).rounded()))%")
-                        .monospacedDigit()
-                        .frame(width: 48, alignment: .trailing)
+                    let percent = contentWidthPercentBinding
+                    TextField("", value: percent, format: .number.precision(.fractionLength(0)))
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 32)
+                    Stepper("", value: percent, in: contentWidthPercentRange, step: 1)
+                        .labelsHidden()
+                    Text("%")
                 }
                 .onChange(of: contentWidth) { applyContentWidthToOpenDocuments() }
             }
@@ -92,6 +106,33 @@ struct AppearanceSettingsView: View {
             }
         }
         .settingsPanePadding()
+    }
+
+    /// The standard screen the coverage percentage is measured against.
+    private var contentWidthScreen: CGFloat { NSScreen.main?.frame.width ?? 1440 }
+
+    /// The percentage shown/edited is how much of the screen the column covers
+    /// (≈25%…97%), not the raw fraction — so the narrowest setting reads as a
+    /// sensible share of the screen, never 0%. The binding maps that percentage
+    /// back to the stored fraction so the slider and stepper share one value.
+    private var contentWidthPercentBinding: Binding<Double> {
+        Binding(
+            get: {
+                (EditorTextView.contentCoverage(viewWidth: contentWidthScreen,
+                                                fraction: CGFloat(contentWidth)) * 100).rounded()
+            },
+            set: { pct in
+                contentWidth = Double(EditorTextView.fraction(forCoverage: CGFloat(pct / 100),
+                                                              viewWidth: contentWidthScreen))
+            }
+        )
+    }
+
+    /// The coverage-percent range the stepper clamps to (Mobile minimum … full).
+    private var contentWidthPercentRange: ClosedRange<Double> {
+        let lo = (EditorTextView.contentCoverage(viewWidth: contentWidthScreen, fraction: 0) * 100).rounded()
+        let hi = (EditorTextView.contentCoverage(viewWidth: contentWidthScreen, fraction: 1) * 100).rounded()
+        return lo...hi
     }
 
     /// Pushes a content-width change to every open editor live (mirrors the
