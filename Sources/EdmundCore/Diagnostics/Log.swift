@@ -90,6 +90,30 @@ public enum Log {
         return result
     }
 
+    /// Logs the structure of a block array at `debug` level: each block's kind
+    /// and character count, with no document text. Example output:
+    ///   Structure (4): heading(2)·18c, paragraph·234c, codeBlock(swift)·456c, callout·120c
+    public static func blockStructure(_ blocks: [Block], category: Category = .compose) {
+        guard shouldLog(.debug) else { return }
+        let parts = blocks.map { b -> String in
+            let c = b.range.length
+            switch b.kind {
+            case .paragraph:              return "paragraph·\(c)c"
+            case .heading(let level):     return "heading(\(level))·\(c)c"
+            case .quoteRun(let isCallout): return "\(isCallout ? "callout" : "quote")·\(c)c"
+            case .fence:                  return "fence·\(c)c"
+            case .mathDisplay:            return "math·\(c)c"
+            case .table:                  return "table·\(c)c"
+            case .listItem:               return "listItem·\(c)c"
+            case .thematicBreak:          return "hr·\(c)c"
+            case .blank:                  return "blank·\(c)c"
+            }
+        }
+        LogStore.shared.write(level: .debug, category: category,
+                              message: "Structure (\(blocks.count)): \(parts.joined(separator: ", "))",
+                              date: Date())
+    }
+
     /// Blocks until queued writes have hit disk. For tests.
     public static func flush() { LogStore.shared.flush() }
 

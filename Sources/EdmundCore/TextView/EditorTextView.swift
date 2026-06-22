@@ -401,7 +401,7 @@ public class EditorTextView: NSTextView {
             rawSource = LineEnding.normalize(content)
             rebuildListIndentState()
             blocks = BlockParser.parse(rawSource)
-            Log.debug("Parsed \(blocks.count) blocks", category: .compose)
+            Log.blockStructure(blocks)
             undoStack.removeAll()
             redoStack.removeAll()
             recompose(cursorInRaw: 0)
