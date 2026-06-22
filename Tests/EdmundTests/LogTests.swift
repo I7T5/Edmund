@@ -100,4 +100,59 @@ struct LogTests {
         #expect(!fm.fileExists(atPath: old.path))
         #expect(fm.fileExists(atPath: fresh.path))
     }
+
+    @Test("blockStructure: emits one entry per block with kind and char count")
+    @MainActor func blockStructureFormat() {
+        let dir = tempDir()
+        Log.configure(enabled: true, directory: dir, retention: nil)
+
+        // Load a document with a known set of block kinds.
+        let editor = makeEditor()
+        editor.loadContent("## Heading\n\nA paragraph.\n\n> A quote.\n\n```swift\nlet x = 1\n```\n")
+        Log.flush()
+
+        let contents = todaysLog(in: dir) ?? ""
+        // The structure line must appear.
+        #expect(contents.contains("Structure ("))
+        // Heading, paragraph, quote, and fence entries with char counts.
+        #expect(contents.contains("heading(2)·"))
+        #expect(contents.contains("paragraph·"))
+        #expect(contents.contains("quote·"))
+        #expect(contents.contains("fence·"))
+        let structureLine = contents.components(separatedBy: "\n")
+            .first { $0.contains("Structure (") } ?? ""
+        #expect(!structureLine.isEmpty)
+        // Non-blank blocks all have positive char counts.
+        let entries = structureLine.components(separatedBy: ", ")
+        for entry in entries where !entry.contains("blank") {
+            #expect(!entry.hasSuffix("·0c"), "non-blank entry has zero chars: \(entry)")
+        }
+    }
+
+    @Test("blockStructure: emitted at debug level, silent in a hypothetical info-only build")
+    func blockStructureLevel() {
+        let dir = tempDir()
+        Log.configure(enabled: true, directory: dir, retention: nil)
+
+        // Build a minimal block array directly (no editor needed).
+        let blocks = [
+            Block(content: "# H", range: NSRange(location: 0, length: 3), kind: .heading(level: 1)),
+            Block(content: "p",   range: NSRange(location: 4, length: 1), kind: .paragraph),
+        ]
+        Log.blockStructure(blocks, category: .compose)
+        Log.flush()
+
+        let contents = todaysLog(in: dir) ?? ""
+        // In a DEBUG test build the line appears; assert on the structure (not the level tag
+        // so this test doesn't hard-code build configuration).
+        let line = contents.components(separatedBy: "\n").first { $0.contains("Structure (2)") }
+        #if DEBUG
+        #expect(line != nil)
+        // Confirm the two kinds are present.
+        #expect(line?.contains("heading(1)·3c") == true)
+        #expect(line?.contains("paragraph·1c") == true)
+        #else
+        #expect(line == nil)  // info-only: debug lines suppressed
+        #endif
+    }
 }
