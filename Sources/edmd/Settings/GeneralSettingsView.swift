@@ -62,9 +62,7 @@ struct GeneralSettingsView: View {
             }
 
             GridRow {
-                Text("Dialog warnings:")
-                    .gridColumnAlignment(.trailing)
-                Button("Manage Warnings…") { showingWarnings = true }
+                Divider().gridCellColumns(2)
             }
 
             GridRow {
@@ -84,13 +82,19 @@ struct GeneralSettingsView: View {
                     }
                     .disabled(!diagnosticLogging)
                     .padding(.leading, 20)
-                    Text("Logs are kept on this Mac at ~/.edmund/logs to help diagnose problems, and never leave your device. Older logs are deleted automatically.")
+                    Text("Logs are kept locally at ~/.edmund/logs and they are useful only if you would like to help the dev by submitting context-rich bug reports and make her life happier. Otherwise, the logs will never leave their folder.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
+            }
+
+            GridRow {
+                Text("Dialog warnings:")
+                    .gridColumnAlignment(.trailing)
+                Button("Manage Warnings…") { showingWarnings = true }
             }
         }
         .settingsPanePadding()
