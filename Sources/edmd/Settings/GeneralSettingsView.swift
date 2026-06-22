@@ -11,6 +11,8 @@ struct GeneralSettingsView: View {
     @AppStorage(AppSettings.Key.startupAction) private var startupAction = AppSettings.StartupAction.createNewDocument
     @AppStorage(AppSettings.Key.autoSaveWithVersions) private var autoSave = true
     @AppStorage(AppSettings.Key.conflictResolution) private var conflict = AppSettings.ConflictResolution.ask
+    @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = true
+    @AppStorage(AppSettings.Key.logRetention) private var logRetention = AppSettings.LogRetention.twoWeeks
     @State private var showingWarnings = false
 
     var body: some View {
@@ -63,6 +65,32 @@ struct GeneralSettingsView: View {
                 Text("Dialog warnings:")
                     .gridColumnAlignment(.trailing)
                 Button("Manage Warnings…") { showingWarnings = true }
+            }
+
+            GridRow {
+                Text("Diagnostics:")
+                    .gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Save diagnostic logs", isOn: $diagnosticLogging)
+                        .onChange(of: diagnosticLogging) { AppSettings.applyLogging() }
+                    HStack(spacing: 6) {
+                        Text("Clear logs after:")
+                        Picker("", selection: $logRetention) {
+                            ForEach(AppSettings.LogRetention.allCases) { Text($0.label).tag($0) }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: logRetention) { AppSettings.applyLogging() }
+                    }
+                    .disabled(!diagnosticLogging)
+                    .padding(.leading, 20)
+                    Text("Logs are kept on this Mac at ~/.edmund/logs to help diagnose problems, and never leave your device. Older logs are deleted automatically.")
+                        .foregroundStyle(.secondary)
+                        .controlSize(.small)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                }
             }
         }
         .settingsPanePadding()

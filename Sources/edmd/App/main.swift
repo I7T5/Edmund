@@ -24,6 +24,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppSettings.applyLogging()
+        Log.info("Edmund launched", category: .app)
         AppSettings.applyAppearance()
         setupMenuBar()
 
@@ -33,6 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let args = CommandLine.arguments
         if args.count > 1 {
             let url = URL(fileURLWithPath: args[1])
+            Log.info("Opening file from launch argument: \(url.path)", category: .document)
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
     }

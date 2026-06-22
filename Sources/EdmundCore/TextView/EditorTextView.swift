@@ -392,17 +392,20 @@ public class EditorTextView: NSTextView {
 
     /// Replace the editor's content. Used by NSDocument on file open.
     public func loadContent(_ content: String) {
-        // Remember the file's line ending, then normalize the buffer to LF so
-        // block parsing and rendering never see a stray `\r`. A file that mixes
-        // styles is normalized to LF on save too (rather than its dominant style),
-        // so its endings become consistent.
-        originalLineEnding = LineEnding.isInconsistent(in: content) ? .lf : LineEnding.detect(in: content)
-        rawSource = LineEnding.normalize(content)
-        rebuildListIndentState()
-        blocks = BlockParser.parse(rawSource)
-        undoStack.removeAll()
-        redoStack.removeAll()
-        recompose(cursorInRaw: 0)
+        Log.measure("Loaded document (\(content.count) chars)", category: .document) {
+            // Remember the file's line ending, then normalize the buffer to LF so
+            // block parsing and rendering never see a stray `\r`. A file that mixes
+            // styles is normalized to LF on save too (rather than its dominant style),
+            // so its endings become consistent.
+            originalLineEnding = LineEnding.isInconsistent(in: content) ? .lf : LineEnding.detect(in: content)
+            rawSource = LineEnding.normalize(content)
+            rebuildListIndentState()
+            blocks = BlockParser.parse(rawSource)
+            Log.debug("Parsed \(blocks.count) blocks", category: .compose)
+            undoStack.removeAll()
+            redoStack.removeAll()
+            recompose(cursorInRaw: 0)
+        }
     }
 }
 

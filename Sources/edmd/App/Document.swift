@@ -190,9 +190,11 @@ class Document: NSDocument, HeadingNavigable {
 
     override nonisolated func read(from data: Data, ofType typeName: String) throws {
         guard let contents = String(data: data, encoding: .utf8) else {
+            Log.error("Read failed: \(data.count) bytes not valid UTF-8", category: .io)
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Could not read file as UTF-8"])
         }
+        Log.info("Read \(data.count) bytes from disk", category: .io)
         pendingContent = contents
     }
 
@@ -348,9 +350,11 @@ class Document: NSDocument, HeadingNavigable {
             ? normalized
             : normalized.replacingOccurrences(of: "\n", with: ending.string)
         guard let data = text.data(using: .utf8) else {
+            Log.error("Save failed: could not encode \(text.count) chars as UTF-8", category: .io)
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Could not encode text as UTF-8"])
         }
+        Log.info("Saving \(data.count) bytes (\(ending.displayName))", category: .io)
         return data
     }
 }
