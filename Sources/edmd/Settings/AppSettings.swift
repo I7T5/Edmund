@@ -3,6 +3,7 @@
 // same keys via @AppStorage.
 
 import AppKit
+import EdmundCore
 
 enum AppSettings {
     enum StartupAction: String, CaseIterable, Identifiable {
@@ -60,6 +61,34 @@ enum AppSettings {
         static let snapTolerance = 0.02
     }
 
+    /// How long diagnostic logs are kept before being pruned on launch.
+    enum LogRetention: String, CaseIterable, Identifiable {
+        case oneDay, twoDays, oneWeek, twoWeeks, thirtyDays, never
+        var id: Self { self }
+        var label: String {
+            switch self {
+            case .oneDay: return "1 day"
+            case .twoDays: return "2 days"
+            case .oneWeek: return "1 week"
+            case .twoWeeks: return "2 weeks"
+            case .thirtyDays: return "30 days"
+            case .never: return "Never"
+            }
+        }
+        /// The retention window in seconds; `nil` means keep forever.
+        var timeInterval: TimeInterval? {
+            let day: TimeInterval = 24 * 60 * 60
+            switch self {
+            case .oneDay: return day
+            case .twoDays: return 2 * day
+            case .oneWeek: return 7 * day
+            case .twoWeeks: return 14 * day
+            case .thirtyDays: return 30 * day
+            case .never: return nil
+            }
+        }
+    }
+
     enum Key {
         static let reopenWindows = "settings.general.reopenWindows"
         static let startupAction = "settings.general.startupAction"
@@ -68,6 +97,8 @@ enum AppSettings {
         static let appearanceMode = "settings.appearance.mode"
         static let contentWidthFraction = "settings.appearance.contentWidthFraction"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
+        static let diagnosticLogging = "settings.general.diagnosticLogging"
+        static let logRetention = "settings.general.logRetention"
     }
 
     /// Text-column width as a fraction of the available width (`0...1`). `1`
@@ -135,6 +166,42 @@ enum AppSettings {
     static var suppressInconsistentLineEndingWarning: Bool {
         get { UserDefaults.standard.bool(forKey: Key.suppressInconsistentLineEndingWarning) }
         set { UserDefaults.standard.set(newValue, forKey: Key.suppressInconsistentLineEndingWarning) }
+    }
+
+    /// Whether diagnostic logging is on. Defaults to on; the user can opt out.
+    static var diagnosticLogging: Bool {
+        get {
+            guard UserDefaults.standard.object(forKey: Key.diagnosticLogging) != nil else {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: Key.diagnosticLogging)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Key.diagnosticLogging) }
+    }
+
+    static var logRetention: LogRetention {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.logRetention),
+                  let value = LogRetention(rawValue: raw) else {
+                return .twoWeeks
+            }
+            return value
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.logRetention) }
+    }
+
+    /// Where diagnostic logs live: `~/.edmund/logs`.
+    static var logDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".edmund/logs", isDirectory: true)
+    }
+
+    /// Pushes the current logging settings into the `Log` facility. Called at
+    /// launch and whenever the toggle or retention changes.
+    static func applyLogging() {
+        Log.configure(enabled: diagnosticLogging,
+                      directory: logDirectory,
+                      retention: logRetention.timeInterval)
     }
 
     @MainActor static func applyAppearance() {

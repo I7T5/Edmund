@@ -157,6 +157,14 @@ recomputed on resize).
   `Document.editor` (see the font/line-height/content-width `applyTo…` helpers).
 - Theme/appearance/fonts flow into `EditorTheme` → the editor's derived
   `bodyFont`, colors, paragraph styles.
+- **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): an always-on
+  (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
+  `Log.measure(_:) { … }` (single-line durations) write to
+  `~/.edmund/logs/edmund-YYYY-MM-DD.log` on a private serial queue. One
+  compile-time level threshold ships (DEBUG = `debug`+; release = `info`+) — the
+  user only toggles it on/off and picks a retention window (Settings ▸ General ▸
+  Diagnostics). `AppSettings.applyLogging()` pushes the toggle/retention into
+  `Log.configure` at launch and on change; retention is pruned there.
 
 ---
 

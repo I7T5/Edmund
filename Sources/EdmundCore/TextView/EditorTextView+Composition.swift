@@ -24,20 +24,22 @@ extension EditorTextView {
     func recompose(cursorInRaw: Int, selectionInRaw: NSRange? = nil) {
         guard let ts = textStorage else { return }
 
-        isUpdating = true
-        let fullRange = NSRange(location: 0, length: ts.length)
-        ts.beginEditing()
-        ts.replaceCharacters(in: fullRange,
-                             with: NSAttributedString(string: rawSource,
-                                                      attributes: baseAttributes))
-        ts.endEditing()
-        // Whole-document replacement; blocks are re-parsed by our callers.
-        (ts as? EditorTextStorage)?.clearPendingEdit()
-        isUpdating = false
+        Log.measure("Full recompose (\(blocks.count) blocks)", category: .compose, level: .debug) {
+            isUpdating = true
+            let fullRange = NSRange(location: 0, length: ts.length)
+            ts.beginEditing()
+            ts.replaceCharacters(in: fullRange,
+                                 with: NSAttributedString(string: rawSource,
+                                                          attributes: baseAttributes))
+            ts.endEditing()
+            // Whole-document replacement; blocks are re-parsed by our callers.
+            (ts as? EditorTextStorage)?.clearPendingEdit()
+            isUpdating = false
 
-        for i in blocks.indices { blocks[i].isStyled = false }
-        recomposeDirty(IndexSet(blocks.indices), cursorInRaw: cursorInRaw,
-                       selectionInRaw: selectionInRaw, settingSelection: true)
+            for i in blocks.indices { blocks[i].isStyled = false }
+            recomposeDirty(IndexSet(blocks.indices), cursorInRaw: cursorInRaw,
+                           selectionInRaw: selectionInRaw, settingSelection: true)
+        }
     }
 
     /// Range-bounded recompose: replaces only `oldRange` (pre-edit storage
