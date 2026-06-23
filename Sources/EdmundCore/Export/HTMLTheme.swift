@@ -100,7 +100,10 @@ enum HTMLTheme {
       padding: 48px 24px;
     }
     .page { max-width: 46em; margin: 0 auto; }
-    p { margin: 0 0 var(--para-space); }
+    /* Styled-source spacing: paragraphs and blocks get a full line's breathing
+       room, so the cadence feels like a clean, readable version of Edit mode
+       rather than a collapsed publication layout. */
+    p { margin: 0 0 1em; }
     h1, h2, h3, h4, h5, h6 { line-height: 1.25; font-weight: 600; margin: 1.4em 0 0.5em; }
     h1 { font-size: 1.9em; } h2 { font-size: 1.55em; } h3 { font-size: 1.3em; }
     h4 { font-size: 1.1em; } h5 { font-size: 1em; } h6 { font-size: 0.9em; color: var(--faint); }
@@ -116,19 +119,29 @@ enum HTMLTheme {
     /* Match the editor's list indentation: level-1 text begins at one marker
        slot past the marker (~2.25em), and each nesting level steps in by one
        slot (~1.25em). Same dot at every level, like Edit mode. */
-    ul, ol { margin: 0 0 var(--para-space); padding-left: 1.25em; }
+    ul, ol { margin: 1em 0; padding-left: 1.25em; }
     .page > ul, .page > ol { padding-left: 2.25em; }
     ul { list-style-type: disc; }
-    li { margin: 0.15em 0; }
+    li { margin: 0.2em 0; }
     li::marker { color: var(--marker); font-size: 0.85em; }
     li > p { margin: 0; }
-    /* Task items align with bullet/number lists: the checkbox is floated into
-       the marker slot (negative margin) rather than adding indent, so the label
-       and wrapped lines sit at the same content edge as a bullet's text — and
-       wrapped lines never tuck under the checkbox. */
+    /* Task items: float the checkbox into the marker slot so the label and
+       wrapped lines sit at the same content edge as bullet/number text.
+       The negative margin-left pulls the checkbox into the (list's) padding
+       area; the nested <ul>/<ol> clears the float so it falls below.
+       QUIRK: use the CSS `1lh` unit (= computed line-height, ≈ 23px at
+       default theme) to precisely center a 1em checkbox on the first text
+       line — `(1lh - 1em) / 2` is exact regardless of the font or line-
+       height setting. `var(--body-size) * var(--line-height)` gives the
+       same number mathematically but relies on the CSS variables being in
+       sync; `1lh` is what the browser actually uses and is supported in
+       WKWebView on macOS 14 (Safari 17.2+). */
     li.task { list-style: none; }
     li.task > input[type=checkbox] {
-      float: left; width: 1em; height: 1em; margin: 0.25em 0.4em 0 -1.4em;
+      float: left; width: 1em; height: 1em;
+      margin-top: calc((1lh - 1em) / 2);
+      margin-right: 0.4em;
+      margin-left: -1.65em;
     }
     li.task > p { display: inline; margin: 0; }
     li.task > ul, li.task > ol { clear: left; }
@@ -159,8 +172,10 @@ enum HTMLTheme {
 
     @media print {
       body { padding: 0; }
-      /* Force WebKit to keep background colors (highlight, code, callouts) when
-         printing — it strips them by default, unlike createPDF. */
+      /* QUIRK: WebKit strips background colors when printing by default (it
+         follows the user's browser setting), even though WKWebView.createPDF
+         keeps them. `print-color-adjust: exact` forces faithful color output
+         so callout backgrounds, code blocks, and highlights survive printing. */
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .callout, pre, blockquote, table, .math-display { break-inside: avoid; }
       h1, h2, h3, h4, h5, h6 { break-after: avoid; }
@@ -184,6 +199,12 @@ enum HTMLTheme {
     /// Resolves a (possibly dynamic/catalog) `NSColor` for the given appearance
     /// to a CSS `rgba(...)`, preserving alpha. Used so list markers use the exact
     /// same dim as the editor (`NSColor.tertiaryLabelColor`) and can't drift.
+    ///
+    /// QUIRK: dynamic system colors like `tertiaryLabelColor` store a catalog
+    /// reference, not actual RGBA components — calling `usingColorSpace(.sRGB)`
+    /// on one outside a drawing context resolves to nil or returns the wrong
+    /// variant. `performAsCurrentDrawingAppearance` sets the appearance context
+    /// so the catalog resolves to the correct light or dark concrete color.
     @MainActor
     private static func resolvedRGBA(_ color: NSColor, dark: Bool) -> String {
         var resolved = color

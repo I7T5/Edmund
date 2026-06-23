@@ -60,11 +60,12 @@ enum DocumentHTML {
 
     /// Renders an SF Symbol tinted to `hex` and returns a PNG data URI (@2x).
     ///
-    /// The tint is applied in the **sRGB** color space and the PNG is tagged
-    /// sRGB, so the icon color exactly matches the CSS `#RRGGBB` (which the
-    /// webview interprets as sRGB). Going through `NSColor(hex:)` — which builds
-    /// a *calibrated* RGB color — and a device-RGB bitmap shifts saturated hues
-    /// (most visibly the TIP teal), making the icon disagree with the title text.
+    /// QUIRK: tint in **sRGB** via a `CGColorSpace.sRGB` CGContext and tag the
+    /// PNG sRGB. `NSColor(hex:)` creates a *calibrated* RGB color, which rounds
+    /// trips through a device-RGB bitmap context and shifts saturated hues —
+    /// most visibly TIP's teal (`#00BFBC`) renders noticeably greener, making
+    /// the icon and CSS title text disagree. Using sRGB throughout keeps them
+    /// pixel-matched because CSS `#RRGGBB` is interpreted as sRGB by WebKit.
     private static func iconDataURI(symbol: String, hex: String) -> String? {
         guard let base = NSImage(systemSymbolName: symbol, accessibilityDescription: nil),
               let (r, g, b) = rgbComponents(hex) else { return nil }
