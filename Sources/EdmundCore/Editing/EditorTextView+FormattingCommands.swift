@@ -6,12 +6,49 @@ import AppKit
 // route through the responder chain to the focused editor — the same wiring as
 // undo/redo). Each delegates to a primitive/helper in +FormattingCore.
 //
-// Toggling: most commands are invertible — applying twice restores the original
-// — except Checklist, Footnote, and Table, which the spec marks otherwise.
+// ## Invertibility
+//
+// Most format commands are toggles: applying twice returns to the original text
+// and cursor position. Exceptions:
+//   • Checklist (⌘L)  — NOT invertible. Re-applying cycles [ ] ↔ [x] instead of
+//                        removing the checklist marker.
+//   • Footnote        — NOT invertible. Inserts a new [^n] each time.
+//   • Table           — NOT a toggle. Always inserts a fresh placeholder table.
+//
+// ## Caret repositioning
+//
+// After wrap-on (no selection or wrap-off leaves content selected):
+//   • Symmetric inline styles (Bold, Italic, …): caret placed on the first char
+//     of the wrapped content — so the next keystroke edits inside the delimiters.
+//   • Link/Image (no selection): caret lands inside the `()` so the URL can be
+//     typed immediately.
+//   • Link/Wikilink/Image (selection or word expansion): caret inside `()` or
+//     after content.
+//   • Footnote: caret at the end-of-file definition line, ready to type the note.
+//   • Math Block / Code Block: caret on the opening-fence line (language / math
+//     content).
+//   • Table: caret on the first header cell.
+//
+// ## List replacement
+//
+// Applying any list format (Bulleted / Numbered / Checklist) to a line that
+// already carries a different list marker strips the old marker first (via
+// stripListPrefix), so lists replace rather than nest:
+//   `- [ ] task` → ⌥⌘B  →  `- task`   (not `- - [ ] task`)
+//   `1. item`    → ⌘L   →  `- [ ] item`
+//
+// ## Whitespace stripping
+//
+// Inline wraps (Bold, Italic, Code, etc.) exclude leading/trailing spaces from
+// the delimiters: selecting " word " and pressing Cmd+B gives " **word** ", not
+// "** word **". Toggle-off detection also operates on the trimmed range, so
+// selecting " **word** " and pressing Cmd+B correctly unwraps.
 
 extension EditorTextView {
 
-    // MARK: Inline font styles
+    // MARK: - Inline font styles
+    // All toggle (applying twice restores original). Empty-caret fallback inserts
+    // symmetric empty delimiters with the caret centred: `**|**`, `*|*`, etc.
 
     @objc public func formatBold(_ sender: Any?)          { toggleInlineWrap(open: "**", close: "**") }
     @objc public func formatItalic(_ sender: Any?)        { toggleInlineWrap(open: "*", close: "*") }
@@ -23,14 +60,17 @@ extension EditorTextView {
     @objc public func formatKeyboard(_ sender: Any?)      { toggleInlineWrap(open: "<kbd>", close: "</kbd>") }
     @objc public func formatComment(_ sender: Any?)       { toggleInlineWrap(open: "%%", close: "%%") }
 
-    // MARK: Inline links
+    // MARK: - Inline links
+    // Link / Image: caret in `()` so URL can be typed next.
+    // Wikilink:     expands to the current word at caret (expandToWord: true).
+    // Footnote:     NOT invertible — inserts [^n] marker and EOF definition.
 
     @objc public func formatWikilink(_ sender: Any?)      { toggleInlineWrap(open: "[[", close: "]]", expandToWord: true) }
     @objc public func formatLink(_ sender: Any?)          { insertLink() }
     @objc public func formatImage(_ sender: Any?)         { insertImage() }
     @objc public func formatFootnote(_ sender: Any?)      { insertFootnote() }
 
-    // MARK: Blocks
+    // MARK: - Block-level commands
 
     @objc public func formatBulletedList(_ sender: Any?)  { toggleLinePrefix("- ") }
     @objc public func formatNumberedList(_ sender: Any?)  { toggleNumberedList() }
@@ -41,11 +81,13 @@ extension EditorTextView {
     @objc public func formatTable(_ sender: Any?)         { insertTable() }
 
     /// Heading level read from the menu item's `tag` (1–6).
+    /// Heading H1–H6: strips any existing `#…` prefix and applies the new level.
+    /// Re-applying the same level clears the heading. Applies per selected line.
     @objc public func formatHeading(_ sender: Any?) {
         applyHeadingLevel((sender as? NSMenuItem)?.tag ?? 1)
     }
 
-    /// Callout type read from the menu item's `representedObject` (already cased:
+    /// Callout type read from the menu item's `representedObject` (pre-cased:
     /// uppercase for GitHub alerts, lowercase for Obsidian callouts).
     @objc public func formatCallout(_ sender: Any?) {
         guard let type = (sender as? NSMenuItem)?.representedObject as? String else { return }
@@ -53,7 +95,6 @@ extension EditorTextView {
     }
 
     // MARK: - Menu validation
-    //
     // Formatting actions are disabled in Reading mode (the editor is read-only).
 
     public override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -77,13 +118,15 @@ extension EditorTextView {
     // MARK: - Heading
 
     func applyHeadingLevel(_ level: Int) {
+        // All selected lines get the same heading level applied or cleared.
+        // "Same level" is determined by majority: if every non-empty line already
+        // has exactly `level` hashes, they are all cleared (toggle-off).
         transformSelectedLines { lines in
             let nonEmpty = lines.filter { !$0.isEmpty }
             let allAtLevel = !nonEmpty.isEmpty && nonEmpty.allSatisfy { self.leadingHashCount($0) == level }
             return lines.map { line in
                 guard !line.isEmpty else { return line }
                 let stripped = self.stripLeadingHashes(line)
-                // Re-applying the same level clears the heading.
                 return allAtLevel ? stripped : String(repeating: "#", count: level) + " " + stripped
             }
         }
@@ -92,16 +135,23 @@ extension EditorTextView {
     // MARK: - Lists / quote
 
     /// Prepend `prefix` to every line, or strip it when every non-empty line is
-    /// already that exact type (toggle). For list prefixes (`"- "` etc.) existing
-    /// other list markers are stripped before the new prefix is applied, so lists
-    /// seamlessly replace each other (bullet→numbered, checklist→bullet, etc.).
+    /// already that exact type (toggle-off).
+    ///
+    /// List replacement: for bullet prefixes (`"- "` etc.), any existing list
+    /// marker (checklist, numbered, other bullet) is stripped before the new one
+    /// is applied, so list types replace each other rather than stacking. Block
+    /// quotes (`"> "`) are not list markers; they stack normally.
+    ///
+    /// Toggle-off check: only fires when every non-empty line is EXACTLY this
+    /// bullet type — not checklists (which also start with `"- "` but are a
+    /// different type) or numbered lists.
     func toggleLinePrefix(_ prefix: String) {
         let isList = (prefix == "- " || prefix == "* " || prefix == "+ ")
         transformSelectedLines { lines in
             let nonEmpty = lines.filter { !$0.isEmpty }
-            // Toggle off only when every non-empty line is exactly this list type.
             let stripAll: Bool
             if isList {
+                // Toggle-off only for exact bullets, not checklists or numbered.
                 stripAll = !nonEmpty.isEmpty && nonEmpty.allSatisfy { self.isBulletLine($0) && $0.hasPrefix(prefix) }
             } else {
                 stripAll = !nonEmpty.isEmpty && nonEmpty.allSatisfy { $0.hasPrefix(prefix) }
@@ -112,16 +162,20 @@ extension EditorTextView {
             if lines == [""] { return [prefix] }
             return lines.map { line -> String in
                 guard !line.isEmpty else { return line }
+                // Strip existing list marker before adding new one (replacement, not nesting).
                 return isList ? prefix + self.stripListPrefix(line) : prefix + line
             }
         }
     }
 
+    /// Numbered list: prepend `1.`, `2.`, … per line (toggle-off strips the
+    /// prefix). If the line immediately before the selection ends with `N. `,
+    /// numbering continues from N+1 rather than restarting at 1.
+    /// Replacement: strips any existing list marker before numbering.
     func toggleNumberedList() {
         let ns = rawSource as NSString
         let ctx = selectedLineContext()
 
-        // Continue numbering from the line before the selection, if it is a list.
         var start = 1
         if ctx.range.location > 0 {
             let prev = ns.lineRange(for: NSRange(location: ctx.range.location - 1, length: 0))
@@ -146,24 +200,33 @@ extension EditorTextView {
         }
     }
 
-    /// Checklist (NOT invertible): non-checklist lines gain `- [ ] ` (stripping
-    /// any existing list marker first); existing checklist lines toggle `[ ]`↔`[x]`.
+    /// Checklist (NOT invertible):
+    ///   • Checklist line: toggles the mark `[ ]` ↔ `[x]`.
+    ///   • Any other line (plain, bullet, numbered): strips the existing list
+    ///     marker and prepends `- [ ] ` (replacement, not nesting).
     func toggleChecklist() {
         transformSelectedLines { lines in
             lines.map { line in
                 if self.isChecklistLine(line) {
                     let ns = line as NSString
                     let mark = ns.character(at: 3)
-                    let newMark = (mark == 0x20) ? "x" : " "
+                    let newMark = (mark == 0x20) ? "x" : " "   // ' ' ↔ 'x'
                     return "- [" + newMark + "] " + ns.substring(from: 6)
                 }
+                // Strip existing list marker before adding checklist prefix.
                 return "- [ ] " + self.stripListPrefix(line)
             }
         }
     }
 
-    // MARK: - Inline link / image / footnote
+    // MARK: - Link / Image / Footnote
 
+    /// Link (⌘K): toggle.
+    /// • With selection: wraps as `[selection]()`, caret in `()`. If the selection
+    ///   is already `[text](dest)`, unwraps to the text.
+    /// • No selection: if caret is inside an existing `[text](url)`, unwraps it.
+    ///   Otherwise expands to the current word, producing `[word]()`, caret in `()`.
+    ///   Fallback (no word): inserts `[]()`, caret in `()`.
     private func insertLink() {
         let ns = rawSource as NSString
         let sel = selectedRange()
@@ -176,13 +239,13 @@ extension EditorTextView {
                 return
             }
             let replacement = "[" + text + "]()"
-            let caret = sel.location + 1 + (text as NSString).length + 2
+            let caret = sel.location + 1 + (text as NSString).length + 2  // inside ()
             applyFormattingEdit(rawRange: sel, replacement: replacement,
                                 select: NSRange(location: caret, length: 0))
             return
         }
 
-        // Caret: check if inside an existing link → unwrap it.
+        // Caret: check if inside an existing link → unwrap.
         if let linkRange = linkRangeAroundCaret() {
             let linkText = ns.substring(with: linkRange)
             if let inner = unwrapLink(linkText) {
@@ -196,7 +259,7 @@ extension EditorTextView {
         if let word = currentWordRange() {
             let wordText = ns.substring(with: word)
             let replacement = "[" + wordText + "]()"
-            let caret = word.location + 1 + (wordText as NSString).length + 2
+            let caret = word.location + 1 + (wordText as NSString).length + 2  // inside ()
             applyFormattingEdit(rawRange: word, replacement: replacement,
                                 select: NSRange(location: caret, length: 0))
             return
@@ -208,6 +271,8 @@ extension EditorTextView {
                             select: NSRange(location: sel.location + 3, length: 0))
     }
 
+    /// Image: same shape as Link, prefixed with `!`.
+    /// Caret ends up inside the `()` so the URL/path can be typed.
     private func insertImage() {
         let ns = rawSource as NSString
         let sel = selectedRange()
@@ -220,17 +285,16 @@ extension EditorTextView {
                 return
             }
             let replacement = "![" + text + "]()"
-            let caret = sel.location + 2 + (text as NSString).length + 2
+            let caret = sel.location + 2 + (text as NSString).length + 2  // inside ()
             applyFormattingEdit(rawRange: sel, replacement: replacement,
                                 select: NSRange(location: caret, length: 0))
             return
         }
 
-        // Expand to current word.
         if let word = currentWordRange() {
             let wordText = ns.substring(with: word)
             let replacement = "![" + wordText + "]()"
-            let caret = word.location + 2 + (wordText as NSString).length + 2
+            let caret = word.location + 2 + (wordText as NSString).length + 2  // inside ()
             applyFormattingEdit(rawRange: word, replacement: replacement,
                                 select: NSRange(location: caret, length: 0))
             return
@@ -241,13 +305,16 @@ extension EditorTextView {
                             select: NSRange(location: sel.location + 4, length: 0))
     }
 
-    /// Footnote (NOT invertible): inserts `[^n]` after the selection/caret (or the
-    /// end of the current word when no selection) and appends `[^n]: ` at EOF.
+    /// Footnote (NOT invertible): inserts `[^n]` after the selection / end of
+    /// current word / caret, then appends `[^n]: ` at the end of the document.
+    /// Caret lands at the EOF definition so the note body can be typed immediately.
+    /// `n` is the next unused number (max existing [^k] + 1, starting at 1).
     private func insertFootnote() {
         let ns = rawSource as NSString
         let sel = selectedRange()
         let n = nextFootnoteNumber()
 
+        // Insertion point: after selection, or after the current word, or at caret.
         let markerPos: Int
         if sel.length > 0 {
             markerPos = sel.upperBound
@@ -266,11 +333,14 @@ extension EditorTextView {
         applyWholeDocumentEdit(newRawSource: newRaw, select: NSRange(location: caret, length: 0))
     }
 
-    // MARK: - Code block / math block / table
+    // MARK: - Block insert
 
+    /// Code block: wraps selected lines in ` ``` `…` ``` ` fences (toggle-off removes
+    /// them). Caret lands on the opening-fence line so a language tag can be typed.
     private func insertCodeBlock() {
         let ctx = selectedLineContext()
         if ctx.lines.count >= 2, ctx.lines.first!.hasPrefix("```"), ctx.lines.last! == "```" {
+            // Toggle off: unwrap the fenced content.
             let inner = ctx.lines.dropFirst().dropLast().joined(separator: "\n")
             var replacement = inner
             if ctx.trailingNewline { replacement += "\n" }
@@ -281,12 +351,14 @@ extension EditorTextView {
         let content = ctx.lines.joined(separator: "\n")
         var replacement = "```\n" + content + "\n```"
         if ctx.trailingNewline { replacement += "\n" }
+        // Caret after the opening "```" so a language tag can be typed.
         applyFormattingEdit(rawRange: ctx.range, replacement: replacement,
                             select: NSRange(location: ctx.range.location + 3, length: 0))
     }
 
-    /// Display math block: `$$\n{content}\n$$`. Toggle-off when the selected
-    /// lines are already fenced with `$$`.
+    /// Math block: wraps selected lines in `$$`…`$$` fences (toggle-off removes
+    /// them). Each `$$` occupies its own line (block math format).
+    /// Caret lands on the first content line between the fences.
     private func insertMathBlock() {
         let ctx = selectedLineContext()
         if ctx.lines.count >= 2, ctx.lines.first! == "$$", ctx.lines.last! == "$$" {
@@ -305,8 +377,9 @@ extension EditorTextView {
                             select: NSRange(location: ctx.range.location + 3, length: 0))
     }
 
-    /// Insert a 3×2 placeholder table with padded dividers (matching header width).
-    /// Ignores the selection; not a toggle.
+    /// Table: inserts a 3×2 placeholder table (3 columns, 2 data rows) after the
+    /// current line. Not a toggle. Dividers are padded to match header widths (8 chars).
+    /// Caret lands on the first header cell.
     private func insertTable() {
         let ns = rawSource as NSString
         let sel = selectedRange()
@@ -314,14 +387,14 @@ extension EditorTextView {
         let lineEndsWithNewline = line.upperBound > line.location && ns.character(at: line.upperBound - 1) == 0x0A
         let lineIsBlank = ns.substring(with: line).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        // 3 columns, dividers padded to match "Header N" length (8 chars).
+        // 3 columns; dividers padded to "Header N" length (8 dashes).
         let table = """
             | Header 1 | Header 2 | Header 3 |
             | -------- | -------- | -------- |
             | Cell 1 | Cell 2 | Cell 3 |
             | Cell 4 | Cell 5 | Cell 6 |
 
-            """  // trailing newline via the heredoc newline before closing """
+            """
         let insertPos: Int
         let replacement: String
         let lead: Int
@@ -347,13 +420,13 @@ extension EditorTextView {
     // MARK: - Callout / alert
 
     /// Wrap the selected lines in a callout (`> [!TYPE]` header + `> ` body), or
-    /// strip it when the lines are already that callout. `type` is pre-cased.
+    /// strip it when the lines are already that callout. `type` is pre-cased
+    /// (uppercase for GitHub, lowercase for Obsidian).
     func applyCalloutType(_ type: String) {
         transformSelectedLines { lines in
             let header = "> [!\(type)]"
             if let first = lines.first,
                first.trimmingCharacters(in: .whitespaces).lowercased() == "> [!\(type.lowercased())]" {
-                // Strip: drop the header, unprefix the body.
                 return lines.dropFirst().map {
                     if $0.hasPrefix("> ") { return String($0.dropFirst(2)) }
                     if $0.hasPrefix(">")  { return String($0.dropFirst(1)) }

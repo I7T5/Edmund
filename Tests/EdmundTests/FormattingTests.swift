@@ -449,4 +449,17 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         e.formatBold(nil)
         #expect(e.rawSource == "word")
     }
+
+    // Caret in ***word*** can peel one layer.
+    @Test func tripleStarCaretCmdBPeelsBold() {
+        let e = mk("***word***", NSRange(location: 5, length: 0))
+        e.formatBold(nil)
+        #expect(e.rawSource == "*word*")
+    }
+
+    @Test func tripleStarCaretCmdIPeelsItalic() {
+        let e = mk("***word***", NSRange(location: 5, length: 0))
+        e.formatItalic(nil)
+        #expect(e.rawSource == "**word**")
+    }
 }

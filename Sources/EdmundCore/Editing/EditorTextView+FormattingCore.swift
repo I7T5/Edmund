@@ -102,9 +102,12 @@ extension EditorTextView {
         return (range, lines, trailing)
     }
 
-    /// Apply a per-line `transform` over the selected line range. With a
-    /// selection the transformed lines stay selected; with a bare caret the
-    /// caret tracks its line (shifted by that line's length change).
+    /// Apply a per-line `transform` over the selected line range.
+    ///
+    /// Caret repositioning: the caret tracks the first line, shifted by however
+    /// many characters that line's prefix changed by (e.g. adding "- " moves the
+    /// caret two positions right). With a multi-line selection the whole new
+    /// content is re-selected (excluding any trailing newline).
     func transformSelectedLines(_ transform: ([String]) -> [String]) {
         let sel = selectedRange()
         let ctx = selectedLineContext()
@@ -128,14 +131,32 @@ extension EditorTextView {
 
     // MARK: - Inline wrap (toggle)
 
-    /// Wrap the selection (or caret) in `open`…`close`, or unwrap when already
-    /// wrapped. Span-aware:
-    ///   - With a selection: strips leading/trailing spaces before wrapping, so
-    ///     `" word "` → `" **word** "`. Toggle-off checks the trimmed range.
-    ///   - With a caret: removes empty delimiters straddling the caret; else
-    ///     unwraps the current word when it is already wrapped; else inserts
-    ///     empty delimiters (or, when `expandToWord` is true, wraps the current
-    ///     word instead of inserting empty delimiters).
+    /// Wrap the selection (or caret) in `open`…`close`, or unwrap when already wrapped.
+    ///
+    /// ## Whitespace stripping
+    /// Leading and trailing spaces are excluded from the delimiters, so selecting
+    /// `" word "` and pressing Cmd+B yields `" **word** "`, not `"** word **"`.
+    /// Toggle-off detection also uses the trimmed range.
+    ///
+    /// ## Toggle-off detection (selection path)
+    /// Three checks, tried in order:
+    ///  1. Delimiter pair sits immediately around the trimmed selection. An isolation
+    ///     guard prevents a false match when the selection content (`"word"` after Cmd+B)
+    ///     is inside a LONGER delimiter run: e.g. `*` at position 1 of `**word**` is not
+    ///     an italic delimiter — it is the inner character of the bold `**`. Without the
+    ///     guard, Cmd+B → Cmd+I would toggle italic OFF instead of adding it, producing
+    ///     `*word*` rather than `***word***`.
+    ///  2. The trimmed selection itself starts and ends with the delimiter strings
+    ///     (user selected `**word**` and pressed Cmd+B).
+    ///
+    /// ## Toggle-off detection (caret path)
+    /// Three checks, tried in order:
+    ///  1. Empty delimiters straddle the caret → remove them.
+    ///  2. The current word is wrapped by `open`/`close` (nearest-neighbour search) →
+    ///     unwrap. No isolation guard here, so peeling one layer from `***word***` works:
+    ///     Cmd+B finds `**` at word.location-2 and correctly removes it.
+    ///  3. Fallback: insert empty `open+close` with the caret centred. When
+    ///     `expandToWord` is true, the current word is wrapped instead.
     func toggleInlineWrap(open: String, close: String, expandToWord: Bool = false) {
         let ns = rawSource as NSString
         let sel = selectedRange()
@@ -145,7 +166,8 @@ extension EditorTextView {
         if sel.length > 0 {
             let selText = ns.substring(with: sel)
 
-            // Compute effective leading/trailing whitespace to strip.
+            // Whitespace stripping: exclude leading/trailing spaces from the wrap
+            // so "  word  " → "  **word**  " instead of "**  word  **".
             let leading = selText.prefix(while: { $0 == " " || $0 == "\t" }).count
             let trailing = selText.reversed().prefix(while: { $0 == " " || $0 == "\t" }).count
             let hasContent = leading + trailing < sel.length
@@ -155,8 +177,12 @@ extension EditorTextView {
                                      length: sel.length - effLead - effTrail)
             let trimmedText = ns.substring(with: trimmedSel)
 
-            // Check 1: delimiters sit immediately around the trimmed selection and are
-            // not part of a longer run of the same character (e.g. `*` inside `**`).
+            // Check 1: delimiters sit immediately around the trimmed selection.
+            // The isolation guard rejects matches where the found delimiter is part of
+            // a longer run: e.g. the `*` at offset 1 of `**word**` is the inner char
+            // of `**`, not a standalone `*`. Without the guard, selecting the bare
+            // content of a bold word and pressing Cmd+I would fire here and unwrap
+            // instead of compounding to `***word***`.
             let before = trimmedSel.location - openLen
             if before >= 0, trimmedSel.upperBound + closeLen <= ns.length,
                ns.substring(with: NSRange(location: before, length: openLen)) == open,
@@ -169,7 +195,7 @@ extension EditorTextView {
                 return
             }
 
-            // Check 2: the trimmed selection itself is the wrapped text.
+            // Check 2: the trimmed selection itself IS the wrapped text.
             let trimmedLen = (trimmedText as NSString).length
             if trimmedLen >= openLen + closeLen,
                trimmedText.hasPrefix(open), trimmedText.hasSuffix(close) {
@@ -180,10 +206,12 @@ extension EditorTextView {
                 return
             }
 
-            // Wrap on — apply only to the non-whitespace content.
+            // Wrap on — apply only to the non-whitespace content, leaving leading/
+            // trailing spaces outside the delimiters.
             let leadStr = String(selText.prefix(effLead))
             let trailStr = String(selText.suffix(effTrail))
             let replacement = leadStr + open + trimmedText + close + trailStr
+            // Caret: inside the new delimiters, on the first char of the content.
             applyFormattingEdit(rawRange: sel, replacement: replacement,
                                 select: NSRange(location: sel.location + effLead + openLen,
                                                 length: trimmedSel.length))
@@ -191,7 +219,8 @@ extension EditorTextView {
         }
 
         let caret = sel.location
-        // Empty delimiters straddling the caret → remove.
+        // Caret check 1: empty delimiters straddle the caret → remove.
+        // E.g. `**|**` → pressing Cmd+B again removes the pair.
         if caret - openLen >= 0, caret + closeLen <= ns.length,
            ns.substring(with: NSRange(location: caret - openLen, length: openLen)) == open,
            ns.substring(with: NSRange(location: caret, length: closeLen)) == close {
@@ -200,44 +229,51 @@ extension EditorTextView {
                                 select: NSRange(location: caret - openLen, length: 0))
             return
         }
-        // Current word already wrapped → unwrap (only when the delimiter is isolated,
-        // i.e. not embedded inside a longer run such as `*` inside `**`).
+        // Caret check 2: nearest word is wrapped → unwrap (nearest-neighbour, no
+        // isolation guard so peeling one layer from `***word***` works correctly).
+        // E.g. caret in `***word***` + Cmd+B: finds `**` at word.location-2 and peels
+        // it, giving `*word*`. The same caret + Cmd+I finds `*` at word.location-1
+        // and peels that, giving `**word**`.
         if let word = currentWordRange() {
             let before = word.location - openLen
             if before >= 0, word.upperBound + closeLen <= ns.length,
                ns.substring(with: NSRange(location: before, length: openLen)) == open,
-               ns.substring(with: NSRange(location: word.upperBound, length: closeLen)) == close,
-               delimiterIsIsolated(open: open, close: close,
-                                   openAt: before, closeAt: word.upperBound, in: ns) {
+               ns.substring(with: NSRange(location: word.upperBound, length: closeLen)) == close {
                 let inner = ns.substring(with: word)
                 let full = NSRange(location: before, length: openLen + word.length + closeLen)
+                // Caret lands where it was but shifted left by openLen (delimiters removed).
                 applyFormattingEdit(rawRange: full, replacement: inner,
                                     select: NSRange(location: caret - openLen, length: 0))
                 return
             }
-            // Expand to word when requested.
+            // Caret check 2b: no wrapping found — expand to word when requested
+            // (used by Wikilink/Link/Image which want to capture the word under the caret).
             if expandToWord {
                 let wordText = ns.substring(with: word)
                 let replacement = open + wordText + close
+                // Caret: after the word content, before the closing delimiter.
                 applyFormattingEdit(rawRange: word, replacement: replacement,
                                     select: NSRange(location: word.location + openLen
                                                         + (wordText as NSString).length, length: 0))
                 return
             }
         }
-        // Insert empty delimiters, caret centered.
+        // Fallback: insert empty delimiters; caret centred between them.
         applyFormattingEdit(rawRange: NSRange(location: caret, length: 0),
                             replacement: open + close,
                             select: NSRange(location: caret + openLen, length: 0))
     }
 
-    /// Returns false when the delimiter found at `openAt`/`closeAt` is embedded in a
-    /// longer run of the same character — e.g. a lone `*` at position 1 of `**word**`
-    /// is not an isolated italic delimiter; it is the inner character of the bold `**`.
+    /// Returns false when the delimiter at `openAt`/`closeAt` is part of a longer
+    /// run of the same character — indicating it is an inner char of a wider delimiter,
+    /// not a standalone one of the type we matched.
     ///
-    /// Rule: the character immediately before the opening delimiter must not equal the
-    /// opening's first character; the character immediately after the closing delimiter
-    /// must not equal the closing's last character.
+    /// Example: `*` at position 1 of `**word**` has `*` at position 0 to its left,
+    /// so it is NOT an isolated italic `*`; it is the inner character of the bold `**`.
+    ///
+    /// This guard is applied ONLY to the selection-path Check 1. The caret word-check
+    /// does NOT use it, so that pressing Cmd+B with the caret inside `***word***`
+    /// correctly finds and peels the `**` at word.location-2.
     private func delimiterIsIsolated(open: String, close: String,
                                      openAt: Int, closeAt: Int, in ns: NSString) -> Bool {
         let openFirst = (open as NSString).character(at: 0)
@@ -336,6 +372,10 @@ extension EditorTextView {
 
     /// Strips any leading list marker (checklist, bullet, numbered) from `line`,
     /// leaving just the content. Returns `line` unchanged if none is detected.
+    ///
+    /// Used by all three list commands to implement "replace" semantics: applying
+    /// any list type first strips the current marker so lists replace each other
+    /// instead of nesting (e.g. `- [ ] task` → Cmd+B → `- task`, not `- - [ ] task`).
     func stripListPrefix(_ line: String) -> String {
         if isChecklistLine(line) { return String(line.dropFirst(6)) }
         if isBulletLine(line) { return String(line.dropFirst(2)) }
@@ -352,7 +392,7 @@ extension EditorTextView {
         let caret = selectedRange().location
         guard ns.length > 0, caret <= ns.length else { return nil }
 
-        // Try path A: caret is in [text]. Scan backward for '[', bail on ']'/newline.
+        // Path A: caret is in [text]. Scan backward for '[', bail on ']'/newline.
         var i = caret
         while i > 0 {
             i -= 1
@@ -364,7 +404,7 @@ extension EditorTextView {
             if let r = linkRange(ns: ns, from: i, mustContain: caret) { return r }
         }
 
-        // Try path B: caret is in (url). Scan backward for '(', then locate '[' before ']'.
+        // Path B: caret is in (url). Scan backward for '(', then locate '[' before ']'.
         var p = caret
         while p > 0 {
             p -= 1
