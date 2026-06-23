@@ -47,18 +47,27 @@ import AppKit
 extension EditorTextView {
 
     // MARK: - Inline font styles
-    // All toggle (applying twice restores original). Empty-caret fallback inserts
-    // symmetric empty delimiters with the caret centred: `**|**`, `*|*`, etc.
+    // All toggle (applying twice restores original).
+    //
+    // Caret-with-no-selection behaviour: a caret INSIDE a word acts on the whole
+    // word (`anyth|ing` + Cmd+B → `**anything**`); pressing again unwraps it. When
+    // the caret is not in a word (blank line, between punctuation), empty delimiters
+    // are inserted with the caret centred (`**|**`).
+    //
+    // Bold and Italic additionally use markdown's `*`-nesting semantics at a caret,
+    // so the two compose: `**w**` + Cmd+I → `***w***`, and `***w***` + Cmd+B →
+    // `*w*`. See toggleStarEmphasis. The other styles use the generic word wrap
+    // (expandToWord), since they don't nest with each other.
 
-    @objc public func formatBold(_ sender: Any?)          { toggleInlineWrap(open: "**", close: "**") }
-    @objc public func formatItalic(_ sender: Any?)        { toggleInlineWrap(open: "*", close: "*") }
-    @objc public func formatUnderline(_ sender: Any?)     { toggleInlineWrap(open: "<u>", close: "</u>") }
-    @objc public func formatStrikethrough(_ sender: Any?) { toggleInlineWrap(open: "~~", close: "~~") }
-    @objc public func formatHighlight(_ sender: Any?)     { toggleInlineWrap(open: "==", close: "==") }
-    @objc public func formatCode(_ sender: Any?)          { toggleInlineWrap(open: "`", close: "`") }
-    @objc public func formatInlineMath(_ sender: Any?)    { toggleInlineWrap(open: "$", close: "$") }
-    @objc public func formatKeyboard(_ sender: Any?)      { toggleInlineWrap(open: "<kbd>", close: "</kbd>") }
-    @objc public func formatComment(_ sender: Any?)       { toggleInlineWrap(open: "%%", close: "%%") }
+    @objc public func formatBold(_ sender: Any?)          { toggleStarEmphasis(stars: 2) }
+    @objc public func formatItalic(_ sender: Any?)        { toggleStarEmphasis(stars: 1) }
+    @objc public func formatUnderline(_ sender: Any?)     { toggleInlineWrap(open: "<u>", close: "</u>", expandToWord: true) }
+    @objc public func formatStrikethrough(_ sender: Any?) { toggleInlineWrap(open: "~~", close: "~~", expandToWord: true) }
+    @objc public func formatHighlight(_ sender: Any?)     { toggleInlineWrap(open: "==", close: "==", expandToWord: true) }
+    @objc public func formatCode(_ sender: Any?)          { toggleInlineWrap(open: "`", close: "`", expandToWord: true) }
+    @objc public func formatInlineMath(_ sender: Any?)    { toggleInlineWrap(open: "$", close: "$", expandToWord: true) }
+    @objc public func formatKeyboard(_ sender: Any?)      { toggleInlineWrap(open: "<kbd>", close: "</kbd>", expandToWord: true) }
+    @objc public func formatComment(_ sender: Any?)       { toggleInlineWrap(open: "%%", close: "%%", expandToWord: true) }
 
     // MARK: - Inline links
     // Link / Image: caret in `()` so URL can be typed next.

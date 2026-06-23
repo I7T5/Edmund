@@ -33,13 +33,26 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.selectedRange() == NSRange(location: 6, length: 5))
     }
 
-    @Test func boldEmptyInsertAndRemoveAtCaret() {
-        let e = mk("ab", NSRange(location: 1, length: 0))
+    @Test func boldWrapsWordAtCaret() {
+        // Caret inside a plain word wraps the whole word; caret keeps its spot.
+        let e = mk("anything", NSRange(location: 4, length: 0))  // "anyt|hing"
         e.formatBold(nil)
-        #expect(e.rawSource == "a****b")
-        #expect(e.selectedRange() == NSRange(location: 3, length: 0))  // caret between **|**
+        #expect(e.rawSource == "**anything**")
+        #expect(e.selectedRange() == NSRange(location: 6, length: 0))  // "**anyt|hing**"
+        // Pressing again unwraps.
         e.formatBold(nil)
-        #expect(e.rawSource == "ab")
+        #expect(e.rawSource == "anything")
+        #expect(e.selectedRange() == NSRange(location: 4, length: 0))
+    }
+
+    @Test func boldEmptyInsertAndRemoveWhenNoWord() {
+        // Caret not adjacent to a word → insert empty delimiters, caret centred.
+        let e = mk("()", NSRange(location: 1, length: 0))
+        e.formatBold(nil)
+        #expect(e.rawSource == "(****)")
+        #expect(e.selectedRange() == NSRange(location: 3, length: 0))  // (**|**)
+        e.formatBold(nil)
+        #expect(e.rawSource == "()")
         #expect(e.selectedRange() == NSRange(location: 1, length: 0))
     }
 
@@ -448,6 +461,34 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         let e = mk("**word**", NSRange(location: 2, length: 4))
         e.formatBold(nil)
         #expect(e.rawSource == "word")
+    }
+
+    // Caret compound: bold word + Cmd+I adds italic (markdown star nesting).
+    @Test func caretBoldThenItalicCompounds() {
+        let e = mk("word", NSRange(location: 2, length: 0))
+        e.formatBold(nil)
+        #expect(e.rawSource == "**word**")
+        e.formatItalic(nil)
+        #expect(e.rawSource == "***word***")
+    }
+
+    @Test func caretItalicThenBoldCompounds() {
+        let e = mk("word", NSRange(location: 2, length: 0))
+        e.formatItalic(nil)
+        #expect(e.rawSource == "*word*")
+        e.formatBold(nil)
+        #expect(e.rawSource == "***word***")
+    }
+
+    // The exact sequence from the bug video: caret mid-word, B then I then B.
+    @Test func caretBIBSequence() {
+        let e = mk("anything", NSRange(location: 4, length: 0))
+        e.formatBold(nil)
+        #expect(e.rawSource == "**anything**")
+        e.formatItalic(nil)
+        #expect(e.rawSource == "***anything***")
+        e.formatBold(nil)        // removes bold, leaving italic
+        #expect(e.rawSource == "*anything*")
     }
 
     // Caret in ***word*** can peel one layer.

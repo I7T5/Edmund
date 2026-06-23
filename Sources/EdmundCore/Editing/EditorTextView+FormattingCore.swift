@@ -246,15 +246,16 @@ extension EditorTextView {
                                     select: NSRange(location: caret - openLen, length: 0))
                 return
             }
-            // Caret check 2b: no wrapping found — expand to word when requested
-            // (used by Wikilink/Link/Image which want to capture the word under the caret).
+            // Caret check 2b: no wrapping found — wrap the whole word under the caret.
+            // Used by the symmetric inline styles (Bold, Italic, …) and Wikilink so
+            // that `anyth|ing` + Cmd+B → `**anyth|ing**`. The caret keeps its position
+            // within the word (shifted right by the opening delimiter), so the word
+            // text isn't disturbed and a second press re-detects + unwraps it.
             if expandToWord {
                 let wordText = ns.substring(with: word)
                 let replacement = open + wordText + close
-                // Caret: after the word content, before the closing delimiter.
                 applyFormattingEdit(rawRange: word, replacement: replacement,
-                                    select: NSRange(location: word.location + openLen
-                                                        + (wordText as NSString).length, length: 0))
+                                    select: NSRange(location: caret + openLen, length: 0))
                 return
             }
         }
@@ -262,6 +263,70 @@ extension EditorTextView {
         applyFormattingEdit(rawRange: NSRange(location: caret, length: 0),
                             replacement: open + close,
                             select: NSRange(location: caret + openLen, length: 0))
+    }
+
+    /// Toggle `*`-based emphasis using markdown's nesting semantics, where the run
+    /// of `*` around a span encodes both styles (1 = italic, 2 = bold, 3 = both).
+    /// `stars` is 2 for Bold, 1 for Italic. This lets the two compose at a caret:
+    ///
+    ///   plain     → Cmd+B → `**w**`     (bold on)
+    ///   `**w**`   → Cmd+I → `***w***`   (italic added — compound)
+    ///   `***w***` → Cmd+B → `*w*`       (bold removed)
+    ///   `***w***` → Cmd+I → `**w**`     (italic removed)
+    ///
+    /// With a selection it defers to `toggleInlineWrap`, which already compounds
+    /// (selecting the inner text adds a layer) and peels (selecting a `**…**` span
+    /// strips it). With a bare caret it reads the symmetric run of `*` surrounding
+    /// the current word and adds/removes exactly `stars` of them; when the caret is
+    /// not in a word it inserts/removes empty delimiters like `toggleInlineWrap`.
+    func toggleStarEmphasis(stars: Int) {
+        let delim = String(repeating: "*", count: stars)
+        let sel = selectedRange()
+        if sel.length > 0 {
+            toggleInlineWrap(open: delim, close: delim)
+            return
+        }
+
+        let ns = rawSource as NSString
+        let caret = sel.location
+
+        // Empty delimiters straddle the caret → remove them.
+        if caret - stars >= 0, caret + stars <= ns.length,
+           ns.substring(with: NSRange(location: caret - stars, length: stars)) == delim,
+           ns.substring(with: NSRange(location: caret, length: stars)) == delim {
+            applyFormattingEdit(rawRange: NSRange(location: caret - stars, length: stars * 2),
+                                replacement: "", select: NSRange(location: caret - stars, length: 0))
+            return
+        }
+
+        guard let word = currentWordRange() else {
+            // No word under the caret: insert empty delimiters, caret centred.
+            applyFormattingEdit(rawRange: NSRange(location: caret, length: 0),
+                                replacement: delim + delim,
+                                select: NSRange(location: caret + stars, length: 0))
+            return
+        }
+
+        // The symmetric run of `*` immediately surrounding the word.
+        var leftRun = 0
+        while word.location - leftRun - 1 >= 0,
+              ns.character(at: word.location - leftRun - 1) == 0x2A { leftRun += 1 }
+        var rightRun = 0
+        while word.upperBound + rightRun < ns.length,
+              ns.character(at: word.upperBound + rightRun) == 0x2A { rightRun += 1 }
+        let run = min(leftRun, rightRun)
+
+        // Bold present iff ≥2 stars; italic present iff an odd star count (1 or 3).
+        let present = (stars == 2) ? (run >= 2) : (run % 2 == 1)
+        let newRun = present ? run - stars : run + stars
+
+        let wordText = ns.substring(with: word)
+        let starsStr = String(repeating: "*", count: newRun)
+        let full = NSRange(location: word.location - run, length: run + word.length + run)
+        // Caret keeps its position within the word, shifted by the star-count change.
+        let newCaret = caret + (newRun - run)
+        applyFormattingEdit(rawRange: full, replacement: starsStr + wordText + starsStr,
+                            select: NSRange(location: newCaret, length: 0))
     }
 
     /// Returns false when the delimiter at `openAt`/`closeAt` is part of a longer
