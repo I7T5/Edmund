@@ -411,3 +411,42 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         assertMatchesFullRecomposeOracle(e)
     }
 }
+
+// MARK: - Compound emphasis
+
+@MainActor @Suite struct FormatCompoundEmphasisTests {
+
+    @Test func cmdBThenCmdIProducesTripleStar() {
+        let e = mk("word", NSRange(location: 0, length: 4))
+        e.formatBold(nil)
+        e.formatItalic(nil)
+        #expect(e.rawSource == "***word***")
+    }
+
+    @Test func cmdIThenCmdBAlsoProducesTripleStar() {
+        let e = mk("word", NSRange(location: 0, length: 4))
+        e.formatItalic(nil)
+        e.formatBold(nil)
+        #expect(e.rawSource == "***word***")
+    }
+
+    // Selecting the bold span inside ***word*** and pressing Cmd+B peels bold.
+    @Test func boldOffFromTripleStarBySelectingBoldSpan() {
+        let e = mk("***word***", NSRange(location: 1, length: 8))  // "**word**"
+        e.formatBold(nil)
+        #expect(e.rawSource == "*word*")
+    }
+
+    // Isolation must not block legitimate single-delimiter toggle-off.
+    @Test func italicToggleOffStillWorksOnPlainItalic() {
+        let e = mk("*word*", NSRange(location: 1, length: 4))
+        e.formatItalic(nil)
+        #expect(e.rawSource == "word")
+    }
+
+    @Test func boldToggleOffStillWorksOnPlainBold() {
+        let e = mk("**word**", NSRange(location: 2, length: 4))
+        e.formatBold(nil)
+        #expect(e.rawSource == "word")
+    }
+}

@@ -155,11 +155,14 @@ extension EditorTextView {
                                      length: sel.length - effLead - effTrail)
             let trimmedText = ns.substring(with: trimmedSel)
 
-            // Check 1: delimiters sit immediately around the trimmed selection.
+            // Check 1: delimiters sit immediately around the trimmed selection and are
+            // not part of a longer run of the same character (e.g. `*` inside `**`).
             let before = trimmedSel.location - openLen
             if before >= 0, trimmedSel.upperBound + closeLen <= ns.length,
                ns.substring(with: NSRange(location: before, length: openLen)) == open,
-               ns.substring(with: NSRange(location: trimmedSel.upperBound, length: closeLen)) == close {
+               ns.substring(with: NSRange(location: trimmedSel.upperBound, length: closeLen)) == close,
+               delimiterIsIsolated(open: open, close: close,
+                                   openAt: before, closeAt: trimmedSel.upperBound, in: ns) {
                 let full = NSRange(location: before, length: openLen + trimmedSel.length + closeLen)
                 applyFormattingEdit(rawRange: full, replacement: trimmedText,
                                     select: NSRange(location: before, length: trimmedSel.length))
@@ -197,12 +200,15 @@ extension EditorTextView {
                                 select: NSRange(location: caret - openLen, length: 0))
             return
         }
-        // Current word already wrapped → unwrap.
+        // Current word already wrapped → unwrap (only when the delimiter is isolated,
+        // i.e. not embedded inside a longer run such as `*` inside `**`).
         if let word = currentWordRange() {
             let before = word.location - openLen
             if before >= 0, word.upperBound + closeLen <= ns.length,
                ns.substring(with: NSRange(location: before, length: openLen)) == open,
-               ns.substring(with: NSRange(location: word.upperBound, length: closeLen)) == close {
+               ns.substring(with: NSRange(location: word.upperBound, length: closeLen)) == close,
+               delimiterIsIsolated(open: open, close: close,
+                                   openAt: before, closeAt: word.upperBound, in: ns) {
                 let inner = ns.substring(with: word)
                 let full = NSRange(location: before, length: openLen + word.length + closeLen)
                 applyFormattingEdit(rawRange: full, replacement: inner,
@@ -223,6 +229,24 @@ extension EditorTextView {
         applyFormattingEdit(rawRange: NSRange(location: caret, length: 0),
                             replacement: open + close,
                             select: NSRange(location: caret + openLen, length: 0))
+    }
+
+    /// Returns false when the delimiter found at `openAt`/`closeAt` is embedded in a
+    /// longer run of the same character — e.g. a lone `*` at position 1 of `**word**`
+    /// is not an isolated italic delimiter; it is the inner character of the bold `**`.
+    ///
+    /// Rule: the character immediately before the opening delimiter must not equal the
+    /// opening's first character; the character immediately after the closing delimiter
+    /// must not equal the closing's last character.
+    private func delimiterIsIsolated(open: String, close: String,
+                                     openAt: Int, closeAt: Int, in ns: NSString) -> Bool {
+        let openFirst = (open as NSString).character(at: 0)
+        let closeLen = (close as NSString).length
+        let closeLast = (close as NSString).character(at: closeLen - 1)
+        if openAt > 0, ns.character(at: openAt - 1) == openFirst { return false }
+        let afterClose = closeAt + closeLen
+        if afterClose < ns.length, ns.character(at: afterClose) == closeLast { return false }
+        return true
     }
 
     /// The maximal run of alphanumerics around the caret, or nil when the caret
