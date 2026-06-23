@@ -41,18 +41,25 @@ struct HTMLRenderer: MarkupVisitor {
         return r.visit(doc)
     }
 
-    /// Top-level block iteration. When `preserveBlankLines` is on, each blank
-    /// source line between two blocks emits one `.blank-line` spacer (one line of
-    /// vertical space), so the author's spacing shows the way it does in Edit
-    /// mode — instead of Markdown collapsing every run of blank lines to a single
-    /// block separation.
+    /// Top-level block iteration. When `preserveBlankLines` is on, a *run* of
+    /// blank source lines between two blocks emits one `.blank-line` spacer for
+    /// every blank line beyond the first — i.e. standard Markdown keeps a single
+    /// blank line as the normal block separator and only renders the 2nd, 3rd, …
+    /// blank lines as extra vertical space.
+    ///
+    /// REFERENCE (future "rigorous" Read mode): to mimic Edit mode's layout
+    /// exactly, emit a spacer for EVERY blank line (`spacers = blanks`, not
+    /// `blanks - 1`). That preserves the author's spacing literally but fights
+    /// the HTML/CSS box model (blocks already carry their own margins), so it's
+    /// parked until Read mode commits to a styled-source rather than a rendered-
+    /// document model. See the discussion in the handoff notes.
     ///
     /// QUIRK: a block's `range.upperBound.line` is NOT reliably its last content
     /// line — cmark folds trailing blank lines into some block ranges (lists in
     /// particular), so a list followed by a blank line then a paragraph reports
     /// the list ending on the blank line. We therefore clamp each block's end
-    /// back to its last non-blank source line; the blanks between blocks A and B
-    /// are then `B.firstLine - clamp(A.end) - 1`.
+    /// back to its last non-blank source line; the blank run between blocks A and
+    /// B is then `B.firstLine - clamp(A.end) - 1`.
     mutating func visitDocument(_ document: Document) -> String {
         guard options.preserveBlankLines else { return renderChildren(of: document) }
         var out = ""
@@ -60,8 +67,8 @@ struct HTMLRenderer: MarkupVisitor {
         for child in document.children {
             if let prevEndLine, let range = child.range {
                 let blanks = range.lowerBound.line - prevEndLine - 1
-                if blanks > 0 {
-                    out += String(repeating: "<div class=\"blank-line\"></div>", count: blanks)
+                if blanks > 1 {
+                    out += String(repeating: "<div class=\"blank-line\"></div>", count: blanks - 1)
                 }
             }
             out += visit(child)
