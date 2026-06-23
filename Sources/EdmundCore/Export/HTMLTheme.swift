@@ -1,0 +1,180 @@
+import AppKit
+
+// MARK: - HTMLTheme
+//
+// Emits the CSS for Read mode / PDF export from the *same* `EditorTheme` and
+// `CalloutStyle` models the editor renders from, so the two can't drift. The
+// theme is the single source of truth for the values it carries (body font/size,
+// accent, code color, line/paragraph spacing, callout colors); spacing for
+// elements the theme doesn't model (headings, list indent) uses tasteful
+// document defaults.
+//
+// Colors are resolved for one appearance (`dark`); the Read view re-renders when
+// the system appearance flips.
+enum HTMLTheme {
+
+    @MainActor
+    static func css(_ theme: EditorTheme,
+                    callouts: [String: CalloutStyle],
+                    dark: Bool) -> String {
+        let bg = dark ? "#1e1e1e" : "#ffffff"
+        let fg = dark ? "#e6e6e6" : "#1a1a1a"
+        let faint = dark ? "#9a9a9a" : "#6a6a6a"
+        let rule = dark ? "#3a3a3a" : "#e0e0e0"
+        let codeBg = dark ? "#2a2a2a" : "#f4f4f4"
+
+        // line-height: editor `lineSpacing` is extra points between lines, so the
+        // matching CSS multiplier is (fontSize + lineSpacing) / fontSize.
+        let lineHeight = (theme.fontSize + theme.lineSpacing) / theme.fontSize
+
+        return """
+        :root {
+          --body-font: \(cssFontStack(theme.fontName, generic: "serif"));
+          --body-size: \(trim(theme.fontSize))px;
+          --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
+          --mono-size: \(trim(theme.monospaceFontSize))px;
+          --accent: \(theme.accentHex);
+          --code: \(theme.codeHex);
+          --bg: \(bg);
+          --fg: \(fg);
+          --faint: \(faint);
+          --rule: \(rule);
+          --code-bg: \(codeBg);
+          --line-height: \(trim(lineHeight));
+          --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
+        }
+        \(calloutVars(callouts, dark: dark))
+        \(staticRules)
+        """
+    }
+
+    // MARK: Callout custom properties
+
+    @MainActor
+    private static func calloutVars(_ callouts: [String: CalloutStyle], dark: Bool) -> String {
+        // De-dup styles shared by aliases: emit one rule block per type key.
+        var out = ""
+        for type in callouts.keys.sorted() {
+            let style = callouts[type]!
+            let accent = style.accentHex(dark: dark)
+            let border = style.resolvedBorderHex(dark: dark)
+            let bg = style.explicitBackgroundHex(dark: dark)
+                ?? rgba(accent, alpha: style.backgroundAlpha)
+            out += """
+            .callout-\(type) {
+              --c-accent: \(accent);
+              --c-border: \(border);
+              --c-bg: \(bg);
+              --c-border-width: \(trim(style.borderWidth))px;
+              \(borderEdgeRules(style.borderEdges))
+            }
+
+            """
+        }
+        return out
+    }
+
+    private static func borderEdgeRules(_ edges: CalloutStyle.Edges) -> String {
+        var parts: [String] = []
+        if edges.contains(.left)   { parts.append("border-left: var(--c-border-width) solid var(--c-border);") }
+        if edges.contains(.top)    { parts.append("border-top: var(--c-border-width) solid var(--c-border);") }
+        if edges.contains(.right)  { parts.append("border-right: var(--c-border-width) solid var(--c-border);") }
+        if edges.contains(.bottom) { parts.append("border-bottom: var(--c-border-width) solid var(--c-border);") }
+        return parts.joined(separator: " ")
+    }
+
+    // MARK: Static element rules
+
+    private static let staticRules = """
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: var(--body-font);
+      font-size: var(--body-size);
+      line-height: var(--line-height);
+      color: var(--fg);
+      background: var(--bg);
+      margin: 0;
+      padding: 48px 24px;
+    }
+    .page { max-width: 46em; margin: 0 auto; }
+    p { margin: 0 0 var(--para-space); }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.25; font-weight: 600; margin: 1.4em 0 0.5em; }
+    h1 { font-size: 1.9em; } h2 { font-size: 1.55em; } h3 { font-size: 1.3em; }
+    h4 { font-size: 1.1em; } h5 { font-size: 1em; } h6 { font-size: 0.9em; color: var(--faint); }
+    :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { font-family: var(--mono-font); font-size: 0.92em; color: var(--code);
+           background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+    pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+    pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
+    blockquote { margin: 1em 0; padding: 0.2em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
+    hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
+    mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit;
+           padding: 0 0.1em; border-radius: 3px; }
+    ul, ol { margin: 0 0 var(--para-space); padding-left: 1.6em; }
+    li { margin: 0.15em 0; }
+    li > p { margin: 0; }
+    li.task { list-style: none; margin-left: -1.3em; }
+    li.task > input { margin-right: 0.4em; }
+    li.task > p { display: inline; margin: 0; }
+    table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+    th, td { border: 1px solid var(--rule); padding: 6px 10px; }
+    thead th { background: var(--code-bg); }
+    img { max-width: 100%; }
+    img.math { vertical-align: middle; }
+    .math-display { text-align: center; margin: 1em 0; }
+
+    /* Callouts: tinted box + colored title; the icon sits as a non-shrinking
+       flex child so a long custom title wraps under the title text, never under
+       the icon — the layout the TextKit editor can't achieve. */
+    .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 1em 0; }
+    .callout-title { display: flex; align-items: flex-start; gap: 0.5em;
+                     font-weight: 600; color: var(--c-accent); }
+    .callout-icon { flex: 0 0 auto; display: inline-flex; line-height: var(--line-height); }
+    .callout-icon img { width: 1em; height: 1em; }
+    .callout-title-text { flex: 1 1 auto; }
+    .callout-body { margin-top: 0.4em; }
+    .callout-body > :first-child { margin-top: 0; }
+    .callout-body > :last-child { margin-bottom: 0; }
+
+    @media print {
+      body { padding: 0; }
+      .callout, pre, blockquote, table, .math-display { break-inside: avoid; }
+      h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+      thead { display: table-header-group; }
+    }
+    """
+
+    // MARK: Helpers
+
+    /// A CSS font stack: the (possibly multi-word) macOS family name quoted, then
+    /// a system fallback and a generic. WKWebView resolves installed families
+    /// (e.g. "Iowan Old Style") by name; the generic guards the rest.
+    private static func cssFontStack(_ family: String, generic: String) -> String {
+        let trimmed = family.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || trimmed == "ui-monospace" {
+            return "ui-monospace, \(generic)"
+        }
+        return "\"\(trimmed)\", -apple-system, \(generic)"
+    }
+
+    /// rgba(...) from a "#RRGGBB" hex and an alpha.
+    private static func rgba(_ hex: String, alpha: CGFloat) -> String {
+        guard let (r, g, b) = rgbComponents(hex) else { return hex }
+        return "rgba(\(r), \(g), \(b), \(trim(alpha)))"
+    }
+
+    private static func rgbComponents(_ hex: String) -> (Int, Int, Int)? {
+        var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if h.hasPrefix("#") { h.removeFirst() }
+        guard h.count == 6, let rgb = UInt64(h, radix: 16) else { return nil }
+        return (Int((rgb >> 16) & 0xFF), Int((rgb >> 8) & 0xFF), Int(rgb & 0xFF))
+    }
+
+    /// Formats a CGFloat without a trailing ".0" so CSS reads cleanly.
+    private static func trim(_ v: CGFloat) -> String {
+        v == v.rounded() ? String(Int(v)) : String(format: "%g", v)
+    }
+}
