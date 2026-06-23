@@ -313,6 +313,18 @@ class Document: NSDocument, HeadingNavigable {
     @objc private func selectReadingMode(_ sender: Any?) { setViewMode(.reading) }
     @objc private func selectSourceMode(_ sender: Any?)  { setViewMode(.source) }
 
+    /// Cycle Edit → Read → Source → Edit (the View-menu ⌘E item). Keeps the
+    /// toolbar button in sync via `setViewMode`.
+    @objc func cycleViewMode(_ sender: Any?) {
+        let next: EditorTextView.ViewMode
+        switch editor.viewMode {
+        case .edit:    next = .reading
+        case .reading: next = .source
+        case .source:  next = .edit
+        }
+        setViewMode(next)
+    }
+
     /// Drops the mode menu down from the chevron button.
     @objc private func showViewModeMenu(_ sender: NSButton) {
         let menu = viewModeMenu()

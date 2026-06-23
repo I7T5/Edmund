@@ -136,8 +136,9 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 | Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift` |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift` |
+| Formatting commands | `Editing/EditorTextView+Formatting{Core,Commands}.swift` (Format-menu actions: bold/lists/links/callouts/…); menu built from `edmd/App/FormatMenu.swift` |
 | Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
-| App shell | `edmd/App/{main,Document,DocumentController}.swift` |
+| App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift` |
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General views) |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh`, `Package.swift`, `Info.plist`, `Resources/` |
@@ -147,6 +148,17 @@ must lay out the viewport↔caret span before measuring or it reads stale TK2
 height estimates), **content width** (`+ContentWidth.swift`: a settings slider
 sets a symmetric `textContainerInset.width` for a centered reading column,
 recomputed on resize).
+
+**Format menu & shortcuts** are pure AppKit (the app has no SwiftUI scene, so
+SwiftUI `Commands` isn't an option). `FormatMenu.swift` is a declarative command
+table (`MenuCommand` + `Shortcut`, each with a stable `id` so a later pass can
+read per-command shortcut overrides from UserDefaults) that builds the menu; items
+use a nil target and route through the responder chain to the focused
+`EditorTextView`'s `@objc format…` actions — the same wiring as undo/redo. Those
+actions funnel through two primitives in `+FormattingCore.swift`
+(`applyFormattingEdit` for a single contiguous edit, modeled on the Tab-indent
+path; `applyWholeDocumentEdit` for non-contiguous edits like footnotes). The
+View-menu ⌘E item cycles Edit→Read→Source via `Document.cycleViewMode`.
 
 ---
 
