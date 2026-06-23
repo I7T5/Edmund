@@ -219,6 +219,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
+        // Format menu — built from the declarative command registry.
+        mainMenu.addItem(FormatMenu.build())
+
         // View menu
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
@@ -228,6 +231,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             action: #selector(AppDelegate.toggleTypewriterMode(_:)),
             keyEquivalent: "")
         typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+
+        // View-mode cycle (Edit → Read → Source), bracketed by dividers.
+        viewMenu.addItem(.separator())
+        viewMenu.addItem(FormatMenu.viewModeCycleItem())
+        viewMenu.addItem(.separator())
 
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
