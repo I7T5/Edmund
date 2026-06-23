@@ -365,7 +365,8 @@ class Document: NSDocument, HeadingNavigable {
     @objc override func printDocument(_ sender: Any?) {
         MarkdownPrinter.print(markdown: editor.rawSource,
                               theme: editor.theme,
-                              callouts: mergedCallouts)
+                              callouts: mergedCallouts,
+                              window: windowControllers.first?.window)
     }
 
     @objc private func selectEditMode(_ sender: Any?)    { setViewMode(.edit) }

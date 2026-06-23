@@ -1,8 +1,8 @@
 # Edmund
 
-> [!tip] Guidelines for Build and Contributing coming soon!
+> [!TIP] Guidelines for Build and Contributing coming soon!
 
-Edmund is a native, lightweight macOS markdown editor with Live Preview. 
+Edmund is a native, lightweight markdown editor with Live Preview made for macOS.  
 
 - **Requirements**: macOS Sonoma 14 or later
 - **Website**: <https://i7t5.com/edmund>
@@ -10,13 +10,13 @@ Edmund is a native, lightweight macOS markdown editor with Live Preview.
 ## Features
 
 - **Live Preview**: WYSIWYG. Render as you type. Hides delimiters outside active token / block. 
-- **Lightweight and fast**: App size ~5 MB. Lazy rendering via TextKit 2. Minimal dependencies. 
+- **Lightweight and fast**: Installer ~5 MB. Lazy rendering via TextKit 2. Minimal dependencies. 
 - **Keyboard-first**: Essential buttons only. Configurable keyboard shortcuts. 
-- **Powerful and compatible**: 
+- **Simple yet powerful**: 
   - Follows [cmark-gfm](https://github.com/github/cmark-gfm) through Apple's own [swift-markdown](https://github.com/swiftlang/swift-markdown). 
-  - Opt-in support for non-GFM syntax such as ==highlights==, [[WikiLinks]], footnotes `[^1]`, code blocks with syntax highlighting, as well as Obsidian-flavored comments and callouts through. 
-  - Renders both inline and display math in LaTex using [SwiftMath](https://github.com/mgriebling/SwiftMath). 
-- **Native UI/UX**: Respects Apple design guidelines. AppKit + SwiftUI. 
+  - Opt-in support for non-GFM syntax such as ==highlights==, [[WikiLinks]], footnotes `[^1]`, code blocks with syntax highlighting, Obsidian-flavored comments and callouts, etc.  
+  - Renders both inline and display math  using [SwiftMath](https://github.com/mgriebling/SwiftMath). Opt-in extension for more math syntax through [RaTeX](https://github.com/erweixin/RaTeX). 
+- **Native UI/UX**: Feels exactly like macOS. AppKit + SwiftUI core. 
 - **Secure and private**: Always offline. Network connection required for software updates only. 
 - **Open and free**: Apache License 2.0. Free of charge. 
 
@@ -61,7 +61,7 @@ If Edmund's not your thing, some of the following might be:
 
 The list is by no means exhaustive, and neither was it meant to be. I just wanted to give credit to the makers of these apps, esp. the aesthetic open sourced ones. If you want a comprehensive list, [this](https://github.com/mundimark/awesome-markdown-editors) might be more helpful. 
 
-## Motivation, philosophy, credits
+## Motivation, philosophy, acknowledgements
 
 I wanted to create an open source alternative to Typora that would be the [CotEditor](https://coteditor.com) of Markdown editors. See this [blog post](link TBD) for more design philosophy and behind-the-scenes. 
 
@@ -70,6 +70,7 @@ The following have greatly influenced my architecture and/or design choices. I o
 - [Swift Markdown Engine](https://github.com/nodes-app/swift-markdown-engine) / [Nodes](https://nodes-web.com) for the parser/token architecture and the TextKit 2 integration
 - [Typora](https://typora.io) for menu bar item organization
 - [Tomorrow Light](https://github.com/chriskempson/tomorrow-theme) and [One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) for code syntax highlighting
+- [create-dmg](https://github.com/sindresorhus/create-dmg) for a Apple-looking `.dmg`
 
 ## License
 

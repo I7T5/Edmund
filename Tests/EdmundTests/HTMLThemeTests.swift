@@ -19,8 +19,8 @@ struct HTMLThemeTests {
         #expect(out.contains("--accent: #3366E6;"))
         #expect(out.contains("--code: #8A2425;"))
         #expect(out.contains("--body-size: 16px;"))
-        // (16 + 4) / 16 = 1.25
-        #expect(out.contains("--line-height: 1.25;"))
+        // 1.2 + 4/16 = 1.45
+        #expect(out.contains("--line-height: 1.45;"))
         // Multi-word family is quoted with a fallback stack.
         #expect(out.contains("\"Iowan Old Style\""))
     }

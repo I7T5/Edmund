@@ -23,9 +23,10 @@ enum HTMLTheme {
         let rule = dark ? "#3a3a3a" : "#e0e0e0"
         let codeBg = dark ? "#2a2a2a" : "#f4f4f4"
 
-        // line-height: editor `lineSpacing` is extra points between lines, so the
-        // matching CSS multiplier is (fontSize + lineSpacing) / fontSize.
-        let lineHeight = (theme.fontSize + theme.lineSpacing) / theme.fontSize
+        // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
+        // *between* lines on top of the font's natural leading (~1.2×). The CSS
+        // equivalent is 1.2 + (lineSpacing / fontSize).
+        let lineHeight = 1.2 + theme.lineSpacing / theme.fontSize
 
         return """
         :root {
@@ -111,13 +112,12 @@ enum HTMLTheme {
     pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
     blockquote { margin: 1em 0; padding: 0.2em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
     hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
-    mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit;
-           padding: 0 0.1em; border-radius: 3px; }
+    mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
     ul, ol { margin: 0 0 var(--para-space); padding-left: 1.6em; }
     li { margin: 0.15em 0; }
     li > p { margin: 0; }
-    li.task { list-style: none; margin-left: -1.3em; }
-    li.task > input { margin-right: 0.4em; }
+    li.task { list-style: none; }
+    li.task > input[type=checkbox] { vertical-align: -0.1em; margin-right: 0.4em; }
     li.task > p { display: inline; margin: 0; }
     table { border-collapse: collapse; margin: 1em 0; width: 100%; }
     th, td { border: 1px solid var(--rule); padding: 6px 10px; }
@@ -130,7 +130,7 @@ enum HTMLTheme {
        flex child so a long custom title wraps under the title text, never under
        the icon — the layout the TextKit editor can't achieve. */
     .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 1em 0; }
-    .callout-title { display: flex; align-items: flex-start; gap: 0.5em;
+    .callout-title { display: flex; align-items: center; gap: 0.5em;
                      font-weight: 600; color: var(--c-accent); }
     .callout-icon { flex: 0 0 auto; display: inline-flex; line-height: var(--line-height); }
     .callout-icon img { width: 1em; height: 1em; }

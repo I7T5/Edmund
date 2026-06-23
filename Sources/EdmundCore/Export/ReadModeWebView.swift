@@ -52,15 +52,23 @@ public final class ReadModeWebView: WKWebView, WKNavigationDelegate {
     public func webView(_ webView: WKWebView,
                         decidePolicyFor navigationAction: WKNavigationAction,
                         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        // The initial loadHTMLString (and in-page anchor scrolls) are `.other`.
-        if navigationAction.navigationType == .other {
+        guard let url = navigationAction.request.url else {
             decisionHandler(.allow)
             return
         }
-        // Any link the user activates: open http(s) in the default browser; the
-        // read view itself never leaves the document.
-        if let url = navigationAction.request.url,
-           url.scheme == "http" || url.scheme == "https" {
+        let scheme = url.scheme ?? ""
+
+        // Allow the initial loadHTMLString load and in-page anchor scrolls.
+        // When baseURL is nil, both come through as about:blank (or about:blank#anchor),
+        // not as .linkActivated — so checking navigationType alone is not reliable;
+        // check the URL scheme instead.
+        if scheme == "about" || scheme == "blob" {
+            decisionHandler(.allow)
+            return
+        }
+
+        // External links → default browser. The read view never navigates away.
+        if scheme == "http" || scheme == "https" {
             NSWorkspace.shared.open(url)
         }
         decisionHandler(.cancel)
