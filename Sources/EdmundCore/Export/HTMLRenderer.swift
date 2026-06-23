@@ -41,25 +41,45 @@ struct HTMLRenderer: MarkupVisitor {
         return r.visit(doc)
     }
 
-    /// Top-level block iteration. When `preserveBlankLines` is on, runs of blank
-    /// source lines between consecutive blocks add proportional vertical space:
-    /// one blank line is the normal block separator, each *additional* blank line
-    /// emits one `.blank-line` spacer.
+    /// Top-level block iteration. When `preserveBlankLines` is on, each blank
+    /// source line between two blocks emits one `.blank-line` spacer (one line of
+    /// vertical space), so the author's spacing shows the way it does in Edit
+    /// mode — instead of Markdown collapsing every run of blank lines to a single
+    /// block separation.
+    ///
+    /// QUIRK: a block's `range.upperBound.line` is NOT reliably its last content
+    /// line — cmark folds trailing blank lines into some block ranges (lists in
+    /// particular), so a list followed by a blank line then a paragraph reports
+    /// the list ending on the blank line. We therefore clamp each block's end
+    /// back to its last non-blank source line; the blanks between blocks A and B
+    /// are then `B.firstLine - clamp(A.end) - 1`.
     mutating func visitDocument(_ document: Document) -> String {
         guard options.preserveBlankLines else { return renderChildren(of: document) }
         var out = ""
         var prevEndLine: Int?
         for child in document.children {
             if let prevEndLine, let range = child.range {
-                let extraBlanks = range.lowerBound.line - prevEndLine - 2
-                if extraBlanks > 0 {
-                    out += String(repeating: "<div class=\"blank-line\"></div>", count: extraBlanks)
+                let blanks = range.lowerBound.line - prevEndLine - 1
+                if blanks > 0 {
+                    out += String(repeating: "<div class=\"blank-line\"></div>", count: blanks)
                 }
             }
             out += visit(child)
-            if let range = child.range { prevEndLine = range.upperBound.line }
+            if let range = child.range {
+                prevEndLine = lastContentLine(atOrBefore: range.upperBound.line)
+            }
         }
         return out
+    }
+
+    /// The last source line at or before `line` (1-indexed) that has non-blank
+    /// content. Used to undo cmark folding trailing blank lines into a block.
+    private func lastContentLine(atOrBefore line: Int) -> Int {
+        var l = min(line, sourceLines.count)
+        while l >= 1, sourceLines[l - 1].trimmingCharacters(in: .whitespaces).isEmpty {
+            l -= 1
+        }
+        return l
     }
 
     // MARK: Default / children

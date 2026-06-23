@@ -128,8 +128,15 @@ private final class PrintJob: NSObject, WKNavigationDelegate {
         }
     }
 
-    @objc func printDidRun(_ op: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
-        cleanup()
+    // QUIRK: for a `.save` (headless export) job, NSPrintOperation runs
+    // `_continueModalOperationToTheEnd` on a *spawned* thread and invokes this
+    // didRun callback off the main thread. `cleanup()` closes an NSWindow, which
+    // must happen on main — so this callback is `nonisolated` (otherwise the
+    // Swift-6 main-actor check traps when AppKit calls it off-main) and hops back
+    // to the main actor before touching any AppKit state.
+    @objc nonisolated func printDidRun(_ op: NSPrintOperation, success: Bool,
+                                       contextInfo: UnsafeMutableRawPointer?) {
+        Task { @MainActor in self.cleanup() }
     }
 
     private func cleanup() {

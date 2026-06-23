@@ -41,6 +41,7 @@ enum HTMLTheme {
           --faint: \(faint);
           --rule: \(rule);
           --code-bg: \(codeBg);
+          --marker: \(resolvedRGBA(.tertiaryLabelColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
         }
@@ -119,13 +120,18 @@ enum HTMLTheme {
     .page > ul, .page > ol { padding-left: 2.25em; }
     ul { list-style-type: disc; }
     li { margin: 0.15em 0; }
-    li::marker { color: var(--faint); font-size: 0.85em; }
+    li::marker { color: var(--marker); font-size: 0.85em; }
     li > p { margin: 0; }
-    /* Task items: the checkbox hangs in the indent so wrapped lines and the
-       label align, never tucking under the checkbox. */
-    li.task { list-style: none; padding-left: 1.4em; }
-    li.task > input[type=checkbox] { margin-left: -1.4em; margin-right: 0.45em; vertical-align: -0.1em; }
+    /* Task items align with bullet/number lists: the checkbox is floated into
+       the marker slot (negative margin) rather than adding indent, so the label
+       and wrapped lines sit at the same content edge as a bullet's text — and
+       wrapped lines never tuck under the checkbox. */
+    li.task { list-style: none; }
+    li.task > input[type=checkbox] {
+      float: left; width: 1em; height: 1em; margin: 0.25em 0.4em 0 -1.4em;
+    }
     li.task > p { display: inline; margin: 0; }
+    li.task > ul, li.task > ol { clear: left; }
     .blank-line { height: calc(var(--body-size) * var(--line-height)); }
     table { border-collapse: collapse; margin: 1em 0; width: 100%; }
     th, td { border: 1px solid var(--rule); padding: 6px 10px; }
@@ -173,6 +179,24 @@ enum HTMLTheme {
             return "ui-monospace, \(generic)"
         }
         return "\"\(trimmed)\", -apple-system, \(generic)"
+    }
+
+    /// Resolves a (possibly dynamic/catalog) `NSColor` for the given appearance
+    /// to a CSS `rgba(...)`, preserving alpha. Used so list markers use the exact
+    /// same dim as the editor (`NSColor.tertiaryLabelColor`) and can't drift.
+    @MainActor
+    private static func resolvedRGBA(_ color: NSColor, dark: Bool) -> String {
+        var resolved = color
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            resolved = color.usingColorSpace(.sRGB) ?? color
+        }
+        guard let c = resolved.usingColorSpace(.sRGB) else {
+            return dark ? "rgba(235,235,245,0.25)" : "rgba(60,60,67,0.3)"
+        }
+        let r = Int((c.redComponent * 255).rounded())
+        let g = Int((c.greenComponent * 255).rounded())
+        let b = Int((c.blueComponent * 255).rounded())
+        return "rgba(\(r), \(g), \(b), \(trim(c.alphaComponent)))"
     }
 
     /// rgba(...) from a "#RRGGBB" hex and an alpha.

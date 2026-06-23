@@ -71,18 +71,23 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard navigationAction.navigationType == .linkActivated else {
-            // Initial loadHTMLString, reloads, in-page fragment scrolls, etc.
-            decisionHandler(.allow)
-            return
-        }
-        // A clicked link: open external schemes in the default browser; never
-        // navigate the read view away from the document.
-        if let url = navigationAction.request.url,
-           let scheme = url.scheme?.lowercased(),
+        let url = navigationAction.request.url
+        // DIAGNOSTIC (temporary): confirms the delegate fires and shows what
+        // WebKit reports for a click. Remove once link nav is confirmed.
+        NSLog("READMODE-NAV type=\(navigationAction.navigationType.rawValue) url=\(url?.absoluteString ?? "nil")")
+
+        // QUIRK: with `loadHTMLString(_, baseURL: nil)` the document base is
+        // about:blank, and a link click does NOT reliably report
+        // `.linkActivated` — it can come through as `.other`. So decide by URL
+        // scheme, not navigation type: any real web scheme is an external link
+        // to hand off; everything else (about:blank initial load, fragment
+        // scrolls, data:) loads in place.
+        if let url, let scheme = url.scheme?.lowercased(),
            scheme == "http" || scheme == "https" || scheme == "mailto" {
             NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
         }
-        decisionHandler(.cancel)
+        decisionHandler(.allow)
     }
 }
