@@ -25,18 +25,41 @@ struct HTMLRenderer: MarkupVisitor {
     /// editor's styling layer does.
     private let source: String
     private let sourceLines: [String]
+    private let options: ReadRenderOptions
 
-    private init(source: String) {
+    private init(source: String, options: ReadRenderOptions) {
         self.source = source
         self.sourceLines = source.components(separatedBy: "\n")
+        self.options = options
     }
 
     /// Parses `markdown` and returns the rendered HTML body (no `<html>`/`<head>`
     /// wrapper — `DocumentHTML` adds that).
-    static func render(markdown: String) -> String {
-        var r = HTMLRenderer(source: markdown)
+    static func render(markdown: String, options: ReadRenderOptions = .default) -> String {
+        var r = HTMLRenderer(source: markdown, options: options)
         let doc = Document(parsing: markdown, options: [.disableSmartOpts])
         return r.visit(doc)
+    }
+
+    /// Top-level block iteration. When `preserveBlankLines` is on, runs of blank
+    /// source lines between consecutive blocks add proportional vertical space:
+    /// one blank line is the normal block separator, each *additional* blank line
+    /// emits one `.blank-line` spacer.
+    mutating func visitDocument(_ document: Document) -> String {
+        guard options.preserveBlankLines else { return renderChildren(of: document) }
+        var out = ""
+        var prevEndLine: Int?
+        for child in document.children {
+            if let prevEndLine, let range = child.range {
+                let extraBlanks = range.lowerBound.line - prevEndLine - 2
+                if extraBlanks > 0 {
+                    out += String(repeating: "<div class=\"blank-line\"></div>", count: extraBlanks)
+                }
+            }
+            out += visit(child)
+            if let range = child.range { prevEndLine = range.upperBound.line }
+        }
+        return out
     }
 
     // MARK: Default / children
@@ -188,7 +211,7 @@ struct HTMLRenderer: MarkupVisitor {
         }
         let bodyHTML = body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ""
-            : HTMLRenderer.render(markdown: body)
+            : HTMLRenderer.render(markdown: body, options: options)
 
         // Icon is filled by DocumentHTML's asset pass (SF Symbol → data URI),
         // keyed by symbol + type so it can resolve the right accent for the

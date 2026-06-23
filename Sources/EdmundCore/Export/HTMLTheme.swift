@@ -104,8 +104,7 @@ enum HTMLTheme {
     h1 { font-size: 1.9em; } h2 { font-size: 1.55em; } h3 { font-size: 1.3em; }
     h4 { font-size: 1.1em; } h5 { font-size: 1em; } h6 { font-size: 0.9em; color: var(--faint); }
     :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    a { color: var(--accent); text-decoration: underline; }
     code { font-family: var(--mono-font); font-size: 0.92em; color: var(--code);
            background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
     pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
@@ -113,12 +112,21 @@ enum HTMLTheme {
     blockquote { margin: 1em 0; padding: 0.2em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
     hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
     mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
-    ul, ol { margin: 0 0 var(--para-space); padding-left: 1.6em; }
+    /* Match the editor's list indentation: level-1 text begins at one marker
+       slot past the marker (~2.25em), and each nesting level steps in by one
+       slot (~1.25em). Same dot at every level, like Edit mode. */
+    ul, ol { margin: 0 0 var(--para-space); padding-left: 1.25em; }
+    .page > ul, .page > ol { padding-left: 2.25em; }
+    ul { list-style-type: disc; }
     li { margin: 0.15em 0; }
+    li::marker { color: var(--faint); font-size: 0.85em; }
     li > p { margin: 0; }
-    li.task { list-style: none; }
-    li.task > input[type=checkbox] { vertical-align: -0.1em; margin-right: 0.4em; }
+    /* Task items: the checkbox hangs in the indent so wrapped lines and the
+       label align, never tucking under the checkbox. */
+    li.task { list-style: none; padding-left: 1.4em; }
+    li.task > input[type=checkbox] { margin-left: -1.4em; margin-right: 0.45em; vertical-align: -0.1em; }
     li.task > p { display: inline; margin: 0; }
+    .blank-line { height: calc(var(--body-size) * var(--line-height)); }
     table { border-collapse: collapse; margin: 1em 0; width: 100%; }
     th, td { border: 1px solid var(--rule); padding: 6px 10px; }
     thead th { background: var(--code-bg); }
@@ -129,10 +137,14 @@ enum HTMLTheme {
     /* Callouts: tinted box + colored title; the icon sits as a non-shrinking
        flex child so a long custom title wraps under the title text, never under
        the icon — the layout the TextKit editor can't achieve. */
-    .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 1em 0; }
-    .callout-title { display: flex; align-items: center; gap: 0.5em;
+    .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 0.5em 0; }
+    /* Icon sits at the top so it stays on the first line of a wrapped title; its
+       box is exactly one line tall and centers the glyph, so it lines up with the
+       first line's text rather than floating above it. */
+    .callout-title { display: flex; align-items: flex-start; gap: 0.5em;
                      font-weight: 600; color: var(--c-accent); }
-    .callout-icon { flex: 0 0 auto; display: inline-flex; line-height: var(--line-height); }
+    .callout-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+                    height: calc(var(--body-size) * var(--line-height)); }
     .callout-icon img { width: 1em; height: 1em; }
     .callout-title-text { flex: 1 1 auto; }
     .callout-body { margin-top: 0.4em; }
@@ -141,6 +153,9 @@ enum HTMLTheme {
 
     @media print {
       body { padding: 0; }
+      /* Force WebKit to keep background colors (highlight, code, callouts) when
+         printing — it strips them by default, unlike createPDF. */
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .callout, pre, blockquote, table, .math-display { break-inside: avoid; }
       h1, h2, h3, h4, h5, h6 { break-after: avoid; }
       thead { display: table-header-group; }

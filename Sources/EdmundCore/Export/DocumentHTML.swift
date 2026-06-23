@@ -15,8 +15,9 @@ enum DocumentHTML {
     static func full(markdown: String,
                      theme: EditorTheme,
                      callouts: [String: CalloutStyle],
-                     dark: Bool) -> String {
-        var body = HTMLRenderer.render(markdown: markdown)
+                     dark: Bool,
+                     options: ReadRenderOptions = .default) -> String {
+        var body = HTMLRenderer.render(markdown: markdown, options: options)
         body = fillCalloutIcons(body, callouts: callouts, dark: dark)
         body = fillMath(body, theme: theme, dark: dark)
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark)
@@ -58,19 +59,41 @@ enum DocumentHTML {
     }
 
     /// Renders an SF Symbol tinted to `hex` and returns a PNG data URI (@2x).
+    ///
+    /// The tint is applied in the **sRGB** color space and the PNG is tagged
+    /// sRGB, so the icon color exactly matches the CSS `#RRGGBB` (which the
+    /// webview interprets as sRGB). Going through `NSColor(hex:)` — which builds
+    /// a *calibrated* RGB color — and a device-RGB bitmap shifts saturated hues
+    /// (most visibly the TIP teal), making the icon disagree with the title text.
     private static func iconDataURI(symbol: String, hex: String) -> String? {
         guard let base = NSImage(systemSymbolName: symbol, accessibilityDescription: nil),
-              let color = NSColor(hex: hex) else { return nil }
+              let (r, g, b) = rgbComponents(hex) else { return nil }
         let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
         let sized = base.withSymbolConfiguration(config) ?? base
-        let size = sized.size
-        let tinted = NSImage(size: size, flipped: false) { rect in
-            sized.draw(in: rect)
-            color.set()
-            rect.fill(using: .sourceAtop)
-            return true
-        }
-        guard let data = pngData(tinted, scale: 2) else { return nil }
+        let scale: CGFloat = 2
+        let w = Int((sized.size.width * scale).rounded())
+        let h = Int((sized.size.height * scale).rounded())
+        guard w > 0, h > 0,
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+
+        let rect = NSRect(x: 0, y: 0, width: CGFloat(w), height: CGFloat(h))
+        let gctx = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = gctx
+        sized.draw(in: rect)                                  // template glyph alpha
+        ctx.setBlendMode(.sourceAtop)                         // tint where it drew
+        ctx.setFillColor(CGColor(srgbRed: CGFloat(r) / 255, green: CGFloat(g) / 255,
+                                 blue: CGFloat(b) / 255, alpha: 1))
+        ctx.fill(rect)
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let cgImage = ctx.makeImage() else { return nil }
+        let rep = NSBitmapImageRep(cgImage: cgImage)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return nil }
         return "data:image/png;base64,\(data.base64EncodedString())"
     }
 
@@ -183,5 +206,13 @@ enum DocumentHTML {
 
     private static func fmt(_ v: CGFloat) -> String {
         v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
+    }
+
+    /// Parses "#RRGGBB" (or "RRGGBB") into 0–255 components.
+    private static func rgbComponents(_ hex: String) -> (Int, Int, Int)? {
+        var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if h.hasPrefix("#") { h.removeFirst() }
+        guard h.count == 6, let rgb = UInt64(h, radix: 16) else { return nil }
+        return (Int((rgb >> 16) & 0xFF), Int((rgb >> 8) & 0xFF), Int(rgb & 0xFF))
     }
 }

@@ -332,7 +332,8 @@ class Document: NSDocument, HeadingNavigable {
             }()
             read.render(markdown: editor.rawSource,
                         theme: editor.theme,
-                        callouts: mergedCallouts)
+                        callouts: mergedCallouts,
+                        options: renderOptions)
             read.isHidden = false
             scrollView.isHidden = true
             editor.window?.makeFirstResponder(read)
@@ -351,6 +352,11 @@ class Document: NSDocument, HeadingNavigable {
         return m
     }
 
+    /// Read-mode/export render options derived from user settings.
+    private var renderOptions: ReadRenderOptions {
+        ReadRenderOptions(preserveBlankLines: AppSettings.renderBlankLinesAsBreaks)
+    }
+
     // MARK: - Export / Print
 
     @objc func exportToPDF(_ sender: Any?) {
@@ -358,6 +364,7 @@ class Document: NSDocument, HeadingNavigable {
         MarkdownPrinter.exportPDF(markdown: editor.rawSource,
                                   theme: editor.theme,
                                   callouts: mergedCallouts,
+                                  options: renderOptions,
                                   suggestedName: name.isEmpty ? "Untitled" : name,
                                   window: windowControllers.first?.window)
     }
@@ -366,6 +373,7 @@ class Document: NSDocument, HeadingNavigable {
         MarkdownPrinter.print(markdown: editor.rawSource,
                               theme: editor.theme,
                               callouts: mergedCallouts,
+                              options: renderOptions,
                               window: windowControllers.first?.window)
     }
 
