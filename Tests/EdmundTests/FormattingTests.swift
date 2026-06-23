@@ -73,10 +73,11 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.selectedRange() == NSRange(location: 5, length: 0))  // between <kbd>|</kbd>
     }
 
-    @Test func mathBlockWrapsSelection() {
+    @Test func mathBlockWrapsSelectionAsBlock() {
         let e = mk("E=mc^2", NSRange(location: 0, length: 6))
         e.formatMathBlock(nil)
-        #expect(e.rawSource == "$$E=mc^2$$")
+        #expect(e.rawSource == "$$\nE=mc^2\n$$")
+        #expect(e.selectedRange() == NSRange(location: 3, length: 0))  // caret on content line
     }
 }
 
@@ -224,10 +225,14 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource == "let x = 1")
     }
 
-    @Test func tableInsertsPlaceholderGrid() {
-        let e = mk("intro", NSRange(location: 5, length: 0))
+    @Test func tableInserts3x2WithPaddedDividers() {
+        let e = mk("", NSRange(location: 0, length: 0))
         e.formatTable(nil)
-        #expect(e.rawSource == "intro\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n")
+        let lines = e.rawSource.components(separatedBy: "\n")
+        #expect(lines[0] == "| Header 1 | Header 2 | Header 3 |")
+        #expect(lines[1] == "| -------- | -------- | -------- |")
+        #expect(lines[2] == "| Cell 1 | Cell 2 | Cell 3 |")
+        #expect(lines[3] == "| Cell 4 | Cell 5 | Cell 6 |")
         #expect(e.blocks.contains { $0.kind == .table })
     }
 
@@ -244,6 +249,140 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         let e = mk("body", NSRange(location: 0, length: 4))
         e.applyCalloutType("abstract")
         #expect(e.rawSource == "> [!abstract]\n> body")
+    }
+}
+
+// MARK: - Whitespace stripping for inline wraps
+
+@MainActor @Suite struct FormatWhitespaceTests {
+
+    @Test func boldSkipsLeadingSpace() {
+        // Selection " world" — the leading space should stay outside the markers.
+        let e = mk("hello world", NSRange(location: 5, length: 6))
+        e.formatBold(nil)
+        #expect(e.rawSource == "hello **world**")
+    }
+
+    @Test func boldSkipsTrailingSpace() {
+        let e = mk("hello world", NSRange(location: 0, length: 6))  // "hello "
+        e.formatBold(nil)
+        #expect(e.rawSource == "**hello** world")
+    }
+
+    @Test func boldSkipsBothSides() {
+        let e = mk("a word b", NSRange(location: 1, length: 6))  // " word "
+        e.formatBold(nil)
+        #expect(e.rawSource == "a **word** b")
+    }
+
+    @Test func boldInvertibleWithLeadingSpace() {
+        let e = mk("a **word** b", NSRange(location: 1, length: 9))  // " **word**"
+        e.formatBold(nil)
+        #expect(e.rawSource == "a word b")
+    }
+}
+
+// MARK: - List-type replacement
+
+@MainActor @Suite struct FormatListReplacementTests {
+
+    @Test func checklistReplacesBullet() {
+        let e = mk("- item", NSRange(location: 0, length: 0))
+        e.formatChecklist(nil)
+        #expect(e.rawSource == "- [ ] item")
+    }
+
+    @Test func checklistReplacesNumbered() {
+        let e = mk("1. item", NSRange(location: 0, length: 0))
+        e.formatChecklist(nil)
+        #expect(e.rawSource == "- [ ] item")
+    }
+
+    @Test func bulletReplaceChecklist() {
+        let e = mk("- [ ] task", NSRange(location: 0, length: 10))
+        e.formatBulletedList(nil)
+        #expect(e.rawSource == "- task")
+    }
+
+    @Test func bulletReplaceNumbered() {
+        let e = mk("1. item", NSRange(location: 0, length: 7))
+        e.formatBulletedList(nil)
+        #expect(e.rawSource == "- item")
+    }
+
+    @Test func numberedReplacesBullet() {
+        let e = mk("- item", NSRange(location: 0, length: 6))
+        e.formatNumberedList(nil)
+        #expect(e.rawSource == "1. item")
+    }
+
+    @Test func numberedReplacesChecklist() {
+        let e = mk("- [ ] task", NSRange(location: 0, length: 10))
+        e.formatNumberedList(nil)
+        #expect(e.rawSource == "1. task")
+    }
+
+    @Test func bulletToggleOffIgnoresChecklists() {
+        // Checklist lines start with "- " so the old toggle-off would have fired.
+        // The new code only toggles off when they are *plain* bullets.
+        let e = mk("- [ ] task", NSRange(location: 0, length: 10))
+        e.formatBulletedList(nil)
+        // Should REPLACE (not strip "- " leaving "[ ] task").
+        #expect(e.rawSource == "- task")
+    }
+}
+
+// MARK: - Word expansion for link / wikilink / image
+
+@MainActor @Suite struct FormatWordExpansionTests {
+
+    @Test func wikilinkExpandsToWordAtCaret() {
+        let e = mk("hello world", NSRange(location: 7, length: 0))  // caret in "world"
+        e.formatWikilink(nil)
+        #expect(e.rawSource == "hello [[world]]")
+    }
+
+    @Test func linkExpandsToWordAtCaret() {
+        let e = mk("anthropic", NSRange(location: 4, length: 0))  // caret mid-word
+        e.formatLink(nil)
+        #expect(e.rawSource == "[anthropic]()")
+        #expect(e.selectedRange() == NSRange(location: 12, length: 0))  // inside ()
+    }
+
+    @Test func imageExpandsToWordAtCaret() {
+        let e = mk("logo", NSRange(location: 2, length: 0))
+        e.formatImage(nil)
+        #expect(e.rawSource == "![logo]()")
+    }
+
+    @Test func footnoteExpandsToWordEndAtCaret() {
+        let e = mk("word", NSRange(location: 2, length: 0))  // caret mid-word
+        e.formatFootnote(nil)
+        // Marker goes after "word" (the word end), not after the caret position.
+        #expect(e.rawSource.hasPrefix("word[^1]"))
+    }
+}
+
+// MARK: - Link invertibility at caret
+
+@MainActor @Suite struct FormatLinkCaretTests {
+
+    @Test func linkUnwrapsWhenCaretInsideLink() {
+        let e = mk("[text](url)", NSRange(location: 4, length: 0))  // caret in "text"
+        e.formatLink(nil)
+        #expect(e.rawSource == "text")
+    }
+
+    @Test func linkUnwrapsWhenCaretInUrl() {
+        let e = mk("[text](url)", NSRange(location: 8, length: 0))  // caret in "url"
+        e.formatLink(nil)
+        #expect(e.rawSource == "text")
+    }
+
+    @Test func mathBlockToggleOff() {
+        let e = mk("$$\nE=mc^2\n$$", NSRange(location: 0, length: 12))
+        e.formatMathBlock(nil)
+        #expect(e.rawSource == "E=mc^2")
     }
 }
 

@@ -129,43 +129,61 @@ extension EditorTextView {
     // MARK: - Inline wrap (toggle)
 
     /// Wrap the selection (or caret) in `open`…`close`, or unwrap when already
-    /// wrapped. Span-aware per the spec:
-    ///   - With a selection: toggle off only when the delimiters sit immediately
-    ///     around the selection (or the selection itself is the wrapped text).
-    ///   - With a caret: remove empty delimiters straddling the caret, else
-    ///     unwrap the current word if it is wrapped, else insert empty
-    ///     delimiters with the caret centered.
-    func toggleInlineWrap(open: String, close: String) {
+    /// wrapped. Span-aware:
+    ///   - With a selection: strips leading/trailing spaces before wrapping, so
+    ///     `" word "` → `" **word** "`. Toggle-off checks the trimmed range.
+    ///   - With a caret: removes empty delimiters straddling the caret; else
+    ///     unwraps the current word when it is already wrapped; else inserts
+    ///     empty delimiters (or, when `expandToWord` is true, wraps the current
+    ///     word instead of inserting empty delimiters).
+    func toggleInlineWrap(open: String, close: String, expandToWord: Bool = false) {
         let ns = rawSource as NSString
         let sel = selectedRange()
         let openLen = (open as NSString).length
         let closeLen = (close as NSString).length
 
         if sel.length > 0 {
-            // Delimiters immediately surround the selection.
-            let before = sel.location - openLen
-            if before >= 0, sel.upperBound + closeLen <= ns.length,
-               ns.substring(with: NSRange(location: before, length: openLen)) == open,
-               ns.substring(with: NSRange(location: sel.upperBound, length: closeLen)) == close {
-                let inner = ns.substring(with: sel)
-                let full = NSRange(location: before, length: openLen + sel.length + closeLen)
-                applyFormattingEdit(rawRange: full, replacement: inner,
-                                    select: NSRange(location: before, length: sel.length))
-                return
-            }
-            // The selection itself is the wrapped text.
             let selText = ns.substring(with: sel)
-            if (selText as NSString).length >= openLen + closeLen,
-               selText.hasPrefix(open), selText.hasSuffix(close) {
-                let innerLen = (selText as NSString).length - openLen - closeLen
-                let inner = (selText as NSString).substring(with: NSRange(location: openLen, length: innerLen))
-                applyFormattingEdit(rawRange: sel, replacement: inner,
-                                    select: NSRange(location: sel.location, length: innerLen))
+
+            // Compute effective leading/trailing whitespace to strip.
+            let leading = selText.prefix(while: { $0 == " " || $0 == "\t" }).count
+            let trailing = selText.reversed().prefix(while: { $0 == " " || $0 == "\t" }).count
+            let hasContent = leading + trailing < sel.length
+            let effLead = hasContent ? leading : 0
+            let effTrail = hasContent ? trailing : 0
+            let trimmedSel = NSRange(location: sel.location + effLead,
+                                     length: sel.length - effLead - effTrail)
+            let trimmedText = ns.substring(with: trimmedSel)
+
+            // Check 1: delimiters sit immediately around the trimmed selection.
+            let before = trimmedSel.location - openLen
+            if before >= 0, trimmedSel.upperBound + closeLen <= ns.length,
+               ns.substring(with: NSRange(location: before, length: openLen)) == open,
+               ns.substring(with: NSRange(location: trimmedSel.upperBound, length: closeLen)) == close {
+                let full = NSRange(location: before, length: openLen + trimmedSel.length + closeLen)
+                applyFormattingEdit(rawRange: full, replacement: trimmedText,
+                                    select: NSRange(location: before, length: trimmedSel.length))
                 return
             }
-            // Wrap on.
-            applyFormattingEdit(rawRange: sel, replacement: open + selText + close,
-                                select: NSRange(location: sel.location + openLen, length: sel.length))
+
+            // Check 2: the trimmed selection itself is the wrapped text.
+            let trimmedLen = (trimmedText as NSString).length
+            if trimmedLen >= openLen + closeLen,
+               trimmedText.hasPrefix(open), trimmedText.hasSuffix(close) {
+                let innerLen = trimmedLen - openLen - closeLen
+                let inner = (trimmedText as NSString).substring(with: NSRange(location: openLen, length: innerLen))
+                applyFormattingEdit(rawRange: trimmedSel, replacement: inner,
+                                    select: NSRange(location: trimmedSel.location, length: innerLen))
+                return
+            }
+
+            // Wrap on — apply only to the non-whitespace content.
+            let leadStr = String(selText.prefix(effLead))
+            let trailStr = String(selText.suffix(effTrail))
+            let replacement = leadStr + open + trimmedText + close + trailStr
+            applyFormattingEdit(rawRange: sel, replacement: replacement,
+                                select: NSRange(location: sel.location + effLead + openLen,
+                                                length: trimmedSel.length))
             return
         }
 
@@ -189,6 +207,15 @@ extension EditorTextView {
                 let full = NSRange(location: before, length: openLen + word.length + closeLen)
                 applyFormattingEdit(rawRange: full, replacement: inner,
                                     select: NSRange(location: caret - openLen, length: 0))
+                return
+            }
+            // Expand to word when requested.
+            if expandToWord {
+                let wordText = ns.substring(with: word)
+                let replacement = open + wordText + close
+                applyFormattingEdit(rawRange: word, replacement: replacement,
+                                    select: NSRange(location: word.location + openLen
+                                                        + (wordText as NSString).length, length: 0))
                 return
             }
         }
@@ -264,6 +291,89 @@ extension EditorTextView {
             maxN = max(maxN, n)
         }
         return maxN + 1
+    }
+
+    // MARK: - List-type helpers
+
+    /// True when `line` is a checklist item (`- [ ] ` or `- [x] `).
+    func isChecklistLine(_ line: String) -> Bool {
+        let ns = line as NSString
+        return ns.length >= 6
+            && ns.substring(to: 3) == "- ["
+            && ns.substring(with: NSRange(location: 4, length: 2)) == "] "
+    }
+
+    /// True when `line` is a plain bullet (`- `, `* `, `+ `) but NOT a checklist.
+    func isBulletLine(_ line: String) -> Bool {
+        guard line.count >= 2 else { return false }
+        let start = String(line.prefix(2))
+        return (start == "- " || start == "* " || start == "+ ") && !isChecklistLine(line)
+    }
+
+    /// Strips any leading list marker (checklist, bullet, numbered) from `line`,
+    /// leaving just the content. Returns `line` unchanged if none is detected.
+    func stripListPrefix(_ line: String) -> String {
+        if isChecklistLine(line) { return String(line.dropFirst(6)) }
+        if isBulletLine(line) { return String(line.dropFirst(2)) }
+        if leadingListNumber(line) != nil { return stripLeadingNumber(line) }
+        return line
+    }
+
+    // MARK: - Link detection
+
+    /// The range of the `[text](url)` link that contains the caret, or nil.
+    /// Handles carets in both the `[text]` and `(url)` parts.
+    func linkRangeAroundCaret() -> NSRange? {
+        let ns = rawSource as NSString
+        let caret = selectedRange().location
+        guard ns.length > 0, caret <= ns.length else { return nil }
+
+        // Try path A: caret is in [text]. Scan backward for '[', bail on ']'/newline.
+        var i = caret
+        while i > 0 {
+            i -= 1
+            let c = ns.character(at: i)
+            if c == 0x5B { break }
+            if c == 0x5D || c == 0x0A { i = -1; break }
+        }
+        if i >= 0, i < ns.length, ns.character(at: i) == 0x5B {
+            if let r = linkRange(ns: ns, from: i, mustContain: caret) { return r }
+        }
+
+        // Try path B: caret is in (url). Scan backward for '(', then locate '[' before ']'.
+        var p = caret
+        while p > 0 {
+            p -= 1
+            let c = ns.character(at: p)
+            if c == 0x28 { break }          // '('
+            if c == 0x0A { p = -1; break }
+        }
+        if p >= 0, ns.character(at: p) == 0x28,
+           p > 0, ns.character(at: p - 1) == 0x5D {  // '(' preceded by ']'
+            var q = p - 2
+            while q >= 0 {
+                let c = ns.character(at: q)
+                if c == 0x5B { break }
+                if c == 0x5D || c == 0x0A { q = -1; break }
+                q -= 1
+            }
+            if q >= 0, ns.character(at: q) == 0x5B {
+                if let r = linkRange(ns: ns, from: q, mustContain: caret) { return r }
+            }
+        }
+        return nil
+    }
+
+    private func linkRange(ns: NSString, from openBracket: Int, mustContain caret: Int) -> NSRange? {
+        var j = openBracket + 1
+        while j < ns.length, ns.character(at: j) != 0x5D, ns.character(at: j) != 0x0A { j += 1 }
+        guard j < ns.length, ns.character(at: j) == 0x5D else { return nil }
+        guard j + 1 < ns.length, ns.character(at: j + 1) == 0x28 else { return nil }
+        var k = j + 2
+        while k < ns.length, ns.character(at: k) != 0x29, ns.character(at: k) != 0x0A { k += 1 }
+        guard k < ns.length, ns.character(at: k) == 0x29 else { return nil }
+        let r = NSRange(location: openBracket, length: k - openBracket + 1)
+        return (caret >= r.location && caret <= r.upperBound) ? r : nil
     }
 
     /// Returns the link text when `s` is exactly `[text](dest)`, else nil.

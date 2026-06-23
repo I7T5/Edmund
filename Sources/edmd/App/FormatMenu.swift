@@ -61,6 +61,7 @@ enum FormatMenu {
 
         for cmd in blockCommands { menu.addItem(cmd.makeItem()) }
         menu.addItem(calloutSubmenuItem())
+        menu.addItem(footnoteCommand.makeItem())
         menu.addItem(.separator())
 
         menu.addItem(fontSubmenuItem())
@@ -95,9 +96,10 @@ enum FormatMenu {
                     action: #selector(EditorTextView.formatWikilink(_:))),
         MenuCommand(id: "format.image", title: "Image",
                     action: #selector(EditorTextView.formatImage(_:))),
-        MenuCommand(id: "format.footnote", title: "Footnote",
-                    action: #selector(EditorTextView.formatFootnote(_:))),
     ]
+
+    private static let footnoteCommand = MenuCommand(id: "format.footnote", title: "Footnote",
+                    action: #selector(EditorTextView.formatFootnote(_:)))
 
     private static let blockCommands: [MenuCommand] = [
         MenuCommand(id: "format.table", title: "Table",
@@ -134,10 +136,11 @@ enum FormatMenu {
     /// GitHub alert types (uppercase in source: `> [!NOTE]`).
     private static let githubCalloutTypes = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
 
-    /// Obsidian callout types (lowercase in source: `> [!note]`).
+    /// Obsidian-only callout types (lowercase). note/tip/warning are omitted
+    /// since they duplicate NOTE/TIP/WARNING already in the GitHub group.
     private static let obsidianCalloutTypes = [
-        "note", "abstract", "info", "todo", "tip", "success", "question",
-        "warning", "failure", "danger", "bug", "example", "quote",
+        "abstract", "info", "todo", "success", "question",
+        "failure", "danger", "bug", "example", "quote",
     ]
 
     // MARK: - Submenus
