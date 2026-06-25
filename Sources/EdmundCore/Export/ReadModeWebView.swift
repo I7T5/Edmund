@@ -21,10 +21,15 @@ public final class ReadModeWebView: WKWebView {
     public init() {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
+        // QUIRK: `isInspectable` (macOS 13.3+) marks the webview as inspectable
+        // but does NOT add the "Inspect Element" context menu on its own. The
+        // legacy `developerExtrasEnabled` preference key is what actually shows
+        // the menu item. Both must be set for right-click → Inspect Element to
+        // work; the developer tools must also be enabled in Safari's settings.
+        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
         super.init(frame: .zero, configuration: config)
+        coordinator.owner = self
         navigationDelegate = coordinator
-        // Allow the Web Inspector (⌥⌘I). Inspecting HTML/CSS is safe: page
-        // JavaScript stays disabled, so this opens no execution vector.
         if #available(macOS 13.3, *) { isInspectable = true }
     }
 
@@ -46,7 +51,7 @@ public final class ReadModeWebView: WKWebView {
         reloadHTML()
     }
 
-    private func reloadHTML() {
+    func reloadHTML() {
         guard let p = pending else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
@@ -68,6 +73,10 @@ public final class ReadModeWebView: WKWebView {
 @MainActor
 private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegate {
 
+    /// Weak back-reference so the coordinator can re-inject HTML on reload
+    /// without needing the webview to be its own delegate.
+    weak var owner: ReadModeWebView?
+
     // QUIRK: use the *async* form of this delegate method, not the
     // completion-handler form. Under Swift 6 the SDK annotates the
     // completion-handler's closure (`@MainActor @Sendable`); a plain
@@ -80,6 +89,14 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
     // (`webView(_:decidePolicyFor:)`) exactly and registers the correct selector.
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
+        // QUIRK: the page is loaded via `loadHTMLString(_, baseURL: nil)`, so the
+        // document URL is `about:blank`. A user-triggered or WebKit-triggered
+        // reload navigates back to `about:blank` and clears the content. Intercept
+        // it and re-inject the HTML ourselves instead of allowing the blank reload.
+        if navigationAction.navigationType == .reload {
+            owner?.reloadHTML()
+            return .cancel
+        }
         // Decide by URL scheme, not navigation type: with `baseURL: nil` a click
         // does not reliably report `.linkActivated`. Any real web scheme is an
         // external link to hand off to the browser; everything else (the

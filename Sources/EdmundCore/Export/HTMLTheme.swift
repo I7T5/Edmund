@@ -118,16 +118,22 @@ enum HTMLTheme {
        creates asymmetric vertical padding — the blockquote looks heavier at the
        bottom than at the top. Reset it so padding alone controls the spacing. */
     blockquote > p:last-child { margin-bottom: 0; }
+    /* A nested blockquote that is the last child of its parent blockquote (or
+       callout body) would otherwise leave 1em of extra space below itself inside
+       the parent's padding. Collapse it. */
+    blockquote > blockquote:last-child,
+    .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
     mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
     /* Match the editor's list indentation: level-1 text begins at one marker
        slot past the marker (~2.25em), and each nesting level steps in by one
        slot (~1.25em). Same dot at every level, like Edit mode. */
-    /* Only the outermost list (direct child of .page) gets block margin; nested
-       lists inside list items get none — otherwise each nesting level adds its
-       own 1em, creating compounding space for multi-level structures. */
+    /* Only direct children of .page and .callout-body get block margin (1em top
+       + bottom) and the wider level-1 indent (2.25em). Nested lists inside list
+       items stay at 0 margin — otherwise each level compounds to large gaps. */
     ul, ol { margin: 0; padding-left: 1.25em; }
-    .page > ul, .page > ol { margin: 1em 0; padding-left: 2.25em; }
+    .page > ul, .page > ol,
+    .callout-body > ul, .callout-body > ol { margin: 1em 0; padding-left: 2.25em; }
     li > ul, li > ol { margin: 0; }
     ul { list-style-type: disc; }
     li { margin: 0.2em 0; }
@@ -149,7 +155,7 @@ enum HTMLTheme {
     li.task { list-style: none; }
     li.task > input[type=checkbox] {
       float: left; width: 1em; height: 1em;
-      margin-top: 0.35em;
+      margin-top: 0.5em;
       margin-right: 0.4em;
       margin-left: -1.65em;
     }
@@ -166,7 +172,7 @@ enum HTMLTheme {
     /* Callouts: tinted box + colored title; the icon sits as a non-shrinking
        flex child so a long custom title wraps under the title text, never under
        the icon — the layout the TextKit editor can't achieve. */
-    .callout { background: var(--c-bg); border-radius: 8px; padding: 14px 16px; margin: 0.5em 0; }
+    .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 0.75em 0; }
     /* Icon sits at the top so it stays on the first line of a wrapped title; its
        box is exactly one line tall and centers the glyph, so it lines up with the
        first line's text rather than floating above it. */
