@@ -203,10 +203,6 @@ enum HTMLTheme {
     th, td { border: 1px solid var(--rule); padding: 6px 10px; }
     thead th { background: var(--code-bg); }
     img { max-width: 100%; }
-    /* Block-display for document images: eliminates the inline baseline gap (the
-       descender space between an inline image's bottom and its line box bottom)
-       that otherwise shows as blank space below tall images. */
-    img.md-image { display: block; max-width: 100%; }
     img.math { vertical-align: middle; }
     .math-display { text-align: center; margin: 1em 0; }
 
