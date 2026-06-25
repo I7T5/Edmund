@@ -99,6 +99,7 @@ enum AppSettings {
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let logRetention = "settings.general.logRetention"
+        static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
     }
 
     /// Text-column width as a fraction of the available width (`0...1`). `1`
@@ -118,6 +119,19 @@ enum AppSettings {
     static var reopenWindows: Bool {
         get { UserDefaults.standard.bool(forKey: Key.reopenWindows) }
         set { UserDefaults.standard.set(newValue, forKey: Key.reopenWindows) }
+    }
+
+    /// Read mode: render runs of blank lines as proportional vertical space
+    /// (preserving the author's spacing). Defaults on. The toggle UI lives in a
+    /// future Reading-settings tab; the value is already honored here.
+    static var renderBlankLinesAsBreaks: Bool {
+        get {
+            guard UserDefaults.standard.object(forKey: Key.renderBlankLinesAsBreaks) != nil else {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: Key.renderBlankLinesAsBreaks)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Key.renderBlankLinesAsBreaks) }
     }
 
     static var startupAction: StartupAction {

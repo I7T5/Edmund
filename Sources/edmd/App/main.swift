@@ -182,6 +182,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                          action: #selector(Document.move(_:)),
                          keyEquivalent: "")
 
+        fileMenu.addItem(NSMenuItem.separator())
+
+        fileMenu.addItem(withTitle: "Export as PDF\u{2026}",
+                         action: #selector(Document.exportToPDF(_:)),
+                         keyEquivalent: "")
+
+        fileMenu.addItem(withTitle: "Print\u{2026}",
+                         action: #selector(Document.printDocument(_:)),
+                         keyEquivalent: "p")
+
         fileMenuItem.submenu = fileMenu
         mainMenu.addItem(fileMenuItem)
 

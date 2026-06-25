@@ -135,6 +135,7 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 | Parsing | `Parsing/BlockParser.swift`, `SyntaxHighlighter*.swift`, `CodeHighlighter.swift` |
 | Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift` |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
+| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + SF-Symbol/math data-URI inlining), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print) |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift` |
 | Formatting commands | `Editing/EditorTextView+Formatting{Core,Commands}.swift` (Format-menu actions: bold/lists/links/callouts/…); menu built from `edmd/App/FormatMenu.swift` |
 | Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
@@ -159,6 +160,20 @@ actions funnel through two primitives in `+FormattingCore.swift`
 (`applyFormattingEdit` for a single contiguous edit, modeled on the Tab-indent
 path; `applyWholeDocumentEdit` for non-contiguous edits like footnotes). The
 View-menu ⌘E item cycles Edit→Read→Source via `Document.cycleViewMode`.
+
+**Read mode is a separate WKWebView**, not an editor styling mode. Entering
+`.reading` swaps the editor's scroll view for a `ReadModeWebView` that renders
+the document as themed HTML (the `Export/` group); Edit and Source stay on the
+`EditorTextView`. The HTML path walks the *same* swift-markdown `Document` the
+editor parses (one parser, two back-ends: `SpanCollector` → editor attributes,
+`HTMLRenderer` → HTML), themed from the *same* `EditorTheme`/`CalloutStyle` via
+`HTMLTheme`, so the two can't drift. The webview disables JavaScript and inlines
+every asset (math/icons as data URIs) so it needs no file/network reach; external
+links open in the default browser. **File ▸ Export as PDF… / Print… (⌘P)** run
+the same HTML through `WKWebView.printOperation` for real vector (selectable)
+text — `MarkdownPrinter`. Math glyphs are high-DPI PNG (SwiftMath has no SVG
+path yet); everything else is vector. Deferred: code syntax-color spans, local
+image inlining, wikilink routing.
 
 ---
 

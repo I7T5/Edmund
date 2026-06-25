@@ -14,6 +14,12 @@ class Document: NSDocument, HeadingNavigable {
     private var viewModeButton: NSButton?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
+    /// Editor scroll view and its container, held so Read mode can swap the
+    /// editor out for a `ReadModeWebView` (created lazily on first read).
+    private var scrollView: NSScrollView!
+    private var containerView: NSView!
+    private var readView: ReadModeWebView?
+
     /// Content loaded from disk before the editor window exists.
     /// `nonisolated(unsafe)` because `read(from:ofType:)` may be called
     /// off the main actor, but the value is only consumed on main via `showWindows`.
@@ -123,7 +129,7 @@ class Document: NSDocument, HeadingNavigable {
 
         // The text view fills the whole window; the status bar floats over its
         // bottom edge, revealed on hover.
-        let scrollView = NSScrollView(frame: contentBounds)
+        scrollView = NSScrollView(frame: contentBounds)
         scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
         scrollView.scrollerStyle = .overlay
@@ -137,12 +143,12 @@ class Document: NSDocument, HeadingNavigable {
         ))
         statusBar.autoresizingMask = [.width]
 
-        let container = NSView(frame: contentBounds)
-        container.autoresizesSubviews = true
-        container.addSubview(scrollView)
-        container.addSubview(statusBar)   // overlay, on top of the text
+        containerView = NSView(frame: contentBounds)
+        containerView.autoresizesSubviews = true
+        containerView.addSubview(scrollView)
+        containerView.addSubview(statusBar)   // overlay, on top of the text
 
-        window.contentView = container
+        window.contentView = containerView
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(editorDidChange(_:)),
@@ -306,7 +312,69 @@ class Document: NSDocument, HeadingNavigable {
 
     private func setViewMode(_ mode: EditorTextView.ViewMode) {
         editor.viewMode = mode
+        applyViewMode(mode)
         refreshViewModeButton()
+    }
+
+    /// Swaps the on-screen view for the mode: Read mode shows the rendered-HTML
+    /// `ReadModeWebView`; Edit and Source stay on the editor's scroll view.
+    private func applyViewMode(_ mode: EditorTextView.ViewMode) {
+        guard let containerView else { return }
+        if mode == .reading {
+            let read = readView ?? {
+                let v = ReadModeWebView()
+                v.frame = scrollView.frame
+                v.autoresizingMask = [.width, .height]
+                // Below the floating status bar so counts stay visible.
+                containerView.addSubview(v, positioned: .below, relativeTo: statusBar)
+                readView = v
+                return v
+            }()
+            read.render(markdown: editor.rawSource,
+                        theme: editor.theme,
+                        callouts: mergedCallouts,
+                        options: renderOptions)
+            read.isHidden = false
+            scrollView.isHidden = true
+            editor.window?.makeFirstResponder(read)
+        } else {
+            readView?.isHidden = true
+            scrollView.isHidden = false
+            editor.window?.makeFirstResponder(editor)
+        }
+    }
+
+    /// Built-in callout styles merged with the editor's user overrides, so Read
+    /// mode and the PDF match exactly what the editor draws.
+    private var mergedCallouts: [String: CalloutStyle] {
+        var m = Callout.defaultStyles
+        for (k, v) in editor.calloutStyleOverrides { m[k] = v }
+        return m
+    }
+
+    /// Read-mode/export render options derived from user settings.
+    private var renderOptions: ReadRenderOptions {
+        ReadRenderOptions(preserveBlankLines: AppSettings.renderBlankLinesAsBreaks)
+    }
+
+    // MARK: - Export / Print
+
+    @objc func exportToPDF(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        MarkdownPrinter.exportPDF(markdown: editor.rawSource,
+                                  theme: editor.theme,
+                                  callouts: mergedCallouts,
+                                  options: renderOptions,
+                                  suggestedName: name.isEmpty ? "Untitled" : name,
+                                  window: windowControllers.first?.window)
+    }
+
+    @objc override func printDocument(_ sender: Any?) {
+        MarkdownPrinter.print(markdown: editor.rawSource,
+                              theme: editor.theme,
+                              callouts: mergedCallouts,
+                              options: renderOptions,
+                              window: windowControllers.first?.window)
     }
 
     @objc private func selectEditMode(_ sender: Any?)    { setViewMode(.edit) }

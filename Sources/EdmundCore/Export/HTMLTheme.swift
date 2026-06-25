@@ -1,0 +1,282 @@
+import AppKit
+
+// MARK: - HTMLTheme
+//
+// Emits the CSS for Read mode / PDF export from the *same* `EditorTheme` and
+// `CalloutStyle` models the editor renders from, so the two can't drift. The
+// theme is the single source of truth for the values it carries (body font/size,
+// accent, code color, line/paragraph spacing, callout colors); spacing for
+// elements the theme doesn't model (headings, list indent) uses tasteful
+// document defaults.
+//
+// Colors are resolved for one appearance (`dark`); the Read view re-renders when
+// the system appearance flips.
+enum HTMLTheme {
+
+    @MainActor
+    static func css(_ theme: EditorTheme,
+                    callouts: [String: CalloutStyle],
+                    dark: Bool) -> String {
+        let bg = dark ? "#1e1e1e" : "#ffffff"
+        let fg = dark ? "#e6e6e6" : "#1a1a1a"
+        let faint = dark ? "#9a9a9a" : "#6a6a6a"
+        let rule = dark ? "#3a3a3a" : "#e0e0e0"
+        let codeBg = dark ? "#2a2a2a" : "#f4f4f4"
+
+        // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
+        // *between* lines on top of the font's natural leading (~1.2×). The CSS
+        // equivalent is 1.2 + (lineSpacing / fontSize).
+        let lineHeight = 1.2 + theme.lineSpacing / theme.fontSize
+
+        return """
+        :root {
+          --body-font: \(cssFontStack(theme.fontName, generic: "serif"));
+          --body-size: \(trim(theme.fontSize))px;
+          --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
+          --mono-size: \(trim(theme.monospaceFontSize))px;
+          --accent: \(theme.accentHex);
+          --code: \(theme.codeHex);
+          --bg: \(bg);
+          --fg: \(fg);
+          --faint: \(faint);
+          --rule: \(rule);
+          --code-bg: \(codeBg);
+          --marker: \(resolvedRGBA(.tertiaryLabelColor, dark: dark));
+          --line-height: \(trim(lineHeight));
+          --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
+        }
+        \(calloutVars(callouts, dark: dark))
+        \(staticRules)
+        """
+    }
+
+    // MARK: Callout custom properties
+
+    @MainActor
+    private static func calloutVars(_ callouts: [String: CalloutStyle], dark: Bool) -> String {
+        // De-dup styles shared by aliases: emit one rule block per type key.
+        var out = ""
+        for type in callouts.keys.sorted() {
+            let style = callouts[type]!
+            let accent = style.accentHex(dark: dark)
+            let border = style.resolvedBorderHex(dark: dark)
+            let bg = style.explicitBackgroundHex(dark: dark)
+                ?? rgba(accent, alpha: style.backgroundAlpha)
+            out += """
+            .callout-\(type) {
+              --c-accent: \(accent);
+              --c-border: \(border);
+              --c-bg: \(bg);
+              --c-border-width: \(trim(style.borderWidth))px;
+              \(borderEdgeRules(style.borderEdges))
+            }
+
+            """
+        }
+        return out
+    }
+
+    private static func borderEdgeRules(_ edges: CalloutStyle.Edges) -> String {
+        var parts: [String] = []
+        if edges.contains(.left)   { parts.append("border-left: var(--c-border-width) solid var(--c-border);") }
+        if edges.contains(.top)    { parts.append("border-top: var(--c-border-width) solid var(--c-border);") }
+        if edges.contains(.right)  { parts.append("border-right: var(--c-border-width) solid var(--c-border);") }
+        if edges.contains(.bottom) { parts.append("border-bottom: var(--c-border-width) solid var(--c-border);") }
+        return parts.joined(separator: " ")
+    }
+
+    // MARK: Static element rules
+
+    private static let staticRules = """
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: var(--body-font);
+      font-size: var(--body-size);
+      line-height: var(--line-height);
+      color: var(--fg);
+      background: var(--bg);
+      margin: 0;
+      padding: 48px 24px;
+    }
+    .page { max-width: 46em; margin: 0 auto; }
+    /* Styled-source spacing: paragraphs and blocks get a full line's breathing
+       room, so the cadence feels like a clean, readable version of Edit mode
+       rather than a collapsed publication layout. */
+    p { margin: 0 0 1em; }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.25; font-weight: 600; margin: 1.4em 0 0.5em; }
+    h1 { font-size: 1.9em; } h2 { font-size: 1.55em; } h3 { font-size: 1.3em; }
+    h4 { font-size: 1.1em; } h5 { font-size: 1em; } h6 { font-size: 0.9em; color: var(--faint); }
+    :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
+    a { color: var(--accent); text-decoration: underline; }
+    code { font-family: var(--mono-font); font-size: 0.92em; color: var(--code);
+           background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+    pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+    pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
+    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
+    /* Without this, the 1em bottom margin on the last <p> inside a blockquote
+       creates asymmetric vertical padding — the blockquote looks heavier at the
+       bottom than at the top. Reset it so padding alone controls the spacing. */
+    blockquote > p:last-child { margin-bottom: 0; }
+    /* A nested blockquote that is the last child of its parent blockquote (or
+       callout body) would otherwise leave 1em of extra space below itself inside
+       the parent's padding. Collapse it. */
+    blockquote > blockquote:last-child,
+    .callout-body > blockquote:last-child { margin-bottom: 0; }
+    hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
+    mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
+    /* Match the editor's list indentation: level-1 text begins at one marker
+       slot past the marker (~2.25em), and each nesting level steps in by one
+       slot (~1.25em). Same dot at every level, like Edit mode. */
+    /* Only direct children of .page and .callout-body get block margin (1em top
+       + bottom) and the wider level-1 indent (2.25em). Nested lists inside list
+       items stay at 0 margin — otherwise each level compounds to large gaps. */
+    ul, ol { margin: 0; padding-left: 1.25em; }
+    .page > ul, .page > ol,
+    .callout-body > ul, .callout-body > ol { margin: 1em 0; padding-left: 2.25em; }
+    li > ul, li > ol { margin: 0; }
+    ul { list-style-type: disc; }
+    li { margin: 0.2em 0; }
+    li::marker { color: var(--marker); font-size: 0.85em; }
+    li > p { margin: 0; }
+    /* Task items: float the checkbox into the marker slot so the label and
+       wrapped lines sit at the same content edge as bullet/number text.
+       The negative margin-left pulls the checkbox into the (list's) padding
+       area; the nested <ul>/<ol> clears the float so it falls below.
+       QUIRK: the CSS `1lh` unit (Safari 17.2+) resolves to 0 when the page is
+       loaded via `loadHTMLString(_:baseURL:nil)` — there is no URL origin, so
+       WebKit skips font metric resolution and `lh` falls back to 0. With 0,
+       `calc((1lh - 1em)/2) = -0.5em`, pushing the checkbox well above the line.
+       Closed-form derivation (for reference when changing font or line-height):
+         margin_top = F × ((L−1)/2 + a − 0.5)
+       where F = font-size, L = CSS line-height, a = font's CSS ascent ratio.
+       Goal: align the checkbox center with the text baseline, which is the
+       perceptually correct position for a form element next to running text.
+       For the default theme (F=16px, L=1.45) and Iowan Old Style (a≈0.775):
+         16 × ((1.45−1)/2 + 0.775 − 0.5) = 16 × 0.5 = 8px = 0.5em ✓
+       In CSS-variable form: calc(var(--body-size) * ((var(--line-height) − 1) / 2 + 0.275))
+       where 0.275 = a − 0.5 is the font-specific ascent offset for Iowan Old Style.
+       (Geometric line-box center would be (L−1)/2 × F = 0.225em, which sits above
+       the baseline and looks too high for this font's tall ascenders.) */
+    li.task { list-style: none; }
+    li.task > input[type=checkbox] {
+      float: left; width: 1em; height: 1em;
+      /* TODO: this value is only calibrated for Iowan Old Style at 16pt. For
+         other fonts or sizes the checkbox will be misaligned — the ascent ratio
+         `a` in the formula varies per font and is not queryable from CSS without
+         `1cap`/`1ex` units, which don't resolve in loadHTMLString context either.
+         Proper fix: compute the margin-top at render time in Swift by measuring
+         the font's actual ascent (via NSFont.ascender) and inserting it as an
+         inline style, so it adapts to any EditorTheme font and size. */
+      margin-top: 0.5em;
+      margin-right: 0.4em;
+      margin-left: -1.65em;
+    }
+    li.task > p { display: inline; margin: 0; }
+    li.task > ul, li.task > ol { clear: left; }
+    .blank-line { height: calc(var(--body-size) * var(--line-height)); }
+    table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+    th, td { border: 1px solid var(--rule); padding: 6px 10px; }
+    thead th { background: var(--code-bg); }
+    img { max-width: 100%; }
+    img.math { vertical-align: middle; }
+    .math-display { text-align: center; margin: 1em 0; }
+
+    /* Callouts: tinted box + colored title; the icon sits as a non-shrinking
+       flex child so a long custom title wraps under the title text, never under
+       the icon — the layout the TextKit editor can't achieve. */
+    /* Outer margin matches the gap between two consecutive <pre> blocks (UA
+       stylesheet gives pre { margin: 1em 0 }; collapsing → 1em gap). Using
+       the same value here means neighboring callouts look equally spaced. */
+    .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 1em 0; }
+    /* Icon sits at the top so it stays on the first line of a wrapped title; its
+       box is exactly one line tall and centers the glyph, so it lines up with the
+       first line's text rather than floating above it. */
+    .callout-title { display: flex; align-items: flex-start; gap: 0.5em;
+                     font-weight: 600; color: var(--c-accent); }
+    .callout-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+                    height: calc(var(--body-size) * var(--line-height)); }
+    .callout-icon img { width: 1em; height: 1em; }
+    .callout-title-text { flex: 1 1 auto; }
+    .callout-body { margin-top: 0.4em; }
+    /* Reduce paragraph spacing inside callout bodies so nested callouts and
+       body text don't sit too far apart. The full 1em bottom margin (from the
+       global <p> rule) + the nested callout's 0.5em top margin would give
+       1.5em gap — halving the paragraph bottom margin brings it to ~1em. */
+    .callout-body > p { margin-bottom: 0.5em; }
+    .callout-body > :first-child { margin-top: 0; }
+    .callout-body > :last-child { margin-bottom: 0; }
+    /* A callout that is the last child of a callout body (e.g. the nested TIP
+       inside the NOTE) has its top margin removed so the space above it is
+       governed only by the preceding element's bottom margin (0.5em for a <p>
+       from .callout-body > p), not the combined margin collapse of 1em. */
+    .callout-body > .callout:last-child { margin-top: 0; }
+
+    @media print {
+      body { padding: 0; }
+      /* QUIRK: WebKit strips background colors when printing by default (it
+         follows the user's browser setting), even though WKWebView.createPDF
+         keeps them. `print-color-adjust: exact` forces faithful color output
+         so callout backgrounds, code blocks, and highlights survive printing. */
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .callout, pre, blockquote, table, .math-display { break-inside: avoid; }
+      h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+      thead { display: table-header-group; }
+    }
+    """
+
+    // MARK: Helpers
+
+    /// A CSS font stack: the (possibly multi-word) macOS family name quoted, then
+    /// a system fallback and a generic. WKWebView resolves installed families
+    /// (e.g. "Iowan Old Style") by name; the generic guards the rest.
+    private static func cssFontStack(_ family: String, generic: String) -> String {
+        let trimmed = family.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || trimmed == "ui-monospace" {
+            return "ui-monospace, \(generic)"
+        }
+        return "\"\(trimmed)\", -apple-system, \(generic)"
+    }
+
+    /// Resolves a (possibly dynamic/catalog) `NSColor` for the given appearance
+    /// to a CSS `rgba(...)`, preserving alpha. Used so list markers use the exact
+    /// same dim as the editor (`NSColor.tertiaryLabelColor`) and can't drift.
+    ///
+    /// QUIRK: dynamic system colors like `tertiaryLabelColor` store a catalog
+    /// reference, not actual RGBA components — calling `usingColorSpace(.sRGB)`
+    /// on one outside a drawing context resolves to nil or returns the wrong
+    /// variant. `performAsCurrentDrawingAppearance` sets the appearance context
+    /// so the catalog resolves to the correct light or dark concrete color.
+    @MainActor
+    private static func resolvedRGBA(_ color: NSColor, dark: Bool) -> String {
+        var resolved = color
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            resolved = color.usingColorSpace(.sRGB) ?? color
+        }
+        guard let c = resolved.usingColorSpace(.sRGB) else {
+            return dark ? "rgba(235,235,245,0.25)" : "rgba(60,60,67,0.3)"
+        }
+        let r = Int((c.redComponent * 255).rounded())
+        let g = Int((c.greenComponent * 255).rounded())
+        let b = Int((c.blueComponent * 255).rounded())
+        return "rgba(\(r), \(g), \(b), \(trim(c.alphaComponent)))"
+    }
+
+    /// rgba(...) from a "#RRGGBB" hex and an alpha.
+    private static func rgba(_ hex: String, alpha: CGFloat) -> String {
+        guard let (r, g, b) = rgbComponents(hex) else { return hex }
+        return "rgba(\(r), \(g), \(b), \(trim(alpha)))"
+    }
+
+    private static func rgbComponents(_ hex: String) -> (Int, Int, Int)? {
+        var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if h.hasPrefix("#") { h.removeFirst() }
+        guard h.count == 6, let rgb = UInt64(h, radix: 16) else { return nil }
+        return (Int((rgb >> 16) & 0xFF), Int((rgb >> 8) & 0xFF), Int(rgb & 0xFF))
+    }
+
+    /// Formats a CGFloat without a trailing ".0" so CSS reads cleanly.
+    private static func trim(_ v: CGFloat) -> String {
+        v == v.rounded() ? String(Int(v)) : String(format: "%g", v)
+    }
+}
