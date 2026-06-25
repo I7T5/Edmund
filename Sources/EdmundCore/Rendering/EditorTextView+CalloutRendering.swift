@@ -364,7 +364,7 @@ extension EditorTextView {
     /// Tuned so the *rendered* bottom gap matches the rendered top gap: the
     /// header overlay sits low in its line, so the top renders ~0.4·pointSize
     /// larger than `calloutTopPad`, and this makes the bottom match it.
-    var calloutBottomPad: CGFloat { bodyFont.pointSize * 1.14 }
+    var calloutBottomPad: CGFloat { bodyFont.pointSize * 1.02 }
 
     // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 
@@ -419,6 +419,9 @@ extension EditorTextView {
             symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2 + iconNudge, width: symW, height: symH))
             return true
         }
+        // Re-rasterize at the screen's backing scale on every draw rather than
+        // caching a 1× bitmap (which would render the composited title soft).
+        image.cacheMode = .never
 
         return FragmentOverlay(image: image,
                                bounds: CGRect(x: 0, y: -pointSize * 0.15,

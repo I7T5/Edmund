@@ -52,14 +52,17 @@ enum LucideIcons {
         guard let g = geometry[name],
               let data = strokeSVG(geometry: g, stroke: "#000000").data(using: .utf8),
               let base = NSImage(data: data) else { return nil }
+        base.cacheMode = .never   // re-rasterize the SVG at each draw scale (crisp on Retina)
         let box = NSSize(width: pointSize, height: pointSize)
-        return NSImage(size: box, flipped: false) { rect in
+        let image = NSImage(size: box, flipped: false) { rect in
             base.draw(in: rect)
             color.setFill()
             NSGraphicsContext.current?.cgContext.setBlendMode(.sourceAtop)
             rect.fill()
             return true
         }
+        image.cacheMode = .never
+        return image
     }
 
     /// Read-mode checkbox markup mirroring the editor's look. Unchecked: a

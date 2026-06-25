@@ -19,3 +19,6 @@ misc/
 # Local work in progress
 README.md
 docs/ROADMAP.md
+# local visual-verification tooling
+/tmp/
+Tests/EdmundTests/_RenderDump.swift
