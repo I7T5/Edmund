@@ -113,14 +113,22 @@ enum HTMLTheme {
            background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
     pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
     pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
-    blockquote { margin: 1em 0; padding: 0.2em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
+    blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
+    /* Without this, the 1em bottom margin on the last <p> inside a blockquote
+       creates asymmetric vertical padding — the blockquote looks heavier at the
+       bottom than at the top. Reset it so padding alone controls the spacing. */
+    blockquote > p:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
     mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
     /* Match the editor's list indentation: level-1 text begins at one marker
        slot past the marker (~2.25em), and each nesting level steps in by one
        slot (~1.25em). Same dot at every level, like Edit mode. */
-    ul, ol { margin: 1em 0; padding-left: 1.25em; }
-    .page > ul, .page > ol { padding-left: 2.25em; }
+    /* Only the outermost list (direct child of .page) gets block margin; nested
+       lists inside list items get none — otherwise each nesting level adds its
+       own 1em, creating compounding space for multi-level structures. */
+    ul, ol { margin: 0; padding-left: 1.25em; }
+    .page > ul, .page > ol { margin: 1em 0; padding-left: 2.25em; }
+    li > ul, li > ol { margin: 0; }
     ul { list-style-type: disc; }
     li { margin: 0.2em 0; }
     li::marker { color: var(--marker); font-size: 0.85em; }
@@ -129,17 +137,19 @@ enum HTMLTheme {
        wrapped lines sit at the same content edge as bullet/number text.
        The negative margin-left pulls the checkbox into the (list's) padding
        area; the nested <ul>/<ol> clears the float so it falls below.
-       QUIRK: use the CSS `1lh` unit (= computed line-height, ≈ 23px at
-       default theme) to precisely center a 1em checkbox on the first text
-       line — `(1lh - 1em) / 2` is exact regardless of the font or line-
-       height setting. `var(--body-size) * var(--line-height)` gives the
-       same number mathematically but relies on the CSS variables being in
-       sync; `1lh` is what the browser actually uses and is supported in
-       WKWebView on macOS 14 (Safari 17.2+). */
+       QUIRK: the CSS `1lh` unit (Safari 17.2+) resolves to 0 when the page is
+       loaded via `loadHTMLString(_:baseURL:nil)` — there is no URL origin, so
+       WebKit skips font metric resolution and `lh` falls back to 0. With 0,
+       `calc((1lh - 1em)/2) = -0.5em`, pushing the checkbox well above the line.
+       Use the CSS custom-property equivalent instead: `--body-size * --line-height`
+       gives the same 23.2px at the default theme and is reliable in all contexts.
+       0.35em is chosen over the pure line-box center (0.225em) because Iowan Old
+       Style's visual text center sits lower in the line box than average — 0.35em
+       aligns the checkbox with the approximate x-height/cap-height midpoint. */
     li.task { list-style: none; }
     li.task > input[type=checkbox] {
       float: left; width: 1em; height: 1em;
-      margin-top: calc((1lh - 1em) / 2);
+      margin-top: 0.35em;
       margin-right: 0.4em;
       margin-left: -1.65em;
     }
@@ -156,7 +166,7 @@ enum HTMLTheme {
     /* Callouts: tinted box + colored title; the icon sits as a non-shrinking
        flex child so a long custom title wraps under the title text, never under
        the icon — the layout the TextKit editor can't achieve. */
-    .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 0.5em 0; }
+    .callout { background: var(--c-bg); border-radius: 8px; padding: 14px 16px; margin: 0.5em 0; }
     /* Icon sits at the top so it stays on the first line of a wrapped title; its
        box is exactly one line tall and centers the glyph, so it lines up with the
        first line's text rather than floating above it. */
@@ -167,6 +177,11 @@ enum HTMLTheme {
     .callout-icon img { width: 1em; height: 1em; }
     .callout-title-text { flex: 1 1 auto; }
     .callout-body { margin-top: 0.4em; }
+    /* Reduce paragraph spacing inside callout bodies so nested callouts and
+       body text don't sit too far apart. The full 1em bottom margin (from the
+       global <p> rule) + the nested callout's 0.5em top margin would give
+       1.5em gap — halving the paragraph bottom margin brings it to ~1em. */
+    .callout-body > p { margin-bottom: 0.5em; }
     .callout-body > :first-child { margin-top: 0; }
     .callout-body > :last-child { margin-bottom: 0; }
 

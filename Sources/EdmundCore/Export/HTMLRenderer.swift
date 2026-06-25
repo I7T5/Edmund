@@ -125,8 +125,16 @@ struct HTMLRenderer: MarkupVisitor {
         // Code text is shown verbatim (escaped). Per-token syntax coloring is a
         // deferred follow-up; the language class is emitted for it to hook later.
         let lang = codeBlock.language.map { " class=\"language-\(Self.attr($0))\"" } ?? ""
+        // QUIRK: U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR are valid
+        // Unicode line-ending characters that appear in macOS-pasted text (e.g.
+        // from Notes or Safari). In HTML they are NOT newline characters — inside
+        // a <pre> block they render as spaces or nothing, concatenating lines that
+        // should appear on separate rows. Normalize to plain U+000A before escaping.
+        let raw = codeBlock.code
+            .replacingOccurrences(of: "\u{2028}", with: "\n")
+            .replacingOccurrences(of: "\u{2029}", with: "\n")
         // swift-markdown includes a trailing newline on the block's code.
-        let code = codeBlock.code.hasSuffix("\n") ? String(codeBlock.code.dropLast()) : codeBlock.code
+        let code = raw.hasSuffix("\n") ? String(raw.dropLast()) : raw
         return "<pre><code\(lang)>\(Self.escape(code))</code></pre>"
     }
 
