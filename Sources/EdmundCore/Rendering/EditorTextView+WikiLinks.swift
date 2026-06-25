@@ -32,7 +32,7 @@ extension EditorTextView {
     // MARK: Following
 
     /// Follows a `[[wikilink]]` target (`path#heading`, no scheme, `.md` implied).
-    func followWikiLink(_ target: String) {
+    public func followWikiLink(_ target: String) {
         let (path, heading) = Self.splitHeading(target)
         if path.isEmpty {
             if let heading { scrollToHeading(heading) } else { NSSound.beep() }
@@ -44,7 +44,7 @@ extension EditorTextView {
     /// Follows a regular markdown link destination: an external URL opens in the
     /// default app; `#heading` scrolls in-document; a local `path#heading`
     /// resolves a file and opens it (scrolling to the heading if named).
-    func followLinkDestination(_ destination: String) {
+    public func followLinkDestination(_ destination: String) {
         let dest = destination.trimmingCharacters(in: .whitespaces)
         if let url = URL(string: dest), let scheme = url.scheme, scheme != "file" {
             NSWorkspace.shared.open(url)

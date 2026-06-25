@@ -117,6 +117,8 @@ final class FontSettings: NSObject, ObservableObject {
     private func applyToDocuments(_ theme: EditorTheme) {
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.applyTheme(theme)
+            // Reflect the theme change live in an open Read view too.
+            document.refreshReadView()
         }
     }
 

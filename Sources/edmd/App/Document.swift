@@ -167,6 +167,8 @@ class Document: NSDocument, HeadingNavigable {
 
     @objc private func editorDidChange(_ notification: Notification) {
         updateStatusBar()
+        // Keep an open Read view in sync with edits (it renders a snapshot).
+        refreshReadView()
     }
 
     @objc private func editorSelectionDidChange(_ notification: Notification) {
@@ -327,12 +329,18 @@ class Document: NSDocument, HeadingNavigable {
                 v.autoresizingMask = [.width, .height]
                 // Below the floating status bar so counts stay visible.
                 containerView.addSubview(v, positioned: .below, relativeTo: statusBar)
+                // Route internal navigation through the editor's link resolver
+                // (which resolves against this document's directory and opens via
+                // NSDocumentController) instead of navigating the webview.
+                v.onOpenWikiLink = { [weak self] in self?.editor.followWikiLink($0) }
+                v.onOpenInternalLink = { [weak self] in self?.editor.followLinkDestination($0) }
                 readView = v
                 return v
             }()
             read.render(markdown: editor.rawSource,
                         theme: editor.theme,
                         callouts: mergedCallouts,
+                        baseURL: documentDirectory,
                         options: renderOptions)
             read.isHidden = false
             scrollView.isHidden = true
@@ -342,6 +350,24 @@ class Document: NSDocument, HeadingNavigable {
             scrollView.isHidden = false
             editor.window?.makeFirstResponder(editor)
         }
+    }
+
+    /// Re-renders an open Read view from the editor's current source + theme.
+    /// No-op unless Read mode is the active, visible view — so settings/edit
+    /// broadcasts stay cheap when the user is in Edit or Source mode.
+    func refreshReadView() {
+        guard let read = readView, !read.isHidden, editor?.viewMode == .reading else { return }
+        read.render(markdown: editor.rawSource,
+                    theme: editor.theme,
+                    callouts: mergedCallouts,
+                    baseURL: documentDirectory,
+                    options: renderOptions)
+    }
+
+    /// The opened file's directory, used to resolve relative image paths for
+    /// inlining (nil for an unsaved document).
+    private var documentDirectory: URL? {
+        fileURL?.deletingLastPathComponent()
     }
 
     /// Built-in callout styles merged with the editor's user overrides, so Read
@@ -364,6 +390,7 @@ class Document: NSDocument, HeadingNavigable {
         MarkdownPrinter.exportPDF(markdown: editor.rawSource,
                                   theme: editor.theme,
                                   callouts: mergedCallouts,
+                                  baseURL: documentDirectory,
                                   options: renderOptions,
                                   suggestedName: name.isEmpty ? "Untitled" : name,
                                   window: windowControllers.first?.window)
@@ -373,6 +400,7 @@ class Document: NSDocument, HeadingNavigable {
         MarkdownPrinter.print(markdown: editor.rawSource,
                               theme: editor.theme,
                               callouts: mergedCallouts,
+                              baseURL: documentDirectory,
                               options: renderOptions,
                               window: windowControllers.first?.window)
     }
