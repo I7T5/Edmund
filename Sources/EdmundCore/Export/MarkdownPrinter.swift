@@ -21,6 +21,7 @@ public enum MarkdownPrinter {
     public static func exportPDF(markdown: String,
                                  theme: EditorTheme,
                                  callouts: [String: CalloutStyle],
+                                 baseURL: URL? = nil,
                                  options: ReadRenderOptions = .default,
                                  suggestedName: String,
                                  window: NSWindow?) {
@@ -29,7 +30,8 @@ public enum MarkdownPrinter {
         panel.nameFieldStringValue = suggestedName + ".pdf"
 
         let html = DocumentHTML.full(markdown: markdown, theme: theme,
-                                     callouts: callouts, dark: false, options: options)
+                                     callouts: callouts, dark: false,
+                                     baseURL: baseURL, options: options)
         let begin: (URL) -> Void = { url in
             let info = makePrintInfo()
             info.jobDisposition = .save
@@ -48,10 +50,12 @@ public enum MarkdownPrinter {
     public static func print(markdown: String,
                              theme: EditorTheme,
                              callouts: [String: CalloutStyle],
+                             baseURL: URL? = nil,
                              options: ReadRenderOptions = .default,
                              window: NSWindow?) {
         let html = DocumentHTML.full(markdown: markdown, theme: theme,
-                                     callouts: callouts, dark: false, options: options)
+                                     callouts: callouts, dark: false,
+                                     baseURL: baseURL, options: options)
         PrintJob.start(html: html, parentWindow: window, printInfo: makePrintInfo(), showsPanel: true)
     }
 

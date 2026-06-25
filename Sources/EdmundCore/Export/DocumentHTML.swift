@@ -11,15 +11,18 @@ import SwiftMath
 @MainActor
 enum DocumentHTML {
 
-    /// Builds a complete `<!DOCTYPE html>…` document for `markdown`.
+    /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
+    /// the document's directory, used to resolve relative image paths for inlining.
     static func full(markdown: String,
                      theme: EditorTheme,
                      callouts: [String: CalloutStyle],
                      dark: Bool,
+                     baseURL: URL? = nil,
                      options: ReadRenderOptions = .default) -> String {
         var body = HTMLRenderer.render(markdown: markdown, options: options)
         body = fillCalloutIcons(body, callouts: callouts, dark: dark)
         body = fillMath(body, theme: theme, dark: dark)
+        body = fillImages(body, baseURL: baseURL, options: options)
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark)
         return """
         <!DOCTYPE html>
@@ -152,6 +155,77 @@ enum DocumentHTML {
         let clamped = max(asc + desc, fontSize / 2)
         let descent = (asc + desc - clamped) / 2 + desc + insetPad
         return (image, descent)
+    }
+
+    // MARK: Images (local → inlined data URI; remote → off by default)
+
+    private static let imagePattern =
+        "<img class=\"md-image\" data-src=\"([^\"]*)\" alt=\"([^\"]*)\">"
+
+    /// Resolves each `md-image` placeholder: local/relative paths are read and
+    /// inlined as a data URI (self-contained, no file access needed at render
+    /// time); a `data:` source passes through; remote `http(s)` sources load
+    /// only when `options.allowRemoteImages` is set, else the alt text shows.
+    private static func fillImages(_ html: String, baseURL: URL?,
+                                   options: ReadRenderOptions) -> String {
+        var cache: [String: String] = [:]   // resolved path → data URI
+        return replaceMatches(html, pattern: imagePattern) { groups in
+            let src = unescapeAttr(groups[1])
+            let alt = groups[2]   // already attribute-escaped by the renderer
+            func placeholder() -> String { "<img class=\"md-image\" alt=\"\(alt)\">" }
+
+            if src.isEmpty { return placeholder() }
+            let lower = src.lowercased()
+            if lower.hasPrefix("data:") {
+                return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\">"
+            }
+            if lower.hasPrefix("http://") || lower.hasPrefix("https://") {
+                guard options.allowRemoteImages else { return placeholder() }
+                return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\">"
+            }
+            // Local: resolve against the document directory, read, inline.
+            guard let fileURL = resolveLocalImage(src, baseURL: baseURL) else { return placeholder() }
+            let uri: String
+            if let cached = cache[fileURL.path] {
+                uri = cached
+            } else {
+                uri = imageDataURI(fileURL) ?? ""
+                cache[fileURL.path] = uri
+            }
+            guard !uri.isEmpty else { return placeholder() }
+            return "<img class=\"md-image\" src=\"\(uri)\" alt=\"\(alt)\">"
+        }
+    }
+
+    /// Resolves a local image `path` to a file URL: absolute / `~` / `file:`
+    /// load directly; a relative path resolves against the document's directory.
+    private static func resolveLocalImage(_ path: String, baseURL: URL?) -> URL? {
+        if let url = URL(string: path), url.scheme == "file" { return url }
+        // A markdown image destination may be percent-encoded (e.g. `%20`).
+        let decoded = path.removingPercentEncoding ?? path
+        if decoded.hasPrefix("/") { return URL(fileURLWithPath: decoded) }
+        if decoded.hasPrefix("~") { return URL(fileURLWithPath: (decoded as NSString).expandingTildeInPath) }
+        guard let baseURL else { return nil }
+        let resolved = baseURL.appendingPathComponent(decoded)
+        return FileManager.default.fileExists(atPath: resolved.path) ? resolved : nil
+    }
+
+    /// Reads an image file and returns a `data:` URI, with the MIME type guessed
+    /// from the file extension (covers the common web image formats).
+    private static func imageDataURI(_ url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let mime: String
+        switch url.pathExtension.lowercased() {
+        case "png":          mime = "image/png"
+        case "jpg", "jpeg":  mime = "image/jpeg"
+        case "gif":          mime = "image/gif"
+        case "svg":          mime = "image/svg+xml"
+        case "webp":         mime = "image/webp"
+        case "bmp":          mime = "image/bmp"
+        case "tiff", "tif":  mime = "image/tiff"
+        default:             mime = "application/octet-stream"
+        }
+        return "data:\(mime);base64,\(data.base64EncodedString())"
     }
 
     // MARK: Bitmap / escaping helpers

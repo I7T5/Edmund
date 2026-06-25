@@ -47,4 +47,46 @@ struct DocumentHTMLTests {
         let out = doc("bad $\\frac{$ math")
         #expect(out.contains("<code>\\frac{</code>"))
     }
+
+    // MARK: Images
+
+    @Test("Local image is read and inlined as a data URI")
+    func localImageInlined() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-img-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // The file's bytes are irrelevant to the inlining path; an 8-byte PNG
+        // signature is enough to exercise read + base64 + MIME-by-extension.
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        try png.write(to: dir.appendingPathComponent("pic.png"))
+
+        let out = DocumentHTML.full(markdown: "![cat](pic.png)", theme: .default,
+                                    callouts: Callout.defaultStyles, dark: false,
+                                    baseURL: dir)
+        #expect(!out.contains("data-src"))   // placeholder consumed
+        #expect(out.contains("<img class=\"md-image\" src=\"data:image/png;base64,"))
+        #expect(out.contains("alt=\"cat\""))
+    }
+
+    @Test("Unresolvable local image falls back to alt only (no src)")
+    func missingImage() {
+        let out = doc("![gone](nope.png)")   // no baseURL → can't resolve
+        #expect(out.contains("<img class=\"md-image\" alt=\"gone\">"))
+        #expect(!out.contains("src="))
+    }
+
+    @Test("Remote image is suppressed by default, emitted when opted in")
+    func remoteImagePolicy() {
+        let md = "![r](https://example.com/x.png)"
+        let off = DocumentHTML.full(markdown: md, theme: .default,
+                                    callouts: Callout.defaultStyles, dark: false)
+        #expect(off.contains("<img class=\"md-image\" alt=\"r\">"))
+        #expect(!off.contains("https://example.com/x.png"))
+
+        let on = DocumentHTML.full(markdown: md, theme: .default,
+                                   callouts: Callout.defaultStyles, dark: false,
+                                   options: ReadRenderOptions(allowRemoteImages: true))
+        #expect(on.contains("src=\"https://example.com/x.png\""))
+    }
 }

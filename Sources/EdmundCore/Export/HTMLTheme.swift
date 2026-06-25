@@ -47,7 +47,29 @@ enum HTMLTheme {
         }
         \(calloutVars(callouts, dark: dark))
         \(staticRules)
+        \(codeTokenRules(dark: dark))
         """
+    }
+
+    // MARK: Code syntax colors
+
+    /// `.tok-*` color rules for fenced code blocks, from the shared
+    /// `CodeSyntaxPalette` so Read mode matches the editor token-for-token. The
+    /// `pre code` rule overrides the static `var(--fg)` so plain (un-tokenized)
+    /// code uses the palette's plain color too, like the editor.
+    private static func codeTokenRules(dark: Bool) -> String {
+        func rule(_ selector: String, _ type: CodeHighlighter.TokenType?) -> String {
+            "\(selector) { color: \(CodeSyntaxPalette.hex(type, dark: dark)); }"
+        }
+        return [
+            rule("pre code", nil),
+            rule("pre code .tok-keyword", .keyword),
+            rule("pre code .tok-type", .type),
+            rule("pre code .tok-string", .string),
+            rule("pre code .tok-number", .number),
+            rule("pre code .tok-comment", .comment),
+            rule("pre code .tok-function", .function),
+        ].joined(separator: "\n")
     }
 
     // MARK: Callout custom properties
@@ -111,7 +133,9 @@ enum HTMLTheme {
     a { color: var(--accent); text-decoration: underline; }
     code { font-family: var(--mono-font); font-size: 0.92em; color: var(--code);
            background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
-    pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+    pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto;
+          /* tab-size: browsers default to 8; match the common editor convention of 4. */
+          tab-size: 4; -moz-tab-size: 4; }
     pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
     blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
     /* Without this, the 1em bottom margin on the last <p> inside a blockquote

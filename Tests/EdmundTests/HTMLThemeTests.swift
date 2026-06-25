@@ -41,4 +41,15 @@ struct HTMLThemeTests {
         #expect(css(dark: false).contains("--c-accent: #CF222E;"))
         #expect(css(dark: true).contains("--bg: #1e1e1e;"))
     }
+
+    @Test("Emits code token colors from the shared palette, per appearance")
+    func codeTokenColors() {
+        let light = css(dark: false)
+        #expect(light.contains("pre code .tok-keyword { color: \(CodeSyntaxPalette.hex(.keyword, dark: false)); }"))
+        #expect(light.contains("pre code { color: \(CodeSyntaxPalette.hex(nil, dark: false)); }"))
+        let dark = css(dark: true)
+        #expect(dark.contains("pre code .tok-string { color: \(CodeSyntaxPalette.hex(.string, dark: true)); }"))
+        // The palettes differ between appearances.
+        #expect(CodeSyntaxPalette.hex(.keyword, dark: false) != CodeSyntaxPalette.hex(.keyword, dark: true))
+    }
 }

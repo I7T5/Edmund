@@ -11,8 +11,14 @@ public struct ReadRenderOptions: Sendable, Equatable {
     /// way Markdown normally does.
     public var preserveBlankLines: Bool
 
-    public init(preserveBlankLines: Bool = true) {
+    /// When true, remote (`http`/`https`) image URLs are loaded in the rendered
+    /// document. Off by default so Read mode makes no surprise network requests;
+    /// local images are always inlined regardless of this flag.
+    public var allowRemoteImages: Bool
+
+    public init(preserveBlankLines: Bool = true, allowRemoteImages: Bool = false) {
         self.preserveBlankLines = preserveBlankLines
+        self.allowRemoteImages = allowRemoteImages
     }
 
     public static let `default` = ReadRenderOptions()

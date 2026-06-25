@@ -63,9 +63,58 @@ struct HTMLRendererCoreTests {
         #expect(html("---").contains("<hr>"))
     }
 
-    @Test("Links render as <a href>")
+    @Test("External links keep their real href")
     func links() {
         #expect(html("[text](https://example.com)") == "<p><a href=\"https://example.com\">text</a></p>")
+        #expect(html("[m](mailto:a@b.com)").contains("<a href=\"mailto:a@b.com\">"))
+    }
+
+    @Test("In-page anchor links keep their fragment href")
+    func anchorLink() {
+        #expect(html("[go](#section)").contains("<a href=\"#section\">go</a>"))
+    }
+
+    @Test("Relative/internal links route through the private link scheme")
+    func internalLink() {
+        let out = html("[other](notes/other.md)")
+        #expect(out.contains("<a href=\"x-edmund-link:"))
+        #expect(!out.contains("href=\"notes/other.md\""))
+    }
+
+    @Test("Code block wraps tokens in colored spans, escaping content")
+    func codeTokens() {
+        let out = html("```swift\nlet x = 1 // hi\n```")
+        #expect(out.contains("<span class=\"tok-keyword\">let</span>"))
+        #expect(out.contains("<span class=\"tok-number\">1</span>"))
+        #expect(out.contains("<span class=\"tok-comment\">// hi</span>"))
+    }
+
+    @Test("Code token spans still escape special characters")
+    func codeTokensEscape() {
+        let out = html("```\na < b && c\n```")
+        #expect(out.contains("a &lt; b &amp;&amp; c"))
+        #expect(!out.contains("a < b"))
+    }
+
+    @Test("Image emits a placeholder carrying the raw source for the asset pass")
+    func image() {
+        let out = html("![alt text](pic.png)")
+        #expect(out.contains("<img class=\"md-image\" data-src=\"pic.png\" alt=\"alt text\">"))
+    }
+
+    @Test("Wikilink renders as a private-scheme anchor with encoded target")
+    func wikilink() {
+        let out = html("see [[My Note#Heading]] here")
+        #expect(out.contains("<a class=\"wikilink\" href=\"x-edmund-wiki:"))
+        // `#` is percent-encoded so it isn't parsed as a URL fragment.
+        #expect(!out.contains("x-edmund-wiki:My Note#Heading"))
+        #expect(out.contains(">My Note#Heading</a>"))
+    }
+
+    @Test("Wikilink alias shows the alias as display text")
+    func wikilinkAlias() {
+        let out = html("[[Target|shown]]")
+        #expect(out.contains(">shown</a>"))
     }
 
     @Test("Plain block quote stays a blockquote")
@@ -118,10 +167,12 @@ struct HTMLRendererInlineTests {
         #expect(out.contains("\\int_0^1"))
     }
 
-    @Test("Wikilink renders display text (routing deferred)")
+    @Test("Wikilink renders display text inside a routing anchor")
     func wikilink() {
-        #expect(html("see [[Note|the note]]").contains("the note"))
-        #expect(!html("see [[Note|the note]]").contains("[["))
+        let out = html("see [[Note|the note]]")
+        #expect(out.contains(">the note</a>"))
+        #expect(out.contains("href=\"x-edmund-wiki:Note\""))
+        #expect(!out.contains("[["))
     }
 
     @Test("Comment is hidden")

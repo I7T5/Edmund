@@ -36,18 +36,29 @@ public final class ReadModeWebView: WKWebView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// Called when the user activates a `[[wikilink]]` — the (decoded) target is
+    /// routed through the app's document graph rather than navigating the webview.
+    public var onOpenWikiLink: ((String) -> Void)?
+
+    /// Called when the user activates a relative/internal markdown link
+    /// destination (e.g. `[text](other.md)`), routed the same way.
+    public var onOpenInternalLink: ((String) -> Void)?
+
     /// The most recent render inputs, so the view can re-render itself when the
     /// system appearance flips (light ↔ dark) without the document re-driving it.
     private var pending: (markdown: String, theme: EditorTheme,
-                          callouts: [String: CalloutStyle], options: ReadRenderOptions)?
+                          callouts: [String: CalloutStyle], baseURL: URL?,
+                          options: ReadRenderOptions)?
 
     /// Renders `markdown` with the given theme; appearance is resolved from the
-    /// view itself.
+    /// view itself. `baseURL` is the document's directory (for resolving relative
+    /// image paths to inline).
     public func render(markdown: String,
                        theme: EditorTheme,
                        callouts: [String: CalloutStyle],
+                       baseURL: URL? = nil,
                        options: ReadRenderOptions = .default) {
-        pending = (markdown, theme, callouts, options)
+        pending = (markdown, theme, callouts, baseURL, options)
         reloadHTML()
     }
 
@@ -55,7 +66,8 @@ public final class ReadModeWebView: WKWebView {
         guard let p = pending else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
-                                     callouts: p.callouts, dark: dark, options: p.options)
+                                     callouts: p.callouts, dark: dark,
+                                     baseURL: p.baseURL, options: p.options)
         loadHTMLString(html, baseURL: nil)
     }
 
@@ -97,16 +109,37 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
             owner?.reloadHTML()
             return .cancel
         }
+        guard let url = navigationAction.request.url else { return .allow }
+        let scheme = url.scheme?.lowercased()
+
+        // `[[wikilink]]`s and relative/internal markdown links carry their target
+        // in a private scheme (the renderer classifies them), so routing doesn't
+        // depend on how WebKit rewrites relative hrefs under `baseURL: nil`.
+        // Decode the target and route it through the app's document graph.
+        if scheme == HTMLRenderer.wikiScheme || scheme == HTMLRenderer.linkScheme {
+            let target = decodeTarget(url, scheme: scheme!)
+            if scheme == HTMLRenderer.wikiScheme {
+                owner?.onOpenWikiLink?(target)
+            } else {
+                owner?.onOpenInternalLink?(target)
+            }
+            return .cancel
+        }
         // Decide by URL scheme, not navigation type: with `baseURL: nil` a click
-        // does not reliably report `.linkActivated`. Any real web scheme is an
+        // does not reliably report `.linkActivated`. A real web scheme is an
         // external link to hand off to the browser; everything else (the
-        // about:blank initial load, fragment scrolls, data:) loads in place.
-        if let url = navigationAction.request.url,
-           let scheme = url.scheme?.lowercased(),
-           scheme == "http" || scheme == "https" || scheme == "mailto" {
+        // about:blank initial load, in-page `#fragment` scrolls, data:) loads in place.
+        if scheme == "http" || scheme == "https" || scheme == "mailto" {
             NSWorkspace.shared.open(url)
             return .cancel
         }
         return .allow
+    }
+
+    /// Recovers the percent-decoded target from a private-scheme URL
+    /// (`scheme:encoded`), which has no `//` authority.
+    private func decodeTarget(_ url: URL, scheme: String) -> String {
+        let raw = String(url.absoluteString.dropFirst(scheme.count + 1))
+        return raw.removingPercentEncoding ?? raw
     }
 }
