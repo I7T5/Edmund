@@ -161,7 +161,14 @@ enum HTMLTheme {
     li.task { list-style: none; }
     li.task > input[type=checkbox] {
       float: left; width: 1em; height: 1em;
-      margin-top: 0.5em; /* empirically calibrated for Iowan Old Style; see formula above */
+      /* TODO: this value is only calibrated for Iowan Old Style at 16pt. For
+         other fonts or sizes the checkbox will be misaligned — the ascent ratio
+         `a` in the formula varies per font and is not queryable from CSS without
+         `1cap`/`1ex` units, which don't resolve in loadHTMLString context either.
+         Proper fix: compute the margin-top at render time in Swift by measuring
+         the font's actual ascent (via NSFont.ascender) and inserting it as an
+         inline style, so it adapts to any EditorTheme font and size. */
+      margin-top: 0.5em;
       margin-right: 0.4em;
       margin-left: -1.65em;
     }
