@@ -132,10 +132,10 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 | Area | Files |
 | --- | --- |
 | Editor core / state | `TextView/EditorTextView.swift` (+ many extensions) |
-| Parsing | `Parsing/BlockParser.swift`, `SyntaxHighlighter*.swift`, `CodeHighlighter.swift` |
+| Parsing | `Parsing/BlockParser.swift`, `SyntaxHighlighter*.swift`, `CodeHighlighter.swift`, `CodeSyntaxPalette.swift` (shared Tomorrow/One-Dark hex table — read by both the editor's `NSColor` palette and the HTML CSS generator) |
 | Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift` |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
-| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + SF-Symbol/math data-URI inlining), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print) |
+| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: SF-Symbol icons, math, local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift` |
 | Formatting commands | `Editing/EditorTextView+Formatting{Core,Commands}.swift` (Format-menu actions: bold/lists/links/callouts/…); menu built from `edmd/App/FormatMenu.swift` |
 | Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
@@ -172,8 +172,14 @@ every asset (math/icons as data URIs) so it needs no file/network reach; externa
 links open in the default browser. **File ▸ Export as PDF… / Print… (⌘P)** run
 the same HTML through `WKWebView.printOperation` for real vector (selectable)
 text — `MarkdownPrinter`. Math glyphs are high-DPI PNG (SwiftMath has no SVG
-path yet); everything else is vector. Deferred: code syntax-color spans, local
-image inlining, wikilink routing.
+path yet); everything else is vector. Code blocks are syntax-colored by
+`CodeHighlighter` (same tokenizer and `CodeSyntaxPalette` as Edit mode). Local
+images are inlined as data URIs via a `baseURL` (document directory) threaded
+through `DocumentHTML`/`ReadModeWebView`/`MarkdownPrinter`; remote images are
+off by default (`ReadRenderOptions.allowRemoteImages`). `[[Wikilinks]]` and
+relative markdown links use private URL schemes (`x-edmund-wiki:`,
+`x-edmund-link:`) in the rendered HTML so the nav coordinator can intercept
+them and route through the app's document graph without JavaScript.
 
 ---
 

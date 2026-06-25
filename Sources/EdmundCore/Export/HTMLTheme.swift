@@ -133,7 +133,9 @@ enum HTMLTheme {
     a { color: var(--accent); text-decoration: underline; }
     code { font-family: var(--mono-font); font-size: 0.92em; color: var(--code);
            background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
-    pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+    pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto;
+          /* tab-size: browsers default to 8; match the common editor convention of 4. */
+          tab-size: 4; -moz-tab-size: 4; }
     pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
     blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--rule); color: var(--faint); }
     /* Without this, the 1em bottom margin on the last <p> inside a blockquote
@@ -201,6 +203,10 @@ enum HTMLTheme {
     th, td { border: 1px solid var(--rule); padding: 6px 10px; }
     thead th { background: var(--code-bg); }
     img { max-width: 100%; }
+    /* Block-display for document images: eliminates the inline baseline gap (the
+       descender space between an inline image's bottom and its line box bottom)
+       that otherwise shows as blank space below tall images. */
+    img.md-image { display: block; max-width: 100%; }
     img.math { vertical-align: middle; }
     .math-display { text-align: center; margin: 1em 0; }
 
