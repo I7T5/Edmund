@@ -47,7 +47,29 @@ enum HTMLTheme {
         }
         \(calloutVars(callouts, dark: dark))
         \(staticRules)
+        \(codeTokenRules(dark: dark))
         """
+    }
+
+    // MARK: Code syntax colors
+
+    /// `.tok-*` color rules for fenced code blocks, from the shared
+    /// `CodeSyntaxPalette` so Read mode matches the editor token-for-token. The
+    /// `pre code` rule overrides the static `var(--fg)` so plain (un-tokenized)
+    /// code uses the palette's plain color too, like the editor.
+    private static func codeTokenRules(dark: Bool) -> String {
+        func rule(_ selector: String, _ type: CodeHighlighter.TokenType?) -> String {
+            "\(selector) { color: \(CodeSyntaxPalette.hex(type, dark: dark)); }"
+        }
+        return [
+            rule("pre code", nil),
+            rule("pre code .tok-keyword", .keyword),
+            rule("pre code .tok-type", .type),
+            rule("pre code .tok-string", .string),
+            rule("pre code .tok-number", .number),
+            rule("pre code .tok-comment", .comment),
+            rule("pre code .tok-function", .function),
+        ].joined(separator: "\n")
     }
 
     // MARK: Callout custom properties

@@ -20,6 +20,16 @@ import Markdown
 struct HTMLRenderer: MarkupVisitor {
     typealias Result = String
 
+    /// Private URL scheme for `[[wikilink]]` hrefs. The read view's navigation
+    /// policy intercepts this scheme and routes the (percent-decoded) target
+    /// through the app's document graph instead of navigating the webview.
+    static let wikiScheme = "x-edmund-wiki"
+
+    /// Private URL scheme for relative/internal regular markdown links
+    /// (`[text](other.md)`). Routed like wikilinks; external links (http/https/
+    /// mailto) and in-page `#fragment` anchors keep their real hrefs.
+    static let linkScheme = "x-edmund-link"
+
     /// The markdown this instance is rendering. Held so block-level constructs
     /// (callouts) can recover their *raw* source text by range, the way the
     /// editor's styling layer does.
@@ -122,8 +132,9 @@ struct HTMLRenderer: MarkupVisitor {
     }
 
     mutating func visitCodeBlock(_ codeBlock: CodeBlock) -> String {
-        // Code text is shown verbatim (escaped). Per-token syntax coloring is a
-        // deferred follow-up; the language class is emitted for it to hook later.
+        // Per-token syntax coloring reuses the editor's `CodeHighlighter`, so
+        // Edit mode and Read mode color the same tokens identically (the actual
+        // colors live in CSS, from the shared `CodeSyntaxPalette` via HTMLTheme).
         let lang = codeBlock.language.map { " class=\"language-\(Self.attr($0))\"" } ?? ""
         // QUIRK: U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR are valid
         // Unicode line-ending characters that appear in macOS-pasted text (e.g.
@@ -135,7 +146,44 @@ struct HTMLRenderer: MarkupVisitor {
             .replacingOccurrences(of: "\u{2029}", with: "\n")
         // swift-markdown includes a trailing newline on the block's code.
         let code = raw.hasSuffix("\n") ? String(raw.dropLast()) : raw
-        return "<pre><code\(lang)>\(Self.escape(code))</code></pre>"
+        return "<pre><code\(lang)>\(Self.highlightCode(code, language: codeBlock.language))</code></pre>"
+    }
+
+    /// CSS class for a code token kind (consumed by `HTMLTheme`'s `.tok-*` rules).
+    private static func tokenClass(_ type: CodeHighlighter.TokenType) -> String {
+        switch type {
+        case .keyword:  return "tok-keyword"
+        case .type:     return "tok-type"
+        case .string:   return "tok-string"
+        case .number:   return "tok-number"
+        case .comment:  return "tok-comment"
+        case .function: return "tok-function"
+        }
+    }
+
+    /// Escapes `code` and wraps each `CodeHighlighter` token in a colored
+    /// `<span class="tok-…">`. Gaps between tokens stay plain (escaped) text and
+    /// inherit the plain `pre code` color, mirroring the editor's "plain first,
+    /// tokens paint over" model.
+    static func highlightCode(_ code: String, language: String?) -> String {
+        let tokens = CodeHighlighter.tokenize(code, language: language)
+        guard !tokens.isEmpty else { return escape(code) }
+        let ns = code as NSString
+        var out = ""
+        var cursor = 0
+        for token in tokens {
+            let r = token.range
+            guard r.location >= cursor, r.upperBound <= ns.length else { continue }
+            if r.location > cursor {
+                out += escape(ns.substring(with: NSRange(location: cursor, length: r.location - cursor)))
+            }
+            out += "<span class=\"\(tokenClass(token.type))\">\(escape(ns.substring(with: r)))</span>"
+            cursor = r.upperBound
+        }
+        if cursor < ns.length {
+            out += escape(ns.substring(with: NSRange(location: cursor, length: ns.length - cursor)))
+        }
+        return out
     }
 
     mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) -> String { "<hr>" }
@@ -208,16 +256,42 @@ struct HTMLRenderer: MarkupVisitor {
     mutating func visitSoftBreak(_ softBreak: SoftBreak) -> String { "\n" }
 
     mutating func visitLink(_ link: Link) -> String {
-        let href = Self.attr(link.destination ?? "")
-        return "<a href=\"\(href)\">\(renderChildren(of: link))</a>"
+        let dest = link.destination ?? ""
+        let inner = renderChildren(of: link)
+        // In-page `#fragment` anchors and external links (http/https/mailto, or
+        // any explicit scheme) keep their real href — the nav policy lets the
+        // anchor scroll and hands external schemes to the browser. A relative /
+        // internal destination is wrapped in the private link scheme so it routes
+        // through the app's document graph reliably (independent of how WebKit
+        // rewrites relative hrefs under `baseURL: nil`).
+        if dest.hasPrefix("#") || Self.hasExternalScheme(dest) {
+            return "<a href=\"\(Self.attr(dest))\">\(inner)</a>"
+        }
+        let encoded = dest.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? dest
+        return "<a href=\"\(Self.linkScheme):\(encoded)\">\(inner)</a>"
+    }
+
+    /// Whether a link destination carries an explicit URL scheme (`http:`,
+    /// `mailto:`, `file:`, …) and so should be treated as external/absolute
+    /// rather than a relative path into the document's directory.
+    private static func hasExternalScheme(_ dest: String) -> Bool {
+        guard let colon = dest.firstIndex(of: ":") else { return false }
+        let scheme = dest[dest.startIndex..<colon]
+        // A scheme is letters/digits/+/-/. and can't contain a slash; a path like
+        // "a/b:c" has its first colon after a slash, so it's not a scheme.
+        guard !scheme.isEmpty, scheme.first!.isLetter else { return false }
+        return scheme.allSatisfy { $0.isLetter || $0.isNumber || $0 == "+" || $0 == "-" || $0 == "." }
+            && !scheme.contains("/")
     }
 
     mutating func visitImage(_ image: Image) -> String {
-        // Local image inlining is a deferred follow-up; for now emit a plain
-        // <img> with the alt text so the structure is present (no src ⇒ the
-        // browser shows the alt). The alt is the image's child text.
+        // Emit a placeholder carrying the raw source; `DocumentHTML` resolves and
+        // inlines it in a second pass (it needs the document directory + the
+        // remote-image policy, which the pure renderer doesn't have). No `src`
+        // here ⇒ if the asset pass can't resolve it, the alt text shows.
         let alt = Self.attr(Self.plainText(of: image))
-        return "<img alt=\"\(alt)\">"
+        let src = Self.attr(image.source ?? "")
+        return "<img class=\"md-image\" data-src=\"\(src)\" alt=\"\(alt)\">"
     }
 
     // Never pass raw author HTML through — escape it so a document can't inject
@@ -308,9 +382,14 @@ struct HTMLRenderer: MarkupVisitor {
             case .math(false):
                 let tex = ns.substring(with: span.contentRange)
                 out += "<span class=\"math-inline\" data-tex=\"\(attr(tex))\"></span>"
-            case .wikilink:
-                // Routing deferred — render the visible display text as plain text.
-                out += escape(ns.substring(with: span.contentRange))
+            case .wikilink(let target):
+                // Emit a link in a private scheme so the read view's nav policy
+                // can intercept it and route through the app's document graph
+                // (rather than navigating the webview). The target is fully
+                // percent-encoded so a `#heading` isn't parsed as a URL fragment.
+                let encoded = target.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? target
+                let display = escape(ns.substring(with: span.contentRange))
+                out += "<a class=\"wikilink\" href=\"\(wikiScheme):\(encoded)\">\(display)</a>"
             case .comment:
                 break   // hidden in reading, like the editor
             default:
