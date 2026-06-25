@@ -17,8 +17,8 @@ public struct CalloutStyle: Sendable, Equatable {
         public static let all: Edges = [.left, .top, .right, .bottom]
     }
 
-    /// SF Symbol name for the icon.
-    public let symbolName: String
+    /// Lucide icon id for the header icon (see `LucideIcons`).
+    public let iconName: String
     /// Accent color (icon + title); border/background default to it.
     public let colorHex: String
     /// Accent under a dark appearance (defaults to `colorHex`).
@@ -37,11 +37,11 @@ public struct CalloutStyle: Sendable, Equatable {
     public let borderEdges: Edges
     public let borderWidth: CGFloat
 
-    /// Per-symbol vertical nudge (points) for the icon, since SF Symbols differ
-    /// in internal optical centering. Negative lowers the icon.
+    /// Per-icon vertical nudge (points) for optical centering. Lucide icons
+    /// share a 24×24 box so this is 0 by default. Negative lowers the icon.
     public let iconBaselineNudge: CGFloat
 
-    public init(symbolName: String,
+    public init(iconName: String,
                 colorHex: String,
                 darkColorHex: String? = nil,
                 borderColorHex: String? = nil,
@@ -52,7 +52,7 @@ public struct CalloutStyle: Sendable, Equatable {
                 borderEdges: Edges = [],
                 borderWidth: CGFloat = 3,
                 iconBaselineNudge: CGFloat = 0) {
-        self.symbolName = symbolName
+        self.iconName = iconName
         self.colorHex = colorHex
         self.darkColorHex = darkColorHex
         self.borderColorHex = borderColorHex
@@ -99,25 +99,23 @@ public enum Callout {
         func add(_ style: CalloutStyle, _ names: String...) { for n in names { m[n] = style } }
 
         // note → same blue as info; tip → same teal as abstract (Obsidian-style).
-        add(CalloutStyle(symbolName: "pencil.tip",               colorHex: "#086DDD"), "note")
-        add(CalloutStyle(symbolName: "flame",                    colorHex: "#00BFBC"), "tip", "hint")
-        add(CalloutStyle(symbolName: "exclamationmark.bubble",   colorHex: "#8250DF", darkColorHex: "#A371F7"), "important")
-        add(CalloutStyle(symbolName: "exclamationmark.triangle", colorHex: "#EC7500"), "warning", "attention")
-        add(CalloutStyle(symbolName: "exclamationmark.octagon",  colorHex: "#CF222E", darkColorHex: "#F85149"), "caution")
+        add(CalloutStyle(iconName: "pencil",                  colorHex: "#086DDD"), "note")
+        add(CalloutStyle(iconName: "flame",                   colorHex: "#00BFBC"), "tip", "hint")
+        add(CalloutStyle(iconName: "message-square-warning",  colorHex: "#8250DF", darkColorHex: "#A371F7"), "important")
+        add(CalloutStyle(iconName: "triangle-alert",          colorHex: "#EC7500"), "warning", "attention")
+        add(CalloutStyle(iconName: "octagon-alert",           colorHex: "#CF222E", darkColorHex: "#F85149"), "caution")
 
-        // Obsidian's other defaults (closest color + SF Symbol), with aliases.
-        add(CalloutStyle(symbolName: "list.bullet.clipboard", colorHex: "#00BFBC", iconBaselineNudge: 1.0), "abstract", "summary", "tldr")
-        add(CalloutStyle(symbolName: "info.circle",           colorHex: "#086DDD"), "info")
-        // checkmark.circle.dotted isn't available before macOS 15; circle.dashed
-        // is the closest "to-do / pending" look.
-        add(CalloutStyle(symbolName: "circle.dashed",         colorHex: "#086DDD"), "todo")
-        add(CalloutStyle(symbolName: "checkmark",             colorHex: "#08B94E"), "success", "check", "done")
-        add(CalloutStyle(symbolName: "questionmark.circle",   colorHex: "#EC7500"), "question", "help", "faq")
-        add(CalloutStyle(symbolName: "xmark",                 colorHex: "#E93147"), "failure", "fail", "missing")
-        add(CalloutStyle(symbolName: "bolt",                  colorHex: "#E93147"), "danger", "error")
-        add(CalloutStyle(symbolName: "ladybug",               colorHex: "#E93147"), "bug")
-        add(CalloutStyle(symbolName: "list.bullet",           colorHex: "#7852EE"), "example")
-        add(CalloutStyle(symbolName: "quote.bubble",          colorHex: "#9E9E9E"), "quote", "cite")
+        // Obsidian's other defaults (closest color + Lucide icon), with aliases.
+        add(CalloutStyle(iconName: "clipboard-list",          colorHex: "#00BFBC"), "abstract", "summary", "tldr")
+        add(CalloutStyle(iconName: "info",                    colorHex: "#086DDD"), "info")
+        add(CalloutStyle(iconName: "circle-dashed",           colorHex: "#086DDD"), "todo")
+        add(CalloutStyle(iconName: "check",                   colorHex: "#08B94E"), "success", "check", "done")
+        add(CalloutStyle(iconName: "circle-question-mark",    colorHex: "#EC7500"), "question", "help", "faq")
+        add(CalloutStyle(iconName: "x",                       colorHex: "#E93147"), "failure", "fail", "missing")
+        add(CalloutStyle(iconName: "zap",                     colorHex: "#E93147"), "danger", "error")
+        add(CalloutStyle(iconName: "bug",                     colorHex: "#E93147"), "bug")
+        add(CalloutStyle(iconName: "list",                    colorHex: "#7852EE"), "example")
+        add(CalloutStyle(iconName: "quote",                   colorHex: "#9E9E9E"), "quote", "cite")
         return m
     }()
 

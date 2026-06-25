@@ -213,8 +213,12 @@ struct HTMLRenderer: MarkupVisitor {
 
     mutating func visitListItem(_ listItem: ListItem) -> String {
         if let checkbox = listItem.checkbox {
-            let checked = checkbox == .checked ? " checked" : ""
-            return "<li class=\"task\"><input type=\"checkbox\" disabled\(checked)>\(renderChildren(of: listItem))</li>"
+            let checked = checkbox == .checked
+            // Composed Lucide SVG (not an SF Symbol, which can't ship in exported
+            // PDFs) mirroring the editor's look; CSS supplies the accent/dim color.
+            let mark = "<span class=\"task-check task-check--\(checked ? "checked" : "unchecked")\">"
+                + "\(LucideIcons.checkboxSVG(checked: checked))</span>"
+            return "<li class=\"task\">\(mark)\(renderChildren(of: listItem))</li>"
         }
         return "<li>\(renderChildren(of: listItem))</li>"
     }
@@ -322,10 +326,10 @@ struct HTMLRenderer: MarkupVisitor {
             ? ""
             : HTMLRenderer.render(markdown: body, options: options)
 
-        // Icon is filled by DocumentHTML's asset pass (SF Symbol → data URI),
-        // keyed by symbol + type so it can resolve the right accent for the
-        // current appearance.
-        let icon = "<span class=\"callout-icon\" data-symbol=\"\(Self.attr(style.symbolName))\" data-type=\"\(Self.attr(marker.type))\"></span>"
+        // Inline the Lucide icon directly (vector, sharp in PDF). It strokes in
+        // `currentColor`, so the `.callout-title` accent color tints it — no
+        // per-appearance asset pass, and no SF Symbol shipped in the export.
+        let icon = "<span class=\"callout-icon\">\(LucideIcons.inlineSVG(style.iconName) ?? "")</span>"
         return "<div class=\"callout callout-\(Self.attr(marker.type))\">"
             + "<div class=\"callout-title\">\(icon)<span class=\"callout-title-text\">\(Self.escape(title))</span></div>"
             + "<div class=\"callout-body\">\(bodyHTML)</div></div>"

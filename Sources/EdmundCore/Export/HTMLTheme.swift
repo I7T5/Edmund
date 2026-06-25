@@ -42,6 +42,7 @@ enum HTMLTheme {
           --rule: \(rule);
           --code-bg: \(codeBg);
           --marker: \(resolvedRGBA(.tertiaryLabelColor, dark: dark));
+          --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
         }
@@ -183,8 +184,13 @@ enum HTMLTheme {
        (Geometric line-box center would be (L−1)/2 × F = 0.225em, which sits above
        the baseline and looks too high for this font's tall ascenders.) */
     li.task { list-style: none; }
-    li.task > input[type=checkbox] {
-      float: left; width: 1em; height: 1em;
+    /* Lucide checkbox (a tinted <svg>, see HTMLRenderer/LucideIcons): unchecked =
+       dim outlined circle (--marker, the editor's tertiaryLabelColor); checked =
+       disc filled in the system accent (--check-fill, matching the editor's
+       controlAccentColor) with a white check baked into the SVG. `currentColor`
+       in the SVG inherits from `color` here. */
+    li.task > .task-check {
+      float: left; width: 1em; height: 1em; line-height: 0;
       /* TODO: this value is only calibrated for Iowan Old Style at 16pt. For
          other fonts or sizes the checkbox will be misaligned — the ascent ratio
          `a` in the formula varies per font and is not queryable from CSS without
@@ -196,6 +202,9 @@ enum HTMLTheme {
       margin-right: 0.4em;
       margin-left: -1.65em;
     }
+    li.task > .task-check svg { display: block; width: 1em; height: 1em; }
+    .task-check--unchecked { color: var(--marker); }
+    .task-check--checked { color: var(--check-fill); }
     li.task > p { display: inline; margin: 0; }
     li.task > ul, li.task > ol { clear: left; }
     .blank-line { height: calc(var(--body-size) * var(--line-height)); }
@@ -220,7 +229,7 @@ enum HTMLTheme {
                      font-weight: 600; color: var(--c-accent); }
     .callout-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
                     height: calc(var(--body-size) * var(--line-height)); }
-    .callout-icon img { width: 1em; height: 1em; }
+    .callout-icon svg { width: 1em; height: 1em; }
     .callout-title-text { flex: 1 1 auto; }
     .callout-body { margin-top: 0.4em; }
     /* Reduce paragraph spacing inside callout bodies so nested callouts and

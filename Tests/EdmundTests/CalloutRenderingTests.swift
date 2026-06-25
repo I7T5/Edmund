@@ -133,7 +133,7 @@ struct CalloutRenderingTests {
     @MainActor func overridesApplied() {
         let editor = makeEditor()
         editor.calloutStyleOverrides = [
-            "note": CalloutStyle(symbolName: "star.fill", colorHex: "#112233",
+            "note": CalloutStyle(iconName: "star", colorHex: "#112233",
                                  borderEdges: .all, borderWidth: 2)
         ]
         let styled = editor.styleBlock("> [!note]\n> body")

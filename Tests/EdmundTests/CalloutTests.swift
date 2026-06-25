@@ -72,16 +72,24 @@ struct CalloutStyleTests {
         #expect(Callout.style(for: "bogus") == nil)
     }
 
-    @Test("Built-in types use the expected SF Symbols")
+    @Test("Built-in types use the expected Lucide icons")
     func builtinIcons() {
-        #expect(Callout.style(for: "note")?.symbolName == "pencil.tip")
-        #expect(Callout.style(for: "tip")?.symbolName == "flame")
-        #expect(Callout.style(for: "important")?.symbolName == "exclamationmark.bubble")
-        #expect(Callout.style(for: "warning")?.symbolName == "exclamationmark.triangle")
-        #expect(Callout.style(for: "caution")?.symbolName == "exclamationmark.octagon")
-        #expect(Callout.style(for: "todo")?.symbolName == "circle.dashed")
-        #expect(Callout.style(for: "success")?.symbolName == "checkmark")
-        #expect(Callout.style(for: "failure")?.symbolName == "xmark")
+        #expect(Callout.style(for: "note")?.iconName == "pencil")
+        #expect(Callout.style(for: "tip")?.iconName == "flame")
+        #expect(Callout.style(for: "important")?.iconName == "message-square-warning")
+        #expect(Callout.style(for: "warning")?.iconName == "triangle-alert")
+        #expect(Callout.style(for: "caution")?.iconName == "octagon-alert")
+        #expect(Callout.style(for: "todo")?.iconName == "circle-dashed")
+        #expect(Callout.style(for: "success")?.iconName == "check")
+        #expect(Callout.style(for: "failure")?.iconName == "x")
+    }
+
+    @Test("Every built-in callout icon id has vendored Lucide geometry")
+    func everyIconResolves() {
+        for (type, style) in Callout.defaultStyles {
+            #expect(LucideIcons.geometry[style.iconName] != nil,
+                    "callout '\(type)' uses unknown icon '\(style.iconName)'")
+        }
     }
 
     @Test("note matches info's color; tip matches abstract's; warning aliases match warning")
@@ -115,7 +123,7 @@ struct CalloutStyleTests {
 
     @Test("Overrides win and can add custom types (customization-ready)")
     func overrides() {
-        let custom = CalloutStyle(symbolName: "star.fill", colorHex: "#123456")
+        let custom = CalloutStyle(iconName: "star", colorHex: "#123456")
         #expect(Callout.style(for: "FAQ", overrides: ["faq": custom]) == custom)
         #expect(Callout.style(for: "note", overrides: ["note": custom]) == custom)
     }
@@ -136,7 +144,7 @@ struct CalloutStyleTests {
 
     @Test("Customizable fields are honored")
     func customFields() {
-        let s = CalloutStyle(symbolName: "x", colorHex: "#111111",
+        let s = CalloutStyle(iconName: "x", colorHex: "#111111",
                              borderColorHex: "#222222",
                              backgroundColorHex: "#333333",
                              borderEdges: [.left, .top], borderWidth: 5)

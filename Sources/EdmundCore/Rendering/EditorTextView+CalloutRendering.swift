@@ -160,7 +160,7 @@ extension EditorTextView {
                 // icon + name as one compact overlay image.
                 result.addAttribute(.font, value: hiddenFont, range: header)
                 result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
-                if let overlay = calloutHeaderOverlay(symbolName: info.style.symbolName,
+                if let overlay = calloutHeaderOverlay(iconName: info.style.iconName,
                                                       title: info.title, color: c.accent,
                                                       iconNudge: info.style.iconBaselineNudge) {
                     applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
@@ -390,16 +390,14 @@ extension EditorTextView {
     // MARK: Header image (icon + title)
 
     /// Draws "icon  Title" into one image, tinted to the callout color, and
-    /// wraps it in a `FragmentOverlay`. Returns `nil` if the SF Symbol can't
+    /// wraps it in a `FragmentOverlay`. Returns `nil` if the Lucide icon can't
     /// be resolved. The top breathing room is NOT in the image — the caller
     /// raises the header line's minimum line height instead.
-    private func calloutHeaderOverlay(symbolName: String, title: String, color: NSColor,
+    private func calloutHeaderOverlay(iconName: String, title: String, color: NSColor,
                                       iconNudge: CGFloat) -> FragmentOverlay? {
         let pointSize = bodyFont.pointSize
-        let symConfig = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(symConfig) else { return nil }
+        guard let symbol = LucideIcons.image(iconName, color: color, pointSize: pointSize)
+        else { return nil }
 
         let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
         let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: color]
