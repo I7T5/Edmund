@@ -147,15 +147,21 @@ enum HTMLTheme {
        loaded via `loadHTMLString(_:baseURL:nil)` — there is no URL origin, so
        WebKit skips font metric resolution and `lh` falls back to 0. With 0,
        `calc((1lh - 1em)/2) = -0.5em`, pushing the checkbox well above the line.
-       Use the CSS custom-property equivalent instead: `--body-size * --line-height`
-       gives the same 23.2px at the default theme and is reliable in all contexts.
-       0.35em is chosen over the pure line-box center (0.225em) because Iowan Old
-       Style's visual text center sits lower in the line box than average — 0.35em
-       aligns the checkbox with the approximate x-height/cap-height midpoint. */
+       Closed-form derivation (for reference when changing font or line-height):
+         margin_top = F × ((L−1)/2 + a − 0.5)
+       where F = font-size, L = CSS line-height, a = font's CSS ascent ratio.
+       Goal: align the checkbox center with the text baseline, which is the
+       perceptually correct position for a form element next to running text.
+       For the default theme (F=16px, L=1.45) and Iowan Old Style (a≈0.775):
+         16 × ((1.45−1)/2 + 0.775 − 0.5) = 16 × 0.5 = 8px = 0.5em ✓
+       In CSS-variable form: calc(var(--body-size) * ((var(--line-height) − 1) / 2 + 0.275))
+       where 0.275 = a − 0.5 is the font-specific ascent offset for Iowan Old Style.
+       (Geometric line-box center would be (L−1)/2 × F = 0.225em, which sits above
+       the baseline and looks too high for this font's tall ascenders.) */
     li.task { list-style: none; }
     li.task > input[type=checkbox] {
       float: left; width: 1em; height: 1em;
-      margin-top: 0.5em;
+      margin-top: 0.5em; /* empirically calibrated for Iowan Old Style; see formula above */
       margin-right: 0.4em;
       margin-left: -1.65em;
     }
@@ -172,7 +178,10 @@ enum HTMLTheme {
     /* Callouts: tinted box + colored title; the icon sits as a non-shrinking
        flex child so a long custom title wraps under the title text, never under
        the icon — the layout the TextKit editor can't achieve. */
-    .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 0.75em 0; }
+    /* Outer margin matches the gap between two consecutive <pre> blocks (UA
+       stylesheet gives pre { margin: 1em 0 }; collapsing → 1em gap). Using
+       the same value here means neighboring callouts look equally spaced. */
+    .callout { background: var(--c-bg); border-radius: 8px; padding: 10px 14px; margin: 1em 0; }
     /* Icon sits at the top so it stays on the first line of a wrapped title; its
        box is exactly one line tall and centers the glyph, so it lines up with the
        first line's text rather than floating above it. */
@@ -190,6 +199,11 @@ enum HTMLTheme {
     .callout-body > p { margin-bottom: 0.5em; }
     .callout-body > :first-child { margin-top: 0; }
     .callout-body > :last-child { margin-bottom: 0; }
+    /* A callout that is the last child of a callout body (e.g. the nested TIP
+       inside the NOTE) has its top margin removed so the space above it is
+       governed only by the preceding element's bottom margin (0.5em for a <p>
+       from .callout-body > p), not the combined margin collapse of 1em. */
+    .callout-body > .callout:last-child { margin-top: 0; }
 
     @media print {
       body { padding: 0; }
