@@ -238,7 +238,8 @@ them and route through the app's document graph without JavaScript.
   storage-touching styling path must guard `!hasMarkedText()` — including async
   ones scheduled *before* composition began (the caret-move restyle in
   `+SelectionTracking`). `becomeFirstResponder` resyncs from storage as a
-  catch-all if a composition is ever left stranded.
+  catch-all if a composition is ever left stranded. Full write-up:
+  `docs/delete-drift-investigation.md`.
 
 ---
 
