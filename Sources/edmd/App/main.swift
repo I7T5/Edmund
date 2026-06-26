@@ -14,6 +14,8 @@ import Sparkle
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     var settingsWindowController: SettingsWindowController?
+    // startingUpdater: true kicks off the scheduled background check immediately;
+    // the "Check for Updates…" menu item targets this controller directly.
     let updaterController = SPUStandardUpdaterController(
         startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
