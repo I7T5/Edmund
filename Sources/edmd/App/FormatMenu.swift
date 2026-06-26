@@ -70,11 +70,11 @@ enum FormatMenu {
         return formatItem
     }
 
-    /// The "Cycle View Mode" item (⌘E) for the View menu — bracketed by
+    /// The "Toggle View Mode" item (⌘E) for the View menu — bracketed by
     /// dividers by the caller.
-    static func viewModeCycleItem() -> NSMenuItem {
-        MenuCommand(id: "view.cycleMode", title: "Cycle View Mode",
-                    action: #selector(Document.cycleViewMode(_:)),
+    static func viewModeToggleItem() -> NSMenuItem {
+        MenuCommand(id: "view.toggleMode", title: "Toggle View Mode",
+                    action: #selector(Document.toggleViewMode(_:)),
                     shortcut: .cmd("e")).makeItem()
     }
 

@@ -120,6 +120,8 @@ class Document: NSDocument, HeadingNavigable {
         let toolbar = NSToolbar(identifier: "MainToolbar")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = true
+        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar"
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .line
@@ -304,11 +306,11 @@ class Document: NSDocument, HeadingNavigable {
         }
     }
 
-    /// Shows the active mode's icon on the button (with the menu chevrons), and
-    /// keeps the tooltip in sync.
+    /// Shows the active mode's icon on the button and keeps the tooltip in sync.
     private func refreshViewModeButton() {
         guard let editor else { return }
-        viewModeButton?.image = viewModeButtonImage(for: editor.viewMode)
+        viewModeButton?.image = icon(for: editor.viewMode)?
+            .withSymbolConfiguration(.init(pointSize: 16, weight: .regular))
         viewModeButton?.toolTip = "View mode: \(label(for: editor.viewMode))"
     }
 
@@ -409,42 +411,21 @@ class Document: NSDocument, HeadingNavigable {
     @objc private func selectReadingMode(_ sender: Any?) { setViewMode(.reading) }
     @objc private func selectSourceMode(_ sender: Any?)  { setViewMode(.source) }
 
-    /// Cycle Edit → Read → Source → Edit (the View-menu ⌘E item). Keeps the
-    /// toolbar button in sync via `setViewMode`.
-    @objc func cycleViewMode(_ sender: Any?) {
-        let next: EditorTextView.ViewMode
-        switch editor.viewMode {
-        case .edit:    next = .reading
-        case .reading: next = .source
-        case .source:  next = .edit
-        }
-        setViewMode(next)
+    /// Toggle Edit ↔ Read (the View-menu ⌘E item and the toolbar button).
+    /// Read → Edit; anything else (Edit or Source) → Read. Keeps the toolbar
+    /// button in sync via `setViewMode`.
+    @objc func toggleViewMode(_ sender: Any?) {
+        setViewMode(editor.viewMode == .reading ? .edit : .reading)
     }
 
-    /// Drops the mode menu down from the chevron button.
-    @objc private func showViewModeMenu(_ sender: NSButton) {
-        let menu = viewModeMenu()
-        menu.popUp(positioning: nil,
-                   at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
-    }
-
-    /// A checklist menu: each mode with its icon, the current one checked.
-    private func viewModeMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false   // actions always fire on selection
-        let entries: [(EditorTextView.ViewMode, Selector)] = [
-            (.edit,    #selector(selectEditMode(_:))),
-            (.reading, #selector(selectReadingMode(_:))),
-            (.source,  #selector(selectSourceMode(_:))),
-        ]
-        for (mode, action) in entries {
-            let item = NSMenuItem(title: label(for: mode), action: action, keyEquivalent: "")
-            item.target = self
-            item.image = icon(for: mode)
-            item.state = (editor?.viewMode == mode) ? .on : .off
-            menu.addItem(item)
-        }
-        return menu
+    /// One checklist item: the mode's icon + title, checked when it's active.
+    private func viewModeMenuItem(_ mode: EditorTextView.ViewMode,
+                                  _ action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: label(for: mode), action: action, keyEquivalent: "")
+        item.target = self
+        item.image = icon(for: mode)
+        item.state = (editor?.viewMode == mode) ? .on : .off
+        return item
     }
 
     // MARK: - Writing
@@ -475,7 +456,7 @@ extension Document: NSToolbarDelegate {
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.viewModeItemID]
+        [.flexibleSpace, .space, Self.viewModeItemID]
     }
 
     func toolbar(_ toolbar: NSToolbar,
@@ -486,39 +467,33 @@ extension Document: NSToolbarDelegate {
         item.label = "View Mode"
         item.visibilityPriority = .high
 
-        // A single button — "<active-mode icon> ⌄⌃" — that drops the menu.
-        let button = NSButton(image: viewModeButtonImage(for: editor.viewMode),
-                              target: self, action: #selector(showViewModeMenu(_:)))
+        // Left-click toggles Edit↔Read; right-click drops the full mode menu
+        // (built on demand via menuNeedsUpdate so the checkmark stays current).
+        let button = NSButton(image: NSImage(), target: self,
+                              action: #selector(toggleViewMode(_:)))
         button.bezelStyle = .texturedRounded
         button.imagePosition = .imageOnly
+        let menu = NSMenu()
+        menu.delegate = self
+        button.menu = menu
         viewModeButton = button
         item.view = button
         refreshViewModeButton()
         return item
     }
+}
 
-    /// Composes the toolbar button face: the active mode's icon at full toolbar
-    /// size with a small `chevron.up.chevron.down` to its right (menu affordance).
-    private func viewModeButtonImage(for mode: EditorTextView.ViewMode) -> NSImage {
-        // Proportions match Finder's view-mode control: a prominent mode icon
-        // with a smaller `chevron.up.chevron.down` tucked close to its right.
-        let modeIcon = (icon(for: mode)?.withSymbolConfiguration(
-            .init(pointSize: 16, weight: .regular))) ?? NSImage()
-        let chevrons = (NSImage(systemSymbolName: "chevron.up.chevron.down",
-                                accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))) ?? NSImage()
-        let gap: CGFloat = 2
-        let size = NSSize(width: modeIcon.size.width + gap + chevrons.size.width,
-                          height: max(modeIcon.size.height, chevrons.size.height))
-        let image = NSImage(size: size)
-        image.lockFocus()
-        modeIcon.draw(at: NSPoint(x: 0, y: (size.height - modeIcon.size.height) / 2),
-                      from: .zero, operation: .sourceOver, fraction: 1)
-        chevrons.draw(at: NSPoint(x: modeIcon.size.width + gap,
-                                  y: (size.height - chevrons.size.height) / 2),
-                      from: .zero, operation: .sourceOver, fraction: 1)
-        image.unlockFocus()
-        image.isTemplate = true   // tint with the toolbar's light/dark color
-        return image
+// MARK: - View-mode context menu
+
+extension Document: NSMenuDelegate {
+    /// Rebuilds the right-click mode menu — Edit / Read / ─── / Source, with the
+    /// active mode checked — each time it opens.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.autoenablesItems = false   // actions always fire on selection
+        menu.removeAllItems()
+        menu.addItem(viewModeMenuItem(.edit, #selector(selectEditMode(_:))))
+        menu.addItem(viewModeMenuItem(.reading, #selector(selectReadingMode(_:))))
+        menu.addItem(.separator())
+        menu.addItem(viewModeMenuItem(.source, #selector(selectSourceMode(_:))))
     }
 }

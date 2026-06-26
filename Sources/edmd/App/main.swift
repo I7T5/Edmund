@@ -267,10 +267,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             keyEquivalent: "")
         typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
 
-        // View-mode cycle (Edit → Read → Source), bracketed by dividers.
+        // View-mode toggle (Edit ↔ Read), bracketed by dividers.
         viewMenu.addItem(.separator())
-        viewMenu.addItem(FormatMenu.viewModeCycleItem())
+        viewMenu.addItem(FormatMenu.viewModeToggleItem())
         viewMenu.addItem(.separator())
+
+        // Routes through the responder chain to the key window's toolbar.
+        viewMenu.addItem(withTitle: "Customize Toolbar…",
+                         action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
+                         keyEquivalent: "")
 
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
