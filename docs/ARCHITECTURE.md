@@ -218,6 +218,14 @@ them and route through the app's document graph without JavaScript.
 - **Sparkle keypair (one-time setup)**: the EdDSA public key in `Info.plist`
   `SUPublicEDKey` is a placeholder. See §8 for the exact commands to generate
   and install the real key before shipping an update.
+- **`create-dmg` — npm only, three quirks**:
+  - Install via **npm** (`npm install --global create-dmg`), not Homebrew — they
+    are different tools with incompatible CLIs. Requires Node ≥20 (`node --version`).
+  - Exits **2** (not 0) when it can't Developer-ID-sign the image (we ship
+    ad-hoc). It still produces the `.dmg`; `release.sh` and the CI step both
+    use `|| true` and then verify the file exists.
+  - Names the output `"Edmund <version>.dmg"` (space, not hyphen). Both scripts
+    rename it to `Edmund-<version>.dmg` before signing and uploading.
 - **Stale release builds**: `swift build -c release` / `build-app.sh` sometimes
   reuses stale object files (you'll run an old binary and be baffled). If a
   visual change "doesn't take," `rm -rf .build` and rebuild. `shasum` the binary
