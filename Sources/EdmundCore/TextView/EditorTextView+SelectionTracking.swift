@@ -33,6 +33,17 @@ extension EditorTextView {
                 // with un-editable zero-width marker characters.
                 self.pendingRecompose = false
                 guard !self.isUpdating else { return }
+                // Never restyle (mutate storage / invalidate layout) while an
+                // input method is composing. This async block was scheduled
+                // before composition began, so — unlike the synchronous guard
+                // above — `hasMarkedText()` can have flipped true in between.
+                // Running `recomposeDirty` over storage that holds a live
+                // composition can strand the marked text in the input context,
+                // after which `didChangeText` keeps bailing on its own
+                // marked-text guard and the storage/`rawSource` invariant breaks
+                // — the "delete drift" bug. The active-block restyle is applied
+                // anyway when composition commits (didChangeText → recomposeDirty).
+                guard !self.hasMarkedText() else { return }
 
                 // Restyle the new active block now. DEFER the old active block
                 // if it's off screen: deactivating it (rendered ↔ raw — callout
