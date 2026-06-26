@@ -13,6 +13,7 @@ import Sparkle
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
+    var aboutWindowController: AboutWindowController?
     var settingsWindowController: SettingsWindowController?
     // startingUpdater: true kicks off the scheduled background check immediately;
     // the "Check for Updates…" menu item targets this controller directly.
@@ -71,6 +72,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     // MARK: - Settings
+
+    @MainActor @objc func showAbout(_ sender: Any?) {
+        if aboutWindowController == nil {
+            aboutWindowController = AboutWindowController()
+        }
+        aboutWindowController?.showWindow(nil)
+        aboutWindowController?.window?.makeKeyAndOrderFront(nil)
+    }
 
     @MainActor @objc func showSettings(_ sender: Any?) {
         if settingsWindowController == nil {
@@ -139,6 +148,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // App menu (required for Cmd+Q)
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Edmund",
+                        action: #selector(AppDelegate.showAbout(_:)),
+                        keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Settings\u{2026}",
                         action: #selector(AppDelegate.showSettings(_:)),
                         keyEquivalent: ",")
