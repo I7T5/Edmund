@@ -267,9 +267,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             keyEquivalent: "")
         typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
 
-        // View-mode toggle (Edit ↔ Read), bracketed by dividers.
+        // View-mode toggle (Edit ↔ Read) + the Source-mode checkbox.
         viewMenu.addItem(.separator())
         viewMenu.addItem(FormatMenu.viewModeToggleItem())
+        viewMenu.addItem(withTitle: "Source Mode",
+                         action: #selector(Document.toggleSourceMode(_:)),
+                         keyEquivalent: "")
         viewMenu.addItem(.separator())
 
         // Routes through the responder chain to the key window's toolbar.

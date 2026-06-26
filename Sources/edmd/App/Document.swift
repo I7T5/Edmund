@@ -418,11 +418,27 @@ class Document: NSDocument, HeadingNavigable {
     @objc private func selectEditMode(_ sender: Any?)    { setViewMode(editingMode) }
     @objc private func selectReadingMode(_ sender: Any?) { setViewMode(.reading) }
 
-    /// The "Source mode" checkbox. Persists the setting and, if we're in the
-    /// editing view, swaps it to the new editing mode right away.
-    @objc private func toggleSourceMode(_ sender: Any?) {
+    /// The "Source mode" checkbox (button menu and View menu). Persists the
+    /// setting and, if we're in the editing view, swaps it to the new editing
+    /// mode right away.
+    @objc func toggleSourceMode(_ sender: Any?) {
         AppSettings.sourceMode.toggle()
         if editor.viewMode != .reading { setViewMode(editingMode) }
+    }
+
+    /// Pops the right-click mode menu under the toolbar button.
+    @objc private func showViewModeMenu(_ sender: NSGestureRecognizer) {
+        guard let view = sender.view else { return }
+        viewModeMenu().popUp(positioning: nil,
+                             at: NSPoint(x: 0, y: view.bounds.maxY + 4), in: view)
+    }
+
+    /// Keeps the View-menu "Source Mode" checkmark in sync with the setting.
+    override func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleSourceMode(_:)) {
+            item.state = AppSettings.sourceMode ? .on : .off
+        }
+        return super.validateMenuItem(item)
     }
 
     /// Toggle the editing view ↔ Read (the View-menu ⌘E item and the toolbar
@@ -497,31 +513,21 @@ extension Document: NSToolbarDelegate {
         item.label = "View Mode"
         item.visibilityPriority = .high
 
-        // Left-click toggles the editing view ↔ Read; right-click drops the
-        // full mode menu (the button pops it itself so it isn't shadowed by the
-        // toolbar's own "Customize Toolbar…" context menu).
-        let button = ViewModeButton(image: NSImage(), target: self,
-                                    action: #selector(toggleViewMode(_:)))
+        // Left-click toggles the editing view ↔ Read. Right-click shows the
+        // full mode menu — via a gesture recognizer, which claims the secondary
+        // click before the toolbar's own "Customize Toolbar…" context menu does
+        // (overriding rightMouseDown on the view loses that race).
+        let button = NSButton(image: NSImage(), target: self,
+                              action: #selector(toggleViewMode(_:)))
         button.bezelStyle = .texturedRounded
         button.imagePosition = .imageOnly
-        button.menuProvider = { [weak self] in self?.viewModeMenu() }
+        let secondaryClick = NSClickGestureRecognizer(
+            target: self, action: #selector(showViewModeMenu(_:)))
+        secondaryClick.buttonMask = 0x2   // right / secondary button
+        button.addGestureRecognizer(secondaryClick)
         viewModeButton = button
         item.view = button
         refreshViewModeButton()
         return item
-    }
-}
-
-/// Toolbar button whose right-click shows the view-mode menu directly, rather
-/// than letting the event bubble up to the toolbar's "Customize Toolbar…" menu.
-private final class ViewModeButton: NSButton {
-    var menuProvider: (() -> NSMenu?)?
-
-    override func rightMouseDown(with event: NSEvent) {
-        guard let menu = menuProvider?() else {
-            super.rightMouseDown(with: event)
-            return
-        }
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 }
