@@ -37,6 +37,7 @@ final class SettingsTabViewController: NSTabViewController {
 
         addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
         addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
+        addPane(AdvancedSettingsView(), label: "Advanced", symbol: "gearshape.2")
     }
 
     private func addPane(_ view: some View, label: String, symbol: String) {

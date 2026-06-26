@@ -1,5 +1,6 @@
 import AppKit
 import EdmundCore
+import Sparkle
 
 // Entry point for the app the user knows as "Edmund" (CFBundleName). The
 // executable target — and so this binary at Edmund.app/Contents/MacOS/edmd — is
@@ -9,9 +10,12 @@ import EdmundCore
 
 // --- App Delegate -----------------------------------------------------------
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     var settingsWindowController: SettingsWindowController?
+    let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     // MARK: - Typewriter Mode (persisted)
 
@@ -136,6 +140,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         appMenu.addItem(withTitle: "Settings\u{2026}",
                         action: #selector(AppDelegate.showSettings(_:)),
                         keyEquivalent: ",")
+
+        let updatesItem = appMenu.addItem(
+            withTitle: "Check for Updates\u{2026}",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: "")
+        updatesItem.target = updaterController
 
         appMenu.addItem(NSMenuItem.separator())
 

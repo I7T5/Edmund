@@ -7,6 +7,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.5.0"),
         .package(url: "https://github.com/mgriebling/SwiftMath.git", from: "1.7.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         .target(
@@ -21,7 +22,7 @@ let package = Package(
         // peeks inside the bundle or runs `swift run edmd`.
         .executableTarget(
             name: "edmd",
-            dependencies: ["EdmundCore"]),
+            dependencies: ["EdmundCore", .product(name: "Sparkle", package: "Sparkle")]),
         .testTarget(
             name: "EdmundTests",
             dependencies: ["EdmundCore"]),

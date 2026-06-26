@@ -91,6 +91,8 @@ enum AppSettings {
 
     enum Key {
         static let reopenWindows = "settings.general.reopenWindows"
+        // Must match Sparkle's own default key exactly — Sparkle reads/writes this string.
+        static let automaticallyChecksForUpdates = "SUAutomaticallyChecksForUpdates"
         static let startupAction = "settings.general.startupAction"
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
         static let conflictResolution = "settings.general.conflictResolution"

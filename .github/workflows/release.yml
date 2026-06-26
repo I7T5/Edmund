@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & publish
+    runs-on: macos-14
+    permissions:
+      contents: write  # create releases and commit appcast
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Fetch full history so we can push the appcast commit back.
+          fetch-depth: 0
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Cache .build
+        uses: actions/cache@v5
+        with:
+          path: .build
+          key: spm-v2-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-v2-${{ runner.os }}-
+
+      - name: Build app bundle
+        run: ./scripts/build-app.sh
+
+      - name: Archive
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          ditto -c -k --keepParent build/Edmund.app "build/Edmund-${VERSION}.zip"
+
+      - name: Sign archive (EdDSA)
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          SIGN_UPDATE="$(find .build -name sign_update -type f | head -1)"
+          SIG_OUTPUT="$("$SIGN_UPDATE" -s "$SPARKLE_ED_PRIVATE_KEY" "build/Edmund-${VERSION}.zip")"
+          echo "ED_SIG=$(echo "$SIG_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"')" >> "$GITHUB_ENV"
+          echo "LENGTH=$(echo "$SIG_OUTPUT" | grep -o 'length="[^"]*"' | head -1)" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        id: create_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${VERSION}" "build/Edmund-${VERSION}.zip" \
+            --title "Edmund ${VERSION}" \
+            --notes "See CHANGELOG for details." \
+            --latest
+
+      - name: Update appcast.xml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          ASSET_URL="https://github.com/${REPO}/releases/download/v${VERSION}/Edmund-${VERSION}.zip"
+          PUB_DATE="$(date -u '+%a, %d %b %Y %H:%M:%S +0000')"
+          BUILD="$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' Info.plist)"
+
+          NEW_ITEM="        <item>
+              <title>Edmund ${VERSION}</title>
+              <pubDate>${PUB_DATE}</pubDate>
+              <enclosure url=\"${ASSET_URL}\"
+                         sparkle:version=\"${BUILD}\"
+                         sparkle:shortVersionString=\"${VERSION}\"
+                         ${ED_SIG}
+                         ${LENGTH}
+                         type=\"application/octet-stream\"/>
+          </item>"
+
+          python3 - "$NEW_ITEM" <<'PYEOF'
+          import sys
+          new_item = sys.argv[1]
+          with open("appcast.xml", "r") as f:
+              content = f.read()
+          content = content.replace("    </channel>", new_item + "\n    </channel>")
+          with open("appcast.xml", "w") as f:
+              f.write(content)
+          PYEOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "appcast: add Edmund ${VERSION}"
+          git push origin HEAD:main
