@@ -347,6 +347,33 @@ public class EditorTextView: NSTextView {
         return storage.attribute(.editorLinkURL, at: charIndex, effectiveRange: nil) as? String
     }
 
+    // MARK: - Stranded-Composition Recovery
+
+    /// Regaining first-responder status: recover from any stranded input-method
+    /// composition. If a marked-text (IME / accent / emoji) composition is ever
+    /// left uncommitted, `didChangeText` keeps bailing on its `hasMarkedText()`
+    /// guard, so the text storage drifts away from `rawSource` and every edit
+    /// then does offset math against a frozen block model — the "delete drift"
+    /// bug. Returning focus is a reliable "composition is over" signal (the view
+    /// can't become first responder while it already holds an active
+    /// composition), so when the invariant is broken here we commit any stranded
+    /// marked text and resync the model from the storage the user actually sees.
+    /// This formalizes the focus-switch recovery users already stumble into.
+    public override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { recoverFromStrandedCompositionIfNeeded() }
+        return became
+    }
+
+    func recoverFromStrandedCompositionIfNeeded() {
+        guard let ts = textStorage, ts.string != rawSource else { return }
+        if hasMarkedText() { unmarkText() }
+        rawSource = ts.string
+        rebuildListIndentState()
+        blocks = BlockParser.parse(rawSource, previous: blocks)
+        recompose(cursorInRaw: min(selectedRange().location, (rawSource as NSString).length))
+    }
+
     // MARK: - Helpers
 
     func currentCursorInRaw() -> Int {

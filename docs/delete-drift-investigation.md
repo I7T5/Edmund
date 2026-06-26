@@ -1,0 +1,141 @@
+# Edit-mode "delete drift" — investigation notes
+
+Context for anyone who sees the bug again. It was intermittent, state-dependent,
+and looked nothing like its actual cause, so this records the trail end to end.
+
+Fixed in commits `386604b` (fix + test) and `ef3d87e` (ARCHITECTURE gotcha) on
+branch `fix/delete-caret-drift-marked-text`.
+
+## Symptom
+
+In Edit mode the editor would sometimes enter a **bad mode where pressing Delete
+(backspace) moved the caret to a different line instead of deleting a
+character**. Key properties (all from the reporter):
+
+- **Caret/selection desync, not content corruption** — the underlying text
+  stayed correct; the delete was effectively dropped while the caret jumped.
+- **Persistent once it started** — *every* delete drifted, not just one. Not
+  tied to any particular preceding keystroke.
+- **Never right after launch** — only after the window had been used a while.
+- **Sometimes cleared by switching to another app and back.**
+- **Not list-specific** — reproduced in a plain-paragraph `undo_test.md`.
+
+Evidence: `~/Desktop/delete-jump-2.mov` and `~/Desktop/delete-jump.mp4` (the
+latter with a keystroke overlay). A diagnostic log
+(`~/Desktop/edmund-2026-06-25.log`) showed only routine I/O — no clue on its own.
+
+## How it was diagnosed
+
+1. **Frame extraction.** Pulling frames from the recordings showed the caret
+   teleporting between lines on single Delete presses while the document text
+   was stable. That ruled out "wrong text deleted" and pointed at a
+   selection/model desync.
+2. **Reporter clarifications were decisive** and overturned two earlier wrong
+   theories (a viewport-scroll jump, then an Enter-then-Delete interaction):
+   - it's caret-only (text fine),
+   - every delete drifts once it starts,
+   - it's state-dependent (never at launch),
+   - **focus-switch clears it**.
+3. **The focus-switch clue cracked it.** There is no
+   `becomeFirstResponder`/`resignFirstResponder`/window-key handling anywhere in
+   the editor (verified in `EditorTextView.swift`), so the *only* state an
+   app-focus switch resets that also gates the editor's behavior is AppKit's
+   **input-context marked text** (`hasMarkedText()`).
+
+## Root cause
+
+The editor's hard invariant is **text storage always equals `rawSource`**
+(ARCHITECTURE §2). It's maintained in `didChangeText` →
+`syncRawSourceFromDisplay()`. But that sync — and every other styling entry
+point — is gated on `!hasMarkedText()`:
+
+- `EditorTextView+EditFlow.swift` — `didChangeText` (bails **before** syncing)
+- `EditorTextView+SelectionTracking.swift` — `selectionDidChange`
+- `EditorTextView+LazyStyling.swift` — the idle drain
+
+This guard is correct *during* a live IME / accent / emoji composition: the
+storage transiently holds the provisional marked text, so `storage == rawSource`
+is briefly false and we must not restyle the marked range (it aborts the
+composition).
+
+The bug is when a composition gets **stranded** (`hasMarkedText()` stuck true
+with no live composition). Then `didChangeText` keeps bailing forever: the
+storage mutates on every keystroke but `rawSource`/`blocks` freeze. From that
+point on, every edit does offset / active-block math against a **frozen, stale
+block model**, so the caret drifts. Nothing re-syncs until marked text clears —
+and the only thing that reliably clears it is the text view resigning first
+responder (switching apps), which commits/discards the composition. That is
+exactly why **switching apps and back fixed it**, and why it never happened at
+launch (you need to accumulate a stranded composition first).
+
+### What stranded the composition
+
+The prime suspect is the **async active-block restyle** scheduled from
+`selectionDidChange` (`EditorTextView+SelectionTracking.swift`). The deferred
+`DispatchQueue.main.async` block re-checked `isUpdating` but **not**
+`hasMarkedText()`. Because it's scheduled on a caret move and runs a turn later,
+a composition can begin in between; the block then runs `recomposeDirty`
+(`beginEditing`/`setAttributes`/`endEditing` + `invalidateLayout`) over storage
+that holds a live composition, which can strand the marked text in the input
+context. Timing/usage dependent → "after a while," never at launch.
+
+## The fix (two defenses)
+
+1. **Prevention** (`EditorTextView+SelectionTracking.swift`): add
+   `guard !self.hasMarkedText() else { return }` to the async restyle block, so
+   it matches the guard every other storage-touching styling path already has.
+   The active-block restyle still happens — `didChangeText`'s
+   `recomposeDirty` covers the active block when the composition commits.
+
+2. **Recovery** (`EditorTextView.swift`,
+   `recoverFromStrandedCompositionIfNeeded` + a `becomeFirstResponder`
+   override): regaining first-responder status is a reliable "composition is
+   over" signal (the view can't become first responder while it already holds an
+   active composition). If the invariant is broken at that moment, commit any
+   stranded marked text (`unmarkText()`) and resync the model from storage. This
+   makes the focus-switch recovery the user already relied on **deterministic**
+   instead of occasional, and is a catch-all for *any* future stranding path.
+
+The new gotcha bullet in ARCHITECTURE §8 states the general rule: **never mutate
+storage while `hasMarkedText()`**, including async paths scheduled before
+composition began.
+
+## Testing — and its limit
+
+`Tests/EdmundTests/MarkedTextDesyncTests.swift`:
+
+- `markedTextBreaksInvariantTransiently` — documents that `setMarkedText` makes
+  `storage != rawSource` (the normal, transient state).
+- `regainingFocusRecoversStrandedComposition` — strands a composition, simulates
+  leave-and-return focus, and asserts the invariant is restored and a delete
+  then removes exactly one character. **This fails without the recovery hook**,
+  so it's the real regression guard.
+
+**Limit:** the *actual* stranding can't be reproduced headlessly. A unit-test
+`NSTextView` has no live `NSTextInputContext`, so `recomposeDirty` running during
+marked text does **not** corrupt/strand it the way the real input context does
+(verified by probing: `activeBlockIndex` was unchanged with or without the
+prevention guard). So:
+
+- Fix 1 (prevention) is justified by **consistency** with the codebase's own
+  established pattern, not by a failing test.
+- Fix 2 (recovery) is the test-backed safety net.
+
+A DEBUG assertion in `didChangeText`'s marked-text guard was considered and
+**rejected**: during normal composition the invariant is legitimately broken, so
+it would false-fire on every IME keystroke.
+
+## If it ever recurs
+
+1. Check the invariant first: is `textStorage.string == rawSource`? If not, the
+   model has desynced.
+2. Check `hasMarkedText()`. If it's stuck true outside an active composition,
+   a styling path mutated storage mid-composition again — audit every
+   storage-touching path for the `!hasMarkedText()` guard (especially any new
+   async/deferred styling, like new scroll/idle/promotion paths).
+3. The `becomeFirstResponder` recovery should still unstick it on focus regain;
+   if it doesn't, confirm the override is being called and that
+   `recoverFromStrandedCompositionIfNeeded` isn't guarded out.
+4. To get live signal, temporarily log `hasMarkedText()` and
+   `textStorage.string == rawSource` in `didChangeText` (category `.compose`),
+   reproduce, and read `~/.edmund/logs`.

@@ -228,6 +228,18 @@ them and route through the app's document graph without JavaScript.
   block whose height/indent changed, you must `invalidateLayout(for:)` its range
   or the fragment keeps a stale frame (empty bands / clipped lines). `recompose
   Dirty` and the idle drain already do this; new paths must too.
+- **Never mutate storage while an IME is composing (`hasMarkedText()`)**: during
+  composition the storage holds the provisional marked text, so `storage ==
+  rawSource` is transiently false and `didChangeText` defers syncing until
+  commit. Any styling that runs `beginEditing`/`setAttributes`/`invalidateLayout`
+  mid-composition can strand the marked text in the input context — after which
+  `didChangeText` keeps bailing on its own guard and the invariant stays broken,
+  so every later edit drifts the caret (the old "delete-drift" bug). Every
+  storage-touching styling path must guard `!hasMarkedText()` — including async
+  ones scheduled *before* composition began (the caret-move restyle in
+  `+SelectionTracking`). `becomeFirstResponder` resyncs from storage as a
+  catch-all if a composition is ever left stranded. Full write-up:
+  `docs/delete-drift-investigation.md`.
 
 ---
 
