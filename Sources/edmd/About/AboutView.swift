@@ -1,3 +1,5 @@
+// Note: `swift run` does not bundle resources, so the app icon and version
+// string will not render correctly. Build and launch via ./scripts/build-app.sh.
 import SwiftUI
 import AppKit
 
