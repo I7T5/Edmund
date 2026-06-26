@@ -164,6 +164,8 @@ class Document: NSDocument, HeadingNavigable {
         let wc = NSWindowController(window: window)
         addWindowController(wc)
         window.makeFirstResponder(editor)
+        // Honor the persisted source-mode preference for the editing view.
+        if AppSettings.sourceMode { setViewMode(.source) }
         updateStatusBar()
     }
 
@@ -310,7 +312,7 @@ class Document: NSDocument, HeadingNavigable {
     private func refreshViewModeButton() {
         guard let editor else { return }
         viewModeButton?.image = icon(for: editor.viewMode)?
-            .withSymbolConfiguration(.init(pointSize: 16, weight: .regular))
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
         viewModeButton?.toolTip = "View mode: \(label(for: editor.viewMode))"
     }
 
@@ -407,25 +409,53 @@ class Document: NSDocument, HeadingNavigable {
                               window: windowControllers.first?.window)
     }
 
-    @objc private func selectEditMode(_ sender: Any?)    { setViewMode(.edit) }
-    @objc private func selectReadingMode(_ sender: Any?) { setViewMode(.reading) }
-    @objc private func selectSourceMode(_ sender: Any?)  { setViewMode(.source) }
-
-    /// Toggle Edit ↔ Read (the View-menu ⌘E item and the toolbar button).
-    /// Read → Edit; anything else (Edit or Source) → Read. Keeps the toolbar
-    /// button in sync via `setViewMode`.
-    @objc func toggleViewMode(_ sender: Any?) {
-        setViewMode(editor.viewMode == .reading ? .edit : .reading)
+    /// The editing-side view: Source when source mode is on, otherwise Edit.
+    /// Read is the other half of the toggle.
+    private var editingMode: EditorTextView.ViewMode {
+        AppSettings.sourceMode ? .source : .edit
     }
 
-    /// One checklist item: the mode's icon + title, checked when it's active.
-    private func viewModeMenuItem(_ mode: EditorTextView.ViewMode,
-                                  _ action: Selector) -> NSMenuItem {
-        let item = NSMenuItem(title: label(for: mode), action: action, keyEquivalent: "")
+    @objc private func selectEditMode(_ sender: Any?)    { setViewMode(editingMode) }
+    @objc private func selectReadingMode(_ sender: Any?) { setViewMode(.reading) }
+
+    /// The "Source mode" checkbox. Persists the setting and, if we're in the
+    /// editing view, swaps it to the new editing mode right away.
+    @objc private func toggleSourceMode(_ sender: Any?) {
+        AppSettings.sourceMode.toggle()
+        if editor.viewMode != .reading { setViewMode(editingMode) }
+    }
+
+    /// Toggle the editing view ↔ Read (the View-menu ⌘E item and the toolbar
+    /// button). With source mode on the editing view is Source, so this flips
+    /// Source ↔ Read; otherwise Edit ↔ Read.
+    @objc func toggleViewMode(_ sender: Any?) {
+        setViewMode(editor.viewMode == .reading ? editingMode : .reading)
+    }
+
+    /// One mode menu item: icon + title, checked when `on`.
+    private func menuItem(_ title: String, _ image: NSImage?,
+                          _ action: Selector, on: Bool) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
-        item.image = icon(for: mode)
-        item.state = (editor?.viewMode == mode) ? .on : .off
+        item.image = image
+        item.state = on ? .on : .off
         return item
+    }
+
+    /// The right-click menu: Edit / Read selection, a divider, then the
+    /// "Source mode" checkbox. Built fresh each time so state stays current.
+    fileprivate func viewModeMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false   // actions always fire on selection
+        let inEditing = editor?.viewMode != .reading
+        menu.addItem(menuItem("Edit", icon(for: .edit),
+                              #selector(selectEditMode(_:)), on: inEditing))
+        menu.addItem(menuItem("Read", icon(for: .reading),
+                              #selector(selectReadingMode(_:)), on: !inEditing))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Source mode", icon(for: .source),
+                              #selector(toggleSourceMode(_:)), on: AppSettings.sourceMode))
+        return menu
     }
 
     // MARK: - Writing
@@ -467,15 +497,14 @@ extension Document: NSToolbarDelegate {
         item.label = "View Mode"
         item.visibilityPriority = .high
 
-        // Left-click toggles Edit↔Read; right-click drops the full mode menu
-        // (built on demand via menuNeedsUpdate so the checkmark stays current).
-        let button = NSButton(image: NSImage(), target: self,
-                              action: #selector(toggleViewMode(_:)))
+        // Left-click toggles the editing view ↔ Read; right-click drops the
+        // full mode menu (the button pops it itself so it isn't shadowed by the
+        // toolbar's own "Customize Toolbar…" context menu).
+        let button = ViewModeButton(image: NSImage(), target: self,
+                                    action: #selector(toggleViewMode(_:)))
         button.bezelStyle = .texturedRounded
         button.imagePosition = .imageOnly
-        let menu = NSMenu()
-        menu.delegate = self
-        button.menu = menu
+        button.menuProvider = { [weak self] in self?.viewModeMenu() }
         viewModeButton = button
         item.view = button
         refreshViewModeButton()
@@ -483,17 +512,16 @@ extension Document: NSToolbarDelegate {
     }
 }
 
-// MARK: - View-mode context menu
+/// Toolbar button whose right-click shows the view-mode menu directly, rather
+/// than letting the event bubble up to the toolbar's "Customize Toolbar…" menu.
+private final class ViewModeButton: NSButton {
+    var menuProvider: (() -> NSMenu?)?
 
-extension Document: NSMenuDelegate {
-    /// Rebuilds the right-click mode menu — Edit / Read / ─── / Source, with the
-    /// active mode checked — each time it opens.
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.autoenablesItems = false   // actions always fire on selection
-        menu.removeAllItems()
-        menu.addItem(viewModeMenuItem(.edit, #selector(selectEditMode(_:))))
-        menu.addItem(viewModeMenuItem(.reading, #selector(selectReadingMode(_:))))
-        menu.addItem(.separator())
-        menu.addItem(viewModeMenuItem(.source, #selector(selectSourceMode(_:))))
+    override func rightMouseDown(with event: NSEvent) {
+        guard let menu = menuProvider?() else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 }
