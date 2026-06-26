@@ -161,7 +161,16 @@ use a nil target and route through the responder chain to the focused
 actions funnel through two primitives in `+FormattingCore.swift`
 (`applyFormattingEdit` for a single contiguous edit, modeled on the Tab-indent
 path; `applyWholeDocumentEdit` for non-contiguous edits like footnotes). The
-View-menu ⌘E item cycles Edit→Read→Source via `Document.cycleViewMode`.
+View-menu ⌘E item (and the toolbar button) *toggles* the editing view ↔ Read
+via `Document.toggleViewMode`. **Source is not a third toggle stop** — it's a
+persisted preference (`AppSettings.sourceMode`, a "Source Mode" checkbox in the
+View menu and the toolbar button's right-click menu): when on, the editing half
+of the toggle is Source instead of Edit (so ⌘E flips Source ↔ Read), and a
+freshly opened document honors it. The toolbar's view-mode button left-clicks to
+toggle and right-clicks for the full mode menu (see the §8 gotcha on why that
+right-click is intercepted in `DocumentWindow.sendEvent`). The toolbar enables
+`allowsUserCustomization` (Customize Toolbar… is an AppKit `NSToolbar` feature,
+not a SwiftUI one).
 
 **Read mode is a separate WKWebView**, not an editor styling mode. Entering
 `.reading` swaps the editor's scroll view for a `ReadModeWebView` that renders
@@ -259,6 +268,18 @@ them and route through the app's document graph without JavaScript.
   `+SelectionTracking`). `becomeFirstResponder` resyncs from storage as a
   catch-all if a composition is ever left stranded. Full write-up:
   `docs/delete-drift-investigation.md`.
+- **A custom toolbar item can't win a right-click from a view-level handler.**
+  With `NSToolbar.allowsUserCustomization = true`, the toolbar turns any
+  secondary (right / control) click over the toolbar — *including* a custom item
+  view — into its own "Customize Toolbar…" context menu. Setting the view's
+  `menu`, overriding `rightMouseDown`, and a secondary-button
+  `NSClickGestureRecognizer` **all lose**, because the toolbar claims the click
+  downstream of them. The fix (view-mode button): intercept in
+  `DocumentWindow.sendEvent(_:)` — the documented funnel every window event
+  passes through *before* the toolbar acts — and when the click falls inside the
+  button's bounds, pop the menu and `return` (swallow it). Other right-clicks
+  fall through to `super`. (Caveat: in true fullscreen the toolbar moves to a
+  separate window, so this main-window hook wouldn't cover that case.)
 
 ---
 

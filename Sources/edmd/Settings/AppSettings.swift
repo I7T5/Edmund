@@ -102,6 +102,7 @@ enum AppSettings {
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let logRetention = "settings.general.logRetention"
         static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
+        static let sourceMode = "settings.view.sourceMode"
     }
 
     /// Text-column width as a fraction of the available width (`0...1`). `1`
@@ -121,6 +122,14 @@ enum AppSettings {
     static var reopenWindows: Bool {
         get { UserDefaults.standard.bool(forKey: Key.reopenWindows) }
         set { UserDefaults.standard.set(newValue, forKey: Key.reopenWindows) }
+    }
+
+    /// Source mode: an alternate form of Edit mode that shows the raw markdown.
+    /// When on, the editing half of the view-mode toggle is Source instead of
+    /// Edit (so the toggle flips Source ↔ Read). Defaults off.
+    static var sourceMode: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.sourceMode) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.sourceMode) }
     }
 
     /// Read mode: render runs of blank lines as proportional vertical space
