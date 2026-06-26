@@ -25,10 +25,11 @@ struct AboutView: View {
 
             HStack(spacing: 12) {
                 Link("GitHub", destination: URL(string: "https://github.com/I7T5/Edmund")!)
+                    .focusEffectDisabled()
                 Link("License", destination: URL(string: "https://github.com/I7T5/Edmund/blob/main/LICENSE")!)
+                    .focusEffectDisabled()
             }
             .font(.caption)
-            .focusEffectDisabled()
             .padding(.top, 4)
         }
         .padding(20)
