@@ -44,8 +44,8 @@ struct HTMLRendererCoreTests {
         #expect(html("1. a").hasPrefix("<ol>"))
         #expect(html("3. a\n4. b").hasPrefix("<ol start=\"3\">"))
         let task = html("- [ ] todo\n- [x] done")
-        #expect(task.contains("<li class=\"task\"><input type=\"checkbox\" disabled>"))
-        #expect(task.contains("<input type=\"checkbox\" disabled checked>"))
+        #expect(task.contains("<li class=\"task\"><span class=\"task-check task-check--unchecked\"><svg"))
+        #expect(task.contains("<span class=\"task-check task-check--checked\"><svg"))
     }
 
     @Test("Table emits thead/tbody with per-column alignment")
@@ -191,7 +191,10 @@ struct HTMLRendererCalloutTests {
         let out = html("> [!note]\n> Body text.")
         #expect(out.contains("<div class=\"callout callout-note\">"))
         #expect(out.contains("<div class=\"callout-title\">"))
-        #expect(out.contains("data-symbol=\"pencil.tip\""))
+        // Inline Lucide SVG (note → pencil), tinted by CSS via currentColor.
+        #expect(out.contains("<span class=\"callout-icon\"><svg"))
+        #expect(out.contains(LucideIcons.geometry["pencil"]!))
+        #expect(!out.contains("data-symbol"))
         #expect(out.contains("<span class=\"callout-title-text\">Note</span>"))
         #expect(out.contains("<div class=\"callout-body\"><p>Body text.</p></div>"))
     }

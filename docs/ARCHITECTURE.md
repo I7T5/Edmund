@@ -135,7 +135,8 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 | Parsing | `Parsing/BlockParser.swift`, `SyntaxHighlighter*.swift`, `CodeHighlighter.swift`, `CodeSyntaxPalette.swift` (shared Tomorrow/One-Dark hex table — read by both the editor's `NSColor` palette and the HTML CSS generator) |
 | Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift` |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
-| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: SF-Symbol icons, math, local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
+| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: math + local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
+| Icons | `Model/LucideIcons.swift` — vendored [Lucide](https://lucide.dev) SVGs (ISC, `LICENSES/lucide.txt`). Callout headers use them in **both** modes: Read inlines the SVG (CSS-tinted via `currentColor`); Edit rasterizes to a tinted `NSImage` overlay. We *can't* ship SF Symbols in exported PDFs (license). App-chrome (toolbar/settings) SF Symbols are fine (in-app UI). Edit-mode task checkboxes still use SF Symbols (on-screen only); Read-mode checkboxes are a composed Lucide SVG. |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift` |
 | Formatting commands | `Editing/EditorTextView+Formatting{Core,Commands}.swift` (Format-menu actions: bold/lists/links/callouts/…); menu built from `edmd/App/FormatMenu.swift` |
 | Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
@@ -172,7 +173,8 @@ every asset (math/icons as data URIs) so it needs no file/network reach; externa
 links open in the default browser. **File ▸ Export as PDF… / Print… (⌘P)** run
 the same HTML through `WKWebView.printOperation` for real vector (selectable)
 text — `MarkdownPrinter`. Math glyphs are high-DPI PNG (SwiftMath has no SVG
-path yet); everything else is vector. Code blocks are syntax-colored by
+path yet); callout/checkbox icons are inline Lucide SVG (vector); everything
+else is vector. Code blocks are syntax-colored by
 `CodeHighlighter` (same tokenizer and `CodeSyntaxPalette` as Edit mode). Local
 images are inlined as data URIs via a `baseURL` (document directory) threaded
 through `DocumentHTML`/`ReadModeWebView`/`MarkdownPrinter`; remote images are

@@ -19,11 +19,24 @@ struct DocumentHTMLTests {
         #expect(out.contains("<div class=\"page\"><h1>Hi</h1></div>"))
     }
 
-    @Test("Callout icon placeholder becomes an inlined PNG data URI")
+    @Test("Callout icon is an inline (vector) Lucide SVG, not a rasterized SF Symbol")
     func calloutIcon() {
         let out = doc("> [!note]\n> body")
-        #expect(!out.contains("data-symbol"))   // placeholder consumed
-        #expect(out.contains("<span class=\"callout-icon\"><img src=\"data:image/png;base64,"))
+        #expect(out.contains("<span class=\"callout-icon\"><svg"))
+        #expect(out.contains("stroke=\"currentColor\""))   // tinted by CSS, not baked
+        // No leftover SF-Symbol asset pass: no placeholder, no PNG icon.
+        #expect(!out.contains("data-symbol"))
+        #expect(!out.contains("<span class=\"callout-icon\"><img"))
+    }
+
+    @Test("Read-mode checkboxes are inline Lucide SVGs (no SF Symbol, no PNG)")
+    func checkboxIcons() {
+        let out = doc("- [x] done\n- [ ] todo")
+        #expect(out.contains("<span class=\"task-check task-check--checked\"><svg"))
+        #expect(out.contains("<span class=\"task-check task-check--unchecked\"><svg"))
+        #expect(!out.contains("type=\"checkbox\""))
+        // The whole document ships no rasterized icon glyphs (math may still PNG).
+        #expect(!out.contains("<span class=\"callout-icon\"><img"))
     }
 
     @Test("Inline math placeholder becomes an inlined image with baseline align")

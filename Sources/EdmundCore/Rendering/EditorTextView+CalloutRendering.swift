@@ -160,7 +160,7 @@ extension EditorTextView {
                 // icon + name as one compact overlay image.
                 result.addAttribute(.font, value: hiddenFont, range: header)
                 result.addAttribute(.foregroundColor, value: NSColor.clear, range: header)
-                if let overlay = calloutHeaderOverlay(symbolName: info.style.symbolName,
+                if let overlay = calloutHeaderOverlay(iconName: info.style.iconName,
                                                       title: info.title, color: c.accent,
                                                       iconNudge: info.style.iconBaselineNudge) {
                     applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
@@ -390,16 +390,14 @@ extension EditorTextView {
     // MARK: Header image (icon + title)
 
     /// Draws "icon  Title" into one image, tinted to the callout color, and
-    /// wraps it in a `FragmentOverlay`. Returns `nil` if the SF Symbol can't
+    /// wraps it in a `FragmentOverlay`. Returns `nil` if the Lucide icon can't
     /// be resolved. The top breathing room is NOT in the image — the caller
     /// raises the header line's minimum line height instead.
-    private func calloutHeaderOverlay(symbolName: String, title: String, color: NSColor,
+    private func calloutHeaderOverlay(iconName: String, title: String, color: NSColor,
                                       iconNudge: CGFloat) -> FragmentOverlay? {
         let pointSize = bodyFont.pointSize
-        let symConfig = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(symConfig) else { return nil }
+        guard let symbol = LucideIcons.image(iconName, color: color, pointSize: pointSize)
+        else { return nil }
 
         let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
         let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: color]
@@ -414,13 +412,18 @@ extension EditorTextView {
         let image = NSImage(size: NSSize(width: width, height: contentHeight), flipped: false) { _ in
             let titleY = (contentHeight - titleSize.height) / 2
             titleStr.draw(at: NSPoint(x: symW + gap, y: titleY))
-            // Center the icon on the title's cap height (its optical middle) rather
-            // than the full line box, so tall-glyph symbols don't sit high.
+            // Center the icon on the visual middle of the bold title: the midpoint
+            // between its x-height center (too low on its own) and cap-height center
+            // (~1.5px too high on its own). This reads as centered for the
+            // mostly-lowercase, capital-initial titles.
             let baseline = titleY + abs(titleFont.descender)
-            let capCenter = baseline + titleFont.capHeight / 2
-            symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2 + iconNudge, width: symW, height: symH))
+            let opticalCenter = baseline + (titleFont.xHeight + titleFont.capHeight) / 4
+            symbol.draw(in: NSRect(x: 0, y: opticalCenter - symH / 2 + iconNudge, width: symW, height: symH))
             return true
         }
+        // Re-rasterize at the screen's backing scale on every draw rather than
+        // caching a 1× bitmap (which would render the composited title soft).
+        image.cacheMode = .never
 
         return FragmentOverlay(image: image,
                                bounds: CGRect(x: 0, y: -pointSize * 0.15,

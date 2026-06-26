@@ -5,8 +5,9 @@ import SwiftMath
 //
 // Assembles the full, self-contained HTML document for Read mode and PDF export:
 // the `HTMLRenderer` body, the `HTMLTheme` stylesheet, and a second pass that
-// fills the renderer's placeholder elements with inlined assets (SF-Symbol
-// callout icons and SwiftMath glyphs) as data URIs. Inlining everything keeps
+// fills the renderer's placeholder elements with inlined assets (SwiftMath
+// glyphs and local images) as data URIs. Callout/checkbox icons are inline
+// Lucide SVGs emitted by `HTMLRenderer` (no asset pass needed). Inlining keeps
 // the document self-contained — the webview needs no file/network access (§G).
 @MainActor
 enum DocumentHTML {
@@ -20,7 +21,6 @@ enum DocumentHTML {
                      baseURL: URL? = nil,
                      options: ReadRenderOptions = .default) -> String {
         var body = HTMLRenderer.render(markdown: markdown, options: options)
-        body = fillCalloutIcons(body, callouts: callouts, dark: dark)
         body = fillMath(body, theme: theme, dark: dark)
         body = fillImages(body, baseURL: baseURL, options: options)
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark)
@@ -33,72 +33,6 @@ enum DocumentHTML {
         </style></head>
         <body><div class="page">\(body)</div></body></html>
         """
-    }
-
-    // MARK: Callout icons (SF Symbol → tinted PNG data URI)
-
-    private static let iconPattern =
-        "<span class=\"callout-icon\" data-symbol=\"([^\"]*)\" data-type=\"([^\"]*)\"></span>"
-
-    private static func fillCalloutIcons(_ html: String,
-                                         callouts: [String: CalloutStyle],
-                                         dark: Bool) -> String {
-        var cache: [String: String] = [:]   // "symbol|hex" → data URI
-        return replaceMatches(html, pattern: iconPattern) { groups in
-            let symbol = unescapeAttr(groups[1])
-            let type = unescapeAttr(groups[2])
-            let hex = (callouts[type] ?? Callout.defaultStyles[type])?.accentHex(dark: dark) ?? "#888888"
-            let key = "\(symbol)|\(hex)"
-            let uri: String
-            if let cached = cache[key] {
-                uri = cached
-            } else {
-                uri = iconDataURI(symbol: symbol, hex: hex) ?? ""
-                cache[key] = uri
-            }
-            guard !uri.isEmpty else { return "<span class=\"callout-icon\"></span>" }
-            return "<span class=\"callout-icon\"><img src=\"\(uri)\" alt=\"\"></span>"
-        }
-    }
-
-    /// Renders an SF Symbol tinted to `hex` and returns a PNG data URI (@2x).
-    ///
-    /// QUIRK: tint in **sRGB** via a `CGColorSpace.sRGB` CGContext and tag the
-    /// PNG sRGB. `NSColor(hex:)` creates a *calibrated* RGB color, which rounds
-    /// trips through a device-RGB bitmap context and shifts saturated hues —
-    /// most visibly TIP's teal (`#00BFBC`) renders noticeably greener, making
-    /// the icon and CSS title text disagree. Using sRGB throughout keeps them
-    /// pixel-matched because CSS `#RRGGBB` is interpreted as sRGB by WebKit.
-    private static func iconDataURI(symbol: String, hex: String) -> String? {
-        guard let base = NSImage(systemSymbolName: symbol, accessibilityDescription: nil),
-              let (r, g, b) = rgbComponents(hex) else { return nil }
-        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
-        let sized = base.withSymbolConfiguration(config) ?? base
-        let scale: CGFloat = 2
-        let w = Int((sized.size.width * scale).rounded())
-        let h = Int((sized.size.height * scale).rounded())
-        guard w > 0, h > 0,
-              let space = CGColorSpace(name: CGColorSpace.sRGB),
-              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
-                                  bytesPerRow: 0, space: space,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-
-        let rect = NSRect(x: 0, y: 0, width: CGFloat(w), height: CGFloat(h))
-        let gctx = NSGraphicsContext(cgContext: ctx, flipped: false)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = gctx
-        sized.draw(in: rect)                                  // template glyph alpha
-        ctx.setBlendMode(.sourceAtop)                         // tint where it drew
-        ctx.setFillColor(CGColor(srgbRed: CGFloat(r) / 255, green: CGFloat(g) / 255,
-                                 blue: CGFloat(b) / 255, alpha: 1))
-        ctx.fill(rect)
-        NSGraphicsContext.restoreGraphicsState()
-
-        guard let cgImage = ctx.makeImage() else { return nil }
-        let rep = NSBitmapImageRep(cgImage: cgImage)
-        guard let data = rep.representation(using: .png, properties: [:]) else { return nil }
-        return "data:image/png;base64,\(data.base64EncodedString())"
     }
 
     // MARK: Math (SwiftMath → PNG data URI)
@@ -281,13 +215,5 @@ enum DocumentHTML {
 
     private static func fmt(_ v: CGFloat) -> String {
         v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
-    }
-
-    /// Parses "#RRGGBB" (or "RRGGBB") into 0–255 components.
-    private static func rgbComponents(_ hex: String) -> (Int, Int, Int)? {
-        var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if h.hasPrefix("#") { h.removeFirst() }
-        guard h.count == 6, let rgb = UInt64(h, radix: 16) else { return nil }
-        return (Int((rgb >> 16) & 0xFF), Int((rgb >> 8) & 0xFF), Int(rgb & 0xFF))
     }
 }

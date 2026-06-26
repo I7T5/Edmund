@@ -42,6 +42,7 @@ enum HTMLTheme {
           --rule: \(rule);
           --code-bg: \(codeBg);
           --marker: \(resolvedRGBA(.tertiaryLabelColor, dark: dark));
+          --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
         }
@@ -164,40 +165,42 @@ enum HTMLTheme {
     li::marker { color: var(--marker); font-size: 0.85em; }
     li > p { margin: 0; }
     /* Task items: float the checkbox into the marker slot so the label and
-       wrapped lines sit at the same content edge as bullet/number text.
-       The negative margin-left pulls the checkbox into the (list's) padding
-       area; the nested <ul>/<ol> clears the float so it falls below.
-       QUIRK: the CSS `1lh` unit (Safari 17.2+) resolves to 0 when the page is
-       loaded via `loadHTMLString(_:baseURL:nil)` — there is no URL origin, so
-       WebKit skips font metric resolution and `lh` falls back to 0. With 0,
-       `calc((1lh - 1em)/2) = -0.5em`, pushing the checkbox well above the line.
-       Closed-form derivation (for reference when changing font or line-height):
-         margin_top = F × ((L−1)/2 + a − 0.5)
-       where F = font-size, L = CSS line-height, a = font's CSS ascent ratio.
-       Goal: align the checkbox center with the text baseline, which is the
-       perceptually correct position for a form element next to running text.
-       For the default theme (F=16px, L=1.45) and Iowan Old Style (a≈0.775):
-         16 × ((1.45−1)/2 + 0.775 − 0.5) = 16 × 0.5 = 8px = 0.5em ✓
-       In CSS-variable form: calc(var(--body-size) * ((var(--line-height) − 1) / 2 + 0.275))
-       where 0.275 = a − 0.5 is the font-specific ascent offset for Iowan Old Style.
-       (Geometric line-box center would be (L−1)/2 × F = 0.225em, which sits above
-       the baseline and looks too high for this font's tall ascenders.) */
+       wrapped lines sit at the same content edge as bullet/number text. The
+       negative margin-left pulls the checkbox into the list's padding area; the
+       nested <ul>/<ol> clears the float so it falls below.
+       Lucide checkbox (a tinted <svg>, see HTMLRenderer/LucideIcons): unchecked =
+       dim outlined circle (--marker, the editor's tertiaryLabelColor); checked =
+       disc filled in the system accent (--check-fill, matching the editor's
+       controlAccentColor) with a white check baked into the SVG. `currentColor`
+       in the SVG inherits from `color` below. */
     li.task { list-style: none; }
-    li.task > input[type=checkbox] {
-      float: left; width: 1em; height: 1em;
-      /* TODO: this value is only calibrated for Iowan Old Style at 16pt. For
-         other fonts or sizes the checkbox will be misaligned — the ascent ratio
-         `a` in the formula varies per font and is not queryable from CSS without
-         `1cap`/`1ex` units, which don't resolve in loadHTMLString context either.
-         Proper fix: compute the margin-top at render time in Swift by measuring
-         the font's actual ascent (via NSFont.ascender) and inserting it as an
-         inline style, so it adapts to any EditorTheme font and size. */
-      margin-top: 0.5em;
-      margin-right: 0.4em;
-      margin-left: -1.65em;
+    li.task > .task-check {
+      /* Sized a bit larger than 1em so the Lucide circle (r=10 in a 24-box, so it
+         underfills) reads as big as the editor's checkbox. margin-left is kept at
+         -(width + margin-right) so the task TEXT starts at the content edge,
+         lining up with sibling bullet/number text; margin-right then positions
+         the marker over the bullet/number column.
+         margin-top centers the box on the first text line's optical center —
+         tuned visually for Iowan Old Style at 16pt / line-height 1.45 (geometric
+         center would be (1.45−1.2)/2 = 0.125em; 0.18em drops it to the cap-height
+         center). A font-agnostic fix would measure NSFont.ascender at render time
+         and emit an inline margin-top. */
+      float: left; width: 1.2em; height: 1.2em; line-height: 0;
+      margin-top: 0.1em;
+      margin-right: 0.3em;
+      margin-left: -1.45em;
     }
+    li.task > .task-check svg { display: block; width: 1.2em; height: 1.2em; }
+    .task-check--unchecked { color: var(--marker); }
+    .task-check--checked { color: var(--check-fill); }
+    li.task--checked > p { opacity: 0.45; text-decoration: line-through; }
     li.task > p { display: inline; margin: 0; }
     li.task > ul, li.task > ol { clear: left; }
+    /* Contain the checkbox float within its own item. Without this, a task item
+       that has no nested list (the float is never cleared by a child ul/ol)
+       leaks its float onto the FOLLOWING sibling, shoving that item's bullet/
+       number marker to the right — so sibling markers stop lining up. */
+    li.task::after { content: ""; display: block; clear: both; }
     .blank-line { height: calc(var(--body-size) * var(--line-height)); }
     table { border-collapse: collapse; margin: 1em 0; width: 100%; }
     th, td { border: 1px solid var(--rule); padding: 6px 10px; }
@@ -216,13 +219,28 @@ enum HTMLTheme {
     /* Icon sits at the top so it stays on the first line of a wrapped title; its
        box is exactly one line tall and centers the glyph, so it lines up with the
        first line's text rather than floating above it. */
-    .callout-title { display: flex; align-items: flex-start; gap: 0.5em;
+    .callout-title { display: flex; align-items: flex-start; gap: 0.3em;
                      font-weight: 600; color: var(--c-accent); }
     .callout-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
                     height: calc(var(--body-size) * var(--line-height)); }
-    .callout-icon img { width: 1em; height: 1em; }
+    /* Lucide glyphs sit a touch low against the title's optical (cap-height)
+       center; nudge the icon up so it reads as centered with the title text. */
+    .callout-icon svg { width: 1em; height: 1em; transform: translateY(-0.06em); }
+    /* Per-glyph optical nudge: a few Lucide icons sit high in their 24-box, so
+       push them down a hair to read as centered against the title cap-height.
+       Aliases share an icon, so they get the same value. */
+    .callout-info .callout-icon, .callout-todo .callout-icon,
+    .callout-question .callout-icon, .callout-help .callout-icon, .callout-faq .callout-icon,
+    .callout-quote .callout-icon, .callout-cite .callout-icon { padding-top: 0.05em; }
+    .callout-warning .callout-icon, .callout-attention .callout-icon,
+    .callout-bug .callout-icon { padding-top: 0.06em; }
+    .callout-example .callout-icon { padding-top: 0.1em; }
+    .callout-success .callout-icon, .callout-check .callout-icon, .callout-done .callout-icon,
+    .callout-failure .callout-icon, .callout-fail .callout-icon,
+    .callout-missing .callout-icon { padding-top: 0.15em; }
     .callout-title-text { flex: 1 1 auto; }
     .callout-body { margin-top: 0.4em; }
+    .callout-body:empty { margin-top: 0; }
     /* Reduce paragraph spacing inside callout bodies so nested callouts and
        body text don't sit too far apart. The full 1em bottom margin (from the
        global <p> rule) + the nested callout's 0.5em top margin would give
