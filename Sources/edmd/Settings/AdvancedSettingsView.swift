@@ -7,7 +7,7 @@ struct AdvancedSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow {
-                Text("Updates:")
+                Text("Software update:")
                     .gridColumnAlignment(.trailing)
                 Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
             }
