@@ -31,7 +31,7 @@
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/I7T5/Edmund/main/appcast.xml</string>
     <key>SUPublicEDKey</key>
-    <string>PLACEHOLDER_RUN_generate_keys_AND_PASTE_PUBLIC_KEY_HERE</string>
+    <string>0XdLbbuOm0NonqWeDJkQuFF0CGnhKmpAfq+RNKVwEDs=</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
     <key>CFBundleDocumentTypes</key>
