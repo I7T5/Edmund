@@ -176,15 +176,15 @@ enum HTMLTheme {
     li.task { list-style: none; }
     li.task > .task-check {
       /* Sized a bit larger than 1em so the Lucide circle (r=10 in a 24-box, so it
-         underfills) reads as big as the editor's checkbox. margin-left is kept at
+         underfills) reads as big as the editor's checkbox. margin-left is roughly
          -(width + margin-right) so the task TEXT starts at the content edge,
-         lining up with sibling bullet/number text; margin-right then positions
-         the marker over the bullet/number column.
-         margin-top centers the box on the first text line's optical center —
-         tuned visually for Iowan Old Style at 16pt / line-height 1.45 (geometric
-         center would be (1.45−1.2)/2 = 0.125em; 0.18em drops it to the cap-height
-         center). A font-agnostic fix would measure NSFont.ascender at render time
-         and emit an inline margin-top. */
+         lining up with sibling bullet/number text; hand-tuned to -1.45em (a hair
+         less negative than the -1.5em that formula gives) so the marker centers
+         over the bullet/number column at every nesting level.
+         margin-top (0.1em) centers the box on the first text line's cap-height
+         center — tuned visually for Iowan Old Style at 16pt / line-height 1.45. A
+         font-agnostic fix would measure NSFont.ascender at render time and emit an
+         inline margin-top. */
       float: left; width: 1.2em; height: 1.2em; line-height: 0;
       margin-top: 0.1em;
       margin-right: 0.3em;
@@ -240,6 +240,8 @@ enum HTMLTheme {
     .callout-missing .callout-icon { padding-top: 0.15em; }
     .callout-title-text { flex: 1 1 auto; }
     .callout-body { margin-top: 0.4em; }
+    /* A title-only callout still emits an empty body div; collapse its top margin
+       so the box doesn't carry the 0.4em title gap as dead space at the bottom. */
     .callout-body:empty { margin-top: 0; }
     /* Reduce paragraph spacing inside callout bodies so nested callouts and
        body text don't sit too far apart. The full 1em bottom margin (from the
