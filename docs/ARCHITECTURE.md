@@ -293,9 +293,8 @@ only with reason):
 2. **Visual changes are eyeballed** — build the app and `screencapture` the
    result (§8), or render offscreen to a PNG. Don't trust headless layout alone
    for anything that draws.
-3. **Small, logical commits** — one feature/fix each. End commit messages with
-   the `Co-Authored-By` trailer.
-4. **Don't auto-commit, push, PR, or merge unless asked.** Branch off `main`
+3. **Frequent, small, logical commits** — one feature/fix each. Don't discard uncommited changes. 
+4. **Don't autopush, PR, or merge unless asked.** Branch off `main`
    (don't commit straight to it); each fix on its own branch.
 5. Touch only what the task needs; match surrounding style; don't refactor
    unrelated code.
