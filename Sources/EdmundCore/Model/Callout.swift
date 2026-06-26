@@ -109,15 +109,12 @@ public enum Callout {
         add(CalloutStyle(iconName: "clipboard-list",          colorHex: "#00BFBC"), "abstract", "summary", "tldr")
         add(CalloutStyle(iconName: "info",                    colorHex: "#086DDD"), "info")
         add(CalloutStyle(iconName: "circle-dashed",           colorHex: "#086DDD"), "todo")
-        // These Lucide glyphs are centered in their 24-box but read 1–2px high
-        // against the bold title's cap-height center; a small negative nudge
-        // (lowers the icon) settles them. Tuned in Edit mode (see ARCHITECTURE §8).
-        add(CalloutStyle(iconName: "check",                   colorHex: "#08B94E", iconBaselineNudge: -1.5), "success", "check", "done")
-        add(CalloutStyle(iconName: "circle-question-mark",    colorHex: "#EC7500", iconBaselineNudge: -1.5), "question", "help", "faq")
-        add(CalloutStyle(iconName: "x",                       colorHex: "#E93147", iconBaselineNudge: -1.5), "failure", "fail", "missing")
+        add(CalloutStyle(iconName: "check",                   colorHex: "#08B94E"), "success", "check", "done")
+        add(CalloutStyle(iconName: "circle-question-mark",    colorHex: "#EC7500"), "question", "help", "faq")
+        add(CalloutStyle(iconName: "x",                       colorHex: "#E93147"), "failure", "fail", "missing")
         add(CalloutStyle(iconName: "zap",                     colorHex: "#E93147"), "danger", "error")
-        add(CalloutStyle(iconName: "bug",                     colorHex: "#E93147", iconBaselineNudge: -1.5), "bug")
-        add(CalloutStyle(iconName: "list",                    colorHex: "#7852EE", iconBaselineNudge: -1.5), "example")
+        add(CalloutStyle(iconName: "bug",                     colorHex: "#E93147"), "bug")
+        add(CalloutStyle(iconName: "list",                    colorHex: "#7852EE"), "example")
         add(CalloutStyle(iconName: "quote",                   colorHex: "#9E9E9E"), "quote", "cite")
         return m
     }()

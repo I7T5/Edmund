@@ -218,7 +218,8 @@ struct HTMLRenderer: MarkupVisitor {
             // PDFs) mirroring the editor's look; CSS supplies the accent/dim color.
             let mark = "<span class=\"task-check task-check--\(checked ? "checked" : "unchecked")\">"
                 + "\(LucideIcons.checkboxSVG(checked: checked))</span>"
-            return "<li class=\"task\">\(mark)\(renderChildren(of: listItem))</li>"
+            let checkedClass = checked ? " task--checked" : ""
+            return "<li class=\"task\(checkedClass)\">\(mark)\(renderChildren(of: listItem))</li>"
         }
         return "<li>\(renderChildren(of: listItem))</li>"
     }

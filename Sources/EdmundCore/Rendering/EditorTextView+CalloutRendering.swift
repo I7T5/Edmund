@@ -364,7 +364,7 @@ extension EditorTextView {
     /// Tuned so the *rendered* bottom gap matches the rendered top gap: the
     /// header overlay sits low in its line, so the top renders ~0.4·pointSize
     /// larger than `calloutTopPad`, and this makes the bottom match it.
-    var calloutBottomPad: CGFloat { bodyFont.pointSize * 1.02 }
+    var calloutBottomPad: CGFloat { bodyFont.pointSize * 1.14 }
 
     // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 
@@ -412,11 +412,13 @@ extension EditorTextView {
         let image = NSImage(size: NSSize(width: width, height: contentHeight), flipped: false) { _ in
             let titleY = (contentHeight - titleSize.height) / 2
             titleStr.draw(at: NSPoint(x: symW + gap, y: titleY))
-            // Center the icon on the title's cap height (its optical middle) rather
-            // than the full line box, so tall-glyph symbols don't sit high.
+            // Center the icon on the visual middle of the bold title: the midpoint
+            // between its x-height center (too low on its own) and cap-height center
+            // (~1.5px too high on its own). This reads as centered for the
+            // mostly-lowercase, capital-initial titles.
             let baseline = titleY + abs(titleFont.descender)
-            let capCenter = baseline + titleFont.capHeight / 2
-            symbol.draw(in: NSRect(x: 0, y: capCenter - symH / 2 + iconNudge, width: symW, height: symH))
+            let opticalCenter = baseline + (titleFont.xHeight + titleFont.capHeight) / 4
+            symbol.draw(in: NSRect(x: 0, y: opticalCenter - symH / 2 + iconNudge, width: symW, height: symH))
             return true
         }
         // Re-rasterize at the screen's backing scale on every draw rather than
