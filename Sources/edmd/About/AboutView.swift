@@ -2,15 +2,11 @@ import SwiftUI
 import AppKit
 
 struct AboutView: View {
-    private let version: String = {
-        let b = Bundle.main
-        let short = b.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = b.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-        return "Version \(short) (\(build))"
-    }()
-
     var body: some View {
-        VStack(spacing: 8) {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+
+        VStack(spacing: 6) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 96, height: 96)
@@ -19,7 +15,7 @@ struct AboutView: View {
             Text("Edmund")
                 .font(.title2.weight(.semibold))
 
-            Text(version)
+            Text("Version \(short) (\(build))")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -27,14 +23,15 @@ struct AboutView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 Link("GitHub", destination: URL(string: "https://github.com/I7T5/Edmund")!)
-                Link("Apache License 2.0", destination: URL(string: "https://github.com/I7T5/Edmund/blob/main/LICENSE")!)
+                Link("License", destination: URL(string: "https://github.com/I7T5/Edmund/blob/main/LICENSE")!)
             }
             .font(.caption)
-            .padding(.top, 2)
+            .focusEffectDisabled()
+            .padding(.top, 4)
         }
-        .padding(32)
-        .frame(width: 320)
+        .padding(20)
+        .frame(width: 280)
     }
 }

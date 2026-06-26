@@ -7,7 +7,7 @@ final class AboutWindowController: NSWindowController {
         hosting.sizingOptions = [.preferredContentSize]
         let window = NSWindow(contentViewController: hosting)
         window.styleMask = [.titled, .closable]
-        window.title = "About Edmund"
+        window.title = ""
         window.center()
         window.isReleasedWhenClosed = false
         self.init(window: window)
