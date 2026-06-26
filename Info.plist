@@ -28,6 +28,12 @@
     <false/>
     <key>NSSupportsSuddenTermination</key>
     <false/>
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/I7T5/Edmund/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>0XdLbbuOm0NonqWeDJkQuFF0CGnhKmpAfq+RNKVwEDs=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

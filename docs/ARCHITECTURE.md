@@ -27,7 +27,7 @@ Two SPM targets (see `Package.swift`):
 - **`edmd`** — the executable: `NSDocument` app shell, Settings (SwiftUI),
   menus, window setup. Depends on EdmundCore.
 
-Dependencies: `swift-markdown` (CommonMark/GFM parsing) and `SwiftMath` (LaTeX).
+Dependencies: `swift-markdown` (CommonMark/GFM parsing), `SwiftMath` (LaTeX), and `Sparkle` (auto-update).
 
 ---
 
@@ -140,10 +140,11 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift` |
 | Formatting commands | `Editing/EditorTextView+Formatting{Core,Commands}.swift` (Format-menu actions: bold/lists/links/callouts/…); menu built from `edmd/App/FormatMenu.swift` |
 | Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
-| App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift` |
-| Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General views) |
+| App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift`; Sparkle `SPUStandardUpdaterController` in `AppDelegate` |
+| Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
+| Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey` (ed25519 public key). `scripts/release.sh`: build → zip → EdDSA sign → update appcast → `gh release create`. CI: `.github/workflows/release.yml` (tag-triggered). One-time setup: generate the EdDSA keypair with `generate_keys` (§8). |
 | Status bar | `edmd/Views/StatusBarView.swift` |
-| Build/packaging | `scripts/build-app.sh`, `Package.swift`, `Info.plist`, `Resources/` |
+| Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
 
 Notable subsystems: **typewriter scroll** (keeps caret vertically centered;
 must lay out the viewport↔caret span before measuring or it reads stale TK2
@@ -207,6 +208,16 @@ them and route through the app's document graph without JavaScript.
 
 - **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app` root
   (it does). Without it, the app **crashes the instant it renders any LaTeX**.
+- **Sparkle codesign workaround**: `Contents/Frameworks/` triggers codesign's
+  strict bundle-seal mode, which rejects the SwiftMath bundle at the `.app` root
+  (required by its generated `Bundle.module` accessor — it's hardcoded to
+  `Bundle.main.bundleURL`). The build script works around this by signing the
+  main binary as a temporary standalone file rather than sealing the whole bundle.
+  A Developer ID cert + notarization would fix it properly; ad-hoc signing is
+  the current limit.
+- **Sparkle keypair (one-time setup)**: the EdDSA public key in `Info.plist`
+  `SUPublicEDKey` is a placeholder. See §8 for the exact commands to generate
+  and install the real key before shipping an update.
 - **Stale release builds**: `swift build -c release` / `build-app.sh` sometimes
   reuses stale object files (you'll run an old binary and be baffled). If a
   visual change "doesn't take," `rm -rf .build` and rebuild. `shasum` the binary
@@ -282,9 +293,8 @@ only with reason):
 2. **Visual changes are eyeballed** — build the app and `screencapture` the
    result (§8), or render offscreen to a PNG. Don't trust headless layout alone
    for anything that draws.
-3. **Small, logical commits** — one feature/fix each. End commit messages with
-   the `Co-Authored-By` trailer.
-4. **Don't auto-commit, push, PR, or merge unless asked.** Branch off `main`
+3. **Frequent, small, logical commits** — one feature/fix each. Don't discard uncommited changes. 
+4. **Don't autopush, PR, or merge unless asked.** Branch off `main`
    (don't commit straight to it); each fix on its own branch.
 5. Touch only what the task needs; match surrounding style; don't refactor
    unrelated code.

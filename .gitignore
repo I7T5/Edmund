@@ -11,6 +11,9 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 
+# Sparkle private key (never commit — store in keychain or CI secret)
+sparkle_private_key.txt
+
 # Misc
 .DS_Store
 CLAUDE.md

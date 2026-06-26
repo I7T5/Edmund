@@ -1,5 +1,7 @@
 # Edmund
 
+> [!WARNING] Active development
+
 > [!TIP] Guidelines for Build and Contributing coming soon!
 
 Edmund is a native, lightweight markdown editor with Live Preview made for macOS.  
@@ -22,27 +24,13 @@ Edmund is a native, lightweight markdown editor with Live Preview made for macOS
 
 ## Roadmap
 
-See [ROADMAP](ROADMAP.md). 
-
-Current priorities: 
-
-- Full [GFM spec](https://github.github.com/gfm/#fenced-code-blocks) support. Including but not limited to: 
-  - Table alignment
-  - ATX headings
-- Render icons in custom-titled callouts / alerts
-- Comprehensive math support through [RaTeX](https://github.com/erweixin/RaTeX) integration (extension)
-- Native export to PDF with style
-- Automatic updates via Sparkle
-- Themes
-- Onboarding
-  - Log preference
-  - Advanced Math
-  - Pandoc path for more export options
+See [ROADMAP](docs/ROADMAP.md). 
 
 ## Dependencies
 
 - [swift-markdown](https://github.com/swiftlang/swift-markdown)
 - [SwiftMath](https://github.com/mgriebling/SwiftMath)
+- [Sparkle](https://github.com/sparkle-project/Sparkle)
 
 ## Alternatives
 
@@ -50,7 +38,7 @@ If Edmund's not your thing, some of the following might be:
 
 - Closed source
   - Obsidian, cyberWriter, Notion
-  - Typora, Lettera (currently in [beta](https://lettera.md))
+  - Typora, Lettera ([beta](https://lettera.md))
 - Open source
   - WYSIWYG: [MarkText](https://marktext.me), [Nodes](https://nodes-web.com), [Scratch](https://github.com/erictli/scratch)
   - Split-screen: [MacDown](https://macdown.uranusjr.com), [MiaoYan](https://miaoyan.app)
@@ -59,7 +47,7 @@ If Edmund's not your thing, some of the following might be:
   - [editxr](https://github.com/pixdeo/editxr) - TUI
   - More feature-rich: [Zettlr](https://www.zettlr.com), [Joplin](https://joplinapp.org), [Tangent](https://www.tangentnotes.com)
 
-The list is by no means exhaustive, and neither was it meant to be. I just wanted to give credit to the makers of these apps, esp. the aesthetic open sourced ones. If you want a comprehensive list, [this](https://github.com/mundimark/awesome-markdown-editors) might be more helpful. 
+The list is by no means exhaustive, and neither was it meant to be. I just wanted to give credit to the makers of these apps, esp. the aesthetic open sourced ones. If you want a comprehensive list, see [here](https://github.com/mundimark/awesome-markdown-editors). 
 
 ## Motivation, philosophy, acknowledgements
 
