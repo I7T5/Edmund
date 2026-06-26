@@ -31,18 +31,40 @@ jobs:
       - name: Build app bundle
         run: ./scripts/build-app.sh
 
-      - name: Archive
+      # create-dmg 8.x requires Node >= 20; pin it so the runner's default node
+      # version can't break the release.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install create-dmg
+        # sindresorhus/create-dmg is the npm package (NOT the homebrew
+        # create-dmg/create-dmg tool, which has an incompatible CLI).
+        run: npm install --global create-dmg
+
+      - name: Create DMG
         run: |
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          ditto -c -k --keepParent build/Edmund.app "build/Edmund-${VERSION}.zip"
+          # create-dmg exits 2 when it can't Developer-ID-sign / notarize the
+          # image (we ship ad-hoc only) but still produces the .dmg — so don't
+          # let that non-zero status fail the job.
+          create-dmg build/Edmund.app build/ || true
+          # It names the output "Edmund <version>.dmg"; normalize to a
+          # hyphenated, URL-friendly name and fail loudly if none was produced.
+          DMG_SRC="$(ls build/Edmund*.dmg 2>/dev/null | head -1)"
+          if [ -z "$DMG_SRC" ]; then
+            echo "create-dmg produced no .dmg" >&2
+            exit 1
+          fi
+          mv "$DMG_SRC" "build/Edmund-${VERSION}.dmg"
 
       - name: Sign archive (EdDSA)
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
           SIGN_UPDATE="$(find .build -name sign_update -type f | head -1)"
-          SIG_OUTPUT="$("$SIGN_UPDATE" -s "$SPARKLE_ED_PRIVATE_KEY" "build/Edmund-${VERSION}.zip")"
+          SIG_OUTPUT="$("$SIGN_UPDATE" -s "$SPARKLE_ED_PRIVATE_KEY" "build/Edmund-${VERSION}.dmg")"
           echo "ED_SIG=$(echo "$SIG_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"')" >> "$GITHUB_ENV"
           echo "LENGTH=$(echo "$SIG_OUTPUT" | grep -o 'length="[^"]*"' | head -1)" >> "$GITHUB_ENV"
 
@@ -51,7 +73,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${VERSION}" "build/Edmund-${VERSION}.zip" \
+          gh release create "v${VERSION}" "build/Edmund-${VERSION}.dmg" \
             --title "Edmund ${VERSION}" \
             --notes "See CHANGELOG for details." \
             --latest
@@ -61,7 +83,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           REPO="${{ github.repository }}"
-          ASSET_URL="https://github.com/${REPO}/releases/download/v${VERSION}/Edmund-${VERSION}.zip"
+          ASSET_URL="https://github.com/${REPO}/releases/download/v${VERSION}/Edmund-${VERSION}.dmg"
           PUB_DATE="$(date -u '+%a, %d %b %Y %H:%M:%S +0000')"
           BUILD="$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' Info.plist)"
 
@@ -73,7 +95,7 @@ jobs:
                          sparkle:shortVersionString=\"${VERSION}\"
                          ${ED_SIG}
                          ${LENGTH}
-                         type=\"application/octet-stream\"/>
+                         type=\"application/x-apple-diskimage\"/>
           </item>"
 
           python3 - "$NEW_ITEM" <<'PYEOF'
