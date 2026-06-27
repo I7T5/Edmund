@@ -222,6 +222,16 @@ public class EditorTextView: NSTextView {
         isAutomaticDashSubstitutionEnabled = false
         isAutomaticTextReplacementEnabled = false
         isAutomaticSpellingCorrectionEnabled = false
+        // Completion and inline predictions inject provisional MARKED text as you
+        // type (not just CJK/accent/emoji input). If such a composition is
+        // interrupted — a caret move, a focus change — it can be left stranded
+        // (`hasMarkedText()` stuck true), which permanently breaks the
+        // storage==rawSource sync in `didChangeText` and drifts the caret on every
+        // edit (see docs/delete-drift-investigation.md). A live-preview markdown
+        // editor needs neither, and we already disable the other auto-substitutions
+        // above — so close this marked-text source too.
+        isAutomaticTextCompletionEnabled = false
+        if #available(macOS 14.0, *) { inlinePredictionType = .no }
         allowsUndo = false
 
         textAntialias = theme.antialias
@@ -367,6 +377,14 @@ public class EditorTextView: NSTextView {
 
     func recoverFromStrandedCompositionIfNeeded() {
         guard let ts = textStorage, ts.string != rawSource else { return }
+        // Rare and high-signal: this only fires when focus returns to a desynced
+        // editor. The flag snapshot tells us *why* the sync was stranded the next
+        // time the bug appears (marked text vs a leaked isUpdating/isUndoRedoing).
+        Log.info("""
+            recovered stranded desync on focus regain: hasMarked=\(hasMarkedText()) \
+            isUpdating=\(isUpdating) isUndoRedoing=\(isUndoRedoing) \
+            storageΔ=\((ts.string as NSString).length - (rawSource as NSString).length)
+            """, category: .compose)
         if hasMarkedText() { unmarkText() }
         rawSource = ts.string
         rebuildListIndentState()
