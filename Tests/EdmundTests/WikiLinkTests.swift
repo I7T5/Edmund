@@ -43,11 +43,11 @@ struct WikiLinkTests {
         #expect(isHidden(at: s.range(of: "[[").location, in: st))
         #expect(isHidden(at: s.range(of: "Target").location, in: st))
         #expect(isHidden(at: s.range(of: "]]").location, in: st))
-        // The display "label" is accented and carries the wiki target.
+        // The display "label" is link-colored and carries the wiki target.
         let labelLoc = s.range(of: "label").location
         #expect(!isHidden(at: labelLoc, in: st))
         let color = st.attribute(.foregroundColor, at: labelLoc, effectiveRange: nil) as? NSColor
-        #expect(color == editor.accentColor)
+        #expect(color == editor.linkColor)
         let target = st.attribute(.editorWikiTarget, at: labelLoc, effectiveRange: nil) as? String
         #expect(target == "Target")
     }

@@ -255,7 +255,7 @@ struct FontIntegrationTests {
         var theme = editor.theme
         theme.fontName = "Courier"
         theme.fontSize = 14
-        theme.accentHex = "#FF0000"
+        theme.linkBlueHex = "#FF0000"
         theme.lineSpacing = 8
         editor.applyTheme(theme)
 
@@ -264,7 +264,7 @@ struct FontIntegrationTests {
         let d = editor.themeDefaults
         let savedName = d.string(forKey: "EditorFontName")
         let savedSize = d.float(forKey: "EditorFontSize")
-        let savedAccent = d.string(forKey: "EditorAccentHex")
+        let savedAccent = d.string(forKey: "EditorLinkBlueHex")
         let savedSpacing = d.float(forKey: "EditorLineSpacing")
         #expect(savedName == "Courier")
         #expect(savedSize == 14)
@@ -347,17 +347,17 @@ struct AppearanceIntegrationTests {
         #expect(display == "**bold**")
     }
 
-    @Test("Accent color is used for link text in active block")
+    @Test("Theme link color is used for link text in active block")
     @MainActor func accentColorActiveLink() {
         let editor = makeEditor()
         editor.loadContent("[link](url)")
         activateBlock(0, in: editor)
 
         let color = fgColor(at: 1, in: editor)
-        #expect(color == editor.accentColor)
+        #expect(color == editor.linkColor)
     }
 
-    @Test("Code color is used for inline code in both active and non-active")
+    @Test("Body text color is used for inline code in both active and non-active")
     @MainActor func codeColorBothStates() {
         let editor = makeEditor()
         editor.loadContent("`active`\n`inactive`")
@@ -365,13 +365,13 @@ struct AppearanceIntegrationTests {
         // Active block 0: content at offset 1
         activateBlock(0, in: editor)
         let activeColor = fgColor(at: 1, in: editor)
-        #expect(activeColor == editor.codeColor)
+        #expect(activeColor == editor.foregroundColor)
 
         // Switch to block 1, making block 0 non-active.
         // Offset 0 is backtick (hidden), content "active" starts at offset 1.
         activateBlock(1, in: editor)
         let nonActiveColor = fgColor(at: editor.displayRanges[0].location + 1, in: editor)
-        #expect(nonActiveColor == editor.codeColor)
+        #expect(nonActiveColor == editor.foregroundColor)
     }
 
     @Test("Active token delimiters are dimmed, non-active token delimiters are hidden")

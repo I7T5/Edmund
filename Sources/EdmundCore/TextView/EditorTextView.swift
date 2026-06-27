@@ -159,6 +159,10 @@ public class EditorTextView: NSTextView {
     /// flips automatically between near-black (light) and near-white (dark).
     var foregroundColor: NSColor { .textColor }
 
+    /// Background tint for text selection. Uses system orange so selections read
+    /// as warm amber rather than tracking the (potentially red) brand accent.
+    var selectionHighlightColor: NSColor { .systemOrange.withAlphaComponent(0.3) }
+
     /// Background color for the editor surface. `.textBackgroundColor` is the
     /// standard semantic color for text-editing backgrounds (white / dark gray).
     private var editorBackgroundColor: NSColor { .textBackgroundColor }
@@ -238,7 +242,7 @@ public class EditorTextView: NSTextView {
         backgroundColor = editorBackgroundColor
         insertionPointColor = accentColor
         selectedTextAttributes = [
-            .backgroundColor: accentColor.withAlphaComponent(0.3),
+            .backgroundColor: selectionHighlightColor,
             .foregroundColor: foregroundColor,
         ]
         typingAttributes = baseAttributes
@@ -298,7 +302,7 @@ public class EditorTextView: NSTextView {
         backgroundColor = editorBackgroundColor
         insertionPointColor = accentColor
         selectedTextAttributes = [
-            .backgroundColor: accentColor.withAlphaComponent(0.3),
+            .backgroundColor: selectionHighlightColor,
             .foregroundColor: foregroundColor,
         ]
         typingAttributes = baseAttributes

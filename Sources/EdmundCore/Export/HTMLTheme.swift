@@ -34,7 +34,7 @@ enum HTMLTheme {
           --body-size: \(trim(theme.fontSize))px;
           --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
           --mono-size: \(trim(theme.monospaceFontSize))px;
-          --accent: \(theme.accentHex);
+          --accent: \(theme.linkBlueHex);
           --code: \(theme.codeHex);
           --bg: \(bg);
           --fg: \(fg);

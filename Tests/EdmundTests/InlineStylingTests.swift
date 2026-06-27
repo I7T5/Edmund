@@ -91,14 +91,14 @@ struct InlineStylingActiveTests {
 
     // MARK: - Code
 
-    @Test("Active `code` has code color on content and dimmed backticks")
+    @Test("Active `code` has body text color on content and dimmed backticks")
     @MainActor func activeCode() {
         let editor = makeEditor()
         editor.loadContent("`code`")
         activateBlock(0, in: editor)
 
         let contentColor = fgColor(at: 1, in: editor)
-        #expect(contentColor == editor.codeColor)
+        #expect(contentColor == editor.foregroundColor)
 
         let delimColor = fgColor(at: 0, in: editor)
         #expect(delimColor == NSColor.tertiaryLabelColor)
@@ -132,7 +132,7 @@ struct InlineStylingActiveTests {
 
     // MARK: - Link
 
-    @Test("Active [link](url) has accent color on link text")
+    @Test("Active [link](url) has theme link color on link text")
     @MainActor func activeLink() {
         let editor = makeEditor()
         editor.loadContent("[click](https://example.com)")
@@ -140,7 +140,7 @@ struct InlineStylingActiveTests {
 
         // "[click](url)" — "[" at 0, "click" at 1..5
         let linkColor = fgColor(at: 1, in: editor)
-        #expect(linkColor == editor.accentColor)
+        #expect(linkColor == editor.linkColor)
 
         // Delimiter "[" should be dimmed
         let delimColor = fgColor(at: 0, in: editor)
@@ -179,7 +179,7 @@ struct InlineStylingActiveTests {
 
         // Code at 10
         let codeCol = fgColor(at: 10, in: editor)
-        #expect(codeCol == editor.codeColor)
+        #expect(codeCol == editor.foregroundColor)
 
         // Strikethrough at 18
         let a = attrs(at: 18, in: editor)
@@ -313,7 +313,7 @@ struct InlineStylingInactiveTests {
         let base = editor.displayRanges[0].location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let color = fgColor(at: base + 1, in: editor)
-        #expect(color == editor.codeColor)
+        #expect(color == editor.foregroundColor)
     }
 
     @Test("Non-active ~~strikethrough~~ hides delimiters and applies strikethrough")
@@ -358,9 +358,9 @@ struct InlineStylingInactiveTests {
         let base = editor.displayRanges[0].location
         // "[" delimiter hidden
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
-        // "click" content has accent color and underline
+        // "click" content has link color and underline
         let color = fgColor(at: base + 1, in: editor)
-        #expect(color == editor.accentColor)
+        #expect(color == editor.linkColor)
         let a = attrs(at: base + 1, in: editor)
         #expect(a[.underlineStyle] as? Int == NSUnderlineStyle.single.rawValue)
     }
@@ -391,9 +391,9 @@ struct InlineStylingInactiveTests {
 
         // ` delimiter at 18 hidden
         #expect(font(at: base + 18, in: editor)!.pointSize < 1.0)
-        // "code" at base+19 has code color
+        // "code" at base+19 has body text color
         let cc = fgColor(at: base + 19, in: editor)
-        #expect(cc == editor.codeColor)
+        #expect(cc == editor.foregroundColor)
     }
 
     @Test("Non-active *hi** preserves raw text (uneven delimiters)")

@@ -73,9 +73,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          awk "BEGIN{p=0} /^## \[${VERSION}\]/{p=1;next} p && /^## \[/{exit} p{print}" \
+            CHANGELOG.md > release-notes.txt
+          if [ ! -s release-notes.txt ]; then
+            echo "See CHANGELOG for details." > release-notes.txt
+          fi
           gh release create "v${VERSION}" "build/Edmund-${VERSION}.dmg" \
             --title "Edmund ${VERSION}" \
-            --notes "See CHANGELOG for details." \
+            --notes-file release-notes.txt \
             --latest
 
       - name: Update appcast.xml
