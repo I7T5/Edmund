@@ -6,5 +6,15 @@
         <link>https://raw.githubusercontent.com/I7T5/Edmund/main/appcast.xml</link>
         <description>Edmund release feed</description>
         <language>en</language>
+        <item>
+            <title>Edmund 0.1.0</title>
+            <pubDate>Sat, 27 Jun 2026 17:12:05 +0000</pubDate>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.1.0/Edmund-0.1.0.dmg"
+                       sparkle:version="1"
+                       sparkle:shortVersionString="0.1.0"
+                       sparkle:edSignature="8avRxRCwfWw0FtCEDYRO5Md2eMg3vjpvUAXL+Dxn1oFP+vzbL+EbahhY1Oi5JKoj08W/n9cUTOfFVNZcY5OECA=="
+                       length="7570002"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
