@@ -42,7 +42,7 @@ extension EditorTextView {
 
     /// Color for links and wikilinks — always the theme's accent blue, independent of
     /// the system accent so links stay consistently blue across user accent preferences.
-    var linkColor: NSColor { theme.accentColor }
+    var linkColor: NSColor { theme.linkBlueColor }
 
     /// Monospaced font for tables.
     var tableFont: NSFont { theme.monospaceFont() }

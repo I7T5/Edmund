@@ -8,7 +8,7 @@ struct HTMLThemeTests {
 
     private func css(dark: Bool) -> String {
         let theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
-                                accentHex: "#3366E6", codeHex: "#8A2425",
+                                linkBlueHex: "#3366E6", codeHex: "#8A2425",
                                 lineSpacing: 4, paragraphSpacingBefore: 2)
         return HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: dark)
     }

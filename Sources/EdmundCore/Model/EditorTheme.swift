@@ -26,7 +26,7 @@ public struct EditorTheme: Equatable, Sendable {
 
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
-    public var accentHex: String
+    public var linkBlueHex: String
     public var codeHex: String
     /// Color for LaTeX operators/commands (`_`, `^`, `\sum`, …) in raw math.
     public var mathOperatorHex: String
@@ -38,7 +38,7 @@ public struct EditorTheme: Equatable, Sendable {
     public var lineSpacing: CGFloat
     public var paragraphSpacingBefore: CGFloat
 
-    public init(fontName: String, fontSize: CGFloat, accentHex: String, codeHex: String,
+    public init(fontName: String, fontSize: CGFloat, linkBlueHex: String, codeHex: String,
                 lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat,
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
@@ -46,7 +46,7 @@ public struct EditorTheme: Equatable, Sendable {
                 antialias: Bool = true) {
         self.fontName = fontName
         self.fontSize = fontSize
-        self.accentHex = accentHex
+        self.linkBlueHex = linkBlueHex
         self.codeHex = codeHex
         self.lineSpacing = lineSpacing
         self.paragraphSpacingBefore = paragraphSpacingBefore
@@ -64,7 +64,7 @@ public struct EditorTheme: Equatable, Sendable {
     public static let `default` = EditorTheme(
         fontName: "Iowan Old Style",
         fontSize: 16,
-        accentHex: "#3366E6",
+        linkBlueHex: "#3366E6",
         codeHex: "#8A2425",
         lineSpacing: 4,
         paragraphSpacingBefore: 2
@@ -113,8 +113,8 @@ public struct EditorTheme: Equatable, Sendable {
         return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
     }
 
-    @MainActor public var accentColor: NSColor {
-        NSColor(hex: accentHex) ?? .systemBlue
+    @MainActor public var linkBlueColor: NSColor {
+        NSColor(hex: linkBlueHex) ?? .systemBlue
     }
 
     @MainActor public var codeColor: NSColor {
@@ -139,7 +139,7 @@ public struct EditorTheme: Equatable, Sendable {
         static let standardLigatures = "EditorStandardLigatures"
         static let monospaceLigatures = "EditorMonospaceLigatures"
         static let antialias = "EditorAntialias"
-        static let accentHex = "EditorAccentHex"
+        static let linkBlueHex = "EditorLinkBlueHex"
         static let codeHex = "EditorCodeHex"
         static let mathOperatorHex = "EditorMathOperatorHex"
         static let mathNumberHex = "EditorMathNumberHex"
@@ -159,7 +159,7 @@ public struct EditorTheme: Equatable, Sendable {
         // The accent color is not user-customizable; always use the default so a
         // stale persisted value (e.g. left over from the removed in-app accent
         // picker) can't leak in and recolor links.
-        let accentHex = def.accentHex
+        let linkBlueHex = def.linkBlueHex
         let monospaceFontName = d.string(forKey: Keys.monospaceFontName) ?? def.monospaceFontName
         let monospaceFontSize: CGFloat = {
             let v = CGFloat(d.float(forKey: Keys.monospaceFontSize))
@@ -181,7 +181,7 @@ public struct EditorTheme: Equatable, Sendable {
         return EditorTheme(
             fontName: fontName,
             fontSize: fontSize,
-            accentHex: accentHex,
+            linkBlueHex: linkBlueHex,
             codeHex: codeHex,
             lineSpacing: lineSpacing,
             paragraphSpacingBefore: paragraphSpacingBefore,
@@ -204,7 +204,7 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(standardLigatures, forKey: Keys.standardLigatures)
         d.set(monospaceLigatures, forKey: Keys.monospaceLigatures)
         d.set(antialias, forKey: Keys.antialias)
-        d.set(accentHex, forKey: Keys.accentHex)
+        d.set(linkBlueHex, forKey: Keys.linkBlueHex)
         d.set(codeHex, forKey: Keys.codeHex)
         d.set(mathOperatorHex, forKey: Keys.mathOperatorHex)
         d.set(mathNumberHex, forKey: Keys.mathNumberHex)
