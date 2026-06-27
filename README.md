@@ -84,6 +84,8 @@ The following have greatly influenced my architecture and/or design choices. I o
 - [Tomorrow Light](https://github.com/chriskempson/tomorrow-theme) and [One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) for code syntax highlighting
 - [create-dmg](https://github.com/sindresorhus/create-dmg) for a Apple-looking `.dmg`
 
+And of course Claude who already gave itself plenty of attributions everywhere. 
+
 ## License
 
 [Apache License 2.0](LICENSE)
