@@ -136,6 +136,34 @@ it would false-fire on every IME keystroke.
 3. The `becomeFirstResponder` recovery should still unstick it on focus regain;
    if it doesn't, confirm the override is being called and that
    `recoverFromStrandedCompositionIfNeeded` isn't guarded out.
-4. To get live signal, temporarily log `hasMarkedText()` and
-   `textStorage.string == rawSource` in `didChangeText` (category `.compose`),
-   reproduce, and read `~/.edmund/logs`.
+4. To get live signal, read `~/.edmund/logs` for the
+   `recovered stranded desync on focus regain: …` line — it's emitted (release
+   too, `Log.info`) whenever focus-regain recovers a desync and snapshots
+   `hasMarked` / `isUpdating` / `isUndoRedoing`, which tells you the cause.
+
+## Follow-up: recurred without deliberate IME (round 2)
+
+It came back — reportedly **without** CJK IME / accents / emoji — and clicking
+away and back still fixed it. That second clue narrows the cause by elimination:
+
+- The recovery hook only acts when `storage != rawSource`, and it *did* fix it,
+  so the edit **reached storage** → `shouldChangeText` returned `true` →
+  `isUpdating` was **false** at edit time (it's the only flag that makes
+  `shouldChangeText` return `false`). So `isUpdating` stuck-true is **excluded**
+  (it would make edits do nothing, not drift).
+- That leaves `didChangeText` bailing on `isUndoRedoing` or `hasMarkedText`. A
+  stuck `isUndoRedoing` is **excluded** too: the recovery doesn't reset it, so it
+  would re-break on the very next keystroke rather than be durably fixed by a
+  focus switch.
+- By elimination it is **still stranded marked text** — `unmarkText()` in the
+  recovery is what durably clears it. The composition just came from a source the
+  user doesn't think of as "IME": most likely **automatic text completion /
+  inline predictions**, which inject provisional marked text as you type and were
+  still enabled (every *other* auto-substitution was already off).
+
+**Fix (round 2):** disable the remaining marked-text sources in `commonInit`
+(`EditorTextView.swift`) — `isAutomaticTextCompletionEnabled = false` and, on
+macOS 14+, `inlinePredictionType = .no` — matching the four auto-substitutions
+already disabled there. Kept a permanent `Log.info` in
+`recoverFromStrandedCompositionIfNeeded` so any *future* recurrence records which
+guard stranded the sync (the first thing to grep for if it happens again).
