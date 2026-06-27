@@ -170,13 +170,12 @@ struct EditorStylingTests {
         #expect(isHidden(at: 5, in: styled))
     }
 
-    @Test("Inline code content has code color")
+    @Test("Inline code content uses body text color")
     @MainActor func codeColor() {
         let editor = makeEditor()
         let styled = editor.styleBlock("`code`")
         let color = styled.attribute(.foregroundColor, at: 1, effectiveRange: nil) as? NSColor
-        #expect(color != nil)
-        #expect(color!.redComponent > 0.5 && color!.greenComponent < 0.2)
+        #expect(color == editor.foregroundColor)
     }
 
     @Test("Inline code content has monospace font")

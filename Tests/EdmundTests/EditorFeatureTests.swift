@@ -357,7 +357,7 @@ struct AppearanceIntegrationTests {
         #expect(color == editor.accentColor)
     }
 
-    @Test("Code color is used for inline code in both active and non-active")
+    @Test("Body text color is used for inline code in both active and non-active")
     @MainActor func codeColorBothStates() {
         let editor = makeEditor()
         editor.loadContent("`active`\n`inactive`")
@@ -365,13 +365,13 @@ struct AppearanceIntegrationTests {
         // Active block 0: content at offset 1
         activateBlock(0, in: editor)
         let activeColor = fgColor(at: 1, in: editor)
-        #expect(activeColor == editor.codeColor)
+        #expect(activeColor == editor.foregroundColor)
 
         // Switch to block 1, making block 0 non-active.
         // Offset 0 is backtick (hidden), content "active" starts at offset 1.
         activateBlock(1, in: editor)
         let nonActiveColor = fgColor(at: editor.displayRanges[0].location + 1, in: editor)
-        #expect(nonActiveColor == editor.codeColor)
+        #expect(nonActiveColor == editor.foregroundColor)
     }
 
     @Test("Active token delimiters are dimmed, non-active token delimiters are hidden")

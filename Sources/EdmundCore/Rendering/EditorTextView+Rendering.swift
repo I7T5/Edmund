@@ -40,9 +40,6 @@ extension EditorTextView {
     /// Color for dimmed syntax delimiters (*, **, `, #, etc.)
     var syntaxDimColor: NSColor { .tertiaryLabelColor }
 
-    /// Color for inline code spans.
-    var codeColor: NSColor { theme.codeColor }
-
     /// Monospaced font for tables.
     var tableFont: NSFont { theme.monospaceFont() }
 
@@ -179,7 +176,7 @@ extension EditorTextView {
             case .code:
                 guard span.contentRange.upperBound <= result.length else { continue }
                 result.addAttribute(.font, value: inlineCodeFont, range: span.contentRange)
-                result.addAttribute(.foregroundColor, value: codeColor, range: span.contentRange)
+                result.addAttribute(.foregroundColor, value: foregroundColor, range: span.contentRange)
                 result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: span.contentRange)
 
             case .codeBlock(let language):
