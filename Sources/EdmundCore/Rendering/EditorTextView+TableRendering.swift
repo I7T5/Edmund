@@ -67,6 +67,10 @@ extension EditorTextView {
             }
             let totalWidth = cumX
 
+            // Per-column alignment from the separator row (`:--`/`:-:`/`--:`).
+            let aligns = tableColumnAlignments(separatorRow: lines.count > 1 ? lines[1] : "",
+                                               count: numCols)
+
             // --- Style each row ---
             var lineOffset = span.fullRange.location
             for (i, line) in lines.enumerated() {
@@ -125,7 +129,12 @@ extension EditorTextView {
                     }
                 }
 
-                // Kern-pad each cell to its column width (skip separator)
+                // Kern-pad each cell to its column width, distributing the slack
+                // by column alignment (skip separator). Left pads after content;
+                // right pads before it (kern on the cell's leading hidden pipe,
+                // which still adds advance though it's near-zero-width); center
+                // splits the slack. Kern adds advance *after* a glyph, so the
+                // "before" kern goes on the char preceding the cell content.
                 if i != 1 {
                     let ranges = cellRanges(in: lineNS)
                     for ci in 0..<min(ranges.count, numCols) {
@@ -133,9 +142,21 @@ extension EditorTextView {
                         let cellText = lineNS.substring(with: NSRange(location: cr.start, length: cr.end - cr.start))
                         let cellWidth = (cellText as NSString).size(withAttributes: [.font: rowFont]).width
                         let padding = colWidths[ci] - cellWidth
-                        if padding > 0.5 {
-                            let kernLoc = lineOffset + cr.end - 1
-                            result.addAttribute(.kern, value: padding, range: NSRange(location: kernLoc, length: 1))
+                        guard padding > 0.5 else { continue }
+                        let leadingIdx = (cr.start - 1 >= 0 && lineNS.character(at: cr.start - 1) == 0x7C)
+                            ? cr.start - 1 : cr.start
+                        let trailingIdx = cr.end - 1
+                        func kern(_ amount: CGFloat, at idx: Int) {
+                            result.addAttribute(.kern, value: amount,
+                                                range: NSRange(location: lineOffset + idx, length: 1))
+                        }
+                        switch aligns[ci] {
+                        case .left:   kern(padding, at: trailingIdx)
+                        case .right:  kern(padding, at: leadingIdx)
+                        case .center:
+                            let half = (padding / 2).rounded()
+                            kern(half, at: leadingIdx)
+                            kern(padding - half, at: trailingIdx)
                         }
                     }
                 }
