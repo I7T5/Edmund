@@ -103,6 +103,8 @@ enum AppSettings {
         static let logRetention = "settings.general.logRetention"
         static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
         static let sourceMode = "settings.view.sourceMode"
+        static let sendCrashLogs = "settings.advanced.sendCrashLogs"
+        static let sentCrashReports = "settings.advanced.sentCrashReports"
     }
 
     /// Text-column width as a fraction of the available width (`0...1`). `1`
@@ -202,6 +204,26 @@ enum AppSettings {
             return UserDefaults.standard.bool(forKey: Key.diagnosticLogging)
         }
         set { UserDefaults.standard.set(newValue, forKey: Key.diagnosticLogging) }
+    }
+
+    /// Whether to auto-send crash reports on launch. Opt-in: defaults off, since
+    /// it sends data off-device. (UI currently commented out — see
+    /// AdvancedSettingsView — until the receiving server exists.)
+    static var sendCrashLogs: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.sendCrashLogs) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.sendCrashLogs) }
+    }
+
+    /// Filenames of crash reports already uploaded, so we don't resend them.
+    /// Bounded on write by dropping entries whose `.ips` file no longer exists.
+    static var sentCrashReports: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Key.sentCrashReports) ?? []) }
+        set {
+            let onDisk = (try? FileManager.default.contentsOfDirectory(
+                atPath: CrashReporter.diagnosticReportsDirectory.path)).map(Set.init) ?? []
+            let pruned = onDisk.isEmpty ? newValue : newValue.intersection(onDisk)
+            UserDefaults.standard.set(Array(pruned), forKey: Key.sentCrashReports)
+        }
     }
 
     static var logRetention: LogRetention {

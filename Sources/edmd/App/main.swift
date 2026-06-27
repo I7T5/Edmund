@@ -36,6 +36,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         AppSettings.applyAppearance()
         setupMenuBar()
 
+        // Opt-in (default off): upload any crash reports macOS wrote for us since
+        // last launch. Fire-and-forget; never blocks startup.
+        if AppSettings.sendCrashLogs {
+            CrashReporter.uploadPendingReports(
+                alreadySent: AppSettings.sentCrashReports,
+                onSent: { AppSettings.sentCrashReports.insert($0) })
+        }
+
         // Open file from command-line argument. When a file is given,
         // `applicationShouldOpenUntitledFile` suppresses the otherwise-automatic
         // blank document, so we don't end up with two windows.
