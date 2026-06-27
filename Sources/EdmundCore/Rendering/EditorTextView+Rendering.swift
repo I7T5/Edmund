@@ -122,8 +122,10 @@ extension EditorTextView {
              .code, .link, .image, .lineBreak,
              .heading, .blockquote, .footnoteReference, .escape:
             return true
-        case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment:
-            // Comments are handled explicitly (dimmed in Edit, hidden in Reading).
+        case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment,
+             .htmlTag, .htmlFormat:
+            // htmlTag: always colored source (brackets dimmed by the generic
+            // pass). htmlFormat: handled explicitly in the delimiter loop.
             return false
         case .wikilink:
             // The `[[`, optional `target|`, and `]]` are hidden when rendered,
@@ -399,6 +401,22 @@ extension EditorTextView {
             case .escape:
                 break  // The escaped char keeps base attributes; the backslash
                        // is hidden/dimmed by the generic delimiter pass below.
+
+            case .htmlTag:
+                guard span.contentRange.upperBound <= result.length else { continue }
+                // Always literal: color the element name red like math; the
+                // `<`/`>`/`/` are dimmed by the generic (non-hideable) pass below.
+                result.addAttribute(.foregroundColor, value: theme.mathOperatorColor,
+                                    range: span.contentRange)
+
+            case .htmlFormat(let tag):
+                guard span.fullRange.upperBound <= result.length else { continue }
+                // Inactive: hide the tags (delimiter pass) and apply the rendered
+                // attribute to the inner content. Active: the raw tags show
+                // colored (handled in the delimiter pass).
+                if !cursorInToken {
+                    applyHTMLFormatAttribute(result, tag: tag, range: span.contentRange)
+                }
             }
 
             // --- Delimiter treatment (applied after content styling so it takes precedence) ---
@@ -444,6 +462,15 @@ extension EditorTextView {
                     if cursorInToken {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
+                } else if case .htmlFormat = span.kind {
+                    // Whitelisted tag pair: show the raw tags (dim brackets, red
+                    // name) when active; hide them when the content is rendered.
+                    if cursorInToken {
+                        styleRawHTMLTag(result, range: dr)
+                    } else {
+                        result.addAttribute(.font, value: hiddenFont, range: dr)
+                        result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
+                    }
                 } else if case .comment = span.kind {
                     // Comment `%%`: hidden in reading view, dimmed otherwise —
                     // matching the content styling above.
@@ -468,6 +495,48 @@ extension EditorTextView {
         }
 
         return result
+    }
+
+    /// Applies a whitelisted HTML tag's rendered formatting to `range` (the inner
+    /// content). Unknown tags are no-ops (handled as colored source elsewhere).
+    private func applyHTMLFormatAttribute(_ result: NSMutableAttributedString,
+                                          tag: String, range: NSRange) {
+        switch tag {
+        case "u":
+            result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        case "mark":
+            result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: range)
+        case "kbd":
+            result.addAttribute(.font, value: inlineCodeFont, range: range)
+            result.addAttribute(.backgroundColor, value: inlineCodeBackground, range: range)
+        case "sub", "sup":
+            let small = NSFont(descriptor: bodyFont.fontDescriptor, size: bodyFont.pointSize * 0.75) ?? bodyFont
+            result.addAttribute(.font, value: small, range: range)
+            let offset = tag == "sub" ? -bodyFont.pointSize * 0.25 : bodyFont.pointSize * 0.35
+            result.addAttribute(.baselineOffset, value: offset, range: range)
+        default:
+            break
+        }
+    }
+
+    /// Dims an HTML tag's punctuation (`<`, `/`, attrs, `>`) and colors its
+    /// element name red — the active-state look for a `.htmlFormat` pair, matching
+    /// how `.htmlTag` colored source reads.
+    private func styleRawHTMLTag(_ result: NSMutableAttributedString, range: NSRange) {
+        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: range)
+        let ns = result.string as NSString
+        var i = range.location
+        let end = range.upperBound
+        while i < end, ns.character(at: i) == 0x3C || ns.character(at: i) == 0x2F { i += 1 }  // < /
+        var j = i
+        func isAlphaNum(_ c: unichar) -> Bool {
+            (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || (c >= 0x30 && c <= 0x39)
+        }
+        while j < end, isAlphaNum(ns.character(at: j)) { j += 1 }
+        if j > i {
+            result.addAttribute(.foregroundColor, value: theme.mathOperatorColor,
+                                range: NSRange(location: i, length: j - i))
+        }
     }
 
     /// Plain monospaced styling for source mode: the raw markdown with no

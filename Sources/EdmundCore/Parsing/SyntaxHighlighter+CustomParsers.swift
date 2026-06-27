@@ -298,6 +298,78 @@ extension SyntaxHighlighter {
         }
     }
 
+    /// Whitelisted HTML formatting tags rendered (not just colored). The inner
+    /// content keeps its own markdown styling.
+    private static let htmlPairRegex = try! NSRegularExpression(
+        pattern: #"<(u|kbd|mark|sub|sup)(?:\s[^>]*)?>(.*?)</\1\s*>"#,
+        options: [.caseInsensitive, .dotMatchesLineSeparators])
+
+    /// Any single inline HTML tag (open, close, or self-closing). Group 1 is the
+    /// element name.
+    private static let htmlTagRegex = try! NSRegularExpression(
+        pattern: #"</?([A-Za-z][A-Za-z0-9]*)(?:\s[^<>]*)?/?>"#)
+
+    /// Parses inline HTML tags. Two tiers:
+    ///   - a whitelisted pair (`<u>…</u>`, `<kbd>`, `<mark>`, `<sub>`, `<sup>`)
+    ///     becomes a `.htmlFormat` span whose tags hide and whose content takes a
+    ///     rendered attribute;
+    ///   - any other recognized tag becomes a `.htmlTag` span shown as colored
+    ///     source (the open/close tags of a pair are not re-emitted).
+    /// Skips tags inside code / math, and a `\<`-escaped `<` (escapes run first).
+    static func parseHTMLTags(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        let whole = NSRange(location: 0, length: ns.length)
+
+        // True if `r` sits inside a code/math span, or its `<` is an escaped `\<`.
+        func guarded(_ r: NSRange) -> Bool {
+            for span in spans {
+                switch span.kind {
+                case .code, .codeBlock, .math:
+                    if span.fullRange.location <= r.location
+                        && span.fullRange.upperBound >= r.upperBound { return true }
+                case .escape:
+                    // The escape covers `\` + the escaped char; reject if it
+                    // covers this tag's opening `<`.
+                    if span.fullRange.location <= r.location
+                        && span.fullRange.upperBound > r.location { return true }
+                default:
+                    break
+                }
+            }
+            return false
+        }
+
+        // Pass 1: whitelist pairs render. Remember each pair's tag ranges so the
+        // generic pass doesn't re-emit them (inner tags are still colored).
+        var pairTagRanges: [NSRange] = []
+        for m in htmlPairRegex.matches(in: text, range: whole) {
+            let full = m.range(at: 0)
+            guard !guarded(full) else { continue }
+            let name = ns.substring(with: m.range(at: 1)).lowercased()
+            let content = m.range(at: 2)
+            let openTag = NSRange(location: full.location, length: content.location - full.location)
+            let closeTag = NSRange(location: content.upperBound, length: full.upperBound - content.upperBound)
+            spans.append(Span(kind: .htmlFormat(tag: name), fullRange: full,
+                              contentRange: content, delimiterRanges: [openTag, closeTag]))
+            pairTagRanges.append(openTag)
+            pairTagRanges.append(closeTag)
+        }
+
+        // Pass 2: any other recognized tag → colored source.
+        for m in htmlTagRegex.matches(in: text, range: whole) {
+            let full = m.range(at: 0)
+            guard !guarded(full) else { continue }
+            if pairTagRanges.contains(where: {
+                $0.location <= full.location && $0.upperBound >= full.upperBound
+            }) { continue }
+            let nameR = m.range(at: 1)
+            let pre = NSRange(location: full.location, length: nameR.location - full.location)
+            let post = NSRange(location: nameR.upperBound, length: full.upperBound - nameR.upperBound)
+            spans.append(Span(kind: .htmlTag, fullRange: full, contentRange: nameR,
+                              delimiterRanges: [pre, post]))
+        }
+    }
+
     /// Parses trailing `\` as a line break indicator.
     static func parseLineBreak(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString

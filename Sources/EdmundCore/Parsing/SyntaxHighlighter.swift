@@ -54,6 +54,17 @@ public enum SyntaxHighlighter {
             /// (hidden when inactive, dimmed when active); the escaped character
             /// `X` renders literally as its content.
             case escape
+            /// A single inline HTML tag (`<tag …>` or `</tag>`) shown only as
+            /// colored source: the `<`/`>`/`/` dim and the tag name colors red
+            /// (like math). Used for unknown / unpaired tags. `contentRange` is
+            /// the tag name.
+            case htmlTag
+            /// A whitelisted HTML formatting tag pair (`<u>…</u>`, etc.). When the
+            /// caret is outside, the open/close tags hide and the corresponding
+            /// attribute is applied to the inner `contentRange`; inside, the raw
+            /// tags show colored. `tag` is the lowercased element name; the two
+            /// delimiterRanges are the open and close tags.
+            case htmlFormat(tag: String)
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -97,6 +108,10 @@ public enum SyntaxHighlighter {
         // CommonMark backslash escapes (`\*`, `\$`, …). Runs after math/line-break
         // so it can defer to them; before HTML tags so `\<` defers to the escape.
         parseEscapes(text, into: &walker.spans)
+
+        // Inline HTML tags: whitelist pairs render (`<u>…</u>`); any other tag is
+        // colored source. Runs after escapes so an escaped `\<` isn't seen as a tag.
+        parseHTMLTags(text, into: &walker.spans)
         let opaqueRanges: [NSRange] = walker.spans.compactMap { span in
             switch span.kind {
             case .comment, .wikilink: return span.fullRange
