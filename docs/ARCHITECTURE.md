@@ -11,7 +11,7 @@ or change an invariant, edit this file in the same PR.
 
 ```bash
 swift build                 # debug build of both targets
-swift test                  # full suite (≈630+ tests, ~10s)
+swift test                  # full suite (≈750+ tests, ~10s)
 swift test --filter Callout # one suite
 ./scripts/build-app.sh      # builds build/Edmund.app (release + bundles + icon + codesign)
 ```
@@ -142,6 +142,7 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 | Lazy/compose/undo/scroll | `TextView/EditorTextView+{Composition,LazyStyling,Undo,TypewriterScroll,SelectionTracking,ContentWidth,EditFlow}.swift` |
 | App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift`; Sparkle `SPUStandardUpdaterController` in `AppDelegate` |
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
+| Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (see §7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey` (ed25519 public key). `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure (it mounts the image and installs the `.app` inside). CI: `.github/workflows/release.yml` (tag-triggered). One-time setup: generate the EdDSA keypair with `generate_keys` (§8). |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
@@ -210,6 +211,18 @@ them and route through the app's document graph without JavaScript.
   user only toggles it on/off and picks a retention window (Settings ▸ General ▸
   Diagnostics). `AppSettings.applyLogging()` pushes the toggle/retention into
   `Log.configure` at launch and on change; retention is pruned there.
+- **Crash-log uploading** (`EdmundCore/Diagnostics/CrashReporter.swift`): opt-in
+  (default off), fire-and-forget upload of the `.ips` crash reports macOS writes
+  to `~/Library/Logs/DiagnosticReports/`. On launch, if `AppSettings.sendCrashLogs`
+  is true, we POST any `edmd-*.ips` files not in `AppSettings.sentCrashReports`
+  (dedup) to `CrashReporter.reportingEndpoint`. Note: `edmd` is the Mach-O
+  executable name (not "Edmund") — that's the prefix in crash-report filenames.
+  **The Settings ▸ Advanced toggle is currently commented out** (the `// Crash
+  reports:` GridRow in `AdvancedSettingsView.swift`); uncomment it and replace the
+  placeholder `reportingEndpoint` URL once the receiving server exists. The upload
+  path reads `~/Library/Logs/DiagnosticReports/` directly, which only works
+  because the app is not sandboxed; if App Sandbox is ever adopted, switch to
+  MetricKit's `MXCrashDiagnostic` API instead.
 
 ---
 
