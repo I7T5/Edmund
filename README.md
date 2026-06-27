@@ -1,28 +1,19 @@
 # Edmund
 
-> [!IMPORTANT] 
+![Edmund pitch slide picture](docs/assets/demo-slide-v0.1-brown.png)
+
+> [!NOTE] 
 > - Active development!
+> - The theme color is actually orange, not brown. 
 > - Help wanted with icon!
 > - Guidelines for Build and Contributing coming soon!
 
 Edmund is a native, lightweight markdown editor with Live Preview made for macOS.  
 
 - **Requirements**: macOS Sonoma 14 or later
-- **Website**: <https://i7t5.com/edmund> (to be developed)
+- **Website**: [i7t5.com/software/edmund](https://i7t5.com/software/edmund) / [edmund.md](https://edmund.md) (to be developed)
 
-## Install
-
-Download the latest `Edmund.dmg` from [Releases](https://github.com/I7T5/Edmund/releases), open it, and drag **Edmund** into Applications.
-
-Edmund is open source and ad‑hoc signed, but not yet notarized (no paid Apple Developer ID), so macOS Gatekeeper blocks the first launch. To open it the first time, do **one** of:
-
-- Right‑click (or Control‑click) **Edmund** in Applications → **Open** → **Open**. macOS remembers the choice, so later launches are normal.
-- Or: System Settings → **Privacy & Security** → scroll down → **Open Anyway**.
-- Or, from Terminal:
-
-  ```sh
-  xattr -dr com.apple.quarantine /Applications/Edmund.app
-  ```
+![Demo video - The dev typing and Edmund rendering live](docs/assets/demo-video-v0.1-brown.mp4)
 
 ## Features
 
@@ -36,6 +27,20 @@ Edmund is open source and ad‑hoc signed, but not yet notarized (no paid Apple 
 - **Native UI/UX**: Feels exactly like macOS. AppKit editing + WebKit preview + SwiftUI settings. 
 - **Secure and private**: Always offline. Network connection will always be optional. 
 - **Open and free**: Apache License 2.0. Free of charge. 
+
+## Installation
+
+I do not have a paid Apple Developer ID, and that makes installing my app a bit more complicated...You probably know the drill, but, in case you don't, here it is. 
+
+To open Edmund the first time, do **one** of:
+
+- Right‑click (or Control‑click) **Edmund** in Applications → **Open** → **Open**. macOS remembers the choice, so later launches are normal.
+- Or: System Settings → **Privacy & Security** → scroll down → **Open Anyway**.
+- Or, from Terminal:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/Edmund.app
+  ```
 
 ## Roadmap
 
@@ -66,7 +71,7 @@ The list is by no means exhaustive, and neither was it meant to be. I just wante
 
 ## Motivation, philosophy, acknowledgements
 
-I wanted to create an open source alternative to Typora that would be the [CotEditor](https://coteditor.com) of Markdown editors. <!— See this [blog post](link TBD) for more design philosophy and behind-the-scenes. —>
+I wanted to create an open source alternative to Typora that would be the [CotEditor](https://coteditor.com) of Markdown editors. See [my blog post](https://i7t5.com/posts/2026-06-26-edmund/) for more design philosophy and behind-the-scenes.
 
 The following have greatly influenced my architecture and/or design choices. I owe them many thanks:  
 
