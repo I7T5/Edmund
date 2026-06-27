@@ -64,7 +64,9 @@ jobs:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
           SIGN_UPDATE="$(find .build -name sign_update -type f | head -1)"
-          SIG_OUTPUT="$("$SIGN_UPDATE" -s "$SPARKLE_ED_PRIVATE_KEY" "build/Edmund-${VERSION}.dmg")"
+          # Pass the key on stdin via --ed-key-file -. The deprecated `-s <key>`
+          # is fatal for newly generated keys ("no longer supported").
+          SIG_OUTPUT="$(echo "$SPARKLE_ED_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "build/Edmund-${VERSION}.dmg")"
           echo "ED_SIG=$(echo "$SIG_OUTPUT" | grep -o 'sparkle:edSignature="[^"]*"')" >> "$GITHUB_ENV"
           echo "LENGTH=$(echo "$SIG_OUTPUT" | grep -o 'length="[^"]*"' | head -1)" >> "$GITHUB_ENV"
 
