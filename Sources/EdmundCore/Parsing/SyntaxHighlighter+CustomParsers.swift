@@ -254,6 +254,50 @@ extension SyntaxHighlighter {
         }
     }
 
+    /// The set of ASCII-punctuation characters CommonMark allows a backslash to
+    /// escape (§2.4). A `\` before any other character is a literal backslash.
+    private static let escapableChars: Set<unichar> = {
+        let punct = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+        return Set((punct as NSString).description.utf16)
+    }()
+
+    /// Parses CommonMark backslash escapes: a `\` followed by an escapable
+    /// punctuation char. The backslash becomes the span's hidden/dimmed
+    /// delimiter; the escaped char renders literally (swift-markdown already
+    /// strips the escape from the AST text, so no inline span double-styles it).
+    /// Skips escapes inside code / math / a trailing-`\` line break so those keep
+    /// their raw source (e.g. `\,` inside `$…$` stays a LaTeX command).
+    static func parseEscapes(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        let n = ns.length
+        let backslash: unichar = 0x5C
+        var i = 0
+        while i < n - 1 {
+            guard ns.character(at: i) == backslash,
+                  escapableChars.contains(ns.character(at: i + 1)) else { i += 1; continue }
+            let full = NSRange(location: i, length: 2)
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock, .math, .lineBreak:
+                    return existing.fullRange.location <= full.location
+                        && existing.fullRange.upperBound >= full.upperBound
+                default:
+                    return false
+                }
+            }
+            if !overlaps {
+                spans.append(Span(
+                    kind: .escape,
+                    fullRange: full,
+                    contentRange: NSRange(location: i + 1, length: 1),
+                    delimiterRanges: [NSRange(location: i, length: 1)]))
+            }
+            // Consume both chars so `\\` is one escape (and the 2nd `\` can't
+            // start another escape or be read as a trailing line break).
+            i += 2
+        }
+    }
+
     /// Parses trailing `\` as a line break indicator.
     static func parseLineBreak(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString

@@ -120,7 +120,7 @@ extension EditorTextView {
         switch kind {
         case .bold, .italic, .boldItalic, .strikethrough, .highlight,
              .code, .link, .image, .lineBreak,
-             .heading, .blockquote, .footnoteReference:
+             .heading, .blockquote, .footnoteReference, .escape:
             return true
         case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment:
             // Comments are handled explicitly (dimmed in Edit, hidden in Reading).
@@ -395,6 +395,10 @@ extension EditorTextView {
 
             case .lineBreak:
                 break  // Delimiter handling done below
+
+            case .escape:
+                break  // The escaped char keeps base attributes; the backslash
+                       // is hidden/dimmed by the generic delimiter pass below.
             }
 
             // --- Delimiter treatment (applied after content styling so it takes precedence) ---

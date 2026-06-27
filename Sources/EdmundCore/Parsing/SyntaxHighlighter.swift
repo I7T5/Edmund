@@ -50,6 +50,10 @@ public enum SyntaxHighlighter {
             /// `path#heading` portion (before any `|alias`); the visible display
             /// text is the span's contentRange.
             case wikilink(target: String)
+            /// A CommonMark backslash escape `\X`. The backslash is the delimiter
+            /// (hidden when inactive, dimmed when active); the escaped character
+            /// `X` renders literally as its content.
+            case escape
 
             public enum CheckboxState: Equatable, Sendable {
                 case checked, unchecked
@@ -89,6 +93,10 @@ public enum SyntaxHighlighter {
         // one so the content isn't re-styled.
         parseComments(text, into: &walker.spans)
         parseWikiLinks(text, into: &walker.spans)
+
+        // CommonMark backslash escapes (`\*`, `\$`, …). Runs after math/line-break
+        // so it can defer to them; before HTML tags so `\<` defers to the escape.
+        parseEscapes(text, into: &walker.spans)
         let opaqueRanges: [NSRange] = walker.spans.compactMap { span in
             switch span.kind {
             case .comment, .wikilink: return span.fullRange
