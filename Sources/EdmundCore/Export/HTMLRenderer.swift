@@ -299,10 +299,34 @@ struct HTMLRenderer: MarkupVisitor {
         return "<img class=\"md-image\" data-src=\"\(src)\" alt=\"\(alt)\">"
     }
 
-    // Never pass raw author HTML through — escape it so a document can't inject
-    // markup/script (§G). Render as literal text.
-    mutating func visitInlineHTML(_ inlineHTML: InlineHTML) -> String { Self.escape(inlineHTML.rawHTML) }
+    // Inline HTML: a whitelisted formatting tag (u/kbd/mark/sub/sup) passes
+    // through so the browser renders it; every other tag is escaped to literal
+    // text. Block HTML is always escaped (below) — a document still can't inject
+    // markup/script (§G).
+    mutating func visitInlineHTML(_ inlineHTML: InlineHTML) -> String {
+        Self.sanitizeInlineHTML(inlineHTML.rawHTML)
+    }
     mutating func visitHTMLBlock(_ html: HTMLBlock) -> String { "<p>\(Self.escape(html.rawHTML))</p>" }
+
+    private static let inlineTagRegex =
+        try! NSRegularExpression(pattern: #"^<(/?)([A-Za-z][A-Za-z0-9]*)[^>]*>$"#)
+
+    /// Passes a whitelisted inline tag through as a sanitized *bare* tag (`<u>` /
+    /// `</u>`, attributes dropped); escapes anything else. The read webview
+    /// disables JavaScript, but dropping attributes is defense-in-depth against
+    /// attribute-based injection (`<mark onmouseover=…>`). Mirrors the Edit-mode
+    /// whitelist via `SyntaxHighlighter.htmlFormatTags`.
+    static func sanitizeInlineHTML(_ raw: String) -> String {
+        let ns = raw as NSString
+        if let m = inlineTagRegex.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)) {
+            let isClose = ns.substring(with: m.range(at: 1)) == "/"
+            let name = ns.substring(with: m.range(at: 2)).lowercased()
+            if SyntaxHighlighter.htmlFormatTags.contains(name) {
+                return isClose ? "</\(name)>" : "<\(name)>"
+            }
+        }
+        return escape(raw)
+    }
 
     // MARK: - Callouts
 

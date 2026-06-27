@@ -299,10 +299,14 @@ extension SyntaxHighlighter {
     }
 
     /// Whitelisted HTML formatting tags rendered (not just colored). The inner
-    /// content keeps its own markdown styling.
-    private static let htmlPairRegex = try! NSRegularExpression(
-        pattern: #"<(u|kbd|mark|sub|sup)(?:\s[^>]*)?>(.*?)</\1\s*>"#,
-        options: [.caseInsensitive, .dotMatchesLineSeparators])
+    /// content keeps its own markdown styling. Built from `htmlFormatTags` so the
+    /// Edit and Read whitelists share one source of truth.
+    private static let htmlPairRegex: NSRegularExpression = {
+        let names = htmlFormatTags.sorted().joined(separator: "|")
+        return try! NSRegularExpression(
+            pattern: "<(\(names))(?:\\s[^>]*)?>(.*?)</\\1\\s*>",
+            options: [.caseInsensitive, .dotMatchesLineSeparators])
+    }()
 
     /// Any single inline HTML tag (open, close, or self-closing). Group 1 is the
     /// element name.

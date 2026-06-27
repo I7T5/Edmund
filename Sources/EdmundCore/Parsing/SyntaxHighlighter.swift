@@ -15,6 +15,12 @@ import Markdown
 ///     AST doesn't model (==highlight==, $math$, indented list items)
 public enum SyntaxHighlighter {
 
+    /// Inline HTML element names that *render* their formatting rather than show
+    /// as colored source. Single source of truth shared by the editor's
+    /// `parseHTMLTags` (Edit mode) and `HTMLRenderer.sanitizeInlineHTML` (Read
+    /// mode), so the two back-ends can't drift on which tags are allowed.
+    public static let htmlFormatTags: Set<String> = ["u", "kbd", "mark", "sub", "sup"]
+
     // MARK: - Model
 
     public struct Span: Sendable {

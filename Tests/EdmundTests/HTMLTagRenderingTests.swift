@@ -119,12 +119,45 @@ struct HTMLTagRenderingTests {
     }
 }
 
-@Suite("HTMLRenderer — HTML still escaped")
+@Suite("HTMLRenderer — whitelisted HTML passes through")
 struct HTMLTagExportTests {
-    @Test("Read mode escapes whitelisted tags (edit-mode only feature)")
-    func stillEscaped() {
-        let out = HTMLRenderer.render(markdown: "<u>x</u>")
-        #expect(out.contains("&lt;u&gt;"))
-        #expect(!out.contains("<u>"))
+
+    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+
+    @Test("Whitelisted tags render as real tags")
+    func passesThrough() {
+        #expect(html("<u>x</u>").contains("<u>x</u>"))
+        #expect(html("<kbd>K</kbd>").contains("<kbd>K</kbd>"))
+        #expect(html("<mark>m</mark>").contains("<mark>m</mark>"))
+        #expect(html("H<sub>2</sub>O").contains("<sub>2</sub>"))
+        #expect(html("x<sup>2</sup>").contains("<sup>2</sup>"))
+    }
+
+    @Test("Attributes are stripped (bare tag only)")
+    func stripsAttributes() {
+        let out = html("<u class=\"x\" onclick=\"y\">hi</u>")
+        #expect(out.contains("<u>hi</u>"))
+        #expect(!out.contains("class"))
+        #expect(!out.contains("onclick"))
+    }
+
+    @Test("Inner markdown still renders inside a passed tag")
+    func innerMarkdown() {
+        #expect(html("<u>**b**</u>").contains("<u><strong>b</strong></u>"))
+    }
+
+    @Test("Non-whitelisted inline tag stays escaped")
+    func unknownEscaped() {
+        let out = html("a <span>x</span> b")
+        #expect(out.contains("&lt;span&gt;"))
+        #expect(!out.contains("<span>"))
+    }
+
+    @Test("A nested script inside a passed tag is still escaped")
+    func nestedScriptEscaped() {
+        let out = html("<u><script>alert(1)</script></u>")
+        #expect(out.contains("<u>"))
+        #expect(!out.contains("<script>"))
+        #expect(out.contains("&lt;script&gt;"))
     }
 }

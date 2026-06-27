@@ -150,6 +150,15 @@ enum HTMLTheme {
     .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1px solid var(--rule); margin: 1.6em 0; }
     mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
+    /* Whitelisted inline HTML rendered in Read mode (see HTMLRenderer
+       sanitizeInlineHTML). <u>/<mark> use the UA underline / the rule above;
+       <kbd> matches the editor's inline-key chrome, <sub>/<sup> get the standard
+       line-height-safe reset. */
+    kbd { font-family: var(--mono-font); font-size: 0.92em; background: var(--code-bg);
+          border: 1px solid var(--rule); border-radius: 4px; padding: 0.05em 0.4em; }
+    sub, sup { font-size: 0.75em; line-height: 0; position: relative; vertical-align: baseline; }
+    sup { top: -0.5em; }
+    sub { bottom: -0.25em; }
     /* Match the editor's list indentation: level-1 text begins at one marker
        slot past the marker (~2.25em), and each nesting level steps in by one
        slot (~1.25em). Same dot at every level, like Edit mode. */
