@@ -56,8 +56,9 @@ fi
 
 # ── EdDSA signature ───────────────────────────────────────────────────────────
 if [ -n "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
-    # CI path: private key passed via env (base64 string, no keychain)
-    SIG_OUTPUT="$("$SIGN_UPDATE" -s "$SPARKLE_ED_PRIVATE_KEY" "$DMG")"
+    # CI path: private key from env, fed on stdin via --ed-key-file -.
+    # The deprecated `-s <key>` is fatal for newly generated keys.
+    SIG_OUTPUT="$(echo "$SPARKLE_ED_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "$DMG")"
 else
     # Local path: key lives in the login keychain (placed there by generate_keys)
     SIG_OUTPUT="$("$SIGN_UPDATE" "$DMG")"
