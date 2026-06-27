@@ -254,6 +254,126 @@ extension SyntaxHighlighter {
         }
     }
 
+    /// The set of ASCII-punctuation characters CommonMark allows a backslash to
+    /// escape (§2.4). A `\` before any other character is a literal backslash.
+    private static let escapableChars: Set<unichar> = {
+        let punct = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+        return Set((punct as NSString).description.utf16)
+    }()
+
+    /// Parses CommonMark backslash escapes: a `\` followed by an escapable
+    /// punctuation char. The backslash becomes the span's hidden/dimmed
+    /// delimiter; the escaped char renders literally (swift-markdown already
+    /// strips the escape from the AST text, so no inline span double-styles it).
+    /// Skips escapes inside code / math / a trailing-`\` line break so those keep
+    /// their raw source (e.g. `\,` inside `$…$` stays a LaTeX command).
+    static func parseEscapes(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        let n = ns.length
+        let backslash: unichar = 0x5C
+        var i = 0
+        while i < n - 1 {
+            guard ns.character(at: i) == backslash,
+                  escapableChars.contains(ns.character(at: i + 1)) else { i += 1; continue }
+            let full = NSRange(location: i, length: 2)
+            let overlaps = spans.contains { existing in
+                switch existing.kind {
+                case .code, .codeBlock, .math, .lineBreak:
+                    return existing.fullRange.location <= full.location
+                        && existing.fullRange.upperBound >= full.upperBound
+                default:
+                    return false
+                }
+            }
+            if !overlaps {
+                spans.append(Span(
+                    kind: .escape,
+                    fullRange: full,
+                    contentRange: NSRange(location: i + 1, length: 1),
+                    delimiterRanges: [NSRange(location: i, length: 1)]))
+            }
+            // Consume both chars so `\\` is one escape (and the 2nd `\` can't
+            // start another escape or be read as a trailing line break).
+            i += 2
+        }
+    }
+
+    /// Whitelisted HTML formatting tags rendered (not just colored). The inner
+    /// content keeps its own markdown styling. Built from `htmlFormatTags` so the
+    /// Edit and Read whitelists share one source of truth.
+    private static let htmlPairRegex: NSRegularExpression = {
+        let names = htmlFormatTags.sorted().joined(separator: "|")
+        return try! NSRegularExpression(
+            pattern: "<(\(names))(?:\\s[^>]*)?>(.*?)</\\1\\s*>",
+            options: [.caseInsensitive, .dotMatchesLineSeparators])
+    }()
+
+    /// Any single inline HTML tag (open, close, or self-closing). Group 1 is the
+    /// element name.
+    private static let htmlTagRegex = try! NSRegularExpression(
+        pattern: #"</?([A-Za-z][A-Za-z0-9]*)(?:\s[^<>]*)?/?>"#)
+
+    /// Parses inline HTML tags. Two tiers:
+    ///   - a whitelisted pair (`<u>…</u>`, `<kbd>`, `<mark>`, `<sub>`, `<sup>`)
+    ///     becomes a `.htmlFormat` span whose tags hide and whose content takes a
+    ///     rendered attribute;
+    ///   - any other recognized tag becomes a `.htmlTag` span shown as colored
+    ///     source (the open/close tags of a pair are not re-emitted).
+    /// Skips tags inside code / math, and a `\<`-escaped `<` (escapes run first).
+    static func parseHTMLTags(_ text: String, into spans: inout [Span]) {
+        let ns = text as NSString
+        let whole = NSRange(location: 0, length: ns.length)
+
+        // True if `r` sits inside a code/math span, or its `<` is an escaped `\<`.
+        func guarded(_ r: NSRange) -> Bool {
+            for span in spans {
+                switch span.kind {
+                case .code, .codeBlock, .math:
+                    if span.fullRange.location <= r.location
+                        && span.fullRange.upperBound >= r.upperBound { return true }
+                case .escape:
+                    // The escape covers `\` + the escaped char; reject if it
+                    // covers this tag's opening `<`.
+                    if span.fullRange.location <= r.location
+                        && span.fullRange.upperBound > r.location { return true }
+                default:
+                    break
+                }
+            }
+            return false
+        }
+
+        // Pass 1: whitelist pairs render. Remember each pair's tag ranges so the
+        // generic pass doesn't re-emit them (inner tags are still colored).
+        var pairTagRanges: [NSRange] = []
+        for m in htmlPairRegex.matches(in: text, range: whole) {
+            let full = m.range(at: 0)
+            guard !guarded(full) else { continue }
+            let name = ns.substring(with: m.range(at: 1)).lowercased()
+            let content = m.range(at: 2)
+            let openTag = NSRange(location: full.location, length: content.location - full.location)
+            let closeTag = NSRange(location: content.upperBound, length: full.upperBound - content.upperBound)
+            spans.append(Span(kind: .htmlFormat(tag: name), fullRange: full,
+                              contentRange: content, delimiterRanges: [openTag, closeTag]))
+            pairTagRanges.append(openTag)
+            pairTagRanges.append(closeTag)
+        }
+
+        // Pass 2: any other recognized tag → colored source.
+        for m in htmlTagRegex.matches(in: text, range: whole) {
+            let full = m.range(at: 0)
+            guard !guarded(full) else { continue }
+            if pairTagRanges.contains(where: {
+                $0.location <= full.location && $0.upperBound >= full.upperBound
+            }) { continue }
+            let nameR = m.range(at: 1)
+            let pre = NSRange(location: full.location, length: nameR.location - full.location)
+            let post = NSRange(location: nameR.upperBound, length: full.upperBound - nameR.upperBound)
+            spans.append(Span(kind: .htmlTag, fullRange: full, contentRange: nameR,
+                              delimiterRanges: [pre, post]))
+        }
+    }
+
     /// Parses trailing `\` as a line break indicator.
     static func parseLineBreak(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString

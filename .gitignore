@@ -25,3 +25,4 @@ docs/ROADMAP.md
 # local visual-verification tooling
 /tmp/
 Tests/EdmundTests/_RenderDump.swift
+Tests/EdmundTests/_RenderEdit.swift

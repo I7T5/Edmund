@@ -12,6 +12,27 @@ import AppKit
 // column X offsets, the per-row vertical strokes line up into continuous
 // column borders.
 
+// MARK: - Column Alignment
+
+/// GFM table column alignment, parsed from the separator row's `:` markers.
+enum ColumnAlign: Equatable { case left, center, right }
+
+/// Parses per-column alignment from a table's separator row (`:--`/`:-:`/`--:`).
+/// `:` on both ends = center, trailing only = right, otherwise left. Padded to
+/// `count` with `.left`. Mirrors swift-markdown's `Table.columnAlignments`, so
+/// the live editor and the HTML export agree.
+func tableColumnAlignments(separatorRow: String, count: Int) -> [ColumnAlign] {
+    var aligns = [ColumnAlign](repeating: .left, count: count)
+    let cells = splitTableRow(separatorRow)
+    for ci in 0..<min(cells.count, count) {
+        let t = cells[ci].trimmingCharacters(in: .whitespaces)
+        let lead = t.hasPrefix(":")
+        let trail = t.hasSuffix(":")
+        aligns[ci] = (lead && trail) ? .center : (trail ? .right : .left)
+    }
+    return aligns
+}
+
 // MARK: - Table Row Parsing
 
 /// Splits a markdown table row into cell strings (text between pipes).

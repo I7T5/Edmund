@@ -17,7 +17,7 @@ Edmund is a native, lightweight markdown editor with Live Preview made for macOS
 - **Keyboard-first**: Essential buttons only. Configurable keyboard shortcuts (in progress). 
 - **Simple yet powerful**: 
   - Follows [cmark-gfm](https://github.com/github/cmark-gfm) through Apple's own [swift-markdown](https://github.com/swiftlang/swift-markdown). 
-  - Opt-in support for non-GFM syntax such as ==highlights==, [[WikiLinks]], footnotes `[^1]`, code blocks with syntax highlighting, Obsidian-flavored comments and callouts, etc.  
+  - Opt-in support for non-GFM syntax such as ==highlights==, [[WikiLinks]], footnotes `[^1]`, code blocks with syntax highlighting, Obsidian-flavored comments and callouts, etc. (in progress)
   - Renders both inline and display math  using [SwiftMath](https://github.com/mgriebling/SwiftMath). Opt-in extension for better math support through [RaTeX](https://github.com/erweixin/RaTeX) (in progress). 
 - **Native UI/UX**: Feels exactly like macOS. AppKit editing + WebKit preview + SwiftUI settings. 
 - **Secure and private**: Always offline. Network connection will always be optional. 
