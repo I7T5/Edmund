@@ -10,6 +10,20 @@ Edmund is a native, lightweight markdown editor with Live Preview made for macOS
 - **Requirements**: macOS Sonoma 14 or later
 - **Website**: <https://i7t5.com/edmund> (to be developed)
 
+## Install
+
+Download the latest `Edmund.dmg` from [Releases](https://github.com/I7T5/Edmund/releases), open it, and drag **Edmund** into Applications.
+
+Edmund is open source and ad‑hoc signed, but not yet notarized (no paid Apple Developer ID), so macOS Gatekeeper blocks the first launch. To open it the first time, do **one** of:
+
+- Right‑click (or Control‑click) **Edmund** in Applications → **Open** → **Open**. macOS remembers the choice, so later launches are normal.
+- Or: System Settings → **Privacy & Security** → scroll down → **Open Anyway**.
+- Or, from Terminal:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/Edmund.app
+  ```
+
 ## Features
 
 - **Live Preview**: WYSIWYG. Render as you type. Hides delimiters outside active token / block. 
