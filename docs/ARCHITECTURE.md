@@ -58,7 +58,8 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
                                           ├─ SyntaxHighlighter (swift-markdown
                                           │   Walker + custom parsers for
                                           │   callouts, ==highlight==, wikilinks,
-                                          │   comments, footnotes, math)
+                                          │   comments, footnotes, math, backslash
+                                          │   escapes, inline HTML tags)
                                           └─ writes attributes into textStorage
 ```
 
@@ -311,6 +312,17 @@ them and route through the app's document graph without JavaScript.
 - Revisit the callout icon limitation if a newer macOS/TextKit 2 fixes the
   reentrancy (reproduce first; would require bumping the deployment target off
   macOS 14).
+- **Inline HTML is Edit-mode only.** `parseHTMLTags` colors any tag (name red,
+  brackets dimmed) and *renders* a whitelist (`u`/`kbd`/`mark`/`sub`/`sup`) by
+  hiding the tags and styling the inner content. Read mode (`HTMLRenderer`)
+  still escapes all HTML for security — follow-up: a sanitizing allowlist that
+  passes the same whitelist through to the exported HTML. `<br>` and
+  non-whitelisted tags are color-only (a real `<br>` break would need to mutate
+  storage, breaking the storage==rawSource invariant).
+- **Edit-mode table alignment** distributes each cell's slack via `.kern`,
+  putting the right/center "before" pad on the cell's *hidden* leading pipe
+  (0.01pt glyph) — kern still adds advance there. See
+  `EditorTextView+TableRendering.swift`.
 - *(Track larger roadmap items in README/ROADMAP; track code-debt here.)*
 
 ---
