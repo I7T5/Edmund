@@ -13,7 +13,11 @@ Edmund is a native, lightweight markdown editor with Live Preview made for macOS
 - **Requirements**: macOS Sonoma 14 or later
 - **Website**: [i7t5.com/software/edmund](https://i7t5.com/software/edmund) / [edmund.md](https://edmund.md) (to be developed)
 
-![Demo video - The dev typing and Edmund rendering live](docs/assets/demo-video-v0.1-brown.mp4)
+
+
+https://github.com/user-attachments/assets/bbd86772-5c08-4440-8a27-7f057b2b9965
+
+
 
 ## Features
 
