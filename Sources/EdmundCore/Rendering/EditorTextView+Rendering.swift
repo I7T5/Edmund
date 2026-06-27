@@ -40,6 +40,10 @@ extension EditorTextView {
     /// Color for dimmed syntax delimiters (*, **, `, #, etc.)
     var syntaxDimColor: NSColor { .tertiaryLabelColor }
 
+    /// Color for links and wikilinks — always the theme's accent blue, independent of
+    /// the system accent so links stay consistently blue across user accent preferences.
+    var linkColor: NSColor { theme.accentColor }
+
     /// Monospaced font for tables.
     var tableFont: NSFont { theme.monospaceFont() }
 
@@ -202,7 +206,7 @@ extension EditorTextView {
 
             case .link(let destination):
                 guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                result.addAttribute(.foregroundColor, value: linkColor, range: span.contentRange)
                 result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: span.contentRange)
                 if !destination.isEmpty {
                     result.addAttribute(.editorLinkURL, value: destination, range: span.contentRange)
@@ -210,9 +214,9 @@ extension EditorTextView {
 
             case .wikilink(let target):
                 guard span.contentRange.upperBound <= result.length else { continue }
-                // The display text reads as an accent link; the brackets (and a
+                // The display text reads as a link; the brackets (and a
                 // `target|` alias prefix) are hidden/dimmed by the delimiter pass.
-                result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                result.addAttribute(.foregroundColor, value: linkColor, range: span.contentRange)
                 result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue,
                                     range: span.contentRange)
                 if !target.isEmpty {
@@ -239,8 +243,8 @@ extension EditorTextView {
                                       forOverlayAt: span.fullRange.location, in: result)
                 } else {
                     // Active, or the image couldn't be loaded: show the alt text
-                    // accented (link-like); delimiters are dimmed/hidden below.
-                    result.addAttribute(.foregroundColor, value: accentColor, range: span.contentRange)
+                    // link-colored (same as a plain link); delimiters are dimmed/hidden below.
+                    result.addAttribute(.foregroundColor, value: linkColor, range: span.contentRange)
                     let italic = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
                     result.addAttribute(.font, value: italic, range: span.contentRange)
                 }

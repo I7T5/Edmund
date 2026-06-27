@@ -347,14 +347,14 @@ struct AppearanceIntegrationTests {
         #expect(display == "**bold**")
     }
 
-    @Test("Accent color is used for link text in active block")
+    @Test("Theme link color is used for link text in active block")
     @MainActor func accentColorActiveLink() {
         let editor = makeEditor()
         editor.loadContent("[link](url)")
         activateBlock(0, in: editor)
 
         let color = fgColor(at: 1, in: editor)
-        #expect(color == editor.accentColor)
+        #expect(color == editor.linkColor)
     }
 
     @Test("Body text color is used for inline code in both active and non-active")

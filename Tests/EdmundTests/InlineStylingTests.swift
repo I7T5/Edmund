@@ -132,7 +132,7 @@ struct InlineStylingActiveTests {
 
     // MARK: - Link
 
-    @Test("Active [link](url) has accent color on link text")
+    @Test("Active [link](url) has theme link color on link text")
     @MainActor func activeLink() {
         let editor = makeEditor()
         editor.loadContent("[click](https://example.com)")
@@ -140,7 +140,7 @@ struct InlineStylingActiveTests {
 
         // "[click](url)" — "[" at 0, "click" at 1..5
         let linkColor = fgColor(at: 1, in: editor)
-        #expect(linkColor == editor.accentColor)
+        #expect(linkColor == editor.linkColor)
 
         // Delimiter "[" should be dimmed
         let delimColor = fgColor(at: 0, in: editor)
@@ -358,9 +358,9 @@ struct InlineStylingInactiveTests {
         let base = editor.displayRanges[0].location
         // "[" delimiter hidden
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
-        // "click" content has accent color and underline
+        // "click" content has link color and underline
         let color = fgColor(at: base + 1, in: editor)
-        #expect(color == editor.accentColor)
+        #expect(color == editor.linkColor)
         let a = attrs(at: base + 1, in: editor)
         #expect(a[.underlineStyle] as? Int == NSUnderlineStyle.single.rawValue)
     }
