@@ -144,7 +144,7 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 | App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift`; Sparkle `SPUStandardUpdaterController` in `AppDelegate` |
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
 | Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (see §7) |
-| Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey` (ed25519 public key). `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure (it mounts the image and installs the `.app` inside). CI: `.github/workflows/release.yml` (tag-triggered). One-time setup: generate the EdDSA keypair with `generate_keys` (§8). |
+| Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey` (ed25519 public key). `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure (it mounts the image and installs the `.app` inside). CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline, signing, and the `RELEASE_TOKEN` PAT: §13. |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
 
@@ -238,9 +238,10 @@ them and route through the app's document graph without JavaScript.
   main binary as a temporary standalone file rather than sealing the whole bundle.
   A Developer ID cert + notarization would fix it properly; ad-hoc signing is
   the current limit.
-- **Sparkle keypair (one-time setup)**: the EdDSA public key in `Info.plist`
-  `SUPublicEDKey` is a placeholder. See §8 for the exact commands to generate
-  and install the real key before shipping an update.
+- **Sparkle keypair**: set up and verified — public key in `Info.plist`
+  `SUPublicEDKey`, private key in the login keychain and the CI secret
+  `SPARKLE_ED_PRIVATE_KEY`. Don't let them diverge. Full release/signing details
+  in §13.
 - **`create-dmg` — npm only, three quirks**:
   - Install via **npm** (`npm install --global create-dmg`), not Homebrew — they
     are different tools with incompatible CLIs. Requires Node ≥20 (`node --version`).
@@ -360,3 +361,54 @@ only with reason):
 
 If you (the agent) improve this workflow or discover a better verification
 trick, update this section.
+
+---
+
+## 13. Release & CI pipeline
+
+How a release happens, plus the non-obvious things that broke shipping 0.1.0.
+
+**Flow (tag-triggered).** Push a `vX.Y.Z` tag → `.github/workflows/release.yml`
+(`macos-14`): build the `.app` (`build-app.sh`) → DMG (npm `create-dmg`) →
+EdDSA-sign the DMG → `gh release create` (notes are the matching `CHANGELOG.md`
+section, extracted by `awk`) → commit the new `<item>` into `appcast.xml` on
+`main`. `scripts/release.sh` mirrors this locally but leaves the appcast
+commit/push to you.
+
+**To cut a release:** bump `CFBundleShortVersionString` / `CFBundleVersion` in
+`Info.plist`, add a `## [x.y.z]` section to `CHANGELOG.md`, merge to `main`,
+then `git tag vx.y.z && git push origin vx.y.z`.
+
+**EdDSA keypair — set up, not a placeholder.** The keypair exists. The public
+key is in `Info.plist` `SUPublicEDKey` (`0XdLbbuO…`); the private key lives in
+two places that must stay the *same* keypair: the maintainer's **login
+keychain** (used by `release.sh` locally, no flag) and the GitHub Actions secret
+**`SPARKLE_ED_PRIVATE_KEY`** (used by CI). Verified end-to-end: a CI-signed DMG
+verifies against the `Info.plist` public key (`sign_update --verify <dmg> <sig>`).
+If the signing key and `SUPublicEDKey` ever diverge, the DMG signs fine but every
+user's update fails signature verification.
+
+**Signing flag — `sign_update -s` is fatal for newly generated keys.** Sparkle's
+`sign_update` deprecated `-s <key>`; for keys generated after that change it
+prints only a deprecation warning and **exits 1** ("no longer supported"). This
+killed the first 0.1.0 release. Feed the key on **stdin** instead — both
+`release.yml` and `release.sh` now use:
+`echo "$SPARKLE_ED_PRIVATE_KEY" | sign_update --ed-key-file - <dmg>`.
+
+**Appcast push to protected `main` needs an admin PAT.** `main` requires the
+`test` status check. The workflow's last step commits the appcast update and
+pushes to `main`, but the default `GITHUB_TOKEN` / `github-actions[bot]` is not
+an admin, so the required check rejects it (`GH006 … protected branch hook
+declined`). `main` protection has `enforce_admins: false`, so an **admin's**
+push bypasses the check — `release.yml`'s **checkout step** therefore
+authenticates with a fine-grained admin PAT in the **`RELEASE_TOKEN`** secret
+(Contents: read/write). Set it on *checkout*, not by rewriting the push URL:
+`actions/checkout` persists an `http.<host>.extraheader` credential that
+otherwise overrides inline-URL creds, so the push would keep using the bot
+token. **`RELEASE_TOKEN` expires 2027-06-27** — rotate it before then or
+releases fail at the appcast push.
+
+**Gatekeeper / notarization.** The app is ad-hoc signed, not notarized, so users
+hit Gatekeeper on first launch; the README documents the
+`xattr -dr com.apple.quarantine` / right-click-Open workarounds. A Developer ID
+cert + notarization (see §8) would remove the prompt entirely.
