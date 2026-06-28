@@ -133,6 +133,12 @@ public class EditorTextView: NSTextView {
     /// scrolling logic lives in EditorTextView+TypewriterScroll.
     public var typewriterModeEnabled: Bool = true
 
+    /// Set to true for the duration of a mouse-down event so that the
+    /// resulting selection change does not trigger typewriter centering.
+    /// Clicks position the caret where the user clicked — centering there
+    /// would be jarring and is the root cause of the "glitchy" feeling.
+    var suppressTypewriterCentering = false
+
     /// Fraction of the available width the text column occupies, in `0...1`.
     /// `1` fills the width (the base inset only — today's look); lower values
     /// give a narrower, centered column with symmetric margins that grow on
@@ -313,6 +319,9 @@ public class EditorTextView: NSTextView {
 
     /// Cmd+click on a link's text follows it: a `[[wikilink]]` resolves to a
     /// file / heading, a regular link opens its URL. Any other click edits.
+    /// Sets `suppressTypewriterCentering` for the duration of the super call so
+    /// that the resulting selection change does not re-center the viewport —
+    /// centering when the user merely clicks somewhere feels glitchy.
     public override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command) {
             if let target = wikiTarget(at: event) {
@@ -324,7 +333,9 @@ public class EditorTextView: NSTextView {
                 return
             }
         }
+        suppressTypewriterCentering = true
         super.mouseDown(with: event)
+        suppressTypewriterCentering = false
     }
 
     /// The storage character index directly under a mouse event, or nil if the
