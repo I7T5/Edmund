@@ -85,6 +85,8 @@ enum AppSettings {
         static let conflictResolution = "settings.general.conflictResolution"
         static let appearanceMode = "settings.appearance.mode"
         static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
+        // "cm" / "in" override the locale default for the content-width control.
+        static let contentWidthUnit = "settings.appearance.contentWidthUnit"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let verboseEditorDiagnostics = "settings.advanced.verboseEditorDiagnostics"
@@ -282,5 +284,10 @@ extension NSScreen {
     /// Convert a physical centimetre value to AppKit points on this display.
     func cmToPoints(_ cm: Double) -> CGFloat {
         CGFloat(cm) / 2.54 * physicalPPI
+    }
+
+    /// The display's full physical width in centimetres.
+    var physicalWidthCm: Double {
+        Double(frame.width / physicalPPI) * 2.54
     }
 }

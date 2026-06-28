@@ -10,18 +10,35 @@ struct AppearanceSettingsView: View {
     @ObservedObject var fonts: FontSettings
     @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
+    /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
+    @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
 
-    // MARK: - Locale helpers
+    // MARK: - Unit helpers
 
-    /// Only US locale uses inches; everywhere else uses cm.
-    private var usesImperial: Bool { Locale.current.measurementSystem == .us }
+    /// Imperial when the user picked "in", metric when "cm", else the locale default.
+    private var usesImperial: Bool {
+        switch unitOverride {
+        case "in": return true
+        case "cm": return false
+        default:   return Locale.current.measurementSystem == .us
+        }
+    }
+    private func toggleUnit() { unitOverride = usesImperial ? "cm" : "in" }
+
     private var unitLabel: String { usesImperial ? "in" : "cm" }
     /// Stepper increment in display units (0.5 cm ≈ 0.25 in).
     private var stepSize: Double { usesImperial ? 0.25 : 0.5 }
-    /// Slider / stepper bounds in display units.
-    private var displayRange: ClosedRange<Double> { usesImperial ? 2.0...20.0 : 5.0...50.0 }
     /// Tick-mark spacing on the slider in display units (~5 cm / 2 in).
     private var tickStep: Double { usesImperial ? 2.0 : 5.0 }
+
+    /// Lower bound ≈ 3 inches (7.62 cm); upper bound is the full physical width
+    /// of the main display, so the column can be capped anywhere up to the
+    /// screen edge.
+    private var minCm: Double { 7.62 }
+    private var maxCm: Double { NSScreen.main?.physicalWidthCm ?? 50 }
+    private var displayRange: ClosedRange<Double> {
+        usesImperial ? (minCm / 2.54)...(maxCm / 2.54) : minCm...maxCm
+    }
 
     /// Two-way binding between stored cm and the display unit.
     private var displayValueBinding: Binding<Double> {
@@ -64,7 +81,11 @@ struct AppearanceSettingsView: View {
                     Stepper("", value: displayValueBinding,
                             in: displayRange, step: stepSize)
                         .labelsHidden()
-                    Text(unitLabel)
+                    // Clickable unit toggle styled exactly like a plain label —
+                    // .plain strips all button chrome so only the text shows.
+                    Button(action: toggleUnit) { Text(unitLabel) }
+                        .buttonStyle(.plain)
+                        .help("Switch between centimetres and inches")
                 }
                 .onChange(of: maxContentWidthCm) { applyContentWidthToOpenDocuments() }
             }
@@ -168,20 +189,28 @@ private struct ContentWidthSlider: NSViewRepresentable {
         max(displayRange.lowerBound, min(displayRange.upperBound, v))
     }
 
+    private var tickCount: Int {
+        let span = displayRange.upperBound - displayRange.lowerBound
+        return max(2, Int((span / tickStep).rounded()) + 1)
+    }
+
     func makeNSView(context: Context) -> NSSlider {
         let slider = NSSlider(value: clamp(cmToDisplay(cmValue)),
                               minValue: displayRange.lowerBound,
                               maxValue: displayRange.upperBound,
                               target: context.coordinator,
                               action: #selector(Coordinator.sliderChanged(_:)))
-        let span = displayRange.upperBound - displayRange.lowerBound
-        slider.numberOfTickMarks = Int((span / tickStep).rounded()) + 1
+        slider.numberOfTickMarks = tickCount
         slider.allowsTickMarkValuesOnly = false
         return slider
     }
 
     func updateNSView(_ slider: NSSlider, context: Context) {
         context.coordinator.parent = self
+        // Range and tick count change when the unit is toggled (cm ↔ in).
+        slider.minValue = displayRange.lowerBound
+        slider.maxValue = displayRange.upperBound
+        slider.numberOfTickMarks = tickCount
         let display = clamp(cmToDisplay(cmValue))
         if abs(slider.doubleValue - display) > 0.001 {
             slider.doubleValue = display
