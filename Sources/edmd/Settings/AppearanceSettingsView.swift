@@ -28,8 +28,6 @@ struct AppearanceSettingsView: View {
     private var unitLabel: String { usesImperial ? "in" : "cm" }
     /// Stepper increment in display units (0.5 cm ≈ 0.25 in).
     private var stepSize: Double { usesImperial ? 0.25 : 0.5 }
-    /// Tick-mark spacing on the slider in display units (~5 cm / 2 in).
-    private var tickStep: Double { usesImperial ? 2.0 : 5.0 }
 
     /// Lower bound ≈ 3 inches (7.62 cm); upper bound is the full physical width
     /// of the main display, so the column can be capped anywhere up to the
@@ -73,7 +71,6 @@ struct AppearanceSettingsView: View {
                         cmValue: $maxContentWidthCm,
                         usesImperial: usesImperial,
                         displayRange: displayRange,
-                        tickStep: tickStep,
                         snapDisplayValue: snapDisplayValue
                     )
                     .frame(width: 200, height: 20)
@@ -179,15 +176,14 @@ struct AppearanceSettingsView: View {
     }
 }
 
-// MARK: - Continuous NSSlider with visual tick marks
+// MARK: - Continuous NSSlider
 
-/// Wraps NSSlider to get a continuous slider with visual tick marks.
-/// `allowsTickMarkValuesOnly = false` keeps dragging smooth; ticks are visual only.
+/// Wraps NSSlider so the content-width control can use cm/in units and a
+/// magnetic snap onto the default value.
 private struct ContentWidthSlider: NSViewRepresentable {
     @Binding var cmValue: Double
     let usesImperial: Bool
     let displayRange: ClosedRange<Double>
-    let tickStep: Double
     /// Magnetic snap target in display units (the default width); dragging
     /// within `snapTolerance` of it locks onto it exactly.
     let snapDisplayValue: Double
@@ -205,28 +201,19 @@ private struct ContentWidthSlider: NSViewRepresentable {
         max(displayRange.lowerBound, min(displayRange.upperBound, v))
     }
 
-    private var tickCount: Int {
-        let span = displayRange.upperBound - displayRange.lowerBound
-        return max(2, Int((span / tickStep).rounded()) + 1)
-    }
-
     func makeNSView(context: Context) -> NSSlider {
-        let slider = NSSlider(value: clamp(cmToDisplay(cmValue)),
-                              minValue: displayRange.lowerBound,
-                              maxValue: displayRange.upperBound,
-                              target: context.coordinator,
-                              action: #selector(Coordinator.sliderChanged(_:)))
-        slider.numberOfTickMarks = tickCount
-        slider.allowsTickMarkValuesOnly = false
-        return slider
+        NSSlider(value: clamp(cmToDisplay(cmValue)),
+                 minValue: displayRange.lowerBound,
+                 maxValue: displayRange.upperBound,
+                 target: context.coordinator,
+                 action: #selector(Coordinator.sliderChanged(_:)))
     }
 
     func updateNSView(_ slider: NSSlider, context: Context) {
         context.coordinator.parent = self
-        // Range and tick count change when the unit is toggled (cm ↔ in).
+        // Range changes when the unit is toggled (cm ↔ in).
         slider.minValue = displayRange.lowerBound
         slider.maxValue = displayRange.upperBound
-        slider.numberOfTickMarks = tickCount
         let display = clamp(cmToDisplay(cmValue))
         if abs(slider.doubleValue - display) > 0.001 {
             slider.doubleValue = display
