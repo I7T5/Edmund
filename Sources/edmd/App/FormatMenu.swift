@@ -51,6 +51,7 @@ enum FormatMenu {
         let menu = NSMenu(title: "Format")
 
         menu.addItem(headingSubmenuItem())
+        menu.addItem(thematicBreakCommand.makeItem())
         menu.addItem(.separator())
 
         for cmd in listCommands { menu.addItem(cmd.makeItem()) }
@@ -61,7 +62,6 @@ enum FormatMenu {
 
         for cmd in blockCommands { menu.addItem(cmd.makeItem()) }
         menu.addItem(calloutSubmenuItem())
-        menu.addItem(thematicBreakCommand.makeItem())
         menu.addItem(footnoteCommand.makeItem())
         menu.addItem(.separator())
 

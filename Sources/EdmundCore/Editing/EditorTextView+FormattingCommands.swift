@@ -429,27 +429,39 @@ extension EditorTextView {
 
     // MARK: - Thematic break
 
-    /// Thematic break (horizontal rule): inserts `---` on its own line after the
-    /// current line, preceded by a blank separator so it isn't parsed as a setext
-    /// heading underline. Toggle-off: if the selected line is exactly `---`, removes it.
+    /// Thematic break (horizontal rule): inserts `---` on its own line.
+    /// Toggle-off: if the selected line is exactly `---`, removes it.
     ///
-    /// Caret lands after the `---\n` so the next paragraph can be typed immediately.
+    /// Insertion rules:
+    ///   • Empty line — replace the line with `---\n` (the caret is already on
+    ///     an isolated line, so no separator is needed).
+    ///   • Non-empty line — insert `\n---\n` after the line end; prepend an
+    ///     extra `\n` when the line has no trailing newline (last line, no EOF
+    ///     newline) so the `---` isn't parsed as a setext heading underline.
+    ///
+    /// Caret lands after `---\n` so the next paragraph can be typed immediately.
     private func insertThematicBreak() {
         let ns = rawSource as NSString
         let ctx = selectedLineContext()
 
         if ctx.lines == ["---"] {
-            // Toggle-off: remove the "---" line (ctx.range includes the trailing \n if any).
             applyFormattingEdit(rawRange: ctx.range, replacement: "",
                                 select: NSRange(location: ctx.range.location, length: 0))
             return
         }
 
-        // Insert "\n---\n" after the current line end. If the current line has no
-        // trailing newline (last line, no EOF newline), prepend an extra \n so the
-        // "---" is separated from the previous content and not parsed as a setext heading.
         let sel = selectedRange()
         let line = ns.lineRange(for: NSRange(location: min(sel.location, ns.length), length: 0))
+
+        // Empty line: replace just the line content with "---\n".
+        if ctx.lines == [""] {
+            let replacement = "---\n"
+            applyFormattingEdit(rawRange: ctx.range, replacement: replacement,
+                                select: NSRange(location: ctx.range.location + 3, length: 0))
+            return
+        }
+
+        // Non-empty line: insert after the line end.
         let hasTrailingNewline = line.upperBound > line.location
             && ns.character(at: line.upperBound - 1) == 0x0A
         let text = hasTrailingNewline ? "\n---\n" : "\n\n---\n"
