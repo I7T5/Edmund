@@ -172,7 +172,7 @@ guard stranded the sync (the first thing to grep for if it happens again).
 
 A third reproduction (`misc/bug-repros/delete-caret-drift-3.*`) on a build that
 **already had the round-1 and round-2 fixes**, editing a heading immediately
-followed by a list. Two facts narrowed it:
+followed by a list. Three facts narrowed it:
 
 - The log had **no `recovered stranded desync` line** — so either the invariant
   held or recovery never ran. The desync-via-marked-text signature didn't appear.
@@ -180,6 +180,13 @@ followed by a list. Two facts narrowed it:
   item under a heading) showed the **model is correct**: the caret moves back by
   one each press, `storage == rawSource` holds, and `blocks` reconstruct
   `rawSource` throughout. The video's caret jump did **not** reproduce headlessly.
+- **Timing clue:** the reporter confirms it only appears **after a few minutes of
+  editing in the same window** — never on a freshly opened one. So the trigger is
+  *accumulated live-session state* (TextKit 2 layout / input-context / NSTextView
+  internal state), not the document content or any single keystroke. A fresh
+  window is clean; something builds up. This is why it resists headless and
+  short-session reproduction — and why the verbose trace must be left running
+  across a long editing session to catch the transition.
 
 Conclusion: the core edit/parse model is sound; the drift is a **live
 NSTextView / TextKit 2 / input-context** phenomenon that cannot be reproduced or

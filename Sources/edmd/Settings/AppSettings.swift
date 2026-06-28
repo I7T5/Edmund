@@ -196,14 +196,9 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.suppressInconsistentLineEndingWarning) }
     }
 
-    /// Whether diagnostic logging is on. Defaults to on; the user can opt out.
+    /// Whether diagnostic logging is on. Defaults to off; the user can opt in.
     static var diagnosticLogging: Bool {
-        get {
-            guard UserDefaults.standard.object(forKey: Key.diagnosticLogging) != nil else {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: Key.diagnosticLogging)
-        }
+        get { UserDefaults.standard.bool(forKey: Key.diagnosticLogging) }
         set { UserDefaults.standard.set(newValue, forKey: Key.diagnosticLogging) }
     }
 

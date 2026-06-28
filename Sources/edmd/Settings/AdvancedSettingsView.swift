@@ -4,7 +4,7 @@ import AppKit
 struct AdvancedSettingsView: View {
     @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
     private var autoCheckUpdates = true
-    @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = true
+    @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = false
     @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = false
     @AppStorage(AppSettings.Key.logRetention) private var logRetention = AppSettings.LogRetention.twoWeeks
     // Crash-log sending is dormant until the receiving server exists — the toggle
@@ -42,7 +42,7 @@ struct AdvancedSettingsView: View {
                     }
                     .disabled(!diagnosticLogging)
                     .padding(.leading, 20)
-                    Text("Logs are kept locally at ~/.edmund/logs and they are useful only if you would like to help the dev by submitting context-rich bug reports and make her life happier. Otherwise, the logs will never leave their folder.")
+                    Text("Logs are kept locally at ~/.edmund/logs and will never leave that folder unless you move them. They are only useful if you want to improve your bug reports / GitHub issues.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
@@ -56,7 +56,7 @@ struct AdvancedSettingsView: View {
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 380, alignment: .leading)
+                        .frame(width: 360, alignment: .leading)
                         .padding(.leading, 40)
 }
             }
