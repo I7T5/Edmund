@@ -6,6 +6,7 @@ import AppKit
 extension EditorTextView {
 
     @objc func selectionDidChange(_ notification: Notification) {
+        traceEdit("selectionDidChange")
         guard !isUpdating else { return }
         // NSTextView moves the selection DURING an edit, before didChangeText
         // runs the sync — at that moment `blocks` still has pre-edit ranges.

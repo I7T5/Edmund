@@ -33,7 +33,7 @@ public enum Log {
     /// Subsystem tag on each line — mirrors the architecture's areas so logs can
     /// be grepped by concern.
     public enum Category: String, Sendable {
-        case app, document, io, render, compose, selection, lazy, callout
+        case app, document, io, render, compose, selection, lazy, callout, edit
     }
 
     /// What gets written in this build. The user opts the whole facility out;
@@ -56,6 +56,14 @@ public enum Log {
         LogStore.shared.setEnabled(enabled)
     }
 
+    /// Verbose editor tracing: a separate opt-in (off by default) gating the
+    /// high-volume per-edit / per-caret-move `trace` lines. Kept distinct from the
+    /// on/off of the whole logger so a normal user's logs aren't flooded with
+    /// keystroke-level detail; turned on only when reproducing an editor bug.
+    public static func setVerbose(_ verbose: Bool) {
+        LogStore.shared.setVerbose(verbose)
+    }
+
     // MARK: Emit
 
     public static func debug(_ message: @autoclosure () -> String, category: Category = .app) {
@@ -71,6 +79,22 @@ public enum Log {
     public static func error(_ message: @autoclosure () -> String, category: Category = .app) {
         guard shouldLog(.error) else { return }
         LogStore.shared.write(level: .error, category: category, message: message(), date: Date())
+    }
+
+    /// High-volume editor trace (edit pipeline, caret moves). Written at `info`
+    /// level but ONLY when verbose editor tracing is enabled — so it's free and
+    /// silent in normal use, and complete when a bug is being reproduced. Use for
+    /// the intricate live-NSTextView / TextKit 2 paths that can't be inspected
+    /// headlessly. The message is an autoclosure: zero cost when verbose is off.
+    public static func trace(_ message: @autoclosure () -> String, category: Category = .edit) {
+        guard shouldTrace else { return }
+        LogStore.shared.write(level: .info, category: category, message: message(), date: Date())
+    }
+
+    /// True when verbose editor tracing should be written (logging on AND verbose
+    /// on). Lets callers skip building expensive trace context.
+    public static var shouldTrace: Bool {
+        LogStore.shared.isEnabled && LogStore.shared.isVerbose
     }
 
     /// Runs `body`, and if logging is active emits one line with how long it took.
@@ -134,6 +158,7 @@ private final class LogStore: @unchecked Sendable {
 
     // Lock-guarded configuration.
     private var _enabled = false
+    private var _verbose = false
     private var directory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".edmund/logs", isDirectory: true)
 
@@ -144,6 +169,7 @@ private final class LogStore: @unchecked Sendable {
     private let timeFormatter = LogStore.makeFormatter("yyyy-MM-dd HH:mm:ss.SSS")
 
     var isEnabled: Bool { lock.withLock { _enabled } }
+    var isVerbose: Bool { lock.withLock { _verbose } }
 
     func configure(enabled: Bool, directory: URL, retention: TimeInterval?) {
         lock.withLock {
@@ -158,6 +184,10 @@ private final class LogStore: @unchecked Sendable {
 
     func setEnabled(_ enabled: Bool) {
         lock.withLock { _enabled = enabled }
+    }
+
+    func setVerbose(_ verbose: Bool) {
+        lock.withLock { _verbose = verbose }
     }
 
     func write(level: Log.Level, category: Log.Category, message: String, date: Date) {

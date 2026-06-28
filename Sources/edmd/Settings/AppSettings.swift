@@ -100,6 +100,7 @@ enum AppSettings {
         static let contentWidthFraction = "settings.appearance.contentWidthFraction"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
+        static let verboseEditorDiagnostics = "settings.advanced.verboseEditorDiagnostics"
         static let logRetention = "settings.general.logRetention"
         static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
         static let sourceMode = "settings.view.sourceMode"
@@ -206,6 +207,15 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.diagnosticLogging) }
     }
 
+    /// Verbose editor tracing: high-volume per-edit / per-caret-move trace lines
+    /// for diagnosing live-NSTextView / TextKit 2 editor bugs (caret drift, sync
+    /// desyncs) that can't be reproduced headlessly. Off by default — turned on
+    /// only when capturing a reproduction. Requires diagnostic logging to be on.
+    static var verboseEditorDiagnostics: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.verboseEditorDiagnostics) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.verboseEditorDiagnostics) }
+    }
+
     /// Whether to auto-send crash reports on launch. Opt-in: defaults off, since
     /// it sends data off-device. (UI currently commented out — see
     /// AdvancedSettingsView — until the receiving server exists.)
@@ -249,6 +259,7 @@ enum AppSettings {
         Log.configure(enabled: diagnosticLogging,
                       directory: logDirectory,
                       retention: logRetention.timeInterval)
+        Log.setVerbose(verboseEditorDiagnostics)
     }
 
     @MainActor static func applyAppearance() {

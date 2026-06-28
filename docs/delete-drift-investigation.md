@@ -167,3 +167,41 @@ macOS 14+, `inlinePredictionType = .no` — matching the four auto-substitutions
 already disabled there. Kept a permanent `Log.info` in
 `recoverFromStrandedCompositionIfNeeded` so any *future* recurrence records which
 guard stranded the sync (the first thing to grep for if it happens again).
+
+## Round 3: recurred post-fix — and why we built diagnostics instead
+
+A third reproduction (`misc/bug-repros/delete-caret-drift-3.*`) on a build that
+**already had the round-1 and round-2 fixes**, editing a heading immediately
+followed by a list. Two facts narrowed it:
+
+- The log had **no `recovered stranded desync` line** — so either the invariant
+  held or recovery never ran. The desync-via-marked-text signature didn't appear.
+- A **headless probe** of the exact gesture (backspace at the start of a list
+  item under a heading) showed the **model is correct**: the caret moves back by
+  one each press, `storage == rawSource` holds, and `blocks` reconstruct
+  `rawSource` throughout. The video's caret jump did **not** reproduce headlessly.
+
+Conclusion: the core edit/parse model is sound; the drift is a **live
+NSTextView / TextKit 2 / input-context** phenomenon that cannot be reproduced or
+inspected headlessly. Chasing it blind is the wrong move — so this round added
+**in-app diagnostics** to capture the live trail at reproduction time:
+
+- **Verbose editor tracing** (`Log.trace` / `Log.shouldTrace`, category `.edit`,
+  gated by Settings ▸ Advanced ▸ "Verbose editor tracing", off by default). The
+  edit pipeline (`shouldChangeText`, `didChangeText` incl. the bail reason,
+  `syncRawSourceFromDisplay`, `selectionDidChange`) emits one line per event with
+  a live-state prefix: caret range, active block, marked-text range, the
+  `isUpdating`/`isUndoRedoing` flags, and storage-vs-rawSource lengths
+  (`EditorTextView+Diagnostics.swift`). A reproduction now yields a readable
+  keystroke-level trail in `~/.edmund/logs`.
+- **Always-on invariant tripwire** (`verifyEditorInvariants`, called after each
+  sync): an O(1) `storage.length != rawSource.length` check logs an `error`
+  whenever the hard invariant breaks — no verbose toggle needed. The full
+  structural check (string equality + blocks reconstruct rawSource + in-bounds
+  ranges) runs under verbose and asserts in DEBUG.
+
+**Next time it happens:** ask the reporter to enable "Verbose editor tracing,"
+reproduce, and send `~/.edmund/logs`. The trace shows exactly when the caret
+diverges from the edit and what the marked-text / flag / length state was at that
+instant — which should finally localize the live-layer cause (still-sneaking
+marked text vs. a TextKit 2 selection-after-edit quirk).
