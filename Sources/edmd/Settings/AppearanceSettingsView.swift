@@ -11,6 +11,26 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
 
+    // MARK: - Locale helpers
+
+    /// Only US locale uses inches; everywhere else uses cm.
+    private var usesImperial: Bool { Locale.current.measurementSystem == .us }
+    private var unitLabel: String { usesImperial ? "in" : "cm" }
+    /// Stepper increment in display units (0.5 cm ≈ 0.25 in).
+    private var stepSize: Double { usesImperial ? 0.25 : 0.5 }
+    /// Slider / stepper bounds in display units.
+    private var displayRange: ClosedRange<Double> { usesImperial ? 2.0...20.0 : 5.0...50.0 }
+    /// Tick-mark spacing on the slider in display units (~5 cm / 2 in).
+    private var tickStep: Double { usesImperial ? 2.0 : 5.0 }
+
+    /// Two-way binding between stored cm and the display unit.
+    private var displayValueBinding: Binding<Double> {
+        Binding(
+            get: { usesImperial ? maxContentWidthCm / 2.54 : maxContentWidthCm },
+            set: { maxContentWidthCm = usesImperial ? $0 * 2.54 : $0 }
+        )
+    }
+
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
             GridRow {
@@ -29,16 +49,22 @@ struct AppearanceSettingsView: View {
                 Text("Max content width:")
                     .gridColumnAlignment(.trailing)
                 HStack(spacing: 8) {
-                    TextField("", value: $maxContentWidthCm,
+                    ContentWidthSlider(
+                        cmValue: $maxContentWidthCm,
+                        usesImperial: usesImperial,
+                        displayRange: displayRange,
+                        tickStep: tickStep
+                    )
+                    .frame(width: 200, height: 20)
+
+                    TextField("", value: displayValueBinding,
                               format: .number.precision(.fractionLength(1)))
                         .multilineTextAlignment(.trailing)
-                        .frame(width: 56)
-                    Stepper("", value: $maxContentWidthCm, in: 5.0...200.0, step: 0.5)
+                        .frame(width: 44)
+                    Stepper("", value: displayValueBinding,
+                            in: displayRange, step: stepSize)
                         .labelsHidden()
-                    Text("cm")
-                    Text("(wider windows cap the column at this physical width)")
-                        .foregroundStyle(.secondary)
-                        .controlSize(.small)
+                    Text(unitLabel)
                 }
                 .onChange(of: maxContentWidthCm) { applyContentWidthToOpenDocuments() }
             }
@@ -121,6 +147,56 @@ struct AppearanceSettingsView: View {
                 .labelsHidden()
             Button("Select…", action: select)
                 .fixedSize()
+        }
+    }
+}
+
+// MARK: - Continuous NSSlider with visual tick marks
+
+/// Wraps NSSlider to get a continuous slider with visual tick marks.
+/// `allowsTickMarkValuesOnly = false` keeps dragging smooth; ticks are visual only.
+private struct ContentWidthSlider: NSViewRepresentable {
+    @Binding var cmValue: Double
+    let usesImperial: Bool
+    let displayRange: ClosedRange<Double>
+    let tickStep: Double
+
+    func cmToDisplay(_ cm: Double) -> Double { usesImperial ? cm / 2.54 : cm }
+    func displayToCm(_ d: Double) -> Double  { usesImperial ? d * 2.54 : d }
+
+    private func clamp(_ v: Double) -> Double {
+        max(displayRange.lowerBound, min(displayRange.upperBound, v))
+    }
+
+    func makeNSView(context: Context) -> NSSlider {
+        let slider = NSSlider(value: clamp(cmToDisplay(cmValue)),
+                              minValue: displayRange.lowerBound,
+                              maxValue: displayRange.upperBound,
+                              target: context.coordinator,
+                              action: #selector(Coordinator.sliderChanged(_:)))
+        let span = displayRange.upperBound - displayRange.lowerBound
+        slider.numberOfTickMarks = Int((span / tickStep).rounded()) + 1
+        slider.allowsTickMarkValuesOnly = false
+        return slider
+    }
+
+    func updateNSView(_ slider: NSSlider, context: Context) {
+        context.coordinator.parent = self
+        let display = clamp(cmToDisplay(cmValue))
+        if abs(slider.doubleValue - display) > 0.001 {
+            slider.doubleValue = display
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: ContentWidthSlider
+        init(parent: ContentWidthSlider) { self.parent = parent }
+
+        @objc func sliderChanged(_ sender: NSSlider) {
+            parent.cmValue = parent.displayToCm(sender.doubleValue)
         }
     }
 }
