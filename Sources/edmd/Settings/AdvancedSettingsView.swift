@@ -4,7 +4,8 @@ import AppKit
 struct AdvancedSettingsView: View {
     @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
     private var autoCheckUpdates = true
-    @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = true
+    @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = false
+    @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = false
     @AppStorage(AppSettings.Key.logRetention) private var logRetention = AppSettings.LogRetention.twoWeeks
     // Crash-log sending is dormant until the receiving server exists — the toggle
     // is hidden (commented out below) so it isn't offered with nowhere to send to.
@@ -41,13 +42,23 @@ struct AdvancedSettingsView: View {
                     }
                     .disabled(!diagnosticLogging)
                     .padding(.leading, 20)
-                    Text("Logs are kept locally at ~/.edmund/logs and they are useful only if you would like to help the dev by submitting context-rich bug reports and make her life happier. Otherwise, the logs will never leave their folder.")
+                    Text("Logs are kept locally at ~/.edmund/logs and will never leave that folder unless you move them. They are only useful if you want to improve your bug reports / GitHub issues.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
-                }
+                    Toggle("Verbose editor tracing", isOn: $verboseEditorDiagnostics)
+                        .onChange(of: verboseEditorDiagnostics) { AppSettings.applyLogging() }
+                        .disabled(!diagnosticLogging)
+                        .padding(.leading, 20)
+                    Text("Records every keystroke, caret move, and sync — for reproducing tricky editor bugs (caret drift). Noisy; leave off unless asked.")
+                        .foregroundStyle(.secondary)
+                        .controlSize(.small)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 360, alignment: .leading)
+                        .padding(.leading, 40)
+}
             }
 
             // Dormant until the crash-report server exists (see note above and

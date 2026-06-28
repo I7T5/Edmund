@@ -27,24 +27,34 @@ extension EditorTextView {
     }
 
     public override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
-        if isUpdating { return false }
+        if isUpdating {
+            traceEdit("shouldChangeText REJECTED (isUpdating) range=\(affectedCharRange) repl=\(logSnippet(replacementString))")
+            return false
+        }
         if let replacement = replacementString {
             if !isUndoRedoing {
                 recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
             }
         }
+        traceEdit("shouldChangeText OK range=\(affectedCharRange) repl=\(logSnippet(replacementString))")
         return true
     }
 
     public override func didChangeText() {
         super.didChangeText()
-        guard !isUpdating, !isUndoRedoing else { return }
+        guard !isUpdating, !isUndoRedoing else {
+            traceEdit("didChangeText SKIPPED sync (isUpdating=\(isUpdating) isUndoRedoing=\(isUndoRedoing))")
+            return
+        }
         // While an input method is composing (marked text — e.g. emoji search,
         // accent/IME entry), the storage holds provisional text. Re-styling it
         // (setAttributes over the marked range) interferes with the composition
         // and can abort it, so defer all syncing/restyling until the IME commits
         // — which fires didChangeText again with no marked text.
-        guard !hasMarkedText() else { return }
+        guard !hasMarkedText() else {
+            traceEdit("didChangeText DEFERRED sync (marked text active)")
+            return
+        }
         syncRawSourceFromDisplay()
         document?.updateChangeCount(.changeDone)
         scrollCursorToCenter()
@@ -125,6 +135,8 @@ extension EditorTextView {
         }
 
         recomposeDirty(dirty, cursorInRaw: cursorRaw)
+        traceEdit("synced cursorRaw=\(cursorRaw) changed=\(changed.lowerBound)..<\(changed.upperBound) oldActive=\(oldActive.map(String.init) ?? "nil")")
+        verifyEditorInvariants("syncRawSourceFromDisplay")
     }
 
     #if DEBUG
