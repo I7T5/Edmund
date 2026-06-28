@@ -61,6 +61,7 @@ enum FormatMenu {
 
         for cmd in blockCommands { menu.addItem(cmd.makeItem()) }
         menu.addItem(calloutSubmenuItem())
+        menu.addItem(thematicBreakCommand.makeItem())
         menu.addItem(footnoteCommand.makeItem())
         menu.addItem(.separator())
 
@@ -97,6 +98,9 @@ enum FormatMenu {
         MenuCommand(id: "format.image", title: "Image",
                     action: #selector(EditorTextView.formatImage(_:))),
     ]
+
+    private static let thematicBreakCommand = MenuCommand(id: "format.thematicBreak", title: "Thematic Break",
+                    action: #selector(EditorTextView.formatThematicBreak(_:)))
 
     private static let footnoteCommand = MenuCommand(id: "format.footnote", title: "Footnote",
                     action: #selector(EditorTextView.formatFootnote(_:)))

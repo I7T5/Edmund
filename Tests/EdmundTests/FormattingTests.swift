@@ -504,3 +504,42 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource == "**word**")
     }
 }
+
+// MARK: - Thematic break
+
+@MainActor @Suite struct FormatThematicBreakTests {
+
+    @Test func insertsAfterCurrentLine() {
+        let e = mk("Hello", NSRange(location: 2, length: 0))
+        e.formatThematicBreak(nil)
+        // No trailing newline on "Hello" → prepend \n\n to avoid setext heading.
+        #expect(e.rawSource == "Hello\n\n---\n")
+    }
+
+    @Test func insertsBlankLineSeparatorWhenLineHasNewline() {
+        let e = mk("Hello\nWorld", NSRange(location: 2, length: 0))
+        e.formatThematicBreak(nil)
+        // "Hello\n" ends with newline → insert \n---\n after it, giving a blank before ---.
+        #expect(e.rawSource == "Hello\n\n---\nWorld")
+    }
+
+    @Test func toggleOffRemovesDashLine() {
+        let e = mk("---", NSRange(location: 0, length: 3))
+        e.formatThematicBreak(nil)
+        #expect(e.rawSource == "")
+    }
+
+    @Test func toggleOffWithTrailingNewline() {
+        let e = mk("---\n", NSRange(location: 0, length: 3))
+        e.formatThematicBreak(nil)
+        #expect(e.rawSource == "")
+    }
+
+    @Test func caretInsideLineAlsoInserts() {
+        // Caret anywhere on the line triggers insert, not toggle-off.
+        let e = mk("Line\n", NSRange(location: 2, length: 0))
+        e.formatThematicBreak(nil)
+        #expect(e.rawSource.contains("---"))
+        #expect(e.rawSource.contains("Line"))
+    }
+}

@@ -85,6 +85,7 @@ extension EditorTextView {
     @objc public func formatNumberedList(_ sender: Any?)  { toggleNumberedList() }
     @objc public func formatChecklist(_ sender: Any?)     { toggleChecklist() }
     @objc public func formatBlockQuote(_ sender: Any?)    { toggleLinePrefix("> ") }
+    @objc public func formatThematicBreak(_ sender: Any?) { insertThematicBreak() }
     @objc public func formatCodeBlock(_ sender: Any?)     { insertCodeBlock() }
     @objc public func formatMathBlock(_ sender: Any?)     { insertMathBlock() }
     @objc public func formatTable(_ sender: Any?)         { insertTable() }
@@ -119,9 +120,9 @@ extension EditorTextView {
         #selector(formatInlineMath(_:)), #selector(formatKeyboard(_:)), #selector(formatComment(_:)),
         #selector(formatWikilink(_:)), #selector(formatLink(_:)), #selector(formatImage(_:)),
         #selector(formatFootnote(_:)), #selector(formatBulletedList(_:)), #selector(formatNumberedList(_:)),
-        #selector(formatChecklist(_:)), #selector(formatBlockQuote(_:)), #selector(formatCodeBlock(_:)),
-        #selector(formatMathBlock(_:)), #selector(formatTable(_:)), #selector(formatHeading(_:)),
-        #selector(formatCallout(_:)),
+        #selector(formatChecklist(_:)), #selector(formatBlockQuote(_:)), #selector(formatThematicBreak(_:)),
+        #selector(formatCodeBlock(_:)), #selector(formatMathBlock(_:)), #selector(formatTable(_:)),
+        #selector(formatHeading(_:)), #selector(formatCallout(_:)),
     ]
 
     // MARK: - Heading
@@ -424,6 +425,39 @@ extension EditorTextView {
         applyFormattingEdit(rawRange: NSRange(location: insertPos, length: 0),
                             replacement: replacement,
                             select: NSRange(location: caret, length: 0))
+    }
+
+    // MARK: - Thematic break
+
+    /// Thematic break (horizontal rule): inserts `---` on its own line after the
+    /// current line, preceded by a blank separator so it isn't parsed as a setext
+    /// heading underline. Toggle-off: if the selected line is exactly `---`, removes it.
+    ///
+    /// Caret lands after the `---\n` so the next paragraph can be typed immediately.
+    private func insertThematicBreak() {
+        let ns = rawSource as NSString
+        let ctx = selectedLineContext()
+
+        if ctx.lines == ["---"] {
+            // Toggle-off: remove the "---" line (ctx.range includes the trailing \n if any).
+            applyFormattingEdit(rawRange: ctx.range, replacement: "",
+                                select: NSRange(location: ctx.range.location, length: 0))
+            return
+        }
+
+        // Insert "\n---\n" after the current line end. If the current line has no
+        // trailing newline (last line, no EOF newline), prepend an extra \n so the
+        // "---" is separated from the previous content and not parsed as a setext heading.
+        let sel = selectedRange()
+        let line = ns.lineRange(for: NSRange(location: min(sel.location, ns.length), length: 0))
+        let hasTrailingNewline = line.upperBound > line.location
+            && ns.character(at: line.upperBound - 1) == 0x0A
+        let text = hasTrailingNewline ? "\n---\n" : "\n\n---\n"
+        let insertAt = line.upperBound
+        let caret = insertAt + (text as NSString).length
+        applyFormattingEdit(rawRange: NSRange(location: insertAt, length: 0),
+                            replacement: text,
+                            select: NSRange(location: min(caret, (rawSource as NSString).length), length: 0))
     }
 
     // MARK: - Callout / alert
