@@ -9,7 +9,47 @@ import EdmundCore
 struct AppearanceSettingsView: View {
     @ObservedObject var fonts: FontSettings
     @AppStorage(AppSettings.Key.appearanceMode) private var appearanceMode = AppSettings.AppearanceMode.matchSystem
-    @AppStorage(AppSettings.Key.contentWidthFraction) private var contentWidth = AppSettings.ContentWidth.defaultFraction
+    @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
+    /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
+    @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
+
+    // MARK: - Unit helpers
+
+    /// Imperial when the user picked "in", metric when "cm", else the locale default.
+    private var usesImperial: Bool {
+        switch unitOverride {
+        case "in": return true
+        case "cm": return false
+        default:   return Locale.current.measurementSystem == .us
+        }
+    }
+    private func toggleUnit() { unitOverride = usesImperial ? "cm" : "in" }
+
+    private var unitLabel: String { usesImperial ? "in" : "cm" }
+    /// Stepper increment in display units (0.5 cm ≈ 0.25 in).
+    private var stepSize: Double { usesImperial ? 0.25 : 0.5 }
+    /// Tick-mark spacing on the slider in display units (~5 cm / 2 in).
+    private var tickStep: Double { usesImperial ? 2.0 : 5.0 }
+
+    /// Lower bound ≈ 3 inches (7.62 cm); upper bound is the full physical width
+    /// of the main display, so the column can be capped anywhere up to the
+    /// screen edge.
+    private var minCm: Double { 7.62 }
+    private var maxCm: Double { NSScreen.main?.physicalWidthCm ?? 50 }
+    private var displayRange: ClosedRange<Double> {
+        usesImperial ? (minCm / 2.54)...(maxCm / 2.54) : minCm...maxCm
+    }
+
+    /// Magnetic snap target in display units: 5 in / 12 cm (the default width).
+    private var snapDisplayValue: Double { usesImperial ? 5.0 : 12.0 }
+
+    /// Two-way binding between stored cm and the display unit.
+    private var displayValueBinding: Binding<Double> {
+        Binding(
+            get: { usesImperial ? maxContentWidthCm / 2.54 : maxContentWidthCm },
+            set: { maxContentWidthCm = usesImperial ? $0 * 2.54 : $0 }
+        )
+    }
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
@@ -29,27 +69,32 @@ struct AppearanceSettingsView: View {
                 Text("Max content width:")
                     .gridColumnAlignment(.trailing)
                 HStack(spacing: 8) {
-                    // Continuous from the Mobile minimum to full width, with a
-                    // magnetic snap onto the default (≈ Obsidian) width.
-                    let value = Binding(
-                        get: { contentWidth },
-                        set: { newValue in
-                            let d = AppSettings.ContentWidth.defaultFraction
-                            contentWidth = abs(newValue - d) < AppSettings.ContentWidth.snapTolerance
-                                ? d : newValue
-                        }
+                    ContentWidthSlider(
+                        cmValue: $maxContentWidthCm,
+                        usesImperial: usesImperial,
+                        displayRange: displayRange,
+                        tickStep: tickStep,
+                        snapDisplayValue: snapDisplayValue
                     )
-                    Slider(value: value, in: AppSettings.ContentWidth.minFraction...1.0)
-                        .frame(width: 200)
-                    let percent = contentWidthPercentBinding
-                    TextField("", value: percent, format: .number.precision(.fractionLength(0)))
+                    .frame(width: 200, height: 20)
+
+                    // Field width is sized so its stepper's chevrons line up
+                    // vertically with the font rows' steppers (slider 200 + two
+                    // 8-pt gaps + field == 240, the font rows' label width).
+                    TextField("", value: displayValueBinding,
+                              format: .number.precision(.fractionLength(1)))
                         .multilineTextAlignment(.trailing)
                         .frame(width: 32)
-                    Stepper("", value: percent, in: contentWidthPercentRange, step: 1)
+                    Stepper("", value: displayValueBinding,
+                            in: displayRange, step: stepSize)
                         .labelsHidden()
-                    Text("%")
+                    // Clickable unit toggle styled exactly like a plain label —
+                    // .plain strips all button chrome so only the text shows.
+                    Button(action: toggleUnit) { Text(unitLabel) }
+                        .buttonStyle(.plain)
+                        .help("Switch between centimetres and inches")
                 }
-                .onChange(of: contentWidth) { applyContentWidthToOpenDocuments() }
+                .onChange(of: maxContentWidthCm) { applyContentWidthToOpenDocuments() }
             }
 
             GridRow {
@@ -108,38 +153,13 @@ struct AppearanceSettingsView: View {
         .settingsPanePadding()
     }
 
-    /// The standard screen the coverage percentage is measured against.
-    private var contentWidthScreen: CGFloat { NSScreen.main?.frame.width ?? 1440 }
-
-    /// The percentage shown/edited is how much of the screen the column covers
-    /// (≈25%…97%), not the raw fraction — so the narrowest setting reads as a
-    /// sensible share of the screen, never 0%. The binding maps that percentage
-    /// back to the stored fraction so the slider and stepper share one value.
-    private var contentWidthPercentBinding: Binding<Double> {
-        Binding(
-            get: {
-                (EditorTextView.contentCoverage(viewWidth: contentWidthScreen,
-                                                fraction: CGFloat(contentWidth)) * 100).rounded()
-            },
-            set: { pct in
-                contentWidth = Double(EditorTextView.fraction(forCoverage: CGFloat(pct / 100),
-                                                              viewWidth: contentWidthScreen))
-            }
-        )
-    }
-
-    /// The coverage-percent range the stepper clamps to (Mobile minimum … full).
-    private var contentWidthPercentRange: ClosedRange<Double> {
-        let lo = (EditorTextView.contentCoverage(viewWidth: contentWidthScreen, fraction: 0) * 100).rounded()
-        let hi = (EditorTextView.contentCoverage(viewWidth: contentWidthScreen, fraction: 1) * 100).rounded()
-        return lo...hi
-    }
-
-    /// Pushes a content-width change to every open editor live (mirrors the
-    /// font/line-height broadcast in FontSettings).
+    /// Pushes a content-width change to every open editor live, converting cm
+    /// to points using each editor's window screen PPI (or main screen as fallback).
     private func applyContentWidthToOpenDocuments() {
         for case let document as Document in NSDocumentController.shared.documents {
-            document.editor?.applyContentWidth(CGFloat(contentWidth))
+            let screen = document.editor?.window?.screen ?? NSScreen.main
+            guard let screen else { continue }
+            document.editor?.applyContentWidth(screen.cmToPoints(maxContentWidthCm))
         }
     }
 
@@ -155,6 +175,75 @@ struct AppearanceSettingsView: View {
                 .labelsHidden()
             Button("Select…", action: select)
                 .fixedSize()
+        }
+    }
+}
+
+// MARK: - Continuous NSSlider with visual tick marks
+
+/// Wraps NSSlider to get a continuous slider with visual tick marks.
+/// `allowsTickMarkValuesOnly = false` keeps dragging smooth; ticks are visual only.
+private struct ContentWidthSlider: NSViewRepresentable {
+    @Binding var cmValue: Double
+    let usesImperial: Bool
+    let displayRange: ClosedRange<Double>
+    let tickStep: Double
+    /// Magnetic snap target in display units (the default width); dragging
+    /// within `snapTolerance` of it locks onto it exactly.
+    let snapDisplayValue: Double
+    private var snapTolerance: Double { usesImperial ? 0.15 : 0.4 }
+
+    func cmToDisplay(_ cm: Double) -> Double { usesImperial ? cm / 2.54 : cm }
+    func displayToCm(_ d: Double) -> Double  { usesImperial ? d * 2.54 : d }
+
+    /// Snap `display` onto the default value when it lands close enough.
+    func snapped(_ display: Double) -> Double {
+        abs(display - snapDisplayValue) < snapTolerance ? snapDisplayValue : display
+    }
+
+    private func clamp(_ v: Double) -> Double {
+        max(displayRange.lowerBound, min(displayRange.upperBound, v))
+    }
+
+    private var tickCount: Int {
+        let span = displayRange.upperBound - displayRange.lowerBound
+        return max(2, Int((span / tickStep).rounded()) + 1)
+    }
+
+    func makeNSView(context: Context) -> NSSlider {
+        let slider = NSSlider(value: clamp(cmToDisplay(cmValue)),
+                              minValue: displayRange.lowerBound,
+                              maxValue: displayRange.upperBound,
+                              target: context.coordinator,
+                              action: #selector(Coordinator.sliderChanged(_:)))
+        slider.numberOfTickMarks = tickCount
+        slider.allowsTickMarkValuesOnly = false
+        return slider
+    }
+
+    func updateNSView(_ slider: NSSlider, context: Context) {
+        context.coordinator.parent = self
+        // Range and tick count change when the unit is toggled (cm ↔ in).
+        slider.minValue = displayRange.lowerBound
+        slider.maxValue = displayRange.upperBound
+        slider.numberOfTickMarks = tickCount
+        let display = clamp(cmToDisplay(cmValue))
+        if abs(slider.doubleValue - display) > 0.001 {
+            slider.doubleValue = display
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: ContentWidthSlider
+        init(parent: ContentWidthSlider) { self.parent = parent }
+
+        @objc func sliderChanged(_ sender: NSSlider) {
+            let snapped = parent.snapped(sender.doubleValue)
+            if snapped != sender.doubleValue { sender.doubleValue = snapped }
+            parent.cmValue = parent.displayToCm(snapped)
         }
     }
 }

@@ -110,9 +110,12 @@ class Document: NSDocument, HeadingNavigable {
         editor.isHorizontallyResizable = false
         editor.autoresizingMask = [.width]
         editor.textContainerInset = NSSize(width: 24, height: 18)
-        // Centered reading column (see EditorTextView+ContentWidth); applies the
-        // persisted fraction now and recomputes the inset on every resize.
-        editor.contentWidthFraction = CGFloat(AppSettings.contentWidthFraction)
+        // Centered reading column (see EditorTextView+ContentWidth). Convert the
+        // persisted cm value to points using the main screen PPI at window-creation
+        // time; recomputed on resize (setFrameSize) and when the window moves to a
+        // different display (windowDidChangeScreen).
+        let initScreen = NSScreen.main
+        editor.maxContentWidthPoints = initScreen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000
         editor.updateContentInset()
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         editor.document = self
@@ -172,6 +175,10 @@ class Document: NSDocument, HeadingNavigable {
             self, selector: #selector(windowDidResize(_:)),
             name: NSWindow.didResizeNotification, object: window
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidChangeScreen(_:)),
+            name: NSWindow.didChangeScreenNotification, object: window
+        )
 
         // Restore the last window's frame size (the toolbar is now installed, so
         // the frame is final). Applied as a frame, not a contentRect, so it
@@ -194,6 +201,14 @@ class Document: NSDocument, HeadingNavigable {
         // Save the full frame size; it's restored verbatim via setFrame on the
         // next window, so the size round-trips exactly (no title-bar/toolbar drift).
         AppSettings.lastWindowSize = window.frame.size
+    }
+
+    /// Reapply the content-width cap in points when the window moves to a
+    /// display with a different physical PPI (e.g. external monitor).
+    @objc private func windowDidChangeScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              let screen = window.screen else { return }
+        editor?.applyContentWidth(screen.cmToPoints(AppSettings.maxContentWidthCm))
     }
 
     @objc private func editorDidChange(_ notification: Notification) {

@@ -139,15 +139,14 @@ public class EditorTextView: NSTextView {
     /// would be jarring and is the root cause of the "glitchy" feeling.
     var suppressTypewriterCentering = false
 
-    /// Fraction of the available width the text column occupies, in `0...1`.
-    /// `1` fills the width (the base inset only — today's look); lower values
-    /// give a narrower, centered column with symmetric margins that grow on
-    /// wide/full-screen windows, down to a mobile-ish minimum. Applied as a
-    /// symmetric `textContainerInset.width`, recomputed on resize. See
+    /// Physical maximum text-column width in points. Windows wider than this
+    /// cap get symmetric side margins; narrower windows fill edge-to-edge.
+    /// `.greatestFiniteMagnitude` means no cap (fill always). Set from the
+    /// persisted cm value converted via the window's screen PPI. See
     /// EditorTextView+ContentWidth.
-    public var contentWidthFraction: CGFloat = 1.0 {
+    public var maxContentWidthPoints: CGFloat = .greatestFiniteMagnitude {
         didSet {
-            guard oldValue != contentWidthFraction else { return }
+            guard oldValue != maxContentWidthPoints else { return }
             updateContentInset()
         }
     }
