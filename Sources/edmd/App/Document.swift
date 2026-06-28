@@ -75,9 +75,12 @@ class Document: NSDocument, HeadingNavigable {
     // MARK: - Window Setup
 
     override func makeWindowControllers() {
-        let lastSize = AppSettings.lastWindowSize
-        let windowWidth: CGFloat  = lastSize?.width  ?? 800
-        let windowHeight: CGFloat = lastSize?.height ?? 560
+        // Default content size for first launch. Any saved size is applied as a
+        // full window frame at the end of setup (below), once the toolbar is in
+        // place — so the frame round-trips exactly and doesn't drift by the
+        // title bar + toolbar height each time.
+        let windowWidth: CGFloat = 800
+        let windowHeight: CGFloat = 560
 
         let window = DocumentWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -92,7 +95,6 @@ class Document: NSDocument, HeadingNavigable {
         // otherwise reopens the last-edited file on the next launch, so a fresh
         // start (or File ▸ New) shows that document instead of a blank Untitled.
         window.isRestorable = AppSettings.reopenWindows
-        window.center()
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 
@@ -171,6 +173,14 @@ class Document: NSDocument, HeadingNavigable {
             name: NSWindow.didResizeNotification, object: window
         )
 
+        // Restore the last window's frame size (the toolbar is now installed, so
+        // the frame is final). Applied as a frame, not a contentRect, so it
+        // round-trips exactly with what windowDidResize saves. Then center.
+        if let savedSize = AppSettings.lastWindowSize {
+            window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
+        }
+        window.center()
+
         let wc = NSWindowController(window: window)
         addWindowController(wc)
         window.makeFirstResponder(editor)
@@ -180,11 +190,10 @@ class Document: NSDocument, HeadingNavigable {
     }
 
     @objc private func windowDidResize(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow,
-              let contentSize = window.contentView?.bounds.size else { return }
-        // Save content-view size, not frame: frame includes title bar + toolbar
-        // and is larger than the contentRect the window is initialized with.
-        AppSettings.lastWindowSize = contentSize
+        guard let window = notification.object as? NSWindow else { return }
+        // Save the full frame size; it's restored verbatim via setFrame on the
+        // next window, so the size round-trips exactly (no title-bar/toolbar drift).
+        AppSettings.lastWindowSize = window.frame.size
     }
 
     @objc private func editorDidChange(_ notification: Notification) {
