@@ -16,6 +16,10 @@ jobs:
         with:
           # Fetch full history so we can push the appcast commit back.
           fetch-depth: 0
+          # Admin PAT so the appcast commit can be pushed to the protected
+          # `main` branch. The default GITHUB_TOKEN/bot is not an admin and is
+          # blocked by the required `test` status check.
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
