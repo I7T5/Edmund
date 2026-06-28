@@ -180,8 +180,11 @@ class Document: NSDocument, HeadingNavigable {
     }
 
     @objc private func windowDidResize(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow else { return }
-        AppSettings.lastWindowSize = window.frame.size
+        guard let window = notification.object as? NSWindow,
+              let contentSize = window.contentView?.bounds.size else { return }
+        // Save content-view size, not frame: frame includes title bar + toolbar
+        // and is larger than the contentRect the window is initialized with.
+        AppSettings.lastWindowSize = contentSize
     }
 
     @objc private func editorDidChange(_ notification: Notification) {
