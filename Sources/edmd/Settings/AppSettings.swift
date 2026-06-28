@@ -95,6 +95,8 @@ enum AppSettings {
         static let sourceMode = "settings.view.sourceMode"
         static let sendCrashLogs = "settings.advanced.sendCrashLogs"
         static let sentCrashReports = "settings.advanced.sentCrashReports"
+        static let lastWindowWidth  = "settings.window.lastWidth"
+        static let lastWindowHeight = "settings.window.lastHeight"
     }
 
     /// Maximum text-column width in centimetres. Wider windows center the
@@ -114,6 +116,24 @@ enum AppSettings {
     /// This is also the slider's magnetic snap point.
     static var defaultMaxContentWidthCm: Double {
         Locale.current.measurementSystem == .us ? 5.0 * 2.54 : 12.0
+    }
+
+    /// Full frame size of the last document window, to reopen new windows at the
+    /// same dimensions (applied via setFrame). Returns nil when nothing is saved.
+    /// The floor only rejects garbage/zero values — every real window size,
+    /// including ones smaller than the default, is remembered.
+    static var lastWindowSize: NSSize? {
+        get {
+            let w = UserDefaults.standard.double(forKey: Key.lastWindowWidth)
+            let h = UserDefaults.standard.double(forKey: Key.lastWindowHeight)
+            guard w >= 100, h >= 100 else { return nil }
+            return NSSize(width: w, height: h)
+        }
+        set {
+            guard let s = newValue else { return }
+            UserDefaults.standard.set(Double(s.width),  forKey: Key.lastWindowWidth)
+            UserDefaults.standard.set(Double(s.height), forKey: Key.lastWindowHeight)
+        }
     }
 
     static var reopenWindows: Bool {

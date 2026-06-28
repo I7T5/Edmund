@@ -75,8 +75,12 @@ class Document: NSDocument, HeadingNavigable {
     // MARK: - Window Setup
 
     override func makeWindowControllers() {
-        let windowWidth: CGFloat = 400
-        let windowHeight: CGFloat = 500
+        // Default content size for first launch. Any saved size is applied as a
+        // full window frame at the end of setup (below), once the toolbar is in
+        // place — so the frame round-trips exactly and doesn't drift by the
+        // title bar + toolbar height each time.
+        let windowWidth: CGFloat = 800
+        let windowHeight: CGFloat = 560
 
         let window = DocumentWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -91,7 +95,6 @@ class Document: NSDocument, HeadingNavigable {
         // otherwise reopens the last-edited file on the next launch, so a fresh
         // start (or File ▸ New) shows that document instead of a blank Untitled.
         window.isRestorable = AppSettings.reopenWindows
-        window.center()
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 
@@ -169,9 +172,21 @@ class Document: NSDocument, HeadingNavigable {
             name: NSTextView.didChangeSelectionNotification, object: editor
         )
         NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidResize(_:)),
+            name: NSWindow.didResizeNotification, object: window
+        )
+        NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSWindow.didChangeScreenNotification, object: window
         )
+
+        // Restore the last window's frame size (the toolbar is now installed, so
+        // the frame is final). Applied as a frame, not a contentRect, so it
+        // round-trips exactly with what windowDidResize saves. Then center.
+        if let savedSize = AppSettings.lastWindowSize {
+            window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
+        }
+        window.center()
 
         let wc = NSWindowController(window: window)
         addWindowController(wc)
@@ -179,6 +194,13 @@ class Document: NSDocument, HeadingNavigable {
         // Honor the persisted source-mode preference for the editing view.
         if AppSettings.sourceMode { setViewMode(.source) }
         updateStatusBar()
+    }
+
+    @objc private func windowDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        // Save the full frame size; it's restored verbatim via setFrame on the
+        // next window, so the size round-trips exactly (no title-bar/toolbar drift).
+        AppSettings.lastWindowSize = window.frame.size
     }
 
     /// Reapply the content-width cap in points when the window moves to a

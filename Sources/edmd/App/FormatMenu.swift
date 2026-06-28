@@ -51,6 +51,7 @@ enum FormatMenu {
         let menu = NSMenu(title: "Format")
 
         menu.addItem(headingSubmenuItem())
+        menu.addItem(thematicBreakCommand.makeItem())
         menu.addItem(.separator())
 
         for cmd in listCommands { menu.addItem(cmd.makeItem()) }
@@ -97,6 +98,9 @@ enum FormatMenu {
         MenuCommand(id: "format.image", title: "Image",
                     action: #selector(EditorTextView.formatImage(_:))),
     ]
+
+    private static let thematicBreakCommand = MenuCommand(id: "format.thematicBreak", title: "Thematic Break",
+                    action: #selector(EditorTextView.formatThematicBreak(_:)))
 
     private static let footnoteCommand = MenuCommand(id: "format.footnote", title: "Footnote",
                     action: #selector(EditorTextView.formatFootnote(_:)))

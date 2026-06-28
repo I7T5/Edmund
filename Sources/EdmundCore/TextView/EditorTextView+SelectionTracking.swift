@@ -25,7 +25,10 @@ extension EditorTextView {
 
         if newActiveIndex != activeBlockIndex && !pendingRecompose {
             pendingRecompose = true
-            DispatchQueue.main.async { [weak self] in
+            // Capture the flag now — it's reset synchronously after mouseDown
+            // returns, before this async block runs.
+            let fromMouse = suppressTypewriterCentering
+            DispatchQueue.main.async { [weak self, fromMouse] in
                 guard let self = self else { return }
                 // Always clear the flag first. If we bail out below (a recompose is
                 // mid-flight and will set the active block itself), leaving it set
@@ -70,7 +73,7 @@ extension EditorTextView {
                 // Only the new (visible) active block changes height now, so the
                 // caret anchor's delta is small and reliable. Typewriter mode
                 // centers on the post-restyle layout instead.
-                if self.typewriterModeEnabled {
+                if self.typewriterModeEnabled && !fromMouse {
                     self.recomposeDirty(dirty, cursorInRaw: loc)
                     self.scrollCursorToCenter()
                 } else {
@@ -85,6 +88,6 @@ extension EditorTextView {
             // Same block — update active token (re-style to show/hide delimiters)
             applyBlockStyle()
         }
-        scrollCursorToCenter()
+        if !suppressTypewriterCentering { scrollCursorToCenter() }
     }
 }
