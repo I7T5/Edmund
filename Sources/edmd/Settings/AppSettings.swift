@@ -106,6 +106,8 @@ enum AppSettings {
         static let sourceMode = "settings.view.sourceMode"
         static let sendCrashLogs = "settings.advanced.sendCrashLogs"
         static let sentCrashReports = "settings.advanced.sentCrashReports"
+        static let lastWindowWidth  = "settings.window.lastWidth"
+        static let lastWindowHeight = "settings.window.lastHeight"
     }
 
     /// Text-column width as a fraction of the available width (`0...1`). `1`
@@ -120,6 +122,22 @@ enum AppSettings {
             return UserDefaults.standard.double(forKey: Key.contentWidthFraction)
         }
         set { UserDefaults.standard.set(newValue, forKey: Key.contentWidthFraction) }
+    }
+
+    /// Size of the last document window, to reopen new windows at the same dimensions.
+    /// Returns nil when no size has been saved yet.
+    static var lastWindowSize: NSSize? {
+        get {
+            let w = UserDefaults.standard.double(forKey: Key.lastWindowWidth)
+            let h = UserDefaults.standard.double(forKey: Key.lastWindowHeight)
+            guard w >= 320, h >= 400 else { return nil }
+            return NSSize(width: w, height: h)
+        }
+        set {
+            guard let s = newValue else { return }
+            UserDefaults.standard.set(Double(s.width),  forKey: Key.lastWindowWidth)
+            UserDefaults.standard.set(Double(s.height), forKey: Key.lastWindowHeight)
+        }
     }
 
     static var reopenWindows: Bool {

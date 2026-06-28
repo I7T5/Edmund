@@ -75,8 +75,9 @@ class Document: NSDocument, HeadingNavigable {
     // MARK: - Window Setup
 
     override func makeWindowControllers() {
-        let windowWidth: CGFloat = 400
-        let windowHeight: CGFloat = 500
+        let lastSize = AppSettings.lastWindowSize
+        let windowWidth: CGFloat  = lastSize?.width  ?? 800
+        let windowHeight: CGFloat = lastSize?.height ?? 560
 
         let window = DocumentWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -165,6 +166,10 @@ class Document: NSDocument, HeadingNavigable {
             self, selector: #selector(editorSelectionDidChange(_:)),
             name: NSTextView.didChangeSelectionNotification, object: editor
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidResize(_:)),
+            name: NSWindow.didResizeNotification, object: window
+        )
 
         let wc = NSWindowController(window: window)
         addWindowController(wc)
@@ -172,6 +177,11 @@ class Document: NSDocument, HeadingNavigable {
         // Honor the persisted source-mode preference for the editing view.
         if AppSettings.sourceMode { setViewMode(.source) }
         updateStatusBar()
+    }
+
+    @objc private func windowDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        AppSettings.lastWindowSize = window.frame.size
     }
 
     @objc private func editorDidChange(_ notification: Notification) {
