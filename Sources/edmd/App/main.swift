@@ -270,7 +270,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let viewMenu = NSMenu(title: "View")
 
         let typewriterItem = viewMenu.addItem(
-            withTitle: "Typewriter Mode",
+            withTitle: "Typewriter Scroll",
             action: #selector(AppDelegate.toggleTypewriterMode(_:)),
             keyEquivalent: "")
         typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
