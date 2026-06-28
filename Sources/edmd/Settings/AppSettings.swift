@@ -48,19 +48,6 @@ enum AppSettings {
         static let displayOrder: [AppearanceMode] = [.light, .dark, .matchSystem]
     }
 
-    /// Content-width slider bounds. The stored value is a fraction of the
-    /// available width (see `EditorTextView+ContentWidth`): the slider runs
-    /// continuously from the Mobile minimum to full width, with a magnetic snap
-    /// only at the default (≈ Obsidian) reading width.
-    enum ContentWidth {
-        /// Slider floor — the "Mobile" width (narrowest readable column).
-        static let minFraction = 0.0
-        /// Out-of-the-box default — ≈ Obsidian's default reading width.
-        static let defaultFraction = 0.25
-        /// How close to the default the marker must get to snap onto it.
-        static let snapTolerance = 0.02
-    }
-
     /// How long diagnostic logs are kept before being pruned on launch.
     enum LogRetention: String, CaseIterable, Identifiable {
         case oneDay, twoDays, oneWeek, twoWeeks, thirtyDays, never
@@ -97,7 +84,7 @@ enum AppSettings {
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
         static let conflictResolution = "settings.general.conflictResolution"
         static let appearanceMode = "settings.appearance.mode"
-        static let contentWidthFraction = "settings.appearance.contentWidthFraction"
+        static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let verboseEditorDiagnostics = "settings.advanced.verboseEditorDiagnostics"
@@ -108,18 +95,25 @@ enum AppSettings {
         static let sentCrashReports = "settings.advanced.sentCrashReports"
     }
 
-    /// Text-column width as a fraction of the available width (`0...1`). `1`
-    /// fills the width; lower narrows toward a mobile-ish minimum, centered.
-    /// Defaults to the Narrower (≈ Obsidian) width so full-screen windows get
-    /// readable margins out of the box.
-    static var contentWidthFraction: Double {
+    /// Maximum text-column width in centimetres. Wider windows center the
+    /// column at this physical width; narrower windows fill edge-to-edge.
+    /// Default: 43 % of the main screen's physical width at first launch.
+    static var maxContentWidthCm: Double {
         get {
-            guard UserDefaults.standard.object(forKey: Key.contentWidthFraction) != nil else {
-                return ContentWidth.defaultFraction
+            guard UserDefaults.standard.object(forKey: Key.maxContentWidthCm) != nil else {
+                return defaultMaxContentWidthCm
             }
-            return UserDefaults.standard.double(forKey: Key.contentWidthFraction)
+            return UserDefaults.standard.double(forKey: Key.maxContentWidthCm)
         }
-        set { UserDefaults.standard.set(newValue, forKey: Key.contentWidthFraction) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.maxContentWidthCm) }
+    }
+
+    /// 43 % of the main screen's physical width in cm — a comfortable reading
+    /// column out of the box that matches the previous fraction-based default.
+    static var defaultMaxContentWidthCm: Double {
+        guard let screen = NSScreen.main else { return 40.0 }
+        let pts = screen.frame.width * 0.43
+        return Double(pts / screen.physicalPPI) * 2.54
     }
 
     static var reopenWindows: Bool {
@@ -266,5 +260,27 @@ enum AppSettings {
         case .dark:
             NSApp.appearance = NSAppearance(named: .darkAqua)
         }
+    }
+}
+
+// MARK: - Screen physical-unit helpers
+
+extension NSScreen {
+    /// Physical pixels-per-inch from the display's actual diagonal/width size
+    /// (via Core Graphics — not the nominal 72 pt/in). Falls back to 109 PPI
+    /// (the typical value for a 27-inch 5K iMac) when the display ID can't be read.
+    var physicalPPI: CGFloat {
+        guard let n = deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return 109
+        }
+        let mm = CGDisplayScreenSize(CGDirectDisplayID(n.uint32Value))
+        guard mm.width > 0 else { return 109 }
+        // frame.width is in points (not pixels); mm.width is physical mm.
+        return frame.width / (mm.width / 25.4)
+    }
+
+    /// Convert a physical centimetre value to AppKit points on this display.
+    func cmToPoints(_ cm: Double) -> CGFloat {
+        CGFloat(cm) / 2.54 * physicalPPI
     }
 }
