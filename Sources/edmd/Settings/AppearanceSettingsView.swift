@@ -40,6 +40,9 @@ struct AppearanceSettingsView: View {
         usesImperial ? (minCm / 2.54)...(maxCm / 2.54) : minCm...maxCm
     }
 
+    /// Magnetic snap target in display units: 5 in / 12 cm (the default width).
+    private var snapDisplayValue: Double { usesImperial ? 5.0 : 12.0 }
+
     /// Two-way binding between stored cm and the display unit.
     private var displayValueBinding: Binding<Double> {
         Binding(
@@ -70,14 +73,18 @@ struct AppearanceSettingsView: View {
                         cmValue: $maxContentWidthCm,
                         usesImperial: usesImperial,
                         displayRange: displayRange,
-                        tickStep: tickStep
+                        tickStep: tickStep,
+                        snapDisplayValue: snapDisplayValue
                     )
                     .frame(width: 200, height: 20)
 
+                    // Field width is sized so its stepper's chevrons line up
+                    // vertically with the font rows' steppers (slider 200 + two
+                    // 8-pt gaps + field == 240, the font rows' label width).
                     TextField("", value: displayValueBinding,
                               format: .number.precision(.fractionLength(1)))
                         .multilineTextAlignment(.trailing)
-                        .frame(width: 44)
+                        .frame(width: 32)
                     Stepper("", value: displayValueBinding,
                             in: displayRange, step: stepSize)
                         .labelsHidden()
@@ -181,9 +188,18 @@ private struct ContentWidthSlider: NSViewRepresentable {
     let usesImperial: Bool
     let displayRange: ClosedRange<Double>
     let tickStep: Double
+    /// Magnetic snap target in display units (the default width); dragging
+    /// within `snapTolerance` of it locks onto it exactly.
+    let snapDisplayValue: Double
+    private var snapTolerance: Double { usesImperial ? 0.15 : 0.4 }
 
     func cmToDisplay(_ cm: Double) -> Double { usesImperial ? cm / 2.54 : cm }
     func displayToCm(_ d: Double) -> Double  { usesImperial ? d * 2.54 : d }
+
+    /// Snap `display` onto the default value when it lands close enough.
+    func snapped(_ display: Double) -> Double {
+        abs(display - snapDisplayValue) < snapTolerance ? snapDisplayValue : display
+    }
 
     private func clamp(_ v: Double) -> Double {
         max(displayRange.lowerBound, min(displayRange.upperBound, v))
@@ -225,7 +241,9 @@ private struct ContentWidthSlider: NSViewRepresentable {
         init(parent: ContentWidthSlider) { self.parent = parent }
 
         @objc func sliderChanged(_ sender: NSSlider) {
-            parent.cmValue = parent.displayToCm(sender.doubleValue)
+            let snapped = parent.snapped(sender.doubleValue)
+            if snapped != sender.doubleValue { sender.doubleValue = snapped }
+            parent.cmValue = parent.displayToCm(snapped)
         }
     }
 }

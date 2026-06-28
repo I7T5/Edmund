@@ -99,7 +99,7 @@ enum AppSettings {
 
     /// Maximum text-column width in centimetres. Wider windows center the
     /// column at this physical width; narrower windows fill edge-to-edge.
-    /// Default: 43 % of the main screen's physical width at first launch.
+    /// Default: a comfortable 12 cm / 5 in reading column.
     static var maxContentWidthCm: Double {
         get {
             guard UserDefaults.standard.object(forKey: Key.maxContentWidthCm) != nil else {
@@ -110,12 +110,10 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.maxContentWidthCm) }
     }
 
-    /// 43 % of the main screen's physical width in cm — a comfortable reading
-    /// column out of the box that matches the previous fraction-based default.
+    /// Out-of-the-box reading column: 5 in for US locales, 12 cm elsewhere.
+    /// This is also the slider's magnetic snap point.
     static var defaultMaxContentWidthCm: Double {
-        guard let screen = NSScreen.main else { return 40.0 }
-        let pts = screen.frame.width * 0.43
-        return Double(pts / screen.physicalPPI) * 2.54
+        Locale.current.measurementSystem == .us ? 5.0 * 2.54 : 12.0
     }
 
     static var reopenWindows: Bool {
