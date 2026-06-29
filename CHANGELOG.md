@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [0.1.1] — 2026-06-29
+
+### Added
+- Thematic Break `---`/`***` in the Format menu
+- Remember window size: new document windows reopen at the size of the last one.
+
+### Changed
+- Max content width is now an absolute physical width (cm / in) with a max-width cap and a cm/in unit toggle. 
+- Typewriter Mode renamed to Typewriter Scroll
+
+### Fixed
+- Typewriter Scroll no longer jumps the viewport when you click to reposition the caret — it re-centers only while typing.
+
+---
+
 ## [0.1.0] — 2026-06-27
 
 First public release.

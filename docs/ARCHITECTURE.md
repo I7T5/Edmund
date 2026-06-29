@@ -150,9 +150,15 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 
 Notable subsystems: **typewriter scroll** (keeps caret vertically centered;
 must lay out the viewport↔caret span before measuring or it reads stale TK2
-height estimates), **content width** (`+ContentWidth.swift`: a settings slider
-sets a symmetric `textContainerInset.width` for a centered reading column,
-recomputed on resize).
+height estimates — and re-centers only on *typing*, not on clicks: a mouse-down
+sets `suppressTypewriterCentering` so positioning the caret by clicking doesn't
+yank the viewport), **content width** (`+ContentWidth.swift`: an **absolute
+physical** max-column width — set in cm/in in Settings, stored as cm, converted
+to points via the display's real PPI (`NSScreen.physicalPPI`, from
+`CGDisplayScreenSize`). It's a CSS `max-width` cap applied as a symmetric
+`textContainerInset.width`: windows wider than the cap center the column,
+narrower ones fill. Recomputed on resize and when the window moves to a
+differently-scaled display (`NSWindow.didChangeScreenNotification`)).
 
 **Format menu & shortcuts** are pure AppKit (the app has no SwiftUI scene, so
 SwiftUI `Commands` isn't an option). `FormatMenu.swift` is a declarative command
@@ -204,6 +210,12 @@ them and route through the app's document graph without JavaScript.
   `Document.editor` (see the font/line-height/content-width `applyTo…` helpers).
 - Theme/appearance/fonts flow into `EditorTheme` → the editor's derived
   `bodyFont`, colors, paragraph styles.
+- **Max content width** persists as **centimetres** (`maxContentWidthCm`); the
+  cm/in shown in Settings is a display unit (`contentWidthUnit`), the column
+  itself is always physical (see §6 content width). Default is 12 cm / 5 in.
+- **Window size** persists as the last document window's full **frame** size
+  (`lastWindowSize`) — see the §8 gotcha on why it's the frame, not the content
+  size.
 - **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): an always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to
@@ -295,6 +307,13 @@ them and route through the app's document graph without JavaScript.
   button's bounds, pop the menu and `return` (swallow it). Other right-clicks
   fall through to `super`. (Caveat: in true fullscreen the toolbar moves to a
   separate window, so this main-window hook wouldn't cover that case.)
+- **Window-size persistence must round-trip the frame, not the content size.**
+  Saving `contentView.bounds.size` and re-applying it as the initializer's
+  `contentRect` makes the window grow by the title-bar + (unified) toolbar height
+  on every reopen — and content heights below the frame `minSize` get silently
+  rejected. Save `window.frame.size` and re-apply it with `window.setFrame(_:)`
+  **after the toolbar is installed** (the frame is only final then), so frame-in
+  == frame-out (`windowDidResize` ↔ `makeWindowControllers` in `Document.swift`).
 
 ---
 
