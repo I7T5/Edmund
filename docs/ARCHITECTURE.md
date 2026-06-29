@@ -243,13 +243,24 @@ them and route through the app's document graph without JavaScript.
 
 - **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app` root
   (it does). Without it, the app **crashes the instant it renders any LaTeX**.
-- **Sparkle codesign workaround**: `Contents/Frameworks/` triggers codesign's
-  strict bundle-seal mode, which rejects the SwiftMath bundle at the `.app` root
-  (required by its generated `Bundle.module` accessor — it's hardcoded to
-  `Bundle.main.bundleURL`). The build script works around this by signing the
-  main binary as a temporary standalone file rather than sealing the whole bundle.
-  A Developer ID cert + notarization would fix it properly; ad-hoc signing is
-  the current limit.
+- **Sparkle codesign — must seal the whole bundle**: at install time Sparkle
+  re-validates the downloaded update's Apple code signature
+  (`SUUpdateValidator`). Even with a valid EdDSA signature, a bundle that reports
+  as code-signed but fails `SecStaticCodeCheckValidity` is rejected as *"The
+  update is improperly signed and could not be validated."* The old build script
+  signed only the main binary as a standalone file and never sealed the bundle —
+  so it had no `_CodeSignature/CodeResources` and **every Sparkle update failed**
+  (the v0.1.0→0.1.1 update error). The fix: `build-app.sh` seals the whole `.app`
+  (`codesign --deep`). The obstacle is the SwiftMath resource bundle, which must
+  sit at the `.app` root (its generated `Bundle.module` accessor is hardcoded to
+  `Bundle.main.bundleURL`), and codesign refuses to seal a bundle with any item
+  at the root. So we seal while the root holds only `Contents/`, then copy the
+  SwiftMath bundle in **after** signing. That one unsealed root item makes
+  `codesign --verify` (CLI) and `--strict` complain, but Sparkle's actual check
+  is non-strict (`SecStaticCodeCheckValidityWithErrors` with
+  `kSecCSCheckAllArchitectures`) and tolerates it — verified against that exact
+  API. A Developer ID cert + notarization would be cleaner; ad-hoc is the current
+  limit.
 - **Sparkle keypair**: set up and verified — public key in `Info.plist`
   `SUPublicEDKey`, private key in the login keychain and the CI secret
   `SPARKLE_ED_PRIVATE_KEY`. Don't let them diverge. Full release/signing details
@@ -392,7 +403,9 @@ How a release happens, plus the non-obvious things that broke shipping 0.1.0.
 EdDSA-sign the DMG → `gh release create` (notes are the matching `CHANGELOG.md`
 section, extracted by `awk`) → commit the new `<item>` into `appcast.xml` on
 `main`. `scripts/release.sh` mirrors this locally but leaves the appcast
-commit/push to you.
+commit/push to you. The new `<item>` also gets a `<description>` (HTML release
+notes from the CHANGELOG section, via `scripts/changelog-to-html.py`) so
+Sparkle's update dialog shows the changelog in its scrollable pane.
 
 **To cut a release:** bump `CFBundleShortVersionString` / `CFBundleVersion` in
 `Info.plist`, add a `## [x.y.z]` section to `CHANGELOG.md`, merge to `main`,
