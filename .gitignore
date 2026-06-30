@@ -22,6 +22,7 @@ misc/
 # Local work in progress
 README.md
 docs/ROADMAP.md
+docs/MARKETING.md
 # local visual-verification tooling
 /tmp/
 Tests/EdmundTests/_RenderDump.swift
