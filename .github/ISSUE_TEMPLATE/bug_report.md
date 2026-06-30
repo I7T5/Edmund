@@ -1,31 +1,31 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Something's literally wrong...
 title: ''
 labels: bug
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**Description**
+What's the bug? 
 
-**To Reproduce**
-Steps to reproduce the behavior:
+**Reproduction**
+If description is not enough, how do you reproduce the bug? 
 1. Go to '...'
 2. Click on '....'
 3. Scroll down to '....'
 4. See error
 
 **Expected behavior**
-A clear and concise description of what you expected to happen.
+If it's not obvious, what should've happened? 
 
-**Screenshots**
-If applicable, add screenshots or screen recordings to help explain your problem.
+**Screenshots or recordings**
+If applicable, add screenshots or screen recordings of the bug or the expected behavior.
 
-**Device information:**
+**Device info:**
  - Device: [e.g. MacBook Pro, M2 Pro, 16 GB]
  - macOS version: [e.g. Sonoma 14.8.3]
 
 **Additional context**
-Add any other context about the problem here.
+Questions, concerns, comments, context, etc.
