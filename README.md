@@ -1,8 +1,8 @@
 # Edmund
-
 ![macOS Version Compatibility](https://img.shields.io/badge/platform-macOS%2014.0%2B-0064e1?style=flat-square&color=0064e1)
 ![GitHub License](https://img.shields.io/github/license/i7t5/edmund?style=flat-square&color=772678)
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/i7t5/edmund/total?style=flat-square&color=ff6916)
+![Tiny App Icon](docs/assets/AppIcon_16x16.png)
 
 Edmund is a minimal, file-based, native Markdown editor for macOS with inline live preview.  
 <!-- Replace "minimal" with "customizable" once customizations are implemented -->
@@ -16,6 +16,9 @@ https://github.com/user-attachments/assets/5c9097c7-68d2-4423-b0f5-495979775f6d
 
 ## Screenshots
 
+![GFM syntax screenshot in edit mode](docs/assets/v0.1.0_gfm-syntax.png)
+
+![Non-GFM and math syntax screenshot in edit mode](docs/assets/v0.1.0_more-syntax.png)
 
 
 ## Features
@@ -28,16 +31,18 @@ https://github.com/user-attachments/assets/5c9097c7-68d2-4423-b0f5-495979775f6d
 - Extensible: Opt-in math and Obsidian syntax. Extensions coming soon!
 - Private and secure: Offline by default. Block external links setting. Built-in HTML white-listing & sanitization. 
 
-I wanted to create an open source alternative to Typora that would be the [CotEditor](https://coteditor.com) of Markdown editors–elegant, powerful, configurable, and native inside out. 
+I want Edmund to be an open source alternative to Typora that would be the [CotEditor](https://coteditor.com) of Markdown editors–elegant, powerful, configurable, and native inside out. 
 See [my blog post](https://i7t5.com/posts/2026-06-26-edmund/) for more of the motivation and design philosophy. 
 (I'll forewarn you that it's not much, though.)
 
+
 ## Installation
 
-I am not a $99/yr-certified Apple Developer, and that makes installing the app a bit more complicated...
-You probably know the drill, but, in case you don't, here it is. 
+If macOS tells you the app is `🚧DAMAGED🚧` when you're trying to install, fear not. 
+The app is not damaged. It just not signed properly, because I am not a $99/yr-certified Apple Developer. 
+Good thing is there's an easy way to bypass the barrier. 
 
-To open Edmund the first time, do *one* of:
+To open Edmund (or any other "damaged" app) for the first time, do *one* of:
 
 - System Settings → Privacy & Security → scroll down → Open Anyway. Or, 
 - Run the following line in Terminal: `xattr -dr com.apple.quarantine /Applications/Edmund.app`
