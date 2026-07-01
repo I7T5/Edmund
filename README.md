@@ -47,7 +47,7 @@ See [my blog post](https://i7t5.com/posts/2026-06-26-edmund/) for more of the mo
 
 Get `Edmund.dmg` from the [latest release](https://github.com/I7T5/Edmund/releases/latest), open it, and drag `Edmund.app` to `Applications`: 
 
-<img src=".docs/assets/installation.png" width="540" alt="Window for drag and drop to install">
+<img src="./docs/assets/installation.png" width="540" alt="Window for drag and drop to install">
 
 > [!WARNING]
 > If macOS reports that the app is `🚧DAMAGED🚧` when you're trying to open it for the first time, fear not. 
