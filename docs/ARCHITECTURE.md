@@ -306,6 +306,18 @@ them and route through the app's document graph without JavaScript.
   `+SelectionTracking`). `becomeFirstResponder` resyncs from storage as a
   catch-all if a composition is ever left stranded. Full write-up:
   `docs/delete-drift-investigation.md`.
+- **AppKit does not pair every storage mutation with `didChangeText`.** A
+  drag-move of the selected text whose drop lands on no valid target (e.g.
+  released past the end of the document) deletes the dragged range via
+  `shouldChangeText` → `replaceCharacters` and **never calls `didChangeText`**
+  — silently freezing `rawSource`/`blocks`, after which every edit drifts the
+  caret and autosave writes the stale `rawSource` (delete-drift round 4).
+  `shouldChangeText` therefore schedules a next-run-loop bypass check: a
+  storage `pendingEdit` still unconsumed by then means the closing
+  `didChangeText` never came, and the editor heals by running the same sync
+  (`+EditFlow`, `scheduleBypassedEditSyncCheck`; `healing storage edit that
+  bypassed didChangeText` in `~/.edmund/logs` is its breadcrumb). Never build
+  a sync path on the assumption that `didChangeText` follows every edit.
 - **A custom toolbar item can't win a right-click from a view-level handler.**
   With `NSToolbar.allowsUserCustomization = true`, the toolbar turns any
   secondary (right / control) click over the toolbar — *including* a custom item

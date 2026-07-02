@@ -212,3 +212,87 @@ reproduce, and send `~/.edmund/logs`. The trace shows exactly when the caret
 diverges from the edit and what the marked-text / flag / length state was at that
 instant — which should finally localize the live-layer cause (still-sneaking
 marked text vs. a TextKit 2 selection-after-edit quirk).
+
+## Round 4: the round-3 diagnostics caught it — a drag-move deletes without `didChangeText`
+
+The verbose trace (`misc/bug-repros/edmund-2026-06-30_delete-caret-drift-4.log`)
+paid off. Reporter's extra clue: drifts start **right after drag-selecting text
+and doing something with it**. Fixed on branch
+`fix/delete-caret-drift-round-4`.
+
+### What the trace showed
+
+Every drifting delete had one signature, distinct from healthy deletes:
+
+- **Healthy**: `shouldChangeText` → `selectionDidChange` (up=N, transient
+  LEN-MISMATCH, caret already adjusted) → `synced` with correct `cursorRaw`.
+- **Drifting**: `shouldChangeText` → *nothing* → `selectionDidChange` **up=Y**
+  (fires mid-recompose, storage and rawSource both already synced, caret
+  already leaped) → `synced` logged with a **stale** `cursorRaw`.
+
+Walking back to the first bad event found the origin (11:06:17–19):
+
+```
+selectionDidChange sel={329,17}                 ← drag-select
+shouldChangeText OK range={329,17} repl=""      ← 1s gap = drag gesture
+selectionDidChange sel={329,0} storLen=329 rawLen=346 ⚠︎LEN-MISMATCH
+                                                ← storage shrank; NO synced /
+                                                  SKIPPED / DEFERRED line ever
+```
+
+`didChangeText` **was never called** for that deletion. Every path through our
+override logs *something*, so the call itself was absent — an AppKit path that
+runs `shouldChangeText` → `replaceCharacters` and skips the closing
+`didChangeText`.
+
+### Live reproduction (deterministic)
+
+Scripted CGEvent automation against the real app found the exact gesture:
+
+1. Drag-select some text.
+2. **Drag the selection and drop it past the end of the document** (below the
+   last line — a drop that falls through to no valid insertion target, or
+   toward another window). The move's insert half syncs fine; the **source
+   deletion** then runs `shouldChangeText` → `replaceCharacters` with **no
+   `didChangeText`**.
+3. `rawSource`/`blocks` silently freeze (LEN-MISMATCH on every following trace
+   line). The desync also reaches disk: **autosave writes the stale
+   `rawSource`** — this was a data-corruption bug, not just a caret bug.
+4. Click into another block and press Delete: the heal-on-next-edit sync runs
+   *inside* that keystroke, NSTextView's own selection adjustment arrives late
+   and resolves against the mid-restyle layout, and the caret leaps (in the
+   repro: 210 → 371, then snapping toward doc end on each delete) — exactly
+   the round-1/2/3 symptom.
+
+Consistent with rounds 1–3: focus-switch "fixed" it (any recovery resync), it
+needed accumulated state (a prior fumbled drag), and it never reproduced
+headlessly (drag sessions are live-app-only).
+
+### The fix
+
+`EditorTextView+EditFlow.swift` — `shouldChangeText` schedules a **bypass
+check on the next run-loop pass** (`RunLoop.main.perform`, coalesced by
+`bypassedEditCheckScheduled`): `didChangeText` consumes the storage's
+`pendingEdit` synchronously within the same event turn, so a `pendingEdit`
+still unconsumed one pass later is exactly the "didChangeText was bypassed"
+signal. The check then runs the same sync `didChangeText` would have
+(`syncRawSourceFromDisplay` + dirty-change count), and logs a permanent
+`healing storage edit that bypassed didChangeText` breadcrumb (release too).
+Guards: skipped while `isUpdating` / `isUndoRedoing` / `hasMarkedText()` (an
+unconsumed `pendingEdit` during IME composition is legitimate — the commit's
+`didChangeText` syncs it).
+
+Verified live with the scripted repro: the heal fires ~60ms after the rogue
+deletion, and the previously-drifting delete sequence runs with healthy
+ordering and a correct caret. `Tests/EdmundTests/BypassedEditSyncTests.swift`
+covers the heal and the IME-composition exemption headlessly.
+
+### Why the caret leaped during the *heal* sync (round-4 mechanics)
+
+When the heal ran lazily (inside the next delete's `didChangeText`, as before
+the fix), that keystroke's model math used the stale blocks and NSTextView's
+own post-edit selection fix was deferred past our recompose — it then resolved
+against invalidated layout and landed the caret at the following block
+boundary. Healing on the run-loop pass right after the rogue edit (before any
+further keystroke) removes both ingredients; no explicit selection repair was
+needed.
