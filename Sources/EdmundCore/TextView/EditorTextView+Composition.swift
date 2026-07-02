@@ -165,7 +165,15 @@ extension EditorTextView {
 
         isUpdating = false
 
-        if !deferred.isEmpty { scheduleProgressiveStyling() }
+        if !deferred.isEmpty {
+            scheduleProgressiveStyling()
+        } else {
+            // Small documents stay fully laid out (no TextKit 2 height
+            // estimates): re-lay the blocks this flush invalidated once this
+            // interaction settles. Cheap on the per-keystroke path — only the
+            // invalidated fragments are re-laid.
+            scheduleFullLayoutSettle()
+        }
     }
 
     /// Maps a block's raw NSRange to an `NSTextRange` for layout invalidation.

@@ -96,7 +96,47 @@ extension EditorTextView {
         }
         isUpdating = false
 
-        if remaining { scheduleProgressiveStyling() }
+        if remaining {
+            scheduleProgressiveStyling()
+        } else {
+            scheduleFullLayoutSettle()
+        }
+    }
+
+    /// TextKit 2 only gives a fragment a real frame once it's laid out;
+    /// everything else is a height *estimate*, and estimate corrections are
+    /// what make the scroller jump, drag-selection autoscroll oscillate, and
+    /// scroll targets land wrong. For small documents we can afford to lay
+    /// everything out once styling has converged, so no estimates remain.
+    /// `ensureLayout` is incremental — already-laid-out fragments are skipped
+    /// — so repeated settles after edits only re-lay the invalidated blocks.
+    /// (Large documents keep viewport-based layout: a full layout there is
+    /// the process-killing path that motivated `scrollRangeToVisible`'s
+    /// override.)
+    ///
+    /// Runs on the next run-loop pass, wrapped in `preservingViewportAnchor`:
+    /// correcting estimates *above* the viewport shifts every laid-out
+    /// position below them, so doing it synchronously inside a caller's own
+    /// anchored restyle would poison that caller's before/after measurement.
+    func scheduleFullLayoutSettle() {
+        guard !fullLayoutSettleScheduled,
+              (textStorage?.length ?? 0) <= Self.fullLayoutMaxLength else { return }
+        fullLayoutSettleScheduled = true
+        // RunLoop.perform, not DispatchQueue.main.async, so tests can drain it
+        // with `RunLoop.main.run(until:)`.
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.fullLayoutSettleScheduled = false
+                guard !self.isUpdating, !self.hasMarkedText(),
+                      let tlm = self.textLayoutManager,
+                      (self.textStorage?.length ?? 0) <= Self.fullLayoutMaxLength,
+                      self.blocks.allSatisfy({ $0.isStyled }) else { return }
+                self.preservingViewportAnchor {
+                    tlm.ensureLayout(for: tlm.documentRange)
+                }
+            }
+        }
     }
 
     /// Styles any unstyled blocks inside the current viewport window. Forces a
