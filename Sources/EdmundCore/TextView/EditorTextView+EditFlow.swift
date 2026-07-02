@@ -37,7 +37,49 @@ extension EditorTextView {
             }
         }
         traceEdit("shouldChangeText OK range=\(affectedCharRange) repl=\(logSnippet(replacementString))")
+        scheduleBypassedEditSyncCheck()
         return true
+    }
+
+    /// AppKit does not pair every storage mutation with `didChangeText()`.
+    /// Known case: after a drag of the selected text whose drop falls through
+    /// to no valid target (e.g. released past the end of the document), the
+    /// drag-move's source deletion runs shouldChangeText → replaceCharacters
+    /// and never calls didChangeText. rawSource/blocks then silently freeze:
+    /// every later edit does its offset math against the stale model (the
+    /// issue-#156 caret leap) and autosave writes the stale rawSource.
+    /// didChangeText consumes the storage's pendingEdit synchronously within
+    /// the same event turn, so a pendingEdit still unconsumed on the next
+    /// run-loop pass is exactly the "didChangeText was bypassed" signal —
+    /// heal by running the sync it would have run.
+    private func scheduleBypassedEditSyncCheck() {
+        guard !bypassedEditCheckScheduled else { return }
+        bypassedEditCheckScheduled = true
+        // RunLoop.perform, not DispatchQueue.main.async: identical "next
+        // run-loop pass" timing in the app, but also drainable by
+        // `RunLoop.main.run(until:)` in tests.
+        RunLoop.main.perform { [weak self] in
+            // The main run loop only ever performs on the main thread; the
+            // closure just isn't statically annotated as such.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.bypassedEditCheckScheduled = false
+                guard let storage = self.textStorage as? EditorTextStorage,
+                      storage.pendingEdit != nil,
+                      !self.isUpdating, !self.isUndoRedoing,
+                      // During IME composition the unconsumed pendingEdit is
+                      // legitimate — didChangeText defers the sync until commit.
+                      !self.hasMarkedText() else { return }
+                // Permanent breadcrumb (release builds too): if a desync recurs,
+                // grep ~/.edmund/logs for this line to see which path bypassed
+                // didChangeText.
+                Log.info("healing storage edit that bypassed didChangeText: " +
+                         "storLen=\(storage.length) rawLen=\((self.rawSource as NSString).length)",
+                         category: .edit)
+                self.syncRawSourceFromDisplay()
+                self.document?.updateChangeCount(.changeDone)
+            }
+        }
     }
 
     public override func didChangeText() {

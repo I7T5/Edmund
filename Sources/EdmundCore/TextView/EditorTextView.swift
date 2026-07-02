@@ -66,6 +66,9 @@ public class EditorTextView: NSTextView {
     /// Coalesces scroll-driven promotion onto the next run-loop turn, off the
     /// scroll notification (see EditorTextView+LazyStyling).
     var pendingPromotion = false
+    /// Coalesces the didChangeText-bypass check scheduled from
+    /// shouldChangeText (see EditorTextView+EditFlow).
+    var bypassedEditCheckScheduled = false
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0
