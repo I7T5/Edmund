@@ -53,37 +53,117 @@ extension EditorTextView {
         restoreSnapshot(snapshot)
     }
 
+    /// The single contiguous span that differs between two strings, as the
+    /// replaced range in `old` (UTF-16) plus its replacement text from `new`.
+    /// nil when the strings are equal. Boundaries never split a surrogate
+    /// pair, so the result is always safe to select or restyle.
+    nonisolated static func textDiff(old: String, new: String) -> (oldRange: NSRange, replacement: String)? {
+        let o = old as NSString
+        let n = new as NSString
+        guard !o.isEqual(to: new) else { return nil }
+
+        var prefix = 0
+        let maxPrefix = min(o.length, n.length)
+        while prefix < maxPrefix && o.character(at: prefix) == n.character(at: prefix) {
+            prefix += 1
+        }
+        var suffix = 0
+        let maxSuffix = min(o.length, n.length) - prefix
+        while suffix < maxSuffix
+            && o.character(at: o.length - 1 - suffix) == n.character(at: n.length - 1 - suffix) {
+            suffix += 1
+        }
+        // Widen rather than split a surrogate pair at either boundary.
+        while prefix > 0 && UTF16.isLeadSurrogate(o.character(at: prefix - 1)) {
+            prefix -= 1
+        }
+        while suffix > 0 && UTF16.isTrailSurrogate(o.character(at: o.length - suffix)) {
+            suffix -= 1
+        }
+
+        let oldRange = NSRange(location: prefix, length: o.length - suffix - prefix)
+        let replacement = n.substring(with: NSRange(location: prefix,
+                                                    length: n.length - suffix - prefix))
+        return (oldRange, replacement)
+    }
+
     private func restoreSnapshot(_ snapshot: UndoSnapshot) {
+        // Diff the current text against the snapshot: the changed span is what
+        // this undo/redo actually touches, so it drives the selection and the
+        // viewport — not the caret stored at snapshot time (which, for redo,
+        // is wherever the caret happened to sit when undo was invoked).
+        guard let diff = Self.textDiff(old: rawSource, new: snapshot.rawSource) else {
+            // Nothing changed textually — just restore the caret.
+            let clamped = min(snapshot.cursorInRaw, (rawSource as NSString).length)
+            setSelectedRange(NSRange(location: clamped, length: 0))
+            return
+        }
+
         isUndoRedoing = true
+        let oldIndentUnit = listIndentUnit
+        let oldActive = activeBlockIndex
+        let oldCount = blocks.count
+
         rawSource = snapshot.rawSource
         rebuildListIndentState()
-        blocks = BlockParser.parse(rawSource, previous: blocks)
+        let (newBlocks, changed) = BlockParser.parseWithDiff(rawSource, previous: blocks)
+        blocks = newBlocks
 
-        // Drive the viewport deliberately so undo/redo doesn't lurch.
+        var dirty = IndexSet(integersIn: changed)
+        // Map the old active block through the diff (same scheme as the edit
+        // path): prefix indices are unchanged, suffix indices shift by the
+        // count delta, anything inside the window is already dirty.
+        if let old = oldActive {
+            let suffixCount = newBlocks.count - changed.upperBound
+            if old < changed.lowerBound {
+                dirty.insert(old)
+            } else if old >= oldCount - suffixCount {
+                dirty.insert(old + (newBlocks.count - oldCount))
+            }
+        }
+        // listIndentUnit is document-global: when it changes, every list
+        // block's rendered indentation changes with it.
+        if listIndentUnit != oldIndentUnit {
+            for (i, block) in blocks.enumerated() where block.kind == .listItem {
+                dirty.insert(i)
+            }
+        }
+
+        // The changed text in restored coordinates: select it so the user sees
+        // exactly what this undo/redo did. A pure deletion has no new text to
+        // select — the caret goes to the deletion point instead.
+        let changedInNew = NSRange(location: diff.oldRange.location,
+                                   length: (diff.replacement as NSString).length)
+        let selection: NSRange? = changedInNew.length > 0 ? changedInNew : nil
+
+        // Range-bounded storage replacement: layout outside the changed span
+        // stays real. (The old full `recompose` reset the whole document to
+        // TextKit 2 height estimates, and centering math done on estimates is
+        // what made the post-undo scroll land too far down.)
+        let apply = {
+            self.recomposeReplacing(oldRange: diff.oldRange, with: diff.replacement,
+                                    dirty: dirty, cursorInRaw: changedInNew.location,
+                                    selectionInRaw: selection)
+        }
+
         if typewriterModeEnabled {
-            // Typewriter: the caret is always centered, so re-center on it.
-            recompose(cursorInRaw: snapshot.cursorInRaw)
+            // Typewriter: always center on the changed text.
+            apply()
             centerViewportOnCaret()
         } else if let scrollView = enclosingScrollView {
-            // Remember exactly where the viewport was, recompose, then: if the
-            // restored caret (the change being undone) is already on screen,
-            // hold the viewport perfectly still — no measured-delta nudge, so no
-            // residual jump. Only when the edit is off-screen do we scroll, and
-            // then we put the caret at the exact vertical center.
+            // If any of the changed text is already on screen, hold the
+            // viewport perfectly still; otherwise center the change.
             let savedOrigin = scrollView.contentView.bounds.origin
-            recompose(cursorInRaw: snapshot.cursorInRaw)
-            // Lay out the caret's real geometry before deciding visible-vs-center,
-            // otherwise an off-screen caret's estimated position can look "visible"
-            // and the viewport wrongly holds instead of centering.
+            apply()
             ensureCaretRegionLaidOut()
-            if caretIsVisible(forViewportOrigin: savedOrigin) {
+            if rangeIsVisible(changedInNew, forViewportOrigin: savedOrigin) {
                 scrollView.contentView.scroll(to: savedOrigin)
                 scrollView.reflectScrolledClipView(scrollView.contentView)
             } else {
                 centerViewportOnCaret()
             }
         } else {
-            recompose(cursorInRaw: snapshot.cursorInRaw)
+            apply()
         }
 
         isUndoRedoing = false
