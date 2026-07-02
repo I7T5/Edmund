@@ -76,10 +76,22 @@ ASSET_URL="https://github.com/${REPO}/releases/download/v${VERSION}/Edmund-${VER
 
 # ── Prepend item to appcast.xml ───────────────────────────────────────────────
 PUB_DATE="$(date -u '+%a, %d %b %Y %H:%M:%S +0000')"
+
+# Release notes for Sparkle's update dialog (scrollable pane). Built from this
+# version's CHANGELOG section; empty (and omitted) if the section is missing.
+DESC_HTML="$(python3 scripts/changelog-to-html.py "$VERSION")"
+DESC_BLOCK=""
+if [ -n "$DESC_HTML" ]; then
+    DESC_BLOCK="            <description><![CDATA[
+${DESC_HTML}
+]]></description>
+"
+fi
+
 NEW_ITEM="        <item>
             <title>Edmund ${VERSION}</title>
             <pubDate>${PUB_DATE}</pubDate>
-            <enclosure url=\"${ASSET_URL}\"
+${DESC_BLOCK}            <enclosure url=\"${ASSET_URL}\"
                        sparkle:version=\"${BUILD}\"
                        sparkle:shortVersionString=\"${VERSION}\"
                        ${ED_SIG}
