@@ -100,25 +100,21 @@ jobs:
 
           # Release notes for Sparkle's update dialog (scrollable pane), built
           # from this version's CHANGELOG section. Omitted if the section is missing.
+          # Built with printf (not a literal multi-line string) so this step's
+          # `run: |` block scalar doesn't contain an unindented line, which
+          # breaks YAML parsing of the whole workflow file.
+          # $(...) strips trailing newlines, so DESC_BLOCK can't carry its own
+          # trailing separator — NEW_ITEM's printf adds it explicitly instead.
           DESC_HTML="$(python3 scripts/changelog-to-html.py "$VERSION")"
           DESC_BLOCK=""
           if [ -n "$DESC_HTML" ]; then
-            DESC_BLOCK="            <description><![CDATA[
-${DESC_HTML}
-]]></description>
-"
+            DESC_BLOCK="$(printf '            <description><![CDATA[\n%s\n]]></description>' "$DESC_HTML")"
           fi
 
-          NEW_ITEM="        <item>
-              <title>Edmund ${VERSION}</title>
-              <pubDate>${PUB_DATE}</pubDate>
-${DESC_BLOCK}              <enclosure url=\"${ASSET_URL}\"
-                         sparkle:version=\"${BUILD}\"
-                         sparkle:shortVersionString=\"${VERSION}\"
-                         ${ED_SIG}
-                         ${LENGTH}
-                         type=\"application/x-apple-diskimage\"/>
-          </item>"
+          # Built with printf (one logical YAML line) rather than a literal
+          # multi-line string: an unindented line inside this value would
+          # break this run block's YAML indentation (as DESC_BLOCK did above).
+          NEW_ITEM="$(printf '        <item>\n            <title>Edmund %s</title>\n            <pubDate>%s</pubDate>\n%s\n            <enclosure url="%s"\n                       sparkle:version="%s"\n                       sparkle:shortVersionString="%s"\n                       %s\n                       %s\n                       type="application/x-apple-diskimage"/>\n        </item>' "$VERSION" "$PUB_DATE" "$DESC_BLOCK" "$ASSET_URL" "$BUILD" "$VERSION" "$ED_SIG" "$LENGTH")"
 
           python3 - "$NEW_ITEM" <<'PYEOF'
           import sys
