@@ -60,6 +60,10 @@ def to_html(section: list[str]) -> str:
                 parts.append("<ul>")
                 in_list = True
             parts.append(f"<li>{inline(stripped[2:])}</li>")
+        elif in_list and line.startswith((" ", "\t")):
+            # Wrapped continuation of the previous bullet (indented, no marker)
+            # — fold it back into that <li> instead of starting a new block.
+            parts[-1] = parts[-1][: -len("</li>")] + " " + inline(stripped) + "</li>"
         else:
             close_list()
             parts.append(f"<p>{inline(stripped)}</p>")
