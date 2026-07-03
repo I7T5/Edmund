@@ -3,6 +3,20 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] — 2026-07-03
+
+Polishing the editor and trying to have Fable 5 fix all the big bugs while I still have it with me. 
+
+## Changed
+- Redo now jumps to where changed text was instead of caret
+- Removed old code for identity mapping, etc., using [ponytail](https://github.com/DietrichGebert/ponytail)-review
+
+## Fixed
+- Updater [#158](https://github.com/I7T5/Edmund/issues/158)
+- Icon display for callouts with custom titles ([docs](docs/callout-title-wrap-investigation.md))
+- Undo/redo viewport glitches from TextKit 2 ([docs](docs/viewport-glitch-investigation.md))
+- Delete caret drift ([docs](docs/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)
+
 ---
 
 ## [0.1.1] — 2026-06-29
