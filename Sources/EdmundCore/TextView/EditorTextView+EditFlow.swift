@@ -76,6 +76,16 @@ extension EditorTextView {
                 Log.info("healing storage edit that bypassed didChangeText: " +
                          "storLen=\(storage.length) rawLen=\((self.rawSource as NSString).length)",
                          category: .edit)
+                // The bypassing path also skips AppKit's usual pre-didChangeText
+                // selection fix, so the selection can still span text that no
+                // longer exists. Left alone, the restyle's layout invalidation
+                // makes AppKit clamp it to the end of the document — the caret
+                // visibly leaps. Collapse it to the edit point ourselves first.
+                let sel = self.selectedRange()
+                if NSMaxRange(sel) > storage.length {
+                    self.setSelectedRange(NSRange(location: min(sel.location, storage.length),
+                                                  length: 0))
+                }
                 self.syncRawSourceFromDisplay()
                 self.document?.updateChangeCount(.changeDone)
             }
