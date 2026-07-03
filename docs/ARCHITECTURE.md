@@ -221,7 +221,10 @@ them and route through the app's document graph without JavaScript.
   `bodyFont`, colors, paragraph styles.
 - **Max content width** persists as **centimetres** (`maxContentWidthCm`); the
   cm/in shown in Settings is a display unit (`contentWidthUnit`), the column
-  itself is always physical (see §6 content width). Default is 12 cm / 5 in.
+  itself is always physical (see §6 content width). The default is locale-aware
+  — 5 in (US) / 12 cm (elsewhere) — and doubles as the slider's magnetic snap
+  point; the slider runs from a 3 in floor to the current screen's physical
+  width (`NSScreen.physicalWidthCm`).
 - **Window size** persists as the last document window's full **frame** size
   (`lastWindowSize`) — see the §8 gotcha on why it's the frame, not the content
   size.
@@ -484,3 +487,24 @@ releases fail at the appcast push.
 hit Gatekeeper on first launch; the README documents the
 `xattr -dr com.apple.quarantine` / right-click-Open workarounds. A Developer ID
 cert + notarization (see §8) would remove the prompt entirely.
+
+---
+
+## 14. References
+
+Dependencies and prior art worth consulting before designing something new here:
+
+- [apple/swift-markdown](https://github.com/apple/swift-markdown) — the
+  CommonMark/GFM parser both back-ends walk (§3, §6 Read mode).
+- [SwiftMath](https://github.com/mgriebling/SwiftMath) — LaTeX rendering
+  (raster only; no SVG output yet — why exported math is PNG, §6).
+- [Sparkle](https://sparkle-project.org) — auto-update (§8, §13 for the
+  signing/appcast quirks).
+- [Lucide](https://lucide.dev) — vendored icon SVGs (ISC), `Model/LucideIcons.swift`.
+- [nodes-app/swift-markdown-engine](https://github.com/nodes-app/swift-markdown-engine)
+  — an independent AppKit + TextKit 2 live-preview markdown engine (Apache 2.0,
+  macOS 14+). Solves the same problems (viewport virtualization, live styling,
+  wiki links, reading column, LaTeX) with different trade-offs — useful
+  comparison point before inventing a new mechanism for an editing-experience
+  problem, and a candidate source of techniques (e.g. drag-select autoscroll,
+  overscroll) if we hit the same walls.
