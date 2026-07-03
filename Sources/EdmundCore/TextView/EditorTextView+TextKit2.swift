@@ -109,22 +109,47 @@ public final class BlockDecorationList: NSObject, @unchecked Sendable {
     public override var hash: Int { decorations.count }
 }
 
-/// An image drawn at a character's laid-out position, with attachment-style
-/// bounds: `bounds.origin.y` is the image bottom relative to the text baseline
-/// (negative descends below it).
+/// An image or stroked vector path drawn at a character's laid-out position,
+/// with attachment-style bounds: `bounds.origin.y` is the drawing's bottom
+/// relative to the text baseline (negative descends below it).
+///
+/// The path form exists because of a TextKit 2 wedge: drawing an *image* on a
+/// wrapping, multi-line layout fragment collapses that fragment's layout to a
+/// single line, while drawing a *shape* does not (see
+/// docs/callout-title-wrap-investigation.md). Overlays that can share a line
+/// with wrapping text (the custom-callout-title icon) must use the path form.
 public final class FragmentOverlay: NSObject, @unchecked Sendable {
-    public let image: NSImage
+    public let image: NSImage?
+    /// Stroked path in bounds-local coordinates (y-down, origin at the
+    /// bounds' top-left), pre-scaled to the bounds size.
+    public let path: CGPath?
+    public let pathColor: NSColor?
+    public let pathLineWidth: CGFloat
     public let bounds: CGRect
 
     public init(image: NSImage, bounds: CGRect) {
         self.image = image
+        self.path = nil
+        self.pathColor = nil
+        self.pathLineWidth = 0
+        self.bounds = bounds
+        super.init()
+    }
+
+    public init(path: CGPath, color: NSColor, lineWidth: CGFloat, bounds: CGRect) {
+        self.image = nil
+        self.path = path
+        self.pathColor = color
+        self.pathLineWidth = lineWidth
         self.bounds = bounds
         super.init()
     }
 
     public override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? FragmentOverlay else { return false }
-        return other.image === image && other.bounds == bounds
+        return other.image === image && other.path == path
+            && other.pathColor == pathColor && other.pathLineWidth == pathLineWidth
+            && other.bounds == bounds
     }
 
     public override var hash: Int { Int(bounds.width) ^ Int(bounds.height) }
@@ -225,18 +250,35 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         for (offset, overlay) in overlays {
             guard let rect = overlayRect(anchorOffset: offset, overlay: overlay) else { continue }
             let drawRect = rect.offsetBy(dx: point.x, dy: point.y)
-            // Draw the (resolution-independent) NSImage into the flipped context,
-            // so it rasterizes at the screen's backing scale — crisp on Retina,
-            // and positioned precisely. (Converting to a CGImage first would bake
-            // it at 1×, then upscale: soft, and quantized a pixel low.) The math
-            // image carries a small transparent inset, so the flipped draw can't
-            // clip a descender at the image edge.
-            let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = nsContext
-            overlay.image.draw(in: drawRect, from: .zero, operation: .sourceOver,
-                               fraction: 1, respectFlipped: true, hints: nil)
-            NSGraphicsContext.restoreGraphicsState()
+            if let image = overlay.image {
+                // Draw the (resolution-independent) NSImage into the flipped context,
+                // so it rasterizes at the screen's backing scale — crisp on Retina,
+                // and positioned precisely. (Converting to a CGImage first would bake
+                // it at 1×, then upscale: soft, and quantized a pixel low.) The math
+                // image carries a small transparent inset, so the flipped draw can't
+                // clip a descender at the image edge.
+                let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = nsContext
+                image.draw(in: drawRect, from: .zero, operation: .sourceOver,
+                           fraction: 1, respectFlipped: true, hints: nil)
+                NSGraphicsContext.restoreGraphicsState()
+            } else if let path = overlay.path, let color = overlay.pathColor {
+                // Stroke the vector path directly in CG — never rasterize it to
+                // an image first: an image drawn on a multi-line fragment wedges
+                // its layout to one line (see the FragmentOverlay note). Path
+                // coords are bounds-local and y-down, matching this flipped
+                // context, so a translate places them.
+                context.saveGState()
+                context.translateBy(x: drawRect.minX, y: drawRect.minY)
+                context.addPath(path)
+                context.setStrokeColor(color.cgColor)
+                context.setLineWidth(overlay.pathLineWidth)
+                context.setLineCap(.round)
+                context.setLineJoin(.round)
+                context.strokePath()
+                context.restoreGState()
+            }
         }
     }
 

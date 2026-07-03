@@ -65,6 +65,17 @@ enum LucideIcons {
         return image
     }
 
+    /// The icon's stroke geometry as a CGPath in Lucide's canonical 24×24,
+    /// y-down viewBox space (stroke it with width 2, round caps/joins, to
+    /// match the rendered SVG). Used where the icon must be drawn as a
+    /// *shape*, not an image — an image on a wrapping TextKit 2 fragment
+    /// wedges its layout to one line (see FragmentOverlay). `nil` for an
+    /// unknown id.
+    static func path(_ name: String) -> CGPath? {
+        guard let g = geometry[name] else { return nil }
+        return SVGPath.path(fromGeometry: g)
+    }
+
     /// Read-mode checkbox markup mirroring the editor's look. Unchecked: a
     /// stroked `circle`. Checked: a disc filled in `currentColor` (CSS supplies
     /// the accent) with a white check on top. The themeable part uses
