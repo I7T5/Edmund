@@ -1,6 +1,3 @@
-# Test files
-test-files/
-
 # Build & Dev stuff
 /.build
 /build
@@ -11,19 +8,21 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 
-# Sparkle private key (never commit — store in keychain or CI secret)
-sparkle_private_key.txt
-
-# Misc
-.DS_Store
-CLAUDE.md
-misc/
-
-# Local work in progress
-README.md
-docs/ROADMAP.md
-docs/MARKETING.md
 # local visual-verification tooling
 /tmp/
 Tests/EdmundTests/_RenderDump.swift
 Tests/EdmundTests/_RenderEdit.swift
+
+# Test files
+test-files/
+
+# Sparkle private key (never commit — store in keychain or CI secret)
+sparkle_private_key.txt
+
+# AI
+/.claude/worktrees
+
+# Misc
+misc/
+.DS_Store
+
