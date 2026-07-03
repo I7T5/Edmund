@@ -7,20 +7,6 @@ import AppKit
 @Suite("EditorTextView — Coordinate Mapping")
 struct EditorCoordinateTests {
 
-    @Test("Display offset equals raw offset (identity mapping)")
-    @MainActor func identityMapping() {
-        let editor = makeEditor()
-        type("hello", into: editor)
-
-        #expect(editor.displayOffsetToRawOffset(0) == 0)
-        #expect(editor.displayOffsetToRawOffset(3) == 3)
-        #expect(editor.displayOffsetToRawOffset(5) == 5)
-
-        #expect(editor.rawOffsetToDisplayOffset(0) == 0)
-        #expect(editor.rawOffsetToDisplayOffset(3) == 3)
-        #expect(editor.rawOffsetToDisplayOffset(5) == 5)
-    }
-
     @Test("blockIndexForRawOffset returns correct index")
     @MainActor func blockIndexMapping() {
         let editor = makeEditor()
@@ -779,18 +765,6 @@ struct EditorRecomposeTests {
         // Cursor in block 1
         editor.recompose(cursorInRaw: 9)
         #expect(editor.textStorage!.string == "**bold**\nplain")
-    }
-
-    @Test("Display ranges equal block ranges (identity)")
-    @MainActor func displayRangesAreBlockRanges() {
-        let editor = makeEditor()
-        editor.rawSource = "**bold**\nplain"
-        editor.blocks = BlockParser.parse(editor.rawSource)
-        editor.recompose(cursorInRaw: 0)
-
-        #expect(editor.displayRanges.count == 2)
-        #expect(editor.displayRanges[0].length == 8)  // "**bold**"
-        #expect(editor.displayRanges[1].length == 5)  // "plain"
     }
 
     @Test("activeBlockIndex is set correctly")

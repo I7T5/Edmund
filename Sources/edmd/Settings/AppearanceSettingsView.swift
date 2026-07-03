@@ -156,7 +156,7 @@ struct AppearanceSettingsView: View {
         for case let document as Document in NSDocumentController.shared.documents {
             let screen = document.editor?.window?.screen ?? NSScreen.main
             guard let screen else { continue }
-            document.editor?.applyContentWidth(screen.cmToPoints(maxContentWidthCm))
+            document.editor?.maxContentWidthPoints = screen.cmToPoints(maxContentWidthCm)
         }
     }
 

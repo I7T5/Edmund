@@ -42,8 +42,8 @@ extension EditorTextView {
     /// selection, but only if every covered block is a list line.
     private func affectedListBlockRange() -> (Int, Int)? {
         let sel = selectedRange()
-        let rawStart = displayOffsetToRawOffset(sel.location)
-        let rawEnd = displayOffsetToRawOffset(sel.location + sel.length)
+        let rawStart = sel.location
+        let rawEnd = sel.location + sel.length
 
         guard let startIdx = blockIndexForRawOffset(rawStart),
               var endIdx = blockIndexForRawOffset(rawEnd) else {
@@ -70,8 +70,8 @@ extension EditorTextView {
 
     private func indentListBlocks(from startBlock: Int, to endBlock: Int) {
         let sel = selectedRange()
-        let rawStart = displayOffsetToRawOffset(sel.location)
-        let rawEnd = displayOffsetToRawOffset(sel.location + sel.length)
+        let rawStart = sel.location
+        let rawEnd = sel.location + sel.length
         let indentLen = (Self.indentUnit as NSString).length
 
         // The pre-edit storage span covering exactly the affected blocks; only
@@ -136,8 +136,8 @@ extension EditorTextView {
 
     private func dedentListBlocks(from startBlock: Int, to endBlock: Int) {
         let sel = selectedRange()
-        let rawStart = displayOffsetToRawOffset(sel.location)
-        let rawEnd = displayOffsetToRawOffset(sel.location + sel.length)
+        let rawStart = sel.location
+        let rawEnd = sel.location + sel.length
         let maxRemove = (Self.indentUnit as NSString).length
 
         // Compute how many leading whitespace characters to strip from each block.

@@ -6,8 +6,8 @@ import AppKit
 // joining them; `recomposeIncremental` re-styles only the block(s) the cursor
 // moved between, which is what runs on most edits. Because the text storage
 // always equals the raw source (word-level rendering, no string stripping),
-// the display↔raw coordinate mapping is the identity — the conversion helpers
-// exist so call sites read clearly and stay correct if that ever changes.
+// the display↔raw coordinate mapping is the identity — display offsets are
+// used as raw offsets directly.
 
 extension EditorTextView {
 
@@ -145,8 +145,6 @@ extension EditorTextView {
             blocks[idx].isStyled = false
         }
 
-        displayRanges = blocks.map { $0.range }
-
         if settingSelection {
             if let rawSel = selectionInRaw, rawSel.length > 0 {
                 let len = ts.length
@@ -231,12 +229,6 @@ extension EditorTextView {
         return max(0, anchor - 200) ... min(blocks.count - 1, anchor + 200)
     }
 
-    /// Recalculates displayRanges from current blocks.
-    /// With word-level rendering, display ranges = raw block ranges.
-    func recalcDisplayRanges() {
-        displayRanges = blocks.map { $0.range }
-    }
-
     // MARK: - Coordinate Mapping
     //
     // With text storage = rawSource, display offset = raw offset (identity).
@@ -258,17 +250,5 @@ extension EditorTextView {
             }
         }
         return lo
-    }
-
-    func displayOffsetToRawOffset(_ displayOffset: Int) -> Int {
-        return displayOffset
-    }
-
-    func rawOffsetToDisplayOffset(_ rawOffset: Int) -> Int {
-        return rawOffset
-    }
-
-    func displayRangeToRawRange(_ displayRange: NSRange) -> NSRange {
-        return displayRange
     }
 }

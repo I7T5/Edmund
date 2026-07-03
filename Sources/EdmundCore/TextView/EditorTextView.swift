@@ -57,7 +57,6 @@ public class EditorTextView: NSTextView {
     var blocks: [Block] = []
     var activeBlockIndex: Int? = nil
     var isUpdating = false
-    var displayRanges: [NSRange] = []
     /// Coalesces the async active-block restyle scheduled from a caret move
     /// (internal so EditorTextView+SelectionTracking can clear it).
     var pendingRecompose = false

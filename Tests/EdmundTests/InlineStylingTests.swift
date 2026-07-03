@@ -230,7 +230,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "**bold**")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         // Delimiters hidden
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         #expect(fgColor(at: base, in: editor) == NSColor.clear)
@@ -248,7 +248,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "__bold__")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let f = font(at: base + 2, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.boldFontMask))
@@ -263,7 +263,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "*italic*")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let f = font(at: base + 1, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.italicFontMask))
@@ -278,7 +278,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "_italic_")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let f = font(at: base + 1, in: editor)!
         #expect(NSFontManager.shared.traits(of: f).contains(.italicFontMask))
@@ -293,7 +293,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "***both***")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let f = font(at: base + 3, in: editor)!
         let traits = NSFontManager.shared.traits(of: f)
@@ -310,7 +310,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "`code`")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let color = fgColor(at: base + 1, in: editor)
         #expect(color == editor.foregroundColor)
@@ -325,7 +325,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "~~struck~~")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let a = attrs(at: base + 2, in: editor)
         #expect(a[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
@@ -340,7 +340,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "==marked==")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         let a = attrs(at: base + 2, in: editor)
         #expect(a[.backgroundColor] != nil)
@@ -355,7 +355,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "[click](https://example.com)")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         // "[" delimiter hidden
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         // "click" content has link color and underline
@@ -376,7 +376,7 @@ struct InlineStylingInactiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text == "**bold** *italic* `code`")
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         // ** delimiters hidden
         #expect(font(at: base, in: editor)!.pointSize < 1.0)
         // "bold" at base+2 has bold font

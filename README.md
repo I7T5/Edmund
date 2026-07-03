@@ -81,7 +81,7 @@ If Edmund's not your thing, some of the following might be:
   - [MarkEdit](https://github.com/MarkEdit-app/MarkEdit) - TextEdit for Markdown
     - I *love* this. If only I wasn't so dependent on rendered math...
   - [editxr](https://github.com/pixdeo/editxr) - TUI
-  - More feature-rich: [Zettlr](https://www.zettlr.com), [Joplin](https://joplinapp.org), [Tangent](https://www.tangentnotes.com)
+  - More feature-rich: [FSNotes](https://fsnot.es), [Zettlr](https://www.zettlr.com), [Joplin](https://joplinapp.org), [Tangent](https://www.tangentnotes.com)
 
 The list is by no means exhaustive, and neither was it meant to be. I just wanted to give credit to the makers of these apps, esp. IMO the aesthetic open sourced ones. A comprehensive list may be found [here](https://github.com/mundimark/awesome-markdown-editors). 
 
@@ -97,7 +97,7 @@ The following have greatly influenced the architecture and/or helped with design
 - [MarkEdit](https://github.com/MarkEdit-app/MarkEdit) for the readme organization
 - [screenshot-studio](screenshot-studio.com) for the amazing screenshots editing experience
 - [shields](shields.io) for the beautiful badges in this readme
-- Claude for the engineering. 
+- Claude, [caveman](https://github.com/JuliusBrussee/caveman), and [ponytail](https://github.com/DietrichGebert/ponytail) for the engineering. 
 
 
 ## License
