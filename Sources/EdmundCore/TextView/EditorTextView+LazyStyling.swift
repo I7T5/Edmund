@@ -96,7 +96,83 @@ extension EditorTextView {
         }
         isUpdating = false
 
-        if remaining { scheduleProgressiveStyling() }
+        if remaining {
+            scheduleProgressiveStyling()
+        } else {
+            scheduleFullLayoutSettle()
+        }
+    }
+
+    /// TextKit 2 only gives a fragment a real frame once it's laid out;
+    /// everything else is a height *estimate*, and estimate corrections are
+    /// what make the scroller jump, drag-selection autoscroll oscillate, and
+    /// scroll targets land wrong. For small documents we can afford to lay
+    /// everything out once styling has converged, so no estimates remain.
+    /// `ensureLayout` is incremental — already-laid-out fragments are skipped
+    /// — so repeated settles after edits only re-lay the invalidated blocks.
+    /// (Large documents keep viewport-based layout: a full layout there is
+    /// the process-killing path that motivated `scrollRangeToVisible`'s
+    /// override.)
+    ///
+    /// Runs on the next run-loop pass, wrapped in `preservingViewportAnchor`:
+    /// correcting estimates *above* the viewport shifts every laid-out
+    /// position below them, so doing it synchronously inside a caller's own
+    /// anchored restyle would poison that caller's before/after measurement.
+    func scheduleFullLayoutSettle() {
+        guard !fullLayoutSettleScheduled else { return }
+        fullLayoutSettleScheduled = true
+        // RunLoop.perform, not DispatchQueue.main.async, so tests can drain it
+        // with `RunLoop.main.run(until:)`.
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.fullLayoutSettleScheduled = false
+                guard !self.isUpdating, !self.hasMarkedText(),
+                      let tlm = self.textLayoutManager else { return }
+                self.repairContentAboveOrigin()
+                guard (self.textStorage?.length ?? 0) <= Self.fullLayoutMaxLength,
+                      self.blocks.allSatisfy({ $0.isStyled }) else { return }
+                self.preservingViewportAnchor {
+                    tlm.ensureLayout(for: tlm.documentRange)
+                }
+            }
+        }
+    }
+
+    /// TextKit 2 can leave the document's first fragment at a *negative* y
+    /// after edits near the top: layout proceeding upward from a viewport
+    /// anchor with a wrong height estimate assigns origins above 0, and
+    /// nothing renormalizes them. The symptom is the first line sitting above
+    /// the visible area with the scroller already at the top — unreachable.
+    /// Repair: re-lay from the document start (anchoring the first fragment
+    /// back at y 0) inside `preservingViewportAnchor`, which compensates the
+    /// clip origin so what the user is looking at doesn't move — and the
+    /// content above becomes scrollable again.
+    func repairContentAboveOrigin() {
+        guard let tlm = textLayoutManager else { return }
+        var firstMinY: CGFloat?
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) {
+            firstMinY = $0.layoutFragmentFrame.minY
+            return false
+        }
+        guard let firstMinY, firstMinY < -0.5 else { return }
+
+        // Bound the re-lay to start→viewport-end (the bug only manifests with
+        // the viewport near the top, so this is small); bail on huge spans
+        // rather than risk the full-document layout cost on a large file.
+        var end = tlm.documentRange.endLocation
+        if let vp = tlm.textViewportLayoutController.viewportRange {
+            end = vp.endLocation
+        }
+        guard tlm.offset(from: tlm.documentRange.location, to: end) <= 60_000,
+              let range = NSTextRange(location: tlm.documentRange.location, end: end)
+        else { return }
+        Log.info("repairing content above origin: firstMinY=\(firstMinY)",
+                 category: .compose)
+        preservingViewportAnchor {
+            tlm.invalidateLayout(for: range)
+            tlm.ensureLayout(for: range)
+        }
     }
 
     /// Styles any unstyled blocks inside the current viewport window. Forces a

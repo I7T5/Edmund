@@ -85,6 +85,23 @@ extension EditorTextView {
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        // Settle passes: the target Y was computed from geometry that can
+        // still contain TextKit 2 height *estimates* above the caret. After
+        // the scroll, the viewport's own layout is real — re-measure and
+        // correct any residual error (typically converges in one pass;
+        // bounded for safety).
+        guard let tlm = textLayoutManager else { return }
+        for _ in 0..<3 {
+            tlm.textViewportLayoutController.layoutViewport()
+            guard let settled = caretLineRect() else { return }
+            let settledTarget = settled.midY + textContainerOrigin.y - visibleHeight / 2
+            let settledMaxY = max(0, frame.height - visibleHeight)
+            let settledY = min(max(0, settledTarget), settledMaxY)
+            guard abs(settledY - scrollView.contentView.bounds.origin.y) > 1 else { return }
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: settledY))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
     }
 
     /// Lays out the span between the current viewport and the caret so the
@@ -128,6 +145,22 @@ extension EditorTextView {
                                  y: lineRect.minY + textContainerOrigin.y,
                                  width: 1, height: lineRect.height)
         return visible.intersects(caretInView)
+    }
+
+    /// Whether any part of `range`'s vertical span (start line through end
+    /// line) lies within the viewport defined by `origin`. Used by undo/redo
+    /// to decide hold-vs-center for the restored change.
+    func rangeIsVisible(_ range: NSRange, forViewportOrigin origin: CGPoint) -> Bool {
+        guard let scrollView = enclosingScrollView,
+              let startRect = lineRect(forCharacterAt: range.location) else { return false }
+        let endRect = range.length > 0
+            ? (lineRect(forCharacterAt: range.upperBound) ?? startRect) : startRect
+        let visible = CGRect(origin: origin, size: scrollView.contentView.bounds.size)
+        let span = CGRect(x: visible.minX,
+                          y: min(startRect.minY, endRect.minY) + textContainerOrigin.y,
+                          width: 1,
+                          height: max(startRect.maxY, endRect.maxY) - min(startRect.minY, endRect.minY))
+        return visible.intersects(span)
     }
 
     /// The caret line's rect in text-container coordinates (TextKit 2: lays
@@ -177,7 +210,18 @@ extension EditorTextView {
         let margin: CGFloat = 8
 
         var targetY = visible.origin.y
-        if top < visible.minY {
+        if top < visible.minY && bottom > visible.maxY {
+            // The range overflows the viewport on both sides (e.g. a drag
+            // selection grown taller than the screen). Follow the end
+            // *nearest* the viewport — that's the end being extended. Always
+            // scrolling to the top here fought the drag's downward autoscroll
+            // and made the viewport oscillate up and down mid-drag.
+            let overflowTop = visible.minY - top
+            let overflowBottom = bottom - visible.maxY
+            targetY = overflowBottom <= overflowTop
+                ? bottom + margin - visible.height
+                : top - margin
+        } else if top < visible.minY {
             targetY = top - margin
         } else if bottom > visible.maxY {
             // Prefer keeping the bottom edge visible; fall back to the top if

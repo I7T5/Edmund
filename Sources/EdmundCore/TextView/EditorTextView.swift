@@ -72,6 +72,13 @@ public class EditorTextView: NSTextView {
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0
+    /// Coalesces the deferred full-document layout settle for small documents
+    /// (see EditorTextView+LazyStyling `scheduleFullLayoutSettle`).
+    var fullLayoutSettleScheduled = false
+    /// Documents at or below this UTF-16 length are laid out in full once
+    /// styling converges, eliminating TextKit 2 height estimates (and the
+    /// scroll jumps they cause). See `scheduleFullLayoutSettle`.
+    static let fullLayoutMaxLength = 100_000
 
     // MARK: - Custom Undo/Redo State
 

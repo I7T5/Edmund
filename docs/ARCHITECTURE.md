@@ -97,8 +97,14 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
 - **Incremental parsing**: edits capture a pending edit on `EditorTextStorage`
   and reparse a window, not the whole doc.
 - **Undo/redo** is custom: stacks of `rawSource` snapshots (`+Undo.swift`),
-  bypassing NSTextView's built-in undo. Restoring a snapshot manages the
-  viewport deliberately (hold if on-screen, else center on the caret).
+  bypassing NSTextView's built-in undo. Restoring a snapshot *diffs* the
+  snapshot against the current text (`textDiff`, single contiguous span) and
+  applies it with the range-bounded `recomposeReplacing` — never a full
+  `recompose`, which would reset every fragment to a TextKit 2 height
+  estimate and make the follow-up scroll land wrong. The changed text is
+  selected (caret at the deletion point for pure deletions) and drives the
+  viewport: hold if any of it is on-screen, else center it. The snapshot's
+  stored caret is only a fallback for a no-op diff.
 - **Cursor tracking** (`+SelectionTracking`): moving between blocks restyles
   both; moving within a block updates which token's delimiters are revealed.
 
@@ -294,6 +300,27 @@ them and route through the app's document graph without JavaScript.
   block whose height/indent changed, you must `invalidateLayout(for:)` its range
   or the fragment keeps a stale frame (empty bands / clipped lines). `recompose
   Dirty` and the idle drain already do this; new paths must too.
+- **TextKit 2 height *estimates* are the root of most viewport glitches.** A
+  fragment has a real frame only once laid out; everything else (and the total
+  document height) is an estimate that gets corrected as layout reaches it —
+  which is what makes the scroller jump and scroll-to-target land wrong (a
+  widely documented TK2 limitation; even TextEdit shows it). Mitigations here:
+  documents ≤ `fullLayoutMaxLength` (100k UTF-16) are kept **fully laid out**
+  by a coalesced next-run-loop settle (`scheduleFullLayoutSettle`, wrapped in
+  `preservingViewportAnchor` so corrections never shift what's on screen);
+  `centerViewportOnCaret` re-measures after its first scroll and corrects the
+  residual error; and undo/redo avoids resetting layout at all (see §4). Don't
+  add code that trusts an off-screen fragment's y-coordinate without laying
+  out the span first.
+- **TK2 can strand content above the document origin.** Edits near the top of
+  a tall document sometimes leave the first fragment at negative y: the first
+  line sits above the visible area and the scroller is already at the top, so
+  the user can't reach it. `repairContentAboveOrigin` (run by the layout
+  settle) detects a negative first-fragment origin and re-lays start→viewport
+  inside `preservingViewportAnchor` to renormalize.
+- **A selection taller than the viewport must be revealed at its *nearest*
+  end** (`scrollRangeToVisible` override): always revealing the top fought the
+  drag-selection autoscroll and oscillated the viewport mid-drag.
 - **Never mutate storage while an IME is composing (`hasMarkedText()`)**: during
   composition the storage holds the provisional marked text, so `storage ==
   rawSource` is transiently false and `didChangeText` defers syncing until
