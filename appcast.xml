@@ -26,5 +26,31 @@
                length="7591848"
                type="application/x-apple-diskimage"/>
 </item>
+        <item>
+            <title>Edmund 0.1.2</title>
+            <pubDate>Fri, 03 Jul 2026 19:03:59 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Polishing the editor and trying to have Fable 5 fix all the big bugs while I still have it with me.</p>
+<p>## Changed</p>
+<ul>
+<li>Redo now jumps to where changed text was instead of caret</li>
+<li>Removed old code for identity mapping, etc., using [ponytail](https://github.com/DietrichGebert/ponytail)-review</li>
+</ul>
+<p>## Fixed</p>
+<ul>
+<li>Updater [#158](https://github.com/I7T5/Edmund/issues/158)</li>
+<li>Icon display for callouts with custom titles ([docs](docs/callout-title-wrap-investigation.md))</li>
+<li>Undo/redo viewport glitches from TextKit 2 ([docs](docs/viewport-glitch-investigation.md))</li>
+<li>Delete caret drift ([docs](docs/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.1.2/Edmund-0.1.2.dmg"
+                       sparkle:version="3"
+                       sparkle:shortVersionString="0.1.2"
+                       sparkle:edSignature="+Zppm5B5vht2Bw2nPAvVyVQd8rygzO+InIUlFkX/M/naiZqn1BRabhGxSkXtlM2m+h2R111vpE8PU4bc3JZoDg=="
+                       length="7608991"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
