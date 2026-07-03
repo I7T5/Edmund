@@ -16,7 +16,7 @@ struct EditorDiagnosticsTests {
         Log.configure(enabled: true, directory: dir, retention: nil)
         Log.setVerbose(verbose)
         defer {
-            Log.setEnabled(false)
+            Log.configure(enabled: false, directory: dir, retention: nil)
             Log.setVerbose(false)
             try? FileManager.default.removeItem(at: dir)
         }

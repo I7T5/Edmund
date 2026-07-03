@@ -52,10 +52,6 @@ public enum Log {
         LogStore.shared.configure(enabled: enabled, directory: directory, retention: retention)
     }
 
-    public static func setEnabled(_ enabled: Bool) {
-        LogStore.shared.setEnabled(enabled)
-    }
-
     /// Verbose editor tracing: a separate opt-in (off by default) gating the
     /// high-volume per-edit / per-caret-move `trace` lines. Kept distinct from the
     /// on/off of the whole logger so a normal user's logs aren't flooded with
@@ -180,10 +176,6 @@ private final class LogStore: @unchecked Sendable {
             self?.closeHandle()   // directory may have changed
             if enabled, let retention { self?.prune(retention: retention) }
         }
-    }
-
-    func setEnabled(_ enabled: Bool) {
-        lock.withLock { _enabled = enabled }
     }
 
     func setVerbose(_ verbose: Bool) {

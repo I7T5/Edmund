@@ -85,8 +85,8 @@ func pressBackspace(in editor: EditorTextView) {
 /// Returns the text storage string for a specific block's display range.
 @MainActor
 func displayText(for blockIndex: Int, in editor: EditorTextView) -> String {
-    guard blockIndex < editor.displayRanges.count else { return "" }
-    let range = editor.displayRanges[blockIndex]
+    guard blockIndex < editor.blocks.count else { return "" }
+    let range = editor.blocks[blockIndex].range
     let ts = editor.textStorage!
     guard range.upperBound <= ts.length else { return "" }
     return (ts.string as NSString).substring(with: range)

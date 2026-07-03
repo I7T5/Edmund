@@ -414,7 +414,7 @@ struct TableNonActiveTests {
         editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
         activateBlock(1, in: editor)
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         // "A" at base+2 should be bold
         let f = font(at: base + 2, in: editor)!
         let traits = NSFontManager.shared.traits(of: f)
@@ -427,7 +427,7 @@ struct TableNonActiveTests {
         editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
         activateBlock(1, in: editor)
 
-        let base = editor.displayRanges[0].location
+        let base = editor.blocks[0].range.location
         // All pipes are hidden (vertical borders drawn by the .tableRow decoration)
         let outerF = font(at: base, in: editor)!
         #expect(outerF.pointSize < 1.0)

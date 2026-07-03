@@ -208,7 +208,7 @@ class Document: NSDocument, HeadingNavigable {
     @objc private func windowDidChangeScreen(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
               let screen = window.screen else { return }
-        editor?.applyContentWidth(screen.cmToPoints(AppSettings.maxContentWidthCm))
+        editor?.maxContentWidthPoints = screen.cmToPoints(AppSettings.maxContentWidthCm)
     }
 
     @objc private func editorDidChange(_ notification: Notification) {

@@ -33,12 +33,6 @@ extension EditorTextView {
         }
     }
 
-    /// Sets the max-column width (in points) and applies it immediately.
-    /// Called from the Settings broadcast and the screen-change observer.
-    public func applyContentWidth(_ points: CGFloat) {
-        maxContentWidthPoints = points
-    }
-
     /// Recompute the centered inset as the view width changes (window resize).
     public override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)

@@ -339,12 +339,12 @@ struct EditorListIndentIntegrationTests {
         // Block 0 is "- first" (inactive rendered). Block 1 should become active.
         // In the display, block 0 is rendered (shorter due to bullet), block 1 raw.
         // Let's set cursor into block 1's display region.
-        let block1DisplayStart = editor.displayRanges[1].location
+        let block1DisplayStart = editor.blocks[1].range.location
         editor.setSelectedRange(NSRange(location: block1DisplayStart, length: 0))
 
         // Trigger recompose so block 1 becomes active
         // (Selection change notification fires async, so drive it manually)
-        let rawOffset = editor.displayOffsetToRawOffset(block1DisplayStart)
+        let rawOffset = block1DisplayStart
         editor.recompose(cursorInRaw: rawOffset)
 
         #expect(editor.activeBlockIndex == 1)

@@ -102,7 +102,7 @@ struct EditorDocumentLoadingTests {
 
         // Non-active block's delimiters are hidden via attributes, not stripped.
         // "*" at block 1 start should have hidden font.
-        let b1Start = editor.displayRanges[1].location
+        let b1Start = editor.blocks[1].range.location
         let delimFont = font(at: b1Start, in: editor)!
         #expect(delimFont.pointSize < 1.0)
         #expect(fgColor(at: b1Start, in: editor) == NSColor.clear)
