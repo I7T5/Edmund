@@ -108,6 +108,28 @@ struct CalloutRenderingTests {
         #expect(isHidden(at: marker.location, in: styled))
     }
 
+    @Test("Custom title shows the type icon as a stroked path (never an image)")
+    @MainActor func customTitleIcon() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("> [!note] My Title\n> body")
+        // The icon overlay anchors on "[" — as a vector path, NOT an image:
+        // an image drawn on this wrapping header line wedges TextKit 2's
+        // layout to a single line (docs/callout-title-wrap-investigation.md).
+        let att = styled.attribute(.fragmentOverlay, at: 2, effectiveRange: nil) as? FragmentOverlay
+        #expect(att != nil)
+        #expect(att?.path != nil)
+        #expect(att?.image == nil)
+        // The anchor's kern reserves the icon advance plus a gap before the title.
+        let kern = styled.attribute(.kern, at: 2, effectiveRange: nil) as? CGFloat
+        #expect((kern ?? 0) > (att?.bounds.width ?? .infinity))
+        // Wrapped title lines hang past the icon so they align under the title.
+        let ns = styled.string as NSString
+        let title = ns.range(of: "My Title")
+        let ps = styled.attribute(.paragraphStyle, at: title.location,
+                                  effectiveRange: nil) as? NSParagraphStyle
+        #expect((ps?.headIndent ?? 0) > (kern ?? .infinity))
+    }
+
     @Test("A long custom title wraps to multiple lines instead of clipping")
     @MainActor func longCustomTitleWraps() {
         let editor = makeEditor()   // ~500pt container

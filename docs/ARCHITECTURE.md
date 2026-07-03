@@ -120,17 +120,20 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
     `bottomPad` grows the *last* fragment's frame (TextKit 2 omits trailing
     paragraph spacing from the fragment, so padding done that way would be dead
     space).
-  - **`.fragmentOverlay`** (character-level): an image drawn at a character's
-    laid-out position — rendered math, list bullets/checkboxes, the callout
-    header icon+name image. The anchor glyph is hidden and `.kern` reserves the
-    image's advance width (the same trick the table renderer uses).
+  - **`.fragmentOverlay`** (character-level): an image *or stroked vector
+    path* drawn at a character's laid-out position — rendered math, list
+    bullets/checkboxes, the callout header icon+name image, the custom-title
+    callout icon (path). The anchor glyph is hidden and `.kern` reserves the
+    drawing's advance width (the same trick the table renderer uses).
 - **Hiding** text = `hiddenFont` (≈0.01pt) + clear `foregroundColor`. This is
   how delimiters and synthesized-but-in-source markers vanish without changing
   the string.
-- **Overlays only work on single-line fragments.** Drawing an image on a
-  *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it to
-  one line. This is why a wrapping callout *custom title* has no icon — see
-  `docs/callout-title-wrap-investigation.md` for the full saga.
+- **Image overlays only work on single-line fragments.** Drawing an *image* on
+  a *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it
+  to one line; drawing a *shape* does not. So the wrapping callout custom
+  title's icon is a stroked `CGPath` (`SVGPath` parses the vendored Lucide
+  geometry), never an image — see `docs/callout-title-wrap-investigation.md`
+  for the full saga.
 
 ---
 
@@ -369,19 +372,17 @@ them and route through the app's document graph without JavaScript.
 
 ## 9. Known issues / lurking problems
 
-- **Callout custom title can't show the type icon** (TextKit 2 multi-line +
-  image wedge). Shipped workaround: custom titles wrap as real text *without*
-  an icon; default callouts keep theirs. Full investigation + a preserved
-  (non-working) image-based alternative on branch `fix/callout-title-image`:
+- **Images can't be drawn on multi-line (wrapping) fragments** (TextKit 2
+  image wedge — collapses the fragment's layout to one line). Resolved for the
+  callout custom-title icon by drawing it as a stroked `CGPath` instead
+  (shapes don't trigger the wedge); the constraint still holds for any *new*
+  overlay that could share a line with wrapping text. Full investigation:
   `docs/callout-title-wrap-investigation.md`.
 - *(Add new ones here as you find them — with a one-line repro and a pointer to
   any deeper write-up in `docs/`.)*
 
 ## 10. Still to address
 
-- Revisit the callout icon limitation if a newer macOS/TextKit 2 fixes the
-  reentrancy (reproduce first; would require bumping the deployment target off
-  macOS 14).
 - **Inline HTML renders in both modes for a fixed whitelist** —
   `SyntaxHighlighter.htmlFormatTags` (`u`/`kbd`/`mark`/`sub`/`sup`), the single
   source of truth. Edit: `parseHTMLTags` colors any tag (name red, brackets

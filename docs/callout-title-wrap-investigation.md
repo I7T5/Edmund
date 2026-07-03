@@ -64,13 +64,33 @@ including the dev machine this was found on — so it wouldn't help without an O
 upgrade. If revisiting: reproduce on the newest macOS first (a long custom-title
 callout in a narrow window — does it still clip on initial display?).
 
-## What shipped
+## What shipped originally
 
 **Drop the icon for custom-title callouts.** A custom title is real, literal,
 bold + tinted text that wraps inside the box (wrapped lines hang under the
-title); it has **no** type icon. Default callouts keep their icon+name image
-(short, single-line, never wraps). This is the only option that works reliably.
-See `styleCalloutContent` in `EditorTextView+CalloutRendering.swift`.
+title); it had **no** type icon. Default callouts keep their icon+name image
+(short, single-line, never wraps).
+
+## Resolution (2026-07): draw the icon as a shape, not an image
+
+The control matrix above was the key: *shape* drawing on the multi-line
+fragment never triggered the wedge — only *image* drawing did. Lucide icons
+are pure stroke geometry, so the icon doesn't have to be an image at all.
+
+Custom-title callouts now get their icon back as a **stroked `CGPath`
+overlay**: `SVGPath` converts the vendored Lucide geometry (paths incl. arcs,
+circles, rects) to a CGPath, `FragmentOverlay` gained a path form, and
+`DecoratedTextLayoutFragment` strokes it directly in CG (round caps/joins,
+width 2 scaled from the 24×24 viewBox) instead of blitting an NSImage. The
+anchor's `.kern` reserves the icon advance plus a gap; wrapped title lines
+hang under the title. Verified live: icon renders, a long title still wraps,
+and re-wraps on window resize, with no clipping.
+
+The wedge itself remains unexplained (no matching known TextKit 2 issue was
+found) and still constrains any *future* overlay that could share a line with
+wrapping text: such overlays must use the path form, never the image form.
+See `styleCalloutContent` / `calloutIconPathOverlay` in
+`EditorTextView+CalloutRendering.swift`.
 
 ## The image alternative (preserved, not shipped)
 

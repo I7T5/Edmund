@@ -123,14 +123,15 @@ extension EditorTextView {
                 // Custom title: hide the `[!type]` marker and render the title as
                 // real bold + tinted text so a long title WRAPS inside the box.
                 //
-                // NOTE: custom-title callouts deliberately have NO type icon.
-                // The icon is an image, and drawing an image on this (potentially
-                // multi-line, wrapping) header line wedges TextKit 2's layout to a
-                // single line — clipping the title. Every way of drawing it was
-                // tried and hit the same wall; see
+                // NOTE: the type icon here is a stroked vector *path* overlay,
+                // never an image: drawing an image on this (potentially
+                // multi-line, wrapping) header line wedges TextKit 2's layout to
+                // a single line — clipping the title — by every image-drawing
+                // mechanism tried, while shape drawing is unaffected. See
                 // docs/callout-title-wrap-investigation.md. Default callouts (the
-                // `else` below) keep their icon: their synthesized type name is
-                // short and never wraps, so it stays a single-line image overlay.
+                // `else` below) keep their icon+name image: their synthesized
+                // type name is short and never wraps, so the single-line image
+                // overlay never hits the wedge.
                 let markerHide = NSRange(location: header.location,
                                          length: titleRange.location - header.location)
                 if markerHide.length > 0 {
@@ -141,16 +142,30 @@ extension EditorTextView {
                 result.addAttribute(.font, value: titleFont, range: titleRange)
                 result.addAttribute(.foregroundColor, value: c.accent, range: titleRange)
 
+                // Icon before the title: anchored on the hidden `[`, with the
+                // kern reserving the icon's advance plus a gap so the title
+                // starts clear of it (applyOverlay's own kern is only the icon
+                // width — overwrite it).
+                var iconAdvance: CGFloat = 0
+                if let icon = calloutIconPathOverlay(iconName: info.style.iconName,
+                                                     color: c.accent, titleFont: titleFont,
+                                                     iconNudge: info.style.iconBaselineNudge) {
+                    let anchor = NSRange(location: header.location, length: 1)
+                    applyOverlay(icon, anchor: anchor, in: result)
+                    iconAdvance = icon.bounds.width + bodyFont.pointSize * 0.3
+                    result.addAttribute(.kern, value: iconAdvance, range: anchor)
+                }
+
                 // The title sits at the callout's left padding. The first line
                 // carries the width-preserved `> ` marker before the (hidden)
-                // `[!type]`, so its text starts `quoteMarkerWidth` past the inset;
-                // headIndent adds that width so wrapped lines align under the
-                // title. Top breathing room is above the first line only (the box
-                // covers it).
+                // `[!type]`, so its text starts `quoteMarkerWidth` past the
+                // inset, plus the icon's kerned advance; headIndent adds both so
+                // wrapped lines align under the title. Top breathing room is
+                // above the first line only (the box covers it).
                 let ps = NSMutableParagraphStyle()
                 ps.lineSpacing = bodyParagraphStyle.lineSpacing
                 ps.firstLineHeadIndent = 2
-                ps.headIndent = 2 + quoteMarkerWidth
+                ps.headIndent = 2 + quoteMarkerWidth + iconAdvance
                 ps.tailIndent = -10
                 ps.paragraphSpacingBefore = calloutTopPad
                 result.addAttribute(.paragraphStyle, value: ps, range: headerLine)
@@ -385,6 +400,31 @@ extension EditorTextView {
         ps.tailIndent = -10
         ps.minimumLineHeight = minimumLineHeight
         return ps
+    }
+
+    // MARK: Header icon (custom title — stroked path, never an image)
+
+    /// The type icon for a custom-title header, as a stroked-path overlay
+    /// sized to a `pointSize` square and vertically centered on the bold
+    /// title's optical middle (same optics as the header image below). A path
+    /// — not an image — because the custom-title line wraps, and an image
+    /// drawn on a multi-line fragment wedges its layout to one line (see
+    /// docs/callout-title-wrap-investigation.md). `nil` for an unknown icon.
+    private func calloutIconPathOverlay(iconName: String, color: NSColor,
+                                        titleFont: NSFont, iconNudge: CGFloat) -> FragmentOverlay? {
+        let pointSize = bodyFont.pointSize
+        guard let svgPath = LucideIcons.path(iconName) else { return nil }
+        let scale = pointSize / 24   // Lucide viewBox → icon square
+        var transform = CGAffineTransform(scaleX: scale, y: scale)
+        guard let scaled = svgPath.copy(using: &transform) else { return nil }
+        // bounds.minY is the icon's *bottom* relative to the baseline: center
+        // the square on the title's optical middle (midpoint of x-height and
+        // cap-height centers — matches the header image's icon placement).
+        let opticalCenter = (titleFont.xHeight + titleFont.capHeight) / 4
+        return FragmentOverlay(path: scaled, color: color, lineWidth: 2 * scale,
+                               bounds: CGRect(x: 0,
+                                              y: opticalCenter - pointSize / 2 + iconNudge,
+                                              width: pointSize, height: pointSize))
     }
 
     // MARK: Header image (icon + title)
