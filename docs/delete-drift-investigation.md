@@ -296,3 +296,29 @@ against invalidated layout and landed the caret at the following block
 boundary. Healing on the run-loop pass right after the rogue edit (before any
 further keystroke) removes both ingredients; no explicit selection repair was
 needed.
+
+## Round 5: the heal itself leaped the caret (stale selection)
+
+Recurred 2026-07-03 (~11:25, editing ROADMAP.md) on the round-4 build. The
+heal worked — invariant restored, autosave wrote correct bytes — but the
+caret leaped to the **end of the document** at the heal moment:
+
+```
+11:25:14.834 selectionDidChange sel={951,37}              drag-select
+11:25:15.172 shouldChangeText OK range={951, 37} repl=""  drag-move deletion, no didChangeText
+11:25:15.207 healing storage edit ... storLen=973 rawLen=1010
+11:25:15.208 selectionDidChange sel={973,0} up=Y          caret at doc end
+```
+
+Round 4's "no explicit selection repair needed" was wrong for one case: when
+the bypassed deletion removes the *selected* text itself, the bypassing path
+also skips AppKit's usual pre-`didChangeText` selection fix, so at heal time
+the selection still spans text that no longer exists ({951,37} in a 973-char
+doc). The heal's restyle invalidates layout, AppKit re-resolves the invalid
+selection, and clamps it to the document end.
+
+Fix: before `syncRawSourceFromDisplay`, the heal collapses an out-of-bounds
+selection to the edit point (`min(location, length)`, zero length). Covered
+by `healRepairsSelectionSpanningDeletedText()` — though note headless
+NSTextView clamps the selection itself, so the test documents intent; the
+leap only reproduces under live layout.
