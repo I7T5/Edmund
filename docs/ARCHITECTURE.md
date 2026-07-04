@@ -375,7 +375,8 @@ them and route through the app's document graph without JavaScript.
   keystroke scripts (`caret` / `type` / `backspace` / `bypassdelete` /
   `assertcaret` / `logsel`) through the real `window.sendEvent` key path — no
   Accessibility/TCC needed, works with the window on an invisible Space. Full
-  chronicle: `docs/delete-drift-investigation.md` round 6.
+  chronicle: `docs/delete-drift-investigation.md` round 6; step-by-step method
+  for producing such repros: `docs/live-repro-guide.md`.
 - **A custom toolbar item can't win a right-click from a view-level handler.**
   With `NSToolbar.allowsUserCustomization = true`, the toolbar turns any
   secondary (right / control) click over the toolbar — *including* a custom item
@@ -439,6 +440,10 @@ them and route through the app's document graph without JavaScript.
 4. Make the change; add/adjust tests in `Tests/EdmundTests` (helpers:
    `makeEditor()`, `ensureFullLayout()`, `styleBlock()`).
 5. Verify per §12 before committing.
+
+Debugging a live-only bug (caret, IME, drag, viewport timing)? Follow
+`docs/live-repro-guide.md` — trace-reading first, then the in-process
+ReproScript driver; don't burn time on headless attempts for that class.
 
 ---
 
