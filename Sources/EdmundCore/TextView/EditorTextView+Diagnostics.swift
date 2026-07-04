@@ -40,6 +40,22 @@ extension EditorTextView {
         Log.trace("\(event()) | \(diagnosticState)", category: .edit)
     }
 
+    /// Under verbose tracing, logs a condensed call stack for a suspicious
+    /// selection change — one arriving mid-recompose (up=Y) or while a
+    /// pendingEdit is unconsumed. Those are exactly the changes behind the
+    /// issue-#156 caret drifts, and the stack names the AppKit path that
+    /// moved the caret.
+    func traceSelectionOrigin() {
+        guard Log.shouldTrace else { return }
+        let frames = Thread.callStackSymbols.dropFirst(2).prefix(14).map { frame in
+            // "3  AppKit  0x00: -[NSTextView foo] + 12" → drop index/module/addr.
+            let parts = frame.split(separator: " ", omittingEmptySubsequences: true)
+            return parts.count > 3 ? parts[3...].joined(separator: " ") : frame
+        }
+        Log.trace("selection origin:\n    " + frames.joined(separator: "\n    "),
+                  category: .edit)
+    }
+
     /// A short, newline-escaped, length-capped rendering of edit text for traces.
     func logSnippet(_ s: String?) -> String {
         guard let s else { return "nil" }
