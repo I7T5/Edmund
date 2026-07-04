@@ -325,55 +325,132 @@ leap only reproduces under live layout.
 
 ## Round 6: TextKit 2's queued selection fixup — the drift mechanism itself
 
-Recurred 2026-07-03 ~22:13 (hodge-poster.md) on the round-5 build: typing
-"While go" mid wrapped paragraph, then backspace → caret leaped +43 to the
-end of the block ("always starts two viewport-lines down" — user), next
-backspace leaped to end of document. New user observation: the drift is no
-longer continuous — one delete drifts, the next doesn't.
+Recurred 2026-07-03 ~22:13 (hodge-poster.md) on the round-5 build: the user
+typed "While go" mid wrapped paragraph, backspaced the "o" → the caret leaped
++43 to the end of the block (sel 294 → 337); the next backspace deleted the
+block separator and leaped to the end of the document (337 → 388). Two new
+field observations shaped the investigation:
 
-**Reproduced deterministically** (first time ever headless-ish): simulate the
-drag-move bypass (shouldChangeText + replaceCharacters, no didChangeText) via
-the new in-process repro driver, let the heal fire, and the caret lands at
-321 instead of 290 — every run.
+- the first drift is always "two viewport-lines down";
+- the drift is no longer continuous — a delete that drifts is followed by
+  deletes that don't (unlike rounds 4/5).
 
-The new `traceSelectionOrigin` (verbose call-stack log for selection changes
-arriving mid-recompose) named the culprit:
+No heal breadcrumb at the drift moment, no LEN-MISMATCH persisting, `synced`
+lines present — the *model* was fine. The drifting deletes' signature was a
+`selectionDidChange` arriving **mid-recompose** (up=Y) at a wrong position,
+with no pre-sync up=N notification. And 80 seconds *earlier* the log showed a
+heal (a drag-move bypass at 22:11:57) followed immediately by three backspaces
+with a *stuck* caret — the same up=Y signature. That temporal link (bypass →
+later delete drifts) became the working hypothesis.
+
+### How it was finally reproduced (the first deterministic repro in 6 rounds)
+
+Everything before round 6 relied on reading traces from the user's live
+sessions; every scripted attempt had failed to drift. What failed, and why,
+matters as much as what worked:
+
+1. **Windowed unit test, real `deleteBackward`** (`WrappedParagraphCaretTests`
+   first version): reconstruct the exact document, caret mid wrapped
+   paragraph, type "While go" via `insertText`, then `deleteBackward(nil)`
+   with run-loop drains. **Passed** — under the test harness NSTextView
+   updates the selection synchronously; the deferred-fixup state never forms.
+   Lesson: this bug class is invisible headless, full stop.
+
+2. **CGEvent injection** (the round-4 approach: drive the real app with
+   synthetic clicks/keys): this session's TCC context silently dropped the
+   events — clicks and keys posted fine but never arrived. Also the app's
+   windows launch on an inactive Space (`kCGWindowIsOnscreen == false`), and
+   `osascript`/System Events activation was denied assistive access.
+   Lesson (already in memory, reconfirmed): CGEvent-based repro depends on
+   per-session TCC grants you can't count on.
+
+3. **In-process replay — the breakthrough.** If events can't be injected from
+   outside, have the app inject them itself: `ReproScript.swift` (DEBUG-only,
+   `-debug.reproScript <path>`) replays a command script against the front
+   document by synthesizing `NSEvent` key events and pushing them through
+   `window.sendEvent(_:)` — the full, authentic AppKit route (keyDown →
+   interpretKeyEvents → insertText:/deleteBackward:), no TCC involved, and it
+   works with the window on an invisible Space. Commands: `sleep <ms>`,
+   `caret <needle>` (place caret before first occurrence), `type <text>`,
+   `backspace <n>`, `logsel`, and the two that cracked the case:
+   - `bypassdelete <needle>` — simulates the drag-move source deletion
+     exactly as AppKit performs it: select the range, call
+     `shouldChangeText`, mutate the storage, **never call `didChangeText`**;
+   - `assertcaret <needle>` — PASS/FAIL log line iff the caret sits exactly
+     before `<needle>` (position-independent, so soak scripts survive
+     upstream edits).
+
+4. **First scripted run reproduced the leap immediately and deterministically**:
+   `bypassdelete "Sizemore,"` → heal fires → caret lands at **321** instead
+   of 290, every run, window not even visible. Typing and backspacing alone
+   (step 1's recipe) never drifts; one bypassed edit beforehand always does.
+   The trigger was never the typing — it was the silent drag-move bypass
+   minutes earlier.
+
+### Naming the culprit: `traceSelectionOrigin`
+
+New verbose diagnostic (`+Diagnostics`): any `selectionDidChange` arriving
+while `isUpdating` (the drift signature) logs a condensed call stack. One run
+later the mover had a name:
 
 ```
+-[NSTextView(NSSharing) setSelectedRanges:affinity:stillSelecting:]
 -[NSTextLayoutManager _fixSelectionAfterChangeInCharacterRange:changeInLength:]
 -[NSTextContentStorage synchronizeTextLayoutManagers:]
 -[NSTextStorage endEditing]
 recomposeDirty ← syncRawSourceFromDisplay ← the heal
 ```
 
-A didChangeText-bypassing mutation also skips TextKit 2's selection fixup for
-that edit. The fixup stays queued and fires at the **next** `endEditing` —
-the heal's attribute-only restyle — where it maps the stale selection against
-post-edit coordinates and drops the caret blocks away. That's why drift is
-intermittent: the fixer fires once, state is synced, deletes behave again
-until the next silent bypass. Round 5's out-of-bounds clamp only caught the
-case where the stale selection ran past the document end.
+The mechanism: a normal edit runs TextKit 2's selection fixup synchronously
+inside its own editing transaction (the same stack appears under
+`deleteBackward` → `_NSDoUserReplaceForCharRange` on healthy deletes). A
+didChangeText-bypassing mutation skips that too — the fixup **stays queued**
+and fires at the *next* `endEditing`, which is the heal's attribute-only
+restyle. There it maps the by-then-stale selection against post-edit
+coordinates and drops the caret blocks away. This also explains both field
+observations: the landing offset (+31 chars here) spans about two wrapped
+lines in the user's window, and the fixer fires exactly once — after it the
+TextKit state is synchronized and deletes behave until the *next* silent
+bypass (hence "drifts once, then fine").
 
-**Fix** (in the heal, `EditorTextView+EditFlow.swift`): derive the correct
-caret from the pendingEdit hull (`oldRange.location + max(0, oldRange.length
-+ delta)`), set it before the sync (so cursorRaw/active-block styling are
-right), and **re-assert it after** — the queued fixer moves even a freshly
-set valid caret during the sync's endEditing, so the pre-set alone is not
-enough (verified: pre-set only still landed at 321).
+Round 5's fix was a special case of this: when the stale selection happened
+to run past the shrunk document end, the late fixer clamped it to the
+document end. The out-of-bounds clamp caught that variant and no other.
 
-**Tooling built for this round** (both DEBUG-only):
-- `Sources/edmd/App/ReproScript.swift` — `-debug.reproScript <path>` replays
-  keystroke scripts (`caret/type/backspace/bypassdelete/assertcaret/logsel`)
-  through the real AppKit key-event path in-process; works when TCC blocks
-  CGEvent injection.
-- `traceSelectionOrigin` — call stack for mid-recompose selection changes.
+### The fix — and the iteration that proved its shape
 
-Soak-verified: 4 bypass+heal cycles with typing/backspaces/block merges
-between, all `assertcaret PASS`. Note the unit test
-(`WrappedParagraphCaretTests`) cannot reproduce the queued fixer headlessly —
-the live scripted repro is the regression proof.
+In the heal (`+EditFlow`): derive the correct caret from the pendingEdit hull
+(`oldRange.location + max(0, oldRange.length + delta)` — the edit's end
+point), then:
 
-Build gotcha hit twice this round: SwiftPM kept "Build complete!" while
-linking a stale `edmd` binary (compile ran, relink skipped). When a repro
-behaves like old code, check `strings .build/.../edmd` for a new literal;
-`swift package clean` fixes it.
+1. `setSelectedRange` **before** `syncRawSourceFromDisplay()` — first attempt.
+   **Still leaped to 321**: the queued fixer runs during the sync's
+   `endEditing` and moves even a freshly set, fully valid caret.
+2. Re-assert the same caret **after** the sync as well — the fixer has fired
+   by then and its state is clean (verified: all follow-up edits healthy).
+   The pre-set is still kept so the sync computes `cursorRaw`/active-block
+   styling from the right position.
+
+### Verification
+
+- Deterministic repro flips: logsel 321 → **290** with the fix.
+- Soak (per the "accumulate a session" suggestion): one script, one app run,
+  four bypass+heal cycles at different document positions with typing,
+  backspaces, and block-merge deletes between them — **all five `assertcaret`
+  PASS**, final state byte-identical across runs.
+- Full suite green (810). The unit test survives as a contract spec but
+  cannot catch a regression (see step 1); the scripted live repro is the
+  regression harness — script preserved in the test bundle's sibling docs and
+  reproducible in one command.
+
+### Build-system trap hit twice this round
+
+`swift build` twice reported `Build complete!` while linking a **stale**
+`edmd` binary — the compile step ran (`Compiling edmd ReproScript.swift`
+visible in the log) but the relink silently didn't, so the app kept executing
+old code and two "failed" fix iterations were phantoms. Detection: check
+`strings .build/arm64-apple-macosx/debug/edmd` for a string literal unique to
+the new code (beware: literals ≤15 bytes are stored inline on arm64 and never
+show up — grep for a *long* one). Cure: `swift package clean`. Never delete
+`edmd.build/` by hand — that corrupts the output-file-map and wedges the
+target until a clean.
