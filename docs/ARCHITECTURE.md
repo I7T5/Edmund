@@ -286,7 +286,15 @@ them and route through the app's document graph without JavaScript.
   - Names the output `"Edmund <version>.dmg"` (space, not hyphen). Both scripts
     rename it to `Edmund-<version>.dmg` before signing and uploading.
 - **Stale release builds**: `swift build -c release` / `build-app.sh` sometimes
-  reuses stale object files (you'll run an old binary and be baffled). If a
+  reuses stale object files (you'll run an old binary and be baffled). Debug
+  builds have the same disease: `swift build` can print `Build complete!`
+  after compiling a changed file **without relinking `edmd`** — the app then
+  runs old code. Detect it by grepping
+  `strings .build/arm64-apple-macosx/debug/edmd` for a long string literal
+  unique to the new code (literals ≤15 bytes are stored inline on arm64 and
+  never appear); cure with `swift package clean`. Never delete
+  `.build/…/edmd.build/` by hand — that corrupts the output-file-map and
+  wedges the target until a full clean. If a
   visual change "doesn't take," `rm -rf .build` and rebuild. `shasum` the binary
   to confirm it changed.
 - **`open Edmund.app` foregrounds a *running* instance instead of relaunching.**
@@ -351,6 +359,23 @@ them and route through the app's document graph without JavaScript.
   (`+EditFlow`, `scheduleBypassedEditSyncCheck`; `healing storage edit that
   bypassed didChangeText` in `~/.edmund/logs` is its breadcrumb). Never build
   a sync path on the assumption that `didChangeText` follows every edit.
+- **A bypassed edit also leaves TextKit 2's selection fixup queued** (delete-
+  drift round 6). The skipped
+  `-[NSTextLayoutManager _fixSelectionAfterChangeInCharacterRange:]` fires at
+  the **next** `endEditing` — even an attribute-only restyle — where it maps
+  the stale selection against post-edit coordinates and leaps the caret blocks
+  away. It moves even a freshly set, valid caret, so the heal must set the
+  caret (derived from the pendingEdit hull) *before* the sync **and re-assert
+  it after** (`+EditFlow`). Corollary: any suspicious selection change arrives
+  mid-recompose (`up=Y` in traces); under verbose diagnostics
+  `traceSelectionOrigin` logs the call stack of whoever moved it — start there.
+  This class of bug does not reproduce headless (the test harness runs the
+  fixup synchronously): use the in-process repro driver — DEBUG builds accept
+  `-debug.reproScript <path>` (`Sources/edmd/App/ReproScript.swift`) and replay
+  keystroke scripts (`caret` / `type` / `backspace` / `bypassdelete` /
+  `assertcaret` / `logsel`) through the real `window.sendEvent` key path — no
+  Accessibility/TCC needed, works with the window on an invisible Space. Full
+  chronicle: `docs/delete-drift-investigation.md` round 6.
 - **A custom toolbar item can't win a right-click from a view-level handler.**
   With `NSToolbar.allowsUserCustomization = true`, the toolbar turns any
   secondary (right / control) click over the toolbar — *including* a custom item

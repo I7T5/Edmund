@@ -53,6 +53,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Log.info("Opening file from launch argument: \(url.path)", category: .document)
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
+
+        #if DEBUG
+        ReproScript.runIfRequested()
+        #endif
     }
 
     // Auto-open a blank document on launch only when no file was passed on the

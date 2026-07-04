@@ -76,17 +76,29 @@ extension EditorTextView {
                 Log.info("healing storage edit that bypassed didChangeText: " +
                          "storLen=\(storage.length) rawLen=\((self.rawSource as NSString).length)",
                          category: .edit)
-                // The bypassing path also skips AppKit's usual pre-didChangeText
-                // selection fix, so the selection can still span text that no
-                // longer exists. Left alone, the restyle's layout invalidation
-                // makes AppKit clamp it to the end of the document — the caret
-                // visibly leaps. Collapse it to the edit point ourselves first.
-                let sel = self.selectedRange()
-                if NSMaxRange(sel) > storage.length {
-                    self.setSelectedRange(NSRange(location: min(sel.location, storage.length),
-                                                  length: 0))
+                // The bypassing path also skips TextKit 2's selection fixup —
+                // it stays queued and fires at the NEXT endEditing (our restyle),
+                // via _fixSelectionAfterChangeInCharacterRange, mapping the
+                // stale selection against post-edit coordinates. That's the
+                // issue-#156 caret leap: the fixer lands the caret a couple of
+                // lines away. Collapse the selection to the edit's end point
+                // ourselves before syncing; the late fixer then has a valid
+                // caret to map and leaves it in place.
+                var caretAfterEdit: Int?
+                if let pending = storage.pendingEdit {
+                    let newLength = max(0, pending.oldRange.length + pending.delta)
+                    caretAfterEdit = min(pending.oldRange.location + newLength, storage.length)
+                    self.setSelectedRange(NSRange(location: caretAfterEdit!, length: 0))
                 }
                 self.syncRawSourceFromDisplay()
+                // The queued fixer fires during the sync's endEditing and moves
+                // the caret even when it was just set to a valid spot — so
+                // re-assert after the sync; by the next edit the fixer state is
+                // clean (verified: follow-up deletes behave).
+                if let caret = caretAfterEdit {
+                    self.setSelectedRange(NSRange(location: min(caret, storage.length),
+                                                  length: 0))
+                }
                 self.document?.updateChangeCount(.changeDone)
             }
         }

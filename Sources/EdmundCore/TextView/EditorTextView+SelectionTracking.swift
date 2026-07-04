@@ -7,6 +7,9 @@ extension EditorTextView {
 
     @objc func selectionDidChange(_ notification: Notification) {
         traceEdit("selectionDidChange")
+        // A selection change landing mid-recompose is the drift signature
+        // (issue #156); the stack names the AppKit path that moved the caret.
+        if isUpdating { traceSelectionOrigin() }
         guard !isUpdating else { return }
         // NSTextView moves the selection DURING an edit, before didChangeText
         // runs the sync — at that moment `blocks` still has pre-edit ranges.
