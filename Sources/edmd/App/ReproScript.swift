@@ -12,6 +12,8 @@ import EdmundCore
 ///   caret <needle>    place the caret before the first occurrence of <needle>
 ///   type <text>       type text, one key event per character
 ///   backspace <n>     press delete n times (300ms apart)
+///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
+///                     recentering, so a block can be driven off-screen)
 ///   logsel            log the current selection
 @MainActor
 enum ReproScript {
@@ -78,6 +80,21 @@ enum ReproScript {
                              "rawLen=\((editor.rawSource as NSString).length) " +
                              "docs=\(NSDocumentController.shared.documents.count)",
                              category: .app)
+                }
+            case "scroll":
+                // Scrolls the clip view directly (bypassing the caret, so the
+                // active block can be driven off-screen independent of where
+                // typewriter-mode recentering would otherwise put it).
+                // `scroll(to:)` posts boundsDidChange, same as a real drag/wheel
+                // scroll, so promotion/idle-drain react exactly as they would live.
+                schedule(after: delay) { editor in
+                    guard let clipView = editor.enclosingScrollView?.contentView else { return }
+                    let y = CGFloat(Double(arg) ?? 0)
+                    let proposed = NSRect(origin: NSPoint(x: 0, y: y), size: clipView.bounds.size)
+                    let clamped = clipView.constrainBoundsRect(proposed)
+                    clipView.scroll(to: clamped.origin)
+                    editor.enclosingScrollView?.reflectScrolledClipView(clipView)
+                    Log.info("repro scroll y=\(y) clamped=\(clamped.origin.y)", category: .app)
                 }
             default:
                 break
