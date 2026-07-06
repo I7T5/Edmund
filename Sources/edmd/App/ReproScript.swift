@@ -39,6 +39,14 @@ enum ReproScript {
                     }
                     editor.setSelectedRange(NSRange(location: r.location, length: 0))
                 }
+            case "caretend":
+                // Place the caret at the very end of the document (the phantom
+                // empty final line when rawSource ends in "\n"). Needles can't
+                // target an empty line, so this is the only way to sit there.
+                schedule(after: delay) { editor in
+                    let end = (editor.rawSource as NSString).length
+                    editor.setSelectedRange(NSRange(location: end, length: 0))
+                }
             case "type":
                 for ch in arg {
                     schedule(after: delay) { press(String(ch), keyCode: 0, in: $0) }

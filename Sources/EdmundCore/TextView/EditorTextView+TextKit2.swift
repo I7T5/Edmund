@@ -207,6 +207,29 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         }
     }
 
+    /// Height to actually paint a filled decoration (box / left bar) over,
+    /// which is *not* always the full frame height. When a callout or quote is
+    /// the last block AND the document ends with a newline, TextKit 2 folds the
+    /// document's final empty line into this (the preceding) layout fragment
+    /// instead of giving it its own fragment — it shows up as a trailing
+    /// zero-length line fragment. Painting the decoration over the full frame
+    /// then floods the callout color onto that trailing empty line (the
+    /// "extra colored line at the bottom" bug). Detect the absorbed empty line
+    /// and stop the fill at the last real content line plus the box's bottom
+    /// padding.
+    var decorationDrawHeight: CGFloat {
+        let full = layoutFragmentFrame.height
+        let lines = textLineFragments
+        guard lines.count > 1, let last = lines.last,
+              last.characterRange.length == 0 else { return full }
+        // Bottom of the last line that actually holds text (fragment-local).
+        let contentBottom = lines.dropLast().map { $0.typographicBounds.maxY }.max() ?? 0
+        // `super` frame excludes our bottomPad; its extent past the content is
+        // exactly the absorbed empty line. Remove that, keep the bottomPad.
+        let emptyLineHeight = max(0, super.layoutFragmentFrame.height - contentBottom)
+        return max(0, full - emptyLineHeight)
+    }
+
     override var layoutFragmentFrame: CGRect {
         var frame = super.layoutFragmentFrame
         frame.size.height += boxBottomPad
@@ -302,9 +325,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     private func drawDecoration(_ decoration: BlockDecoration, at point: CGPoint,
                                 in context: CGContext, bottomInset: CGFloat = 0) {
         let frame = layoutFragmentFrame
+        // Filled decorations (box, bar) stop above an absorbed trailing empty
+        // line; center-line decorations (rule, table) still use the full frame.
+        let fillHeight = decorationDrawHeight
         // Fragment-local rect spanning the full text column for this fragment.
         let columnRect = CGRect(x: point.x + containerLeft, y: point.y,
-                                width: containerWidth, height: frame.height)
+                                width: containerWidth, height: fillHeight)
 
         switch decoration.kind {
         case .box(let background, let borderColor, let edges, let borderWidth, _):
@@ -344,7 +370,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // insets the text by the bar's width).
             context.setFillColor(color.cgColor)
             context.fill(CGRect(x: point.x - width, y: point.y,
-                                width: width, height: frame.height))
+                                width: width, height: fillHeight))
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator):
             // Offsets are text-relative; the fragment's origin is the text start.
