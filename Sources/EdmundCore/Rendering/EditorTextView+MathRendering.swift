@@ -155,16 +155,30 @@ extension EditorTextView {
     /// only to the image's (first) line — a multi-line `$$…$$` block is
     /// several paragraphs in the text storage (its hidden inner lines), so
     /// padding every paragraph would multiply into a huge gap.
-    /// `imageHeight` reserves the equation's height on that line: the line's
-    /// own characters are hidden (near-zero), so without it the line collapses.
-    func displayMathParagraphStyle(padded: Bool, imageHeight: CGFloat = 0) -> NSParagraphStyle {
+    ///
+    /// `imageAscent`/`imageDescent` reserve the equation's height on that line:
+    /// the line's own characters are hidden (near-zero), so without it the line
+    /// collapses. They're reserved separately, not as one combined height,
+    /// because of how TextKit 2 grows a line to meet `minimumLineHeight`: with
+    /// the hidden anchor's near-zero natural metrics, it adds ~all of the extra
+    /// height as ascent and pins the baseline at the box's bottom edge (measured
+    /// empirically — a tall multi-row image split ~54/46 ascent/descent left a
+    /// matching-sized gap above the equation and an overlap with the next
+    /// paragraph below, since `minimumLineHeight = full height` reserved that
+    /// height entirely above the baseline). Reserving only `imageAscent` in
+    /// `minimumLineHeight` sits the image's top flush with the box's top instead
+    /// of leaving a surplus gap, and folding `imageDescent` into the *following*
+    /// spacing (rather than the line's own height) gives the part of the image
+    /// that hangs below the baseline somewhere to go before the next paragraph.
+    func displayMathParagraphStyle(padded: Bool, imageAscent: CGFloat = 0,
+                                   imageDescent: CGFloat = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.alignment = .center
         ps.lineSpacing = 0
         let pad = padded ? bodyFont.pointSize * 0.9 : 0
         ps.paragraphSpacingBefore = pad
-        ps.paragraphSpacing = pad
-        ps.minimumLineHeight = imageHeight
+        ps.paragraphSpacing = pad + imageDescent
+        ps.minimumLineHeight = imageAscent
         return ps
     }
 }

@@ -49,7 +49,7 @@ struct RenderingRegressionTests {
                 "inline math line must reserve the equation's height")
     }
 
-    @Test("Display math still reserves its own line height")
+    @Test("Display math still reserves enough room for its equation image")
     @MainActor func displayMathReservesHeight() {
         let editor = makeEditor()
         let styled = editor.styleBlock("$$\n\\frac{a}{b}\n$$")
@@ -58,8 +58,17 @@ struct RenderingRegressionTests {
                                   in: NSRange(location: 0, length: styled.length)) { v, _, _ in
             if let o = v as? FragmentOverlay { overlayH = max(overlayH, o.bounds.height) }
         }
+        #expect(overlayH > 0)
         let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        #expect((ps?.minimumLineHeight ?? 0) >= overlayH - 0.5)
+        // The image's ascent is reserved as the line's own height and its
+        // descent is folded into the trailing spacing instead (see
+        // MathRenderingTests' "Tall multi-row display math..." for why a tall,
+        // descent-heavy equation can't reserve its *whole* height as
+        // minimumLineHeight without leaving a gap above it) — together they
+        // must still cover the whole image so it can't overlap what follows.
+        let reserved = (ps?.minimumLineHeight ?? 0) + (ps?.paragraphSpacing ?? 0)
+        #expect(reserved >= overlayH - 0.5,
+                "combined line height + trailing spacing must cover the equation image")
     }
 
     // MARK: Thematic break — symmetric breathing space
