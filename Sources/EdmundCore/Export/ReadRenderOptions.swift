@@ -16,9 +16,18 @@ public struct ReadRenderOptions: Sendable, Equatable {
     /// local images are always inlined regardless of this flag.
     public var allowRemoteImages: Bool
 
-    public init(preserveBlankLines: Bool = true, allowRemoteImages: Bool = false) {
+    /// The centered reading column's max width in points, matching the editor's
+    /// `EditorTextView.maxContentWidthPoints` (§EditorTextView+ContentWidth). CSS
+    /// px and AppKit points are both device-independent, so the same number caps
+    /// the column to the same physical width in Read mode as in Edit mode.
+    /// `.greatestFiniteMagnitude` → uncapped (fills the page).
+    public var maxContentWidthPoints: Double
+
+    public init(preserveBlankLines: Bool = true, allowRemoteImages: Bool = false,
+                maxContentWidthPoints: Double = .greatestFiniteMagnitude) {
         self.preserveBlankLines = preserveBlankLines
         self.allowRemoteImages = allowRemoteImages
+        self.maxContentWidthPoints = maxContentWidthPoints
     }
 
     public static let `default` = ReadRenderOptions()

@@ -16,7 +16,8 @@ enum HTMLTheme {
     @MainActor
     static func css(_ theme: EditorTheme,
                     callouts: [String: CalloutStyle],
-                    dark: Bool) -> String {
+                    dark: Bool,
+                    maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {
         let bg = dark ? "#1e1e1e" : "#ffffff"
         let fg = dark ? "#e6e6e6" : "#1a1a1a"
         let faint = dark ? "#9a9a9a" : "#6a6a6a"
@@ -27,6 +28,13 @@ enum HTMLTheme {
         // *between* lines on top of the font's natural leading (~1.2×). The CSS
         // equivalent is 1.2 + (lineSpacing / fontSize).
         let lineHeight = 1.2 + theme.lineSpacing / theme.fontSize
+
+        // CSS px and AppKit points are both device-independent, so the editor's
+        // physical cap (EditorTextView.maxContentWidthPoints) carries over as-is.
+        // A huge/infinite value means "uncapped" in the editor too; `none` skips
+        // the constraint instead of emitting an unusable giant number.
+        let pageMaxWidth = maxContentWidthPoints < 100_000
+            ? "\(trim(CGFloat(maxContentWidthPoints)))px" : "none"
 
         return """
         :root {
@@ -45,6 +53,7 @@ enum HTMLTheme {
           --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
+          --page-max-width: \(pageMaxWidth);
         }
         \(calloutVars(callouts, dark: dark))
         \(staticRules)
@@ -122,7 +131,7 @@ enum HTMLTheme {
       margin: 0;
       padding: 48px 24px;
     }
-    .page { max-width: 46em; margin: 0 auto; }
+    .page { max-width: var(--page-max-width); margin: 0 auto; }
     /* Styled-source spacing: paragraphs and blocks get a full line's breathing
        room, so the cadence feels like a clean, readable version of Edit mode
        rather than a collapsed publication layout. */
