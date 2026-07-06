@@ -50,37 +50,50 @@ either. No divergence found between the static and live paths in this logic.
    separator and everything after it is actually removed via
    `shouldChangeText`/`didChangeText`, not a fresh load) — then deactivated.
    Still clean.
-3. Did **not** manage to force the off-screen deferred-restyle branch
-   (`EditorTextView+SelectionTracking.swift`'s `else { self.blocks[old].isStyled
-   = false }`), which prior memory flagged as the most likely suspect
-   mechanism: typewriter mode (`typewriterModeEnabled = true` by default)
-   re-centers the viewport on every caret move via `scrollCursorToCenter()`,
-   so a `ReproScript caret` jump never leaves the old active block
-   off-screen — the visibility check that picks sync-vs-defer always sees it
-   as visible. `ReproScript` has no scroll command, and CGEvent-driven
-   trackpad/wheel scrolling wasn't attempted this session (out of budget).
+3. **The off-screen deferred-restyle branch itself, forced deliberately and
+   confirmed to fire** — still clean. Added a `scroll <y>` command to
+   `ReproScript` (clamped via `NSClipView.constrainBoundsRect`, so it behaves
+   like a real scroll rather than overshooting into blank overscroll).
+   Launched with `-EditorTypewriterMode NO` so caret moves don't recenter the
+   viewport; a 124-block document (60 filler paragraphs + a trailing
+   callout) kept the viewport pinned at y=0 while the callout (~2700pt below,
+   confirmed via the clamped scroll target) was activated then deactivated —
+   at deactivation the callout was verifiably outside `syncStylingBlockRange`
+   (viewport showed only the first ~30 paragraphs), so `blocks[old].isStyled
+   = false` / the deferred path is what ran, not the sync path. Scrolled to
+   the clamped bottom afterward for the *first-ever paint* of that region.
+   Box rendered correctly, no stray line, no color bleed below the box.
+
+All four architectures that plausibly match "live incremental restyle" (per
+the prior investigation's framing) have now been tried and are clean:
+sync-path activate/deactivate while visible, sync-path deactivate via a real
+delete-edit at the exact last-block boundary, and the deferred/off-screen
+path through to its first on-screen paint.
 
 ## What to try next
 
-- Disable typewriter mode via launch default (`-EditorTypewriterMode NO`,
-  see `AppDelegate.typewriterModeKey` in `Sources/edmd/App/main.swift`) so a
-  `ReproScript` caret jump does **not** recentre the viewport, then drive the
-  editor into the deferred/off-screen branch deliberately: caret into the
-  callout, caret to a block far above (off-screen deactivation, `isStyled =
-  false`), let `drainStylingSlice`/`promoteVisibleUnstyledBlocks` process it,
-  then find a way to bring it back on screen and screenshot the first paint.
-  `ReproScript` has no scroll primitive — either add one (see its "~10 lines
-  each" extension note) or drive scrolling with the CGEvent driver
-  (`edmund-live-repro-and-diagnostics` §4).
+- **Typewriter-mode-ON recentering race** (default is ON; this session
+  disabled it to isolate the defer path — untested with it on). With
+  typewriter mode enabled, deactivating the trailing callout triggers
+  `scrollCursorToCenter()` in the same async block right after
+  `recomposeDirty` — if the centering scroll animates while TextKit2 is mid
+  layout-pass for the just-resized (shrunk/grown) last fragment, a
+  transient stale frame during the animation itself (not the settled state,
+  which is what every screenshot in this session caught) could be the
+  "extra line" — screen recordings catch exactly this kind of one-frame
+  glitch that a `screencapture` poll will almost always miss. Try scripted
+  recording (`gif_creator`-style continuous capture, or `screencapture -v`)
+  through the deactivation moment with typewriter mode on.
+- **Read mode** (`viewMode == .reading`) — not tested this session at all.
 - Get the actual screen recording. `~/Desktop/callout-bottom-bug.mov` does
   not exist on disk as of this session (checked 2026-07-06) despite being
   referenced in the bug report — ask for it directly, or for the exact
   keystroke sequence that triggers it.
-- Consider whether the bug needs `viewMode == .reading` (Read mode) rather
-  than edit mode — not tested this session.
 
 ## Status
 
 Still open. No fix attempted — the standing rule from the prior
 investigation holds: don't ship a speculative tweak to the (provably
-correct) static box geometry.
+correct) static box geometry. `ReproScript`'s new `scroll` command is a
+reusable addition (viewport control independent of the caret), kept
+regardless of this bug's outcome.
