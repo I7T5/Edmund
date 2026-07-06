@@ -168,6 +168,15 @@ enum HTMLTheme {
     sub, sup { font-size: 0.75em; line-height: 0; position: relative; vertical-align: baseline; }
     sup { top: -0.5em; }
     sub { bottom: -0.25em; }
+    /* Footnotes (see HTMLRenderer.renderFootnotesSection): in-text `[^id]` refs
+       are plain (undecorated) superscript links; the bottom-of-page list is a
+       smaller, dimmer <ol> below its own <hr>, each entry ending in a backref
+       arrow to the in-text marker. */
+    sup.footnote-ref a { text-decoration: none; }
+    hr.footnotes-sep { margin-bottom: 0.8em; }
+    ol.footnotes { font-size: 0.85em; color: var(--faint); }
+    ol.footnotes li { margin: 0.4em 0; }
+    a.footnote-backref { text-decoration: none; margin-left: 0.2em; font-size: 0.9em; line-height: 1; }
     /* Match the editor's list indentation: level-1 text begins at one marker
        slot past the marker (~2.25em), and each nesting level steps in by one
        slot (~1.25em). Same dot at every level, like Edit mode. */

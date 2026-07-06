@@ -155,7 +155,9 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
     @Test func footnoteInsertsMarkerAndDefinition() {
         let e = mk("word", NSRange(location: 4, length: 0))
         e.formatFootnote(nil)
-        #expect(e.rawSource == "word[^1]\n[^1]: ")
+        // A blank line (not just \n) separates the definition from the reference's
+        // paragraph so it parses as its own block (needed for Read mode).
+        #expect(e.rawSource == "word[^1]\n\n[^1]: ")
         #expect(e.selectedRange() == NSRange(location: e.rawSource.utf16.count, length: 0))
     }
 

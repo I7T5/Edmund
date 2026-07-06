@@ -37,6 +37,11 @@ struct HTMLRenderer: MarkupVisitor {
     private let sourceLines: [String]
     private let options: ReadRenderOptions
 
+    /// Footnote definitions collected while walking the document (see
+    /// `visitParagraph`), rendered as a section at the bottom of the page
+    /// instead of in place. Order is document order of the *definitions*.
+    private var footnotes: [(id: String, bodyHTML: String)] = []
+
     private init(source: String, options: ReadRenderOptions) {
         self.source = source
         self.sourceLines = source.components(separatedBy: "\n")
@@ -48,7 +53,24 @@ struct HTMLRenderer: MarkupVisitor {
     static func render(markdown: String, options: ReadRenderOptions = .default) -> String {
         var r = HTMLRenderer(source: markdown, options: options)
         let doc = Document(parsing: markdown, options: [.disableSmartOpts])
-        return r.visit(doc)
+        let body = r.visit(doc)
+        return body + r.renderFootnotesSection()
+    }
+
+    /// `[^id]: body` definitions render at the bottom of the page as a `<hr>` +
+    /// ordered list, each entry linking back to its in-text reference — the
+    /// Obsidian-style footnote layout (see misc/backlog.md's Markdown Footnotes
+    /// entry). Not rendered at all if the document had no footnote definitions.
+    private func renderFootnotesSection() -> String {
+        guard !footnotes.isEmpty else { return "" }
+        var out = "<hr class=\"footnotes-sep\"><ol class=\"footnotes\">"
+        for (id, bodyHTML) in footnotes {
+            let safeID = Self.attr(id)
+            out += "<li id=\"fn-\(safeID)\">\(bodyHTML) " +
+                   "<a href=\"#fnref-\(safeID)\" class=\"footnote-backref\">↩</a></li>"
+        }
+        out += "</ol>"
+        return out
     }
 
     /// Top-level block iteration. When `preserveBlankLines` is on, a *run* of
@@ -122,6 +144,18 @@ struct HTMLRenderer: MarkupVisitor {
         if let span = dm.first(where: { if case .math(true) = $0.kind { return true }; return false }) {
             let tex = (raw as NSString).substring(with: span.contentRange)
             return "<div class=\"math-display\" data-tex=\"\(Self.attr(tex))\"></div>"
+        }
+
+        // A `[^id]: body` paragraph (the marker starts the paragraph's first
+        // Text child) is a footnote definition, not visible content — collect it
+        // for the bottom-of-page footnotes section instead of rendering in place.
+        let children = Array(paragraph.children)
+        if let first = children.first as? Text,
+           let (id, markerLength) = Self.footnoteDefinitionMarker(in: first.string) {
+            var bodyHTML = Self.renderInline(String(first.string.dropFirst(markerLength)))
+            for child in children.dropFirst() { bodyHTML += visit(child) }
+            footnotes.append((id: id, bodyHTML: bodyHTML))
+            return ""
         }
         return "<p>\(renderChildren(of: paragraph))</p>"
     }
@@ -387,11 +421,15 @@ struct HTMLRenderer: MarkupVisitor {
         SyntaxHighlighter.parseMath(s, into: &spans)        // inline $…$ only
         SyntaxHighlighter.parseWikiLinks(s, into: &spans)
         SyntaxHighlighter.parseComments(s, into: &spans)
+        SyntaxHighlighter.parseFootnotes(s, into: &spans)   // references only; a
+        // `.footnoteDefinition` match here is a false positive (mid-run text that
+        // happens to start with `[^id]:`) since real definitions are handled at
+        // the paragraph level in `visitParagraph` — ignored by the switch below.
 
         // Keep only the kinds we emit, ordered, non-overlapping (earliest wins).
         let relevant = spans.filter {
             switch $0.kind {
-            case .highlight, .math(false), .wikilink, .comment: return true
+            case .highlight, .math(false), .wikilink, .comment, .footnoteReference: return true
             default: return false
             }
         }.sorted { $0.fullRange.location < $1.fullRange.location }
@@ -419,6 +457,10 @@ struct HTMLRenderer: MarkupVisitor {
                 let encoded = target.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? target
                 let display = escape(ns.substring(with: span.contentRange))
                 out += "<a class=\"wikilink\" href=\"\(wikiScheme):\(encoded)\">\(display)</a>"
+            case .footnoteReference(let id):
+                let safeID = attr(id)
+                out += "<sup id=\"fnref-\(safeID)\" class=\"footnote-ref\">" +
+                       "<a href=\"#fn-\(safeID)\">\(escape(id))</a></sup>"
             case .comment:
                 break   // hidden in reading, like the editor
             default:
@@ -499,5 +541,22 @@ struct HTMLRenderer: MarkupVisitor {
         if let c = markup as? InlineCode { return c.code }
         if markup is SoftBreak || markup is LineBreak { return "\n" }
         return markup.children.map { plainText(of: $0) }.joined()
+    }
+
+    /// If `text` starts with a footnote definition marker `[^id]:` (optionally
+    /// followed by one space), returns the id and the marker's length so the
+    /// caller can split it off from the body. Mirrors
+    /// `SyntaxHighlighter.parseFootnotes`'s definition rule (which only matches
+    /// at the start of the string passed to it) without needing that file's
+    /// file-private regex.
+    private static func footnoteDefinitionMarker(in text: String) -> (id: String, markerLength: Int)? {
+        guard text.hasPrefix("[^"), let closeBracket = text[text.index(text.startIndex, offsetBy: 2)...].firstIndex(of: "]") else { return nil }
+        let id = text[text.index(text.startIndex, offsetBy: 2)..<closeBracket]
+        guard !id.isEmpty, !id.contains(where: { $0.isWhitespace }) else { return nil }
+        let afterBracket = text.index(after: closeBracket)
+        guard afterBracket < text.endIndex, text[afterBracket] == ":" else { return nil }
+        var markerEnd = text.index(after: afterBracket)
+        if markerEnd < text.endIndex, text[markerEnd] == " " { markerEnd = text.index(after: markerEnd) }
+        return (String(id), text.distance(from: text.startIndex, to: markerEnd))
     }
 }

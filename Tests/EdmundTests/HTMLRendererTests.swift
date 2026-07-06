@@ -181,6 +181,52 @@ struct HTMLRendererInlineTests {
     }
 }
 
+@Suite("HTMLRenderer — footnotes")
+struct HTMLRendererFootnoteTests {
+
+    private func html(_ md: String) -> String { HTMLRenderer.render(markdown: md) }
+
+    @Test("Reference becomes a superscript link; raw [^id] doesn't leak into the page")
+    func reference() {
+        let out = html("Hello world.[^1]\n\n[^1]: a note")
+        #expect(out.contains("<sup id=\"fnref-1\" class=\"footnote-ref\"><a href=\"#fn-1\">1</a></sup>"))
+        #expect(!out.contains("[^1]"))
+    }
+
+    @Test("Definition moves to a bottom section with a backlink, not rendered in place")
+    func definitionMovesToBottom() {
+        let out = html("See.[^1]\n\n[^1]: the note text\n\nMore content.")
+        #expect(!out.contains("<p>[^1]"))
+        #expect(out.contains("<hr class=\"footnotes-sep\"><ol class=\"footnotes\">"))
+        #expect(out.contains("<li id=\"fn-1\">the note text <a href=\"#fnref-1\" class=\"footnote-backref\">↩</a></li>"))
+        // The unrelated paragraph after the definition still renders normally.
+        #expect(out.contains("<p>More content.</p>"))
+    }
+
+    @Test("Definition body keeps its inline markdown formatting")
+    func definitionBodyKeepsFormatting() {
+        let out = html("See.[^1]\n\n[^1]: has **bold** text")
+        #expect(out.contains("<li id=\"fn-1\">has <strong>bold</strong> text"))
+    }
+
+    @Test("No footnotes: no bottom section emitted")
+    func noFootnotesNoSection() {
+        #expect(!html("plain paragraph, no notes").contains("footnotes-sep"))
+    }
+
+    @Test("Document produced by the Format-menu Insert Footnote command renders correctly in Read mode")
+    @MainActor func viaFormatMenuCommand() {
+        let editor = makeEditor()
+        editor.loadContent("Hello world.")
+        editor.formatFootnote(nil)
+        editor.insertText("This is the note.", replacementRange: editor.selectedRange())
+        let out = html(editor.rawSource)
+        #expect(out.contains("<sup id=\"fnref-1\" class=\"footnote-ref\"><a href=\"#fn-1\">1</a></sup>"))
+        #expect(out.contains("<li id=\"fn-1\">This is the note."))
+        #expect(!out.contains("[^1]"))
+    }
+}
+
 @Suite("HTMLRenderer — callouts")
 struct HTMLRendererCalloutTests {
 
