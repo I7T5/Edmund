@@ -23,7 +23,8 @@ enum DocumentHTML {
         var body = HTMLRenderer.render(markdown: markdown, options: options)
         body = fillMath(body, theme: theme, dark: dark)
         body = fillImages(body, baseURL: baseURL, options: options)
-        let css = HTMLTheme.css(theme, callouts: callouts, dark: dark)
+        let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
+                                maxContentWidthPoints: options.maxContentWidthPoints)
         return """
         <!DOCTYPE html>
         <html><head><meta charset="utf-8">

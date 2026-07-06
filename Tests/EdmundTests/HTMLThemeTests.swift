@@ -25,6 +25,19 @@ struct HTMLThemeTests {
         #expect(out.contains("\"Iowan Old Style\""))
     }
 
+    @Test("Reading column max-width matches the editor's physical cap; uncapped by default")
+    func pageMaxWidth() {
+        let theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
+                                linkBlueHex: "#3366E6", codeHex: "#8A2425",
+                                lineSpacing: 4, paragraphSpacingBefore: 2)
+        let capped = HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: false,
+                                   maxContentWidthPoints: 340)
+        #expect(capped.contains("--page-max-width: 340px;"))
+
+        let uncapped = HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: false)
+        #expect(uncapped.contains("--page-max-width: none;"))
+    }
+
     @Test("Emits per-callout-type colors with derived rgba background")
     func calloutVars() {
         let out = css(dark: false)

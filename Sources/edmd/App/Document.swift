@@ -427,9 +427,12 @@ class Document: NSDocument, HeadingNavigable {
         return m
     }
 
-    /// Read-mode/export render options derived from user settings.
+    /// Read-mode/export render options derived from user settings. Reuses the
+    /// editor's own `maxContentWidthPoints` (already the cm setting converted via
+    /// the window's screen PPI) so Read mode's column matches Edit mode's.
     private var renderOptions: ReadRenderOptions {
-        ReadRenderOptions(preserveBlankLines: AppSettings.renderBlankLinesAsBreaks)
+        ReadRenderOptions(preserveBlankLines: AppSettings.renderBlankLinesAsBreaks,
+                         maxContentWidthPoints: Double(editor.maxContentWidthPoints))
     }
 
     // MARK: - Export / Print
