@@ -337,8 +337,16 @@ extension EditorTextView {
         var newRaw = ns.replacingCharacters(in: NSRange(location: markerPos, length: 0),
                                             with: "[^\(n)]")
         let body = newRaw as NSString
-        let needsNewline = body.length > 0 && body.character(at: body.length - 1) != 0x0A
-        newRaw += (needsNewline ? "\n" : "") + "[^\(n)]: "
+        // A blank line (not just a single \n) before the definition so it parses
+        // as its own paragraph rather than a lazy-continuation line of the
+        // reference's paragraph — CommonMark (and Read mode's HTMLRenderer, which
+        // parses the whole document) needs that separation to recognize it as a
+        // footnote definition rather than fused body text.
+        var trailingNewlines = 0
+        var i = body.length - 1
+        while i >= 0 && body.character(at: i) == 0x0A { trailingNewlines += 1; i -= 1 }
+        let separator = body.length == 0 ? "" : String(repeating: "\n", count: max(0, 2 - trailingNewlines))
+        newRaw += separator + "[^\(n)]: "
         let caret = (newRaw as NSString).length
         applyWholeDocumentEdit(newRawSource: newRaw, select: NSRange(location: caret, length: 0))
     }
