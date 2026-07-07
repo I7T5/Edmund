@@ -451,12 +451,25 @@ extension EditorTextView {
     /// Renders `overlay` at `anchor` (a single character): hides the anchor
     /// glyph, reserves the image's advance width with kern so following text
     /// flows around it, and stores the overlay for the layout fragment to draw.
+    ///
+    /// The kern is capped just short of the full line width: a full-width
+    /// image/equation (the common case — anything wider than the column gets
+    /// scaled to exactly fill it) would otherwise reserve 100% of the line,
+    /// leaving zero room for the hidden markdown text that follows the anchor
+    /// on the same line. TextKit then force-wraps that hidden run onto a new
+    /// line fragment — and since `minimumLineHeight` (reserveLineHeight) is a
+    /// paragraph-wide property applying to every line fragment, that phantom
+    /// wrapped line also inflates to the overlay's full height, doubling the
+    /// reserved space below the image. The slack is comfortably larger than
+    /// any realistic hidden-text width (near-zero at `hiddenFont`'s size).
     func applyOverlay(_ overlay: FragmentOverlay, anchor: NSRange,
                       in result: NSMutableAttributedString) {
         guard anchor.upperBound <= result.length else { return }
+        let kernSlack: CGFloat = 8
+        let kernWidth = min(overlay.bounds.width, max(0, availableContentWidth - kernSlack))
         result.addAttribute(.font, value: hiddenFont, range: anchor)
         result.addAttribute(.foregroundColor, value: NSColor.clear, range: anchor)
-        result.addAttribute(.kern, value: overlay.bounds.width, range: anchor)
+        result.addAttribute(.kern, value: kernWidth, range: anchor)
         result.addAttribute(.fragmentOverlay, value: overlay, range: anchor)
     }
 
