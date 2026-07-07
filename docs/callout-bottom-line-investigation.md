@@ -90,10 +90,62 @@ path through to its first on-screen paint.
   referenced in the bug report — ask for it directly, or for the exact
   keystroke sequence that triggers it.
 
+## RESOLVED (2026-07-06, second session) — root cause found and fixed
+
+The user provided the real screen recording
+(`misc/bug-repros/callout-extra-line-rendered-at-bottom.mov`, from
+2026-06-20 11:26). Watching it changed the picture completely: the trailing
+block is **not** a plain paragraph and the doc **does end in a newline**, so
+the last block is the *phantom empty final line* the `BlockParser` creates
+for a trailing `\n`. My earlier repros all failed because they used a
+trailing *text* block ("END") or no trailing newline — never a trailing
+empty line after a callout.
+
+**Reproduced deterministically** by reconstructing the doc
+(`callout_wrap.md`: three callouts, the last one `> [!tip] Short title\n>
+Body text here.` followed by a trailing `\n`) and placing the caret at
+end-of-document. Reproduces with typewriter mode **ON and OFF** — so
+typewriter mode is *not* involved; the caret position in the video was
+incidental.
+
+**Root cause (proved by dumping fragment geometry, not reasoning):** TextKit
+2 does **not** give the document's final empty line (from the trailing `\n`)
+its own layout fragment — it folds that line into the *preceding* layout
+fragment as a trailing **zero-length line fragment**. When the preceding
+fragment is a callout's last-line `DecoratedTextLayoutFragment`, its
+`layoutFragmentFrame.height` grows by one line (measured: 46.2pt → 74.2pt for
+the same callout with vs without the trailing newline; the delta equals one
+empty line's height). `draw` fills the box across the full frame height, so
+the callout color floods that absorbed empty line — the "extra colored line".
+Only happens when the callout is the **last** block: mid-document, the `\n`
+after a callout starts the *next* block's fragment instead of being absorbed.
+
+**Why the static/storage checks (both sessions) missed it:** the phantom
+line carries no `.blockDecoration` in storage (verified: block deco = none,
+the separator `\n` reset to base) — the bug is purely in fragment *drawing
+geometry*, invisible to any storage-attribute inspection.
+
+**Fix** (`EditorTextView+TextKit2.swift`): a new `decorationDrawHeight` on
+`DecoratedTextLayoutFragment` detects an absorbed trailing empty line (last
+line fragment with `characterRange.length == 0` and more than one line
+fragment) and returns the frame height minus that empty line's contribution,
+so filled decorations (`.box`, `.leftBar`) stop at the last real content line
+plus the box's bottom padding. Center-line decorations (rule, table) still
+use the full frame. Verified live (the tip box shrank from 222px to 170px,
+matching the sibling Note box exactly) and headless
+(`CalloutLastBlockRenderingTests`: box fill is identical with and without the
+trailing newline, and strictly less than the absorbed frame height).
+
+**Answer to "would the delete-drift fixes have fixed this?"** — No. Delete
+drift is a caret/selection *position* desync in the live input layer; this is
+a static fragment-*drawing* geometry issue that reproduces on a fresh load
+with no delete, edit, or caret interaction at all. Different class entirely.
+
+`ReproScript` gained two reusable DEBUG commands across the two sessions:
+`scroll <y>` (viewport control independent of the caret) and `caretend`
+(place the caret on the phantom final line, which needles can't target).
+
 ## Status
 
-Still open. No fix attempted — the standing rule from the prior
-investigation holds: don't ship a speculative tweak to the (provably
-correct) static box geometry. `ReproScript`'s new `scroll` command is a
-reusable addition (viewport control independent of the caret), kept
-regardless of this bug's outcome.
+**Fixed.** Branch `fix/callout-last-block-extra-line`. Backlog entry can be
+closed once merged.

@@ -123,6 +123,38 @@ struct DisplayMathRenderingTests {
         #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
         #expect(!isHidden(at: 2, in: styled))             // source visible
     }
+
+    // Regression (misc/bug-repros/math-env-with-taller-lines-fractions-integral-limit-padding-bug.png):
+    // a tall multi-row environment (aligned/cases) has a large descent portion
+    // (much of the block sits below the anchor's baseline), unlike a typical
+    // single-row equation. Reserving the image's full height as the line's
+    // `minimumLineHeight` pins the whole height above the baseline, leaving a
+    // gap the size of the descent above the equation and an equal overlap
+    // with the paragraph below. The fix reserves ascent and descent
+    // separately: ascent as the line's own height, descent folded into the
+    // trailing paragraph spacing.
+    @Test("Tall multi-row display math reserves ascent as line height, descent as trailing spacing")
+    @MainActor func tallEquationReservesAscentAndDescentSeparately() {
+        let editor = makeEditor()
+        let tall = "$$\n\\begin{aligned} a&=1 \\\\ b&=2 \\\\ c&=3 \\end{aligned}\n$$"
+        let styled = editor.styleBlock(tall)
+        let overlay = styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) as? FragmentOverlay
+        #expect(overlay != nil)
+        guard let overlay else { return }
+        let descent = -overlay.bounds.minY
+        let ascent = overlay.bounds.height - descent
+        // A 3-row aligned block has a substantial descent (rows below the
+        // anchor's baseline) — the case that exposed the bug; a single-row
+        // equation's descent is comparatively tiny.
+        #expect(descent > 10)
+
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil)
+        guard let ps else { return }
+        #expect(abs(ps.minimumLineHeight - ascent) < 0.5)
+        let basePad = editor.bodyFont.pointSize * 0.9
+        #expect(abs(ps.paragraphSpacing - (basePad + descent)) < 0.5)
+    }
 }
 
 @Suite("Math — Fit to width")
