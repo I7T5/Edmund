@@ -325,6 +325,19 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Link Following
 
+    #if DEBUG
+    /// Repro hook (ReproScript `clickoff`): move the caret to `offset` on the
+    /// mouse path — i.e. with `suppressTypewriterCentering` set during the
+    /// selection change, exactly as `mouseDown` does — so the caret-move
+    /// restyle captures `fromMouse=true`. Lets a scripted replay reproduce the
+    /// mouse-click branch without synthesizing HID events at screen coordinates.
+    public func reproClickSelect(_ offset: Int) {
+        suppressTypewriterCentering = true
+        setSelectedRange(NSRange(location: min(offset, (rawSource as NSString).length), length: 0))
+        suppressTypewriterCentering = false
+    }
+    #endif
+
     /// Cmd+click on a link's text follows it: a `[[wikilink]]` resolves to a
     /// file / heading, a regular link opens its URL. Any other click edits.
     /// Sets `suppressTypewriterCentering` for the duration of the super call so

@@ -137,6 +137,21 @@ extension EditorTextView {
         let sel = selectedRange()
         let cursorRaw = min(sel.location, (rawSource as NSString).length)
 
+        // Where this edit should leave the caret, derived from the storage's
+        // pending edit (same hull formula as the bypassed-edit heal). TextKit 2's
+        // queued selection fixup (`_fixSelectionAfterChangeInCharacterRange`) can
+        // fire during `recomposeDirty`'s `endEditing` below and remap a stale
+        // selection, leaping the caret to a block boundary — issue #156 round 7,
+        // the round-6 mechanism on the *normal* edit path (armed by a cross-block
+        // caret move rather than a drag bypass). This path styles with
+        // `settingSelection` false and otherwise trusts NSTextView's caret, so a
+        // leap here sticks and every later edit re-triggers it. Capture the
+        // intended caret now, before `consumePendingEdit` clears it, and re-assert
+        // it after the restyle if the fixup moved it.
+        let expectedCaret: Int? = (ts as? EditorTextStorage)?.pendingEdit.map {
+            min($0.oldRange.location + max(0, $0.oldRange.length + $0.delta), ts.length)
+        }
+
         let oldCount = blocks.count
         let oldActive = activeBlockIndex
         // Incremental parse from the storage's accumulated edit — O(edit);
@@ -199,6 +214,21 @@ extension EditorTextView {
         }
 
         recomposeDirty(dirty, cursorInRaw: cursorRaw)
+
+        // If the queued selection fixup leaped the caret off the edit point
+        // during the restyle's `endEditing`, put it back. Only fires on a real
+        // mismatch — normal edits already sit at `expectedCaret`, so this is a
+        // no-op then (no spurious selection notification). Permanent breadcrumb
+        // (release builds too): a recurrence prints which edit leaped.
+        if let want = expectedCaret {
+            let now = selectedRange()
+            if now.location != want || now.length != 0 {
+                Log.info("re-asserting caret after fixup leap (normal path): " +
+                         "\(now.location)→\(want)", category: .edit)
+                setSelectedRange(NSRange(location: want, length: 0))
+            }
+        }
+
         traceEdit("synced cursorRaw=\(cursorRaw) changed=\(changed.lowerBound)..<\(changed.upperBound) oldActive=\(oldActive.map(String.init) ?? "nil")")
         verifyEditorInvariants("syncRawSourceFromDisplay")
     }

@@ -454,3 +454,96 @@ the new code (beware: literals ≤15 bytes are stored inline on arm64 and never
 show up — grep for a *long* one). Cure: `swift package clean`. Never delete
 `edmd.build/` by hand — that corrupts the output-file-map and wedges the
 target until a clean.
+
+## Round 7: the queued fixup on the NORMAL edit path (armed by a cross-block caret move)
+
+Recurred 2026-07-07 editing `hodge-poster copy.md` (a ~969-byte draft;
+snapshot at `misc/`). Three occurrences the user reported: ~11:32, ~11:40
+(caret drifted to the **end of the paragraph**, and once it started **every
+delete drifted**; clicking away and back did not heal), and ~12:08 (drift was
+"two viewport-lines down" again). New shape vs round 6: **persisting** (not
+one-shot), and the landing was the paragraph/block end, not a fixed viewport
+offset.
+
+### Mechanism (log-proven, not reasoning)
+
+The round-6 fix (re-assert the caret in the bypass **heal**) was present and
+correct. Round 7 is the **same queued-fixup mechanism on the normal
+`didChangeText` edit path**, which round 6 did not cover. From the log
+(11:42:42, small doc, blocks=17):
+
+```
+11:42:42.632 selectionDidChange sel={817,0} active=16          user clicked into the paragraph (block 14); active still stale (16)
+11:42:42.925 shouldChangeText range={816,1} repl="" sel={817,0} active=14   a NORMAL backspace (has a synced line — not a bypass)
+11:42:42.927 selectionDidChange sel={943,0} up=Y               caret LEAPED to 943 (end of block 14)
+             via  -[NSTextLayoutManager _fixSelectionAfterChangeInCharacterRange:]
+                  ← -[NSTextStorage endEditing] ← recomposeDirty ← syncRawSourceFromDisplay
+11:42:42.937 synced cursorRaw=817 ... sel={943,0}
+```
+
+The arming event is a **cross-block caret move** (a click that moved the caret
+from the end block into the wrapped paragraph), which schedules the async
+caret-move restyle in `+SelectionTracking`. On the next normal edit, TextKit
+2's queued `_fixSelectionAfterChange` fires during **our** `recomposeDirty`
+`endEditing` and remaps a stale selection to the block boundary. The normal
+sync path styles with `settingSelection` **false** and otherwise trusts
+NSTextView's caret, so — unlike the round-6 heal — it never re-asserts, the
+leap sticks, and every later edit re-triggers it (persisting).
+
+Discriminator, healthy vs drift: backspacing at the **end** of a paragraph
+(11:38:18) the fixup lands correctly (917→916); backspacing **mid**-paragraph
+after a cross-block move (11:40:46, 11:42:42) it leaps to the block end.
+
+### The fix
+
+`EditorTextView+EditFlow.swift`, `syncRawSourceFromDisplay`: capture the
+caret the edit should leave behind, derived from the storage's pending edit
+(`oldRange.location + max(0, oldRange.length + delta)` — the same hull formula
+as the heal), **before** `consumePendingEdit` clears it; after
+`recomposeDirty`, if the selection was moved off that point, re-assert it
+(permanent `re-asserting caret after fixup leap (normal path)` breadcrumb).
+For a normal single edit `expectedCaret` is exactly NSTextView's own caret, so
+this is a no-op unless the fixup leaped it — and it is consistent with the
+heal (same formula) on the bypass path.
+
+### Reproduction — what worked, what didn't (important for round 8)
+
+This round's reproduction was the hardest yet and is only **partially**
+solved; read before the next attempt.
+
+- **Isolated gestures never armed it.** Real mouse click / programmatic
+  `clickoff` (fromMouse) / arrow-key caret move into the paragraph, then
+  backspace — all clean. The arming needs accumulated session state.
+- **The true start content was recovered.** The doc was loaded at 09:42 with
+  **390 bytes** (now overwritten as the file evolved). Reconstructed `t0`
+  exactly by cell-tracking: forward-apply the recorded edits to 390 unknown
+  cells, match the surviving cells against the known 969-byte snapshot
+  (`hodge-poster copy.md` = the 11:40:52 state), back-resolve. Forward-applying
+  all 926 edits to the reconstructed `t0` reproduces the snapshot byte-for-byte
+  (`scripts`-style transpiler in the round-7 scratch).
+- **A faithful full-session replay was built** (ReproScript: `caretoff` /
+  `clickoff` / `realclickoff` / `selrange` / `bypassoff` / `return`, and edits
+  driven through `insertText`/`deleteBackward` directly to avoid an
+  input-context crash that synthesized NSEvents hit when interleaved with
+  programmatic selections). Replaying every keystroke + capped pauses from
+  `t0` through the whole drift window reached the exact drift-zone state
+  (storLen 972) **without the dramatic block-end leap**. The fix's breadcrumb
+  did fire a couple of times in the drift zone, but on off-by-one mismatches
+  that were **replay artifacts** — compressed timing coalesced a drag-move
+  bypass with the following keystroke into one `pendingEdit` hull, which does
+  not happen live (the heal runs on the next run-loop pass, ~ms, before any
+  human keystroke).
+- **Conclusion:** the block-end leap needs the arming caret moves to be **real
+  mouse clicks at real positions** (hit-testing + the full mouseDown selection
+  machinery), and probably the real session's **two-document window
+  switching** (the log interleaves a ~10 KB doc; `becomeFirstResponder`
+  resync on focus return is a prime suspect). Programmatic caret moves and
+  imprecise synthetic clicks (which land off-by-a-few and diverge/crash) do
+  not fully arm it. **Round 8 lead:** reproduce with two open documents +
+  real clicks, or instrument `becomeFirstResponder` / the caret-move restyle
+  to capture the arming on the next live occurrence.
+
+Status: fix targets the log-proven mechanism and is a safe no-op on normal
+edits; **not yet confirmed by a deterministic block-end-leap repro** — the
+permanent breadcrumb makes the next live occurrence self-verifying (it will
+log the correction instead of drifting).
