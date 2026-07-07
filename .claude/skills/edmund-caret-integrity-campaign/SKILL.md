@@ -82,6 +82,7 @@ guard**, not a new mechanism.
 | 4 | **Drag-move bypass**: a drag-move whose drop has no valid target deletes via `shouldChangeText`→`replaceCharacters` with **no `didChangeText`**; `rawSource`/`blocks` freeze; autosave writes stale text | `scheduleBypassedEditSyncCheck` (`+EditFlow.swift`): a next-run-loop check finds an unconsumed storage `pendingEdit` and runs the sync (breadcrumb above) |
 | 5 | **Heal leaped the caret**: the round-4 heal ran against a **stale** selection and moved the caret | heal collapses/derives the caret from the `pendingEdit` hull before syncing |
 | 6 | **Queued selection fixup**: TK2's `_fixSelectionAfterChangeInCharacterRange` stays queued after a bypass and fires at the **next `endEditing`** (even an attribute-only restyle), remapping the **stale** selection and leaping even a *freshly set, valid* caret | heal sets the caret from the pendingEdit hull **before** the sync **AND re-asserts it after** (`+EditFlow.swift`) |
+| 7 | **Same queued fixup on the NORMAL edit path** (not the heal): armed by a **cross-block caret move** (schedules the async caret-move restyle), the fixup fires during `syncRawSourceFromDisplay`→`recomposeDirty`'s `endEditing` on an ordinary keystroke and leaps the caret to the **block boundary**; the normal path styles `settingSelection=false` and never re-asserts, so it **persists** | `syncRawSourceFromDisplay` captures the pendingEdit-hull caret before `consumePendingEdit`, re-asserts it after `recomposeDirty` if the fixup moved it (`+EditFlow.swift`; breadcrumb `re-asserting caret after fixup leap (normal path)`) — **fix not yet confirmed by a deterministic repro**, live-verifiable via the breadcrumb |
 
 Confirm the guards exist:
 ```bash
@@ -101,6 +102,18 @@ grep -n 'scheduleBypassedEditSyncCheck\|healing storage edit' Sources/EdmundCore
 - **Assuming `didChangeText` pairs with every mutation.** AppKit violates this
   (round 4).
 - **Mutating storage mid-composition.** That is the original bug (rounds 1–3).
+- **Expecting a scripted keystroke replay to arm round 7.** Round 7 was replayed
+  faithfully from a reconstructed `t0` (every keystroke + capped pauses through
+  the whole drift window) and it did **not** produce the block-end leap.
+  Programmatic caret moves (`clickoff`) and imprecise synthetic clicks
+  (`realclickoff` — lands off-by-a-few, diverges, crashes) do not fully arm it.
+  The arming needs **real mouse clicks at real positions** and probably the
+  real session's **two-document window switching** (`becomeFirstResponder`
+  resync is the prime suspect). Round-8 lead: two open docs + real clicks, or
+  instrument `becomeFirstResponder`/the caret-move restyle to catch the next
+  live occurrence. Compressed replays also coalesce a bypass with the next
+  keystroke into one `pendingEdit` hull (never happens live — the heal runs
+  first), producing off-by-one breadcrumb noise; don't trust it as a repro.
 
 ---
 
