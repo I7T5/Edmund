@@ -138,7 +138,12 @@ struct HTMLRenderer: MarkupVisitor {
     mutating func visitParagraph(_ paragraph: Paragraph) -> String {
         // A paragraph that is wholly `$$…$$` is a display-math block. Reuse the
         // editor's detector so Read mode and Edit mode agree on what's math.
-        let raw = Self.plainText(of: paragraph)
+        // Detect on the *raw* source, not `plainText`: swift-markdown has already
+        // applied Markdown backslash-unescaping to a Text node's `.string`
+        // (`\\`→`\`, `\$`→`$`), which corrupts LaTeX row separators and commands
+        // — so a `\begin{aligned}…\\…\end{aligned}` block would be mangled. The
+        // editor's styling reads from raw source by range for the same reason.
+        let raw = sourceText(paragraph) ?? Self.plainText(of: paragraph)
         var dm: [SyntaxHighlighter.Span] = []
         SyntaxHighlighter.parseDisplayMath(raw, into: &dm)
         if let span = dm.first(where: { if case .math(true) = $0.kind { return true }; return false }) {
@@ -286,7 +291,9 @@ struct HTMLRenderer: MarkupVisitor {
 
     // MARK: Inline
 
-    mutating func visitText(_ text: Text) -> String { Self.renderInline(text.string) }
+    mutating func visitText(_ text: Text) -> String {
+        Self.renderInline(text.string, rawSource: sourceText(text))
+    }
     mutating func visitEmphasis(_ emphasis: Emphasis) -> String { "<em>\(renderChildren(of: emphasis))</em>" }
     mutating func visitStrong(_ strong: Strong) -> String { "<strong>\(renderChildren(of: strong))</strong>" }
     mutating func visitStrikethrough(_ s: Strikethrough) -> String { "<del>\(renderChildren(of: s))</del>" }
@@ -414,7 +421,14 @@ struct HTMLRenderer: MarkupVisitor {
     /// Renders a leaf text run, recognizing the non-GFM inline constructs the
     /// editor supports by reusing the same custom-parser regexes. Everything not
     /// matched is HTML-escaped.
-    private static func renderInline(_ s: String) -> String {
+    ///
+    /// `rawSource`, when given, is this run's *unescaped-by-swift-markdown* source
+    /// (`Text.string`) counterpart's raw markdown. Only inline math needs it: a
+    /// Text node's `.string` has already had Markdown backslash-escapes collapsed
+    /// (`\\`→`\`, `\$`→`$`), which mangles LaTeX (a `\begin{cases} … \\ … \end`
+    /// loses its row separators). The tex is therefore recovered from the raw
+    /// source instead. Everything else stays on the (correctly unescaped) `s`.
+    private static func renderInline(_ s: String, rawSource: String? = nil) -> String {
         guard !s.isEmpty else { return "" }
         var spans: [SyntaxHighlighter.Span] = []
         SyntaxHighlighter.parseHighlight(s, into: &spans)
@@ -434,6 +448,26 @@ struct HTMLRenderer: MarkupVisitor {
             }
         }.sorted { $0.fullRange.location < $1.fullRange.location }
 
+        // Recover each inline equation's tex from the raw source. The raw parse
+        // finds the same `$…$` runs in the same order; pair the k-th emitted math
+        // span with the k-th raw one. Only when the counts agree (a `\$` escape
+        // can make the unescaped `s` see a spurious `$…$` the raw source doesn't),
+        // else fall back to the unescaped tex — no worse than before.
+        var rawTexByLoc: [Int: String] = [:]
+        if let rawSource {
+            var rawSpans: [SyntaxHighlighter.Span] = []
+            SyntaxHighlighter.parseMath(rawSource, into: &rawSpans)
+            let rns = rawSource as NSString
+            let rawTex = rawSpans
+                .filter { if case .math(false) = $0.kind { return true }; return false }
+                .sorted { $0.fullRange.location < $1.fullRange.location }
+                .map { rns.substring(with: $0.contentRange) }
+            let mathSpans = relevant.filter { if case .math(false) = $0.kind { return true }; return false }
+            if mathSpans.count == rawTex.count {
+                for (i, sp) in mathSpans.enumerated() { rawTexByLoc[sp.fullRange.location] = rawTex[i] }
+            }
+        }
+
         let ns = s as NSString
         var out = ""
         var cursor = 0
@@ -447,7 +481,7 @@ struct HTMLRenderer: MarkupVisitor {
             case .highlight:
                 out += "<mark>\(escape(ns.substring(with: span.contentRange)))</mark>"
             case .math(false):
-                let tex = ns.substring(with: span.contentRange)
+                let tex = rawTexByLoc[r.location] ?? ns.substring(with: span.contentRange)
                 out += "<span class=\"math-inline\" data-tex=\"\(attr(tex))\"></span>"
             case .wikilink(let target):
                 // Emit a link in a private scheme so the read view's nav policy

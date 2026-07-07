@@ -167,6 +167,27 @@ struct HTMLRendererInlineTests {
         #expect(out.contains("\\int_0^1"))
     }
 
+    // Regression: LaTeX environments carry `\\` row separators. swift-markdown's
+    // Text nodes have Markdown backslash-escapes collapsed (`\\`→`\`), so the tex
+    // must be recovered from the raw source or `\begin{cases}`/`\begin{aligned}`
+    // arrive mangled. (misc/bug-repros/math-env-read-mode.png)
+    @Test("Inline environment keeps its `\\\\` row separators in data-tex")
+    func inlineEnvironmentRowSeparators() {
+        let out = html("matrix $I_{ij}=\\begin{cases} 1 & i=j \\\\ 0 & i\\neq j \\end{cases}$ ok")
+        #expect(out.contains("<span class=\"math-inline\" data-tex=\""))
+        #expect(out.contains("\\begin{cases}"))
+        #expect(out.contains("\\\\ 0"))          // the `\\` survived (not collapsed to `\`)
+        #expect(out.contains("\\end{cases}"))
+    }
+
+    @Test("Display environment keeps its `\\\\` row separators in data-tex")
+    func displayEnvironmentRowSeparators() {
+        let out = html("$$\n\\begin{aligned} \\pi &= 3 \\\\ e &= 2 \\end{aligned}\n$$")
+        #expect(out.contains("<div class=\"math-display\" data-tex=\""))
+        #expect(out.contains("\\begin{aligned}"))
+        #expect(out.contains("\\\\ e"))          // the `\\` survived
+    }
+
     @Test("Wikilink renders display text inside a routing anchor")
     func wikilink() {
         let out = html("see [[Note|the note]]")
