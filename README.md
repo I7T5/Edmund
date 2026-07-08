@@ -75,6 +75,7 @@ If Edmund's not your thing, some of the following might be:
 - Closed source
   - Obsidian, cyberWriter, Notion
   - Typora, Lettera (beta), LitSquare Ink MD
+  - MinkNote
 - Open source
   - WYSIWYG: [MarkText](https://marktext.me), [Nodes](https://nodes-web.com), [Scratch](https://github.com/erictli/scratch)
   - Split-screen: [MacDown](https://macdown.uranusjr.com), [MiaoYan](https://miaoyan.app)
