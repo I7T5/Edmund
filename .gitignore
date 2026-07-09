@@ -1,31 +1,31 @@
-# Build & Dev stuff
-/.build
-/build
-/Packages
+# AI
+.claude/worktrees/
+.claude/settings.json
+.claude/settings.local.json
+.codex/config.toml
+
+# local tooling
+.worktrees/
+Tests/EdmundTests/_RenderDump.swift
+Tests/EdmundTests/_RenderEdit.swift
+
+# local files
+/test-files/
+/misc/
+/tmp/
+
+# dev stuff
+.build/
+build/
+Packages/
 xcuserdata/
 DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
-.netrc
 
-# local visual-verification tooling
-/tmp/
-Tests/EdmundTests/_RenderDump.swift
-Tests/EdmundTests/_RenderEdit.swift
-
-# Test files
-test-files/
-
-# Sparkle private key (never commit — store in keychain or CI secret)
+# Sparkle private key
 sparkle_private_key.txt
 
-# AI
-/.claude/worktrees
-
-# Manual git-worktree checkouts (see CLAUDE.md Git practices)
-/.worktrees
-
-# Misc
-misc/
+# system
 .DS_Store
-
+.netrc
