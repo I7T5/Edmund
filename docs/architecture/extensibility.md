@@ -192,11 +192,15 @@ payloads* stay under Application Support, version-stamped, following the
 RaTeX precedent exactly (§2). `RaTeXInstaller` doesn't move.
 
 **Distribution**: on the GitHub build, an extension's payload is a runtime
-download from a GitHub release asset (as RaTeX already does). On a future
-App Store build, sandboxing forbids that kind of runtime fetch-and-execute,
-so the same manifest/folder shape is populated by a manual download-and-move
-instead (the user downloads a release asset and drops it into
-`~/.edmund/extensions/`). Both paths converge on "a folder appears in the
+download from a GitHub release asset (as RaTeX already does). On an App
+Store build, downloaded code may run only when Apple's WebKit or
+JavaScriptCore executes it (App Review guideline 2.5.2). WASM payloads such
+as RaTeX satisfy that, so they runtime-download on **both** builds
+(decided 2026-07-09; JIT and path caveats in
+[`sandboxing.md`](sandboxing.md) §3). Payload kinds JavaScriptCore cannot
+execute fall back to a manual download-and-move (the user downloads a
+release asset and drops it into `~/.edmund/extensions/`). All paths
+converge on "a folder appears in the
 right place with the right manifest," so the loader doesn't need to know
 which build produced it.
 
@@ -211,7 +215,9 @@ where a future sandboxed build swaps in a security-scoped bookmark (granted
 during onboarding, `misc/extensions.md` already anticipates this: "I will
 ask the user to grant access to `~/.edmund/` in the onboarding process")
 instead of a raw `FileManager` home-directory path. One seam, one place to
-swap.
+swap. The full sandbox adoption plan (entitlements, build
+variants, the onboarding grant, per-folder document access) is
+[`sandboxing.md`](sandboxing.md).
 
 **Execution model for community extensions is OPEN.** It is deliberately
 not decided by this doc. The maintainer's own uncertainty in

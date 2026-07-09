@@ -36,6 +36,9 @@ The home of these rules is `../ARCHITECTURE.md` §2.
   image-wedge constraints.
 - [`extensibility.md`](extensibility.md): the themes/extensions design.
   **Design only, not yet implemented on `main`.**
+- [`sandboxing.md`](sandboxing.md): the App Sandbox preparation plan
+  for the App Store build, modeled on CotEditor. **Plan only, nothing
+  sandboxed on `main`.**
 - Planned, not yet written: `reader-and-export.md`, `edit-flow-and-undo.md`,
   `app-shell-and-settings.md`.
 
