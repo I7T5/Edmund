@@ -55,6 +55,14 @@ struct HTMLThemeTests {
         #expect(css(dark: true).contains("--bg: #1e1e1e;"))
     }
 
+    @Test("Table cells allow wrapping long unbreakable tokens")
+    func tableCellWrap() {
+        let out = css(dark: false)
+        #expect(out.contains("overflow-wrap: anywhere"))
+        // Must be scoped to th/td, not applied globally.
+        #expect(out.contains("th, td { border: 1px solid var(--rule); padding: 6px 10px; overflow-wrap: anywhere; }"))
+    }
+
     @Test("Emits code token colors from the shared palette, per appearance")
     func codeTokenColors() {
         let light = css(dark: false)

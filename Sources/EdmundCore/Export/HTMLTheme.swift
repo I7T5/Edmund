@@ -230,7 +230,11 @@ enum HTMLTheme {
     li.task::after { content: ""; display: block; clear: both; }
     .blank-line { height: calc(var(--body-size) * var(--line-height)); }
     table { border-collapse: collapse; margin: 1em 0; width: 100%; }
-    th, td { border: 1px solid var(--rule); padding: 6px 10px; }
+    /* overflow-wrap: anywhere lets a long unbreakable word (URL, token) wrap
+       inside its cell — without it, the browser's min-content width for that
+       cell is the word's full width, so the table overflows past the page's
+       max content width instead of shrinking to fit. */
+    th, td { border: 1px solid var(--rule); padding: 6px 10px; overflow-wrap: anywhere; }
     thead th { background: var(--code-bg); }
     img { max-width: 100%; }
     img.math { vertical-align: middle; }
