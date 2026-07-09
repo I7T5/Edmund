@@ -35,25 +35,27 @@ nonisolated(unsafe) private var inFlightRemoteImages = Set<String>()
 // repeated re-styles show "Not an image" instead of re-fetching forever.
 nonisolated(unsafe) private var undecodableRemoteImages = Set<String>()
 
-extension EditorTextView {
+/// Why an `![alt](destination)` couldn't be shown — the short label a
+/// blocked-image placeholder draws next to its icon. Shared by Edit mode
+/// (this file) and Read mode/export (`DocumentHTML`) so the two report the
+/// same reason, in the same words, for the same failure.
+enum ImageLoadFailure {
+    case httpUnsupported
+    case blockedBySetting
+    case notAnImage
+    case notFound
 
-    /// Why an `![alt](destination)` couldn't be shown — the short label the
-    /// placeholder overlay draws next to its icon.
-    enum ImageLoadFailure {
-        case httpUnsupported
-        case blockedBySetting
-        case notAnImage
-        case notFound
-
-        var label: String {
-            switch self {
-            case .httpUnsupported: return "HTTP connection not supported"
-            case .blockedBySetting: return "External images blocked"
-            case .notAnImage: return "Not an image"
-            case .notFound: return "Image not found"
-            }
+    var label: String {
+        switch self {
+        case .httpUnsupported: return "HTTP connection not supported"
+        case .blockedBySetting: return "External images blocked"
+        case .notAnImage: return "Not an image"
+        case .notFound: return "Image not found"
         }
     }
+}
+
+extension EditorTextView {
 
     /// What `styleBlock` should show for an image token when the cursor is
     /// outside it.

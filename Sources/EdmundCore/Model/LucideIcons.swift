@@ -45,10 +45,16 @@ enum LucideIcons {
     }
 
     /// An `NSImage` of the icon stroked in `color`, sized to a `pointSize`
-    /// square. Renders the SVG (in black) then tints with `.sourceAtop` so the
+    /// square. Renders the SVG (in black) then tints with `.sourceIn` so the
     /// glyph matches `color` exactly regardless of the SVG decoder's color space
-    /// — the same technique the PDF icon path used. `nil` for an unknown id or if
-    /// the platform SVG decoder can't build the image.
+    /// — the same technique the PDF icon path used. `sourceIn` (not
+    /// `sourceAtop`) matters when `color` is itself translucent (e.g. a dynamic
+    /// system color like `.secondaryLabelColor`): `sourceIn`'s result alpha is
+    /// `color.alpha * baseGlyphAlpha`, so the tint's own translucency survives;
+    /// `sourceAtop` keeps only the base glyph's alpha, silently discarding the
+    /// tint's alpha — invisible with the opaque theme colors this was first
+    /// used with, but it flattens a translucent tint to solid opaque. `nil` for
+    /// an unknown id or if the platform SVG decoder can't build the image.
     static func image(_ name: String, color: NSColor, pointSize: CGFloat) -> NSImage? {
         guard let g = geometry[name],
               let data = strokeSVG(geometry: g, stroke: "#000000").data(using: .utf8),
@@ -58,7 +64,7 @@ enum LucideIcons {
         let image = NSImage(size: box, flipped: false) { rect in
             base.draw(in: rect)
             color.setFill()
-            NSGraphicsContext.current?.cgContext.setBlendMode(.sourceAtop)
+            NSGraphicsContext.current?.cgContext.setBlendMode(.sourceIn)
             rect.fill()
             return true
         }
