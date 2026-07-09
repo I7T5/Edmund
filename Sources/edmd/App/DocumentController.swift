@@ -65,22 +65,24 @@ class DocumentController: NSDocumentController {
                                completionHandler: @escaping (NSDocument?, Bool, Error?) -> Void) {
         super.openDocument(withContentsOf: url, display: displayDocument) { document, alreadyOpen, error in
             if let document, error == nil {
-                self.closeUntouchedUntitledWindows(keeping: document)
+                self.closeLastUntouchedUntitledWindow(keeping: document)
             }
             completionHandler(document, alreadyOpen, error)
         }
     }
 
-    /// Closes any other blank Untitled window the user never typed into —
-    /// e.g. the automatic blank document from launch — once a real file opens.
-    /// `isDocumentEdited` already tracks this: edits call `updateChangeCount`
-    /// (`EditorTextView+EditFlow.swift`), so an untouched Untitled document is
-    /// never marked edited.
-    private func closeUntouchedUntitledWindows(keeping opened: NSDocument) {
-        for case let doc as Document in documents where doc !== opened {
-            if doc.fileURL == nil && !doc.isDocumentEdited {
-                doc.close()
-            }
+    /// Closes the most-recently-opened blank Untitled window the user never
+    /// typed into — e.g. the automatic blank document from launch — once a
+    /// real file opens. Only the last one, so opening several Untitled
+    /// windows on purpose still leaves the earlier ones alone.
+    /// `isDocumentEdited` already tracks "untyped": edits call
+    /// `updateChangeCount` (`EditorTextView+EditFlow.swift`), so an untouched
+    /// Untitled document is never marked edited.
+    private func closeLastUntouchedUntitledWindow(keeping opened: NSDocument) {
+        let stale = documents.last { doc in
+            guard let doc = doc as? Document, doc !== opened else { return false }
+            return doc.fileURL == nil && !doc.isDocumentEdited
         }
+        stale?.close()
     }
 }
