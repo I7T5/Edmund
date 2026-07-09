@@ -22,6 +22,9 @@ sparkle_private_key.txt
 # AI
 /.claude/worktrees
 
+# Manual git-worktree checkouts (see CLAUDE.md Git practices)
+/.worktrees
+
 # Misc
 misc/
 .DS_Store

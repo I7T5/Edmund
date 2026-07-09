@@ -14,6 +14,7 @@ doc updated as you learn things.
 ## Git practices
 - Commit automatically and frequently. 
 - Branch off `main` for each fix (don't commit straight to `main`); one feature/fix per branch, small logical commits.
+- For concurrent local work, use `git worktree add .worktrees/<branch> <branch>` instead of stashing or switching branches. Branch names keep the normal `type/slug` convention (e.g. `fix/foo`) — never rename a branch to `worktree-*`. `.worktrees/` is gitignored. This is separate from `.claude/worktrees/`, which Claude Code's own EnterWorktree tool manages automatically; don't hand-edit that one.
 - **Never auto-push, PR, or merge — only when I explicitly ask.**
 - Never delete uncommitted changes. 
 
