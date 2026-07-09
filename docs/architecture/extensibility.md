@@ -211,7 +211,9 @@ where a future sandboxed build swaps in a security-scoped bookmark (granted
 during onboarding, `misc/extensions.md` already anticipates this: "I will
 ask the user to grant access to `~/.edmund/` in the onboarding process")
 instead of a raw `FileManager` home-directory path. One seam, one place to
-swap.
+swap. The full sandbox adoption plan (entitlements, build
+variants, the onboarding grant, per-folder document access) is
+[`sandboxing.md`](sandboxing.md).
 
 **Execution model for community extensions is OPEN.** It is deliberately
 not decided by this doc. The maintainer's own uncertainty in
