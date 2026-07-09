@@ -90,6 +90,7 @@ enum AppSettings {
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let verboseEditorDiagnostics = "settings.advanced.verboseEditorDiagnostics"
+        static let blockExternalImages = "settings.advanced.blockExternalImages"
         static let logRetention = "settings.general.logRetention"
         static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
         static let sourceMode = "settings.view.sourceMode"
@@ -223,6 +224,18 @@ enum AppSettings {
     static var verboseEditorDiagnostics: Bool {
         get { UserDefaults.standard.bool(forKey: Key.verboseEditorDiagnostics) }
         set { UserDefaults.standard.set(newValue, forKey: Key.verboseEditorDiagnostics) }
+    }
+
+    /// Whether Read mode / export blocks remote (`http`/`https`) image loads.
+    /// Defaults on: no surprise network requests until the user opts out.
+    static var blockExternalImages: Bool {
+        get {
+            guard UserDefaults.standard.object(forKey: Key.blockExternalImages) != nil else {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: Key.blockExternalImages)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Key.blockExternalImages) }
     }
 
     /// Whether to auto-send crash reports on launch. Opt-in: defaults off, since

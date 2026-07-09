@@ -2,8 +2,7 @@ import SwiftUI
 import AppKit
 
 struct AdvancedSettingsView: View {
-    @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
-    private var autoCheckUpdates = true
+    @AppStorage(AppSettings.Key.blockExternalImages) private var blockExternalImages = true
     @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = false
     @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = false
     @AppStorage(AppSettings.Key.logRetention) private var logRetention = AppSettings.LogRetention.twoWeeks
@@ -16,9 +15,23 @@ struct AdvancedSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow {
-                Text("Software update:")
+                Text("Privacy & Security:")
                     .gridColumnAlignment(.trailing)
-                Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Block external images", isOn: $blockExternalImages)
+                        .onChange(of: blockExternalImages) { refreshOpenReadViews() }
+                    Text("For more information, refer to this [proposal](https://github.com/opencloud-eu/opencloud/issues/1145).")
+                        .foregroundStyle(.secondary)
+                        .controlSize(.small)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                        
+                    // TODO: Add a "Enable HTTP whitelist" toggle here
+                    // with a short scrollable view of the whitelist that allows user addition
+                    // with +/- signs at the bottom-right corner
+                    // Implement later
+                }
             }
 
             GridRow {
@@ -87,6 +100,15 @@ struct AdvancedSettingsView: View {
         .settingsPanePadding()
         .sheet(isPresented: $showingWarnings) {
             ManageWarningsView()
+        }
+    }
+
+    /// Pushes the toggle to every open document's editor (Edit mode's inline
+    /// image overlay) and Read view, so the change takes effect immediately.
+    private func refreshOpenReadViews() {
+        for case let document as Document in NSDocumentController.shared.documents {
+            document.editor?.allowRemoteImages = !blockExternalImages
+            document.refreshReadView()
         }
     }
 }

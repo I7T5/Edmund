@@ -160,6 +160,18 @@ public class EditorTextView: NSTextView {
         }
     }
 
+    /// Whether a remote (`https`) image referenced by `![alt](url)` may load
+    /// inline while editing. Mirrors Read mode's `allowRemoteImages`; set from
+    /// `AppSettings.blockExternalImages`. Defaults off (the safe default until
+    /// the app layer pushes the real setting in). See
+    /// EditorTextView+ImageRendering for the load path.
+    public var allowRemoteImages: Bool = false {
+        didSet {
+            guard oldValue != allowRemoteImages else { return }
+            recomposeAllDirty()
+        }
+    }
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which

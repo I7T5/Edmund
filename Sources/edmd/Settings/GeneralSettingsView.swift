@@ -6,6 +6,8 @@ import AppKit
 // MARK: - General
 
 struct GeneralSettingsView: View {
+    @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
+    private var autoCheckUpdates = true
     @AppStorage(AppSettings.Key.reopenWindows) private var reopenWindows = false
     @AppStorage(AppSettings.Key.startupAction) private var startupAction = AppSettings.StartupAction.createNewDocument
     @AppStorage(AppSettings.Key.autoSaveWithVersions) private var autoSave = true
@@ -13,6 +15,18 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
+            GridRow {
+                Text("Software updates:")
+                    .gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
+                }
+            }
+            
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+            
             GridRow {
                 Text("On startup:")
                     .gridColumnAlignment(.trailing)

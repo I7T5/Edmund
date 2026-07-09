@@ -124,6 +124,7 @@ class Document: NSDocument, HeadingNavigable {
         let initScreen = NSScreen.main
         editor.maxContentWidthPoints = initScreen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000
         editor.updateContentInset()
+        editor.allowRemoteImages = !AppSettings.blockExternalImages
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         editor.document = self
 
@@ -463,6 +464,7 @@ class Document: NSDocument, HeadingNavigable {
     /// the window's screen PPI) so Read mode's column matches Edit mode's.
     private var renderOptions: ReadRenderOptions {
         ReadRenderOptions(preserveBlankLines: AppSettings.renderBlankLinesAsBreaks,
+                         allowRemoteImages: !AppSettings.blockExternalImages,
                          maxContentWidthPoints: Double(editor.maxContentWidthPoints))
     }
 

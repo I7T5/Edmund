@@ -80,16 +80,28 @@ struct DocumentHTMLTests {
 
     // MARK: Images
 
+    /// A tiny but fully valid, decodable PNG (a solid-color square) — real
+    /// image bytes are required now that `imageDataURI` decodes to catch
+    /// undecodable files (see `undecodableLocalImage`), not just the magic
+    /// header bytes this used to get away with.
+    private func validPNGData() -> Data {
+        let size = NSSize(width: 4, height: 4)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSRect(origin: .zero, size: size).fill()
+        img.unlockFocus()
+        let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
+        return rep.representation(using: .png, properties: [:])!
+    }
+
     @Test("Local image is read and inlined as a data URI")
     func localImageInlined() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("edmund-img-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        // The file's bytes are irrelevant to the inlining path; an 8-byte PNG
-        // signature is enough to exercise read + base64 + MIME-by-extension.
-        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
-        try png.write(to: dir.appendingPathComponent("pic.png"))
+        try validPNGData().write(to: dir.appendingPathComponent("pic.png"))
 
         let out = DocumentHTML.full(markdown: "![cat](pic.png)", theme: .default,
                                     callouts: Callout.defaultStyles, dark: false,
@@ -99,11 +111,27 @@ struct DocumentHTMLTests {
         #expect(out.contains("alt=\"cat\""))
     }
 
-    @Test("Unresolvable local image falls back to alt only (no src)")
+    @Test("Unresolvable local image shows the blocked-image placeholder with 'Image not found'")
     func missingImage() {
         let out = doc("![gone](nope.png)")   // no baseURL → can't resolve
-        #expect(out.contains("<img class=\"md-image\" alt=\"gone\">"))
+        #expect(out.contains("md-image-blocked"))
+        #expect(out.contains("Image not found"))
         #expect(!out.contains("src="))
+    }
+
+    @Test("An existing-but-undecodable local file shows 'Not an image'")
+    func undecodableLocalImage() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edmund-img-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try Data("not a png".utf8).write(to: dir.appendingPathComponent("bad.png"))
+
+        let out = DocumentHTML.full(markdown: "![bad](bad.png)", theme: .default,
+                                    callouts: Callout.defaultStyles, dark: false,
+                                    baseURL: dir)
+        #expect(out.contains("md-image-blocked"))
+        #expect(out.contains("Not an image"))
     }
 
     @Test("Remote image is suppressed by default, emitted when opted in")
@@ -111,12 +139,26 @@ struct DocumentHTMLTests {
         let md = "![r](https://example.com/x.png)"
         let off = DocumentHTML.full(markdown: md, theme: .default,
                                     callouts: Callout.defaultStyles, dark: false)
-        #expect(off.contains("<img class=\"md-image\" alt=\"r\">"))
+        #expect(off.contains("md-image-blocked"))
+        #expect(off.contains("External images blocked"))
         #expect(!off.contains("https://example.com/x.png"))
 
         let on = DocumentHTML.full(markdown: md, theme: .default,
                                    callouts: Callout.defaultStyles, dark: false,
                                    options: ReadRenderOptions(allowRemoteImages: true))
         #expect(on.contains("src=\"https://example.com/x.png\""))
+    }
+
+    @Test("Plain-http image always shows the blocked-image placeholder, even opted in")
+    func httpImageAlwaysBlocked() {
+        let md = "![r](http://example.com/x.png)"
+        for allow in [false, true] {
+            let out = DocumentHTML.full(markdown: md, theme: .default,
+                                        callouts: Callout.defaultStyles, dark: false,
+                                        options: ReadRenderOptions(allowRemoteImages: allow))
+            #expect(!out.contains("http://example.com/x.png"))
+            #expect(out.contains("md-image-blocked"))
+            #expect(out.contains("HTTP connection not supported"))
+        }
     }
 }

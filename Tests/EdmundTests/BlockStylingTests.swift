@@ -702,10 +702,15 @@ struct ImageNonActiveTests {
         #expect(f!.pointSize < 1.0)
     }
 
-    @Test("Non-active image has italic font on content")
+    @Test("Non-active image has italic font on content while its load is pending")
     @MainActor func nonActiveImageItalic() {
+        // See ImageRenderingTests: a destination that resolves to a definite
+        // failure (`.notFound`/`.notAnImage`/`.blockedBySetting`) now gets a
+        // placeholder overlay instead of italic alt text. This styling remains
+        // only for a remote fetch still in flight (`.pending`).
         let editor = makeEditor()
-        editor.loadContent("![photo](url)\nother")
+        editor.allowRemoteImages = true
+        editor.loadContent("![photo](https://example.invalid/\(UUID().uuidString).png)\nother")
         activateBlock(1, in: editor)
 
         // "photo" is at positions 2-6
