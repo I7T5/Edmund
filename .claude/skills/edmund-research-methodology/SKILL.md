@@ -19,8 +19,8 @@ How a hunch becomes something you can ship without it coming back. Every method
 here is grounded in a real episode from this repo's history — the discipline was
 paid for in the six delete-drift rounds and the viewport work.
 
-Verified 2026-07-05 against `docs/delete-drift-investigation.md`,
-`docs/viewport-glitch-investigation.md`, and `docs/live-repro-guide.md`.
+Verified 2026-07-05 against `docs/investigations/delete-drift-investigation.md`,
+`docs/investigations/viewport-glitch-investigation.md`, and `docs/dev-guides/live-repro-guide.md`.
 
 ---
 
@@ -36,7 +36,7 @@ A mechanism is **accepted** only when it clears both bars:
    to **falsify** the supposed fix: run the frozen repro against it. Rounds 1–5
    of delete-drift shipped on reasoning and **all came back**; round 6's first
    fix candidate "worked by reasoning" and **failed in the repro within a
-   minute** (`docs/delete-drift-investigation.md` round 6, "the iteration that
+   minute** (`docs/investigations/delete-drift-investigation.md` round 6, "the iteration that
    proved its shape").
 
 Corollary: **headless-green is not the bar** for live-input bugs — the round-6
@@ -69,7 +69,7 @@ Each: when to use, the steps, and the episode that earned it.
 **When:** any symptom with diagnostics on. **Steps:** find the first *bad* line,
 then read *upward/earlier*, not forward from the symptom. **Episode:** the round-6
 drift at 22:13 was armed by a bypass at 22:11:57 — 80 seconds and dozens of
-healthy edits earlier. Source: `docs/live-repro-guide.md` §2.
+healthy edits earlier. Source: `docs/dev-guides/live-repro-guide.md` §2.
 
 ### 3b. Make the failure cheap to observe before reasoning about fixes
 **When:** you're tempted to guess. **Steps:** add one breadcrumb (a call stack, a
@@ -84,7 +84,7 @@ fix.**
 N+1 **localizes** the mechanism to what N lacks. **Episode:** delete-drift not
 reproducing in a windowed unit test (level 2) told the team it needed
 deferred/queued AppKit state → pointed straight at level-3 in-process replay and
-event-ordering hypotheses. Source: `docs/live-repro-guide.md` §1.
+event-ordering hypotheses. Source: `docs/dev-guides/live-repro-guide.md` §1.
 
 ### 3d. Invariant auditing
 **When:** the behavior looks impossible. **Steps:** find which invariant
@@ -186,8 +186,8 @@ Mine these seams first — they've paid out repeatedly:
 Verified 2026-07-05.
 
 ```bash
-grep -nE '^## Round|honest gaps|Verification limits' docs/delete-drift-investigation.md docs/viewport-glitch-investigation.md
-grep -n '321\|290' docs/delete-drift-investigation.md         # the predicted numbers (§2)
+grep -nE '^## Round|honest gaps|Verification limits' docs/investigations/delete-drift-investigation.md docs/investigations/viewport-glitch-investigation.md
+grep -n '321\|290' docs/investigations/delete-drift-investigation.md         # the predicted numbers (§2)
 grep -rn 'assertMatchesFullRecomposeOracle' Tests/EdmundTests/
 ls misc/bug-repros/                                            # field-evidence seam (§5)
 ```

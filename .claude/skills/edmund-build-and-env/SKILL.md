@@ -111,7 +111,7 @@ block. If you see that crash, check `ls build/Edmund.app/*.bundle` first.
 ## 4. Debug bundle fast path (EdmundDbg.app)
 
 For live runs of a *debug* build, skip `build-app.sh` and hand-assemble
-(from `docs/live-repro-guide.md` §4):
+(from `docs/dev-guides/live-repro-guide.md` §4):
 
 ```bash
 swift build
@@ -248,7 +248,7 @@ Every claim above was read from the files below on 2026-07-05. Re-verify:
   versions); `grep identity Package.resolved`
 - Build anatomy: `cat scripts/build-app.sh` (step order, sealing comments)
 - Test count/time: `swift test 2>&1 | tail -3`
-- Debug bundle recipe: `docs/live-repro-guide.md` §4
+- Debug bundle recipe: `docs/dev-guides/live-repro-guide.md` §4
 - Stale-build disease, launch gotchas: `docs/ARCHITECTURE.md` §8
   ("Stale release builds", "open Edmund.app", savedState)
 - CI facts: `cat .github/workflows/ci.yml` (cache key comment, concurrency)

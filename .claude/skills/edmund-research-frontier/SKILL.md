@@ -39,7 +39,7 @@ enters this regime.
 `centerViewportOnCaret` re-measure, and the diff-based undo restore that avoids
 resetting fragments to estimates; plus the `ScrollStabilityTests` /
 `HeightStabilityTests` harnesses. (Note: `repairContentAboveOrigin` is
-**mitigated-unconfirmed live** per `docs/viewport-glitch-investigation.md` — a
+**mitigated-unconfirmed live** per `docs/investigations/viewport-glitch-investigation.md` — a
 real result here would also *retire that honest gap*.)
 
 **First three steps in this repo:**

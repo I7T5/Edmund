@@ -26,7 +26,7 @@ occurrence), **open** (in `misc/backlog.md`), **reverted-pending-redo**.
 
 - Designing a change / asking "why is it built this way" → `edmund-architecture-contract`.
 - Actively debugging a NEW symptom (method, not history) → `edmund-debugging-playbook`.
-- Driving the live app to reproduce something → `edmund-live-repro-and-diagnostics` (and `docs/live-repro-guide.md`).
+- Driving the live app to reproduce something → `edmund-live-repro-and-diagnostics` (and `docs/dev-guides/live-repro-guide.md`).
 - TextKit 2 / AppKit API semantics → `textkit2-appkit-reference`.
 - Cutting or fixing a release → `edmund-release-and-operate` (this file only records how 0.1.0 broke).
 - Build environment, stale-link traps in depth → `edmund-build-and-env`.
@@ -41,7 +41,7 @@ occurrence), **open** (in `misc/backlog.md`), **reverted-pending-redo**.
 
 The hardest bug in the project's history: pressing Delete moved the caret to a
 different line instead of deleting. Six rounds, 2026-06-25 → 2026-07-04.
-Full trail: `docs/delete-drift-investigation.md` (read it before touching
+Full trail: `docs/investigations/delete-drift-investigation.md` (read it before touching
 `+EditFlow` / `+SelectionTracking` / the heal). One symptom, FOUR distinct
 root causes stacked on top of each other — each fix was real, and each round's
 recurrence was a different mechanism underneath.
@@ -208,7 +208,7 @@ starts from this entry.
 
 ## 3. Viewport glitches — TextKit 2 height estimates (PR #164, 2026-07-02)
 
-Full trail: `docs/viewport-glitch-investigation.md`. Three reported symptoms,
+Full trail: `docs/investigations/viewport-glitch-investigation.md`. Three reported symptoms,
 one root cause: **every off-screen TextKit 2 frame is an estimate**; code that
 discards layout, trusts off-screen y, or runs two scroll policies at once turns
 estimate churn into visible jumps. Community-documented (Krzyżanowski /
@@ -252,7 +252,7 @@ STTextView, Apple forums) — even TextEdit exhibits it.
 
 ## 4. Callout-title wrap / the image wedge (settled 2026-07-03, `aa45563` + `ae61644`, PR #165)
 
-Full trail: `docs/callout-title-wrap-investigation.md` — including a 10-row
+Full trail: `docs/investigations/archives/callout-title-wrap-investigation.md` — including a 10-row
 matrix of dead ends.
 
 - **Symptom/goal:** custom callout titles (`> [!type] Title`) should render as
@@ -425,9 +425,9 @@ mechanism is fixed.
 
 ## Provenance and maintenance
 
-- Written 2026-07-05 by mining: `docs/delete-drift-investigation.md`,
-  `docs/viewport-glitch-investigation.md`,
-  `docs/callout-title-wrap-investigation.md`, `docs/ARCHITECTURE.md` §13,
+- Written 2026-07-05 by mining: `docs/investigations/delete-drift-investigation.md`,
+  `docs/investigations/viewport-glitch-investigation.md`,
+  `docs/investigations/archives/callout-title-wrap-investigation.md`, `docs/ARCHITECTURE.md` §13,
   `CHANGELOG.md`, `misc/backlog.md`, `docs/ROADMAP.md`, and `git log --all`
   (every hash above verified with `git show` on that date).
 - **Code and git win over prose.** If this file disagrees with a commit or the

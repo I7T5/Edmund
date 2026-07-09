@@ -245,7 +245,7 @@ public class EditorTextView: NSTextView {
         // interrupted — a caret move, a focus change — it can be left stranded
         // (`hasMarkedText()` stuck true), which permanently breaks the
         // storage==rawSource sync in `didChangeText` and drifts the caret on every
-        // edit (see docs/delete-drift-investigation.md). A live-preview markdown
+        // edit (see docs/investigations/delete-drift-investigation.md). A live-preview markdown
         // editor needs neither, and we already disable the other auto-substitutions
         // above — so close this marked-text source too.
         isAutomaticTextCompletionEnabled = false

@@ -53,7 +53,7 @@ Treat that doc as authoritative if the two ever disagree, and fix this skill.
   `NSTextAttachment` would do in TextKit 1.
 - **Delete-drift** — the bug class where `rawSource`/storage/selection desync
   and every later edit lands the caret in the wrong place. Chronicle:
-  `docs/delete-drift-investigation.md`.
+  `docs/investigations/delete-drift-investigation.md`.
 - **IME composition** — an input method's provisional "marked text"
   (`hasMarkedText()`), present in storage before the user commits it.
 
@@ -88,7 +88,7 @@ incremental reparse, and autosave all operate on one coordinate system.
 IME composition, stranded the marked text, `didChangeText` kept bailing on its
 own guard, and the invariant stayed silently broken — caret drift on every
 subsequent edit. `becomeFirstResponder` now resyncs from storage as a
-catch-all. Full write-up: `docs/delete-drift-investigation.md`.
+catch-all. Full write-up: `docs/investigations/delete-drift-investigation.md`.
 
 ### Invariant 2 — TextKit 2 only
 
@@ -214,7 +214,7 @@ the fragment to one line. Drawing a *shape* (stroked `CGPath`) does not.
 That is why the wrapping callout custom-title icon is a stroked path parsed
 from vendored Lucide geometry, never an image. **Any new overlay that could
 share a line with wrapping text must be a shape, not an image.** Full saga:
-`docs/callout-title-wrap-investigation.md`.
+`docs/investigations/archives/callout-title-wrap-investigation.md`.
 
 ---
 

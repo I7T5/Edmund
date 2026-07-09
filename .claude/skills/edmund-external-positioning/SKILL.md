@@ -106,9 +106,9 @@ When writing a craft blog post or comparison, keep this ledger straight.
 | --- | --- | --- |
 | Attribute-only rendering with the storage == rawSource invariant (no attachment characters, no U+FFFC; delimiters hidden, never stripped; identity offset mapping) | A clean architectural answer to the classic WYSIWYG mapping problem | A survey showing how the named alternatives (incl. swift-markdown-engine) handle storage vs. display; the invariant's consequences demonstrated with runnable examples |
 | Stroked-`CGPath` overlay workaround for the TK2 image wedge (image in a fragment overlay collapses the fragment's layout to one line; callout icon drawn as stroked path from vendored Lucide SVG instead) | A concrete, reproducible TK2 bug + workaround — the classic useful engineering post | A minimal frozen repro of the wedge outside Edmund; macOS version range where it reproduces |
-| Bypassed-`didChangeText` heal + caret re-assertion (round-6 mechanism: TK2 leaves a `_fixSelectionAfterChange` queued after a bypassed edit; next-run-loop sync check heals storage and re-asserts the caret) | Deep TK2 internals nobody has documented; the delete-drift chronicle (`docs/delete-drift-investigation.md`) already exists as raw material | The frozen ReproScript repro kept green; behavior confirmed on current macOS before publishing (private-method behavior can change under us) |
+| Bypassed-`didChangeText` heal + caret re-assertion (round-6 mechanism: TK2 leaves a `_fixSelectionAfterChange` queued after a bypassed edit; next-run-loop sync check heals storage and re-asserts the caret) | Deep TK2 internals nobody has documented; the delete-drift chronicle (`docs/investigations/delete-drift-investigation.md`) already exists as raw material | The frozen ReproScript repro kept green; behavior confirmed on current macOS before publishing (private-method behavior can change under us) |
 | Diff-based undo restore that preserves TK2 layout (snapshot restore *diffs* rather than replaces, bypassing NSTextView undo) | Practical fix for a visible TK2 pain (undo viewport yank) | Before/after measurements (layout work saved, viewport stability) on a pinned document |
-| In-process ReproScript methodology (`-debug.reproScript`, keystroke replay without CGEvents/TCC; `docs/live-repro-guide.md`) | Reusable testing methodology for any AppKit text app | Show it reproducing a real bug end-to-end in a fresh checkout; that IS the reproducibility standard |
+| In-process ReproScript methodology (`-debug.reproScript`, keystroke replay without CGEvents/TCC; `docs/dev-guides/live-repro-guide.md`) | Reusable testing methodology for any AppKit text app | Show it reproducing a real bug end-to-end in a fresh checkout; that IS the reproducibility standard |
 
 Reproducibility standard for any technical post: a reader with the repo and
 the post must be able to reproduce every claim — frozen repro scripts, pinned
@@ -156,7 +156,7 @@ Verified against the repo, 2026-07-05:
 - **Actual house style** (read `CHANGELOG.md` 0.1.0–0.1.3 before writing):
   Keep-a-Changelog headers (`### Added / Changed / Fixed`); one line per item,
   sentence case, no trailing period enforced; links to issues (`[#156]`) and
-  investigation docs (`([docs](docs/delete-drift-investigation.md))`);
+  investigation docs (`([docs](docs/investigations/delete-drift-investigation.md))`);
   user-visible phrasing ("Redo now jumps to where changed text was instead of
   caret") not internal jargon; occasional first-person maintainer notes with
   personality ("trying to have Fable 5 fix all the big bugs while I still have

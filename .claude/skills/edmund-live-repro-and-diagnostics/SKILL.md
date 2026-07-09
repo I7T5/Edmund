@@ -19,7 +19,7 @@ layer (deferred selection fixups, IME composition, drag sessions, event-loop
 timing). **Headless tests cannot form the broken state** — the test harness runs
 AppKit's deferred machinery synchronously, so a green unit test proves nothing
 about this class. This skill is how you make such a bug cheap to observe, then
-deterministic. Primary source doc: `docs/live-repro-guide.md`.
+deterministic. Primary source doc: `docs/dev-guides/live-repro-guide.md`.
 
 Verified 2026-07-05.
 
@@ -272,7 +272,7 @@ authoring; read the header comment before first run.
 
 ## Provenance and maintenance
 
-Verified 2026-07-05 against `docs/live-repro-guide.md`,
+Verified 2026-07-05 against `docs/dev-guides/live-repro-guide.md`,
 `Sources/edmd/App/ReproScript.swift`, and
 `Sources/EdmundCore/TextView/EditorTextView+Diagnostics.swift`.
 
@@ -283,5 +283,5 @@ grep -rn 'traceSelectionOrigin\|LEN-MISMATCH\|shouldTrace' Sources/EdmundCore/Te
 grep -n 'healing storage edit' Sources/EdmundCore/TextView/EditorTextView+EditFlow.swift
 ```
 
-Re-verify the scripts against `docs/live-repro-guide.md` §4 if the debug-bundle
+Re-verify the scripts against `docs/dev-guides/live-repro-guide.md` §4 if the debug-bundle
 assembly recipe changes.
