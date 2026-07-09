@@ -15,7 +15,7 @@ description: >
 
 # Edmund docs and writing
 
-Date-stamped 2026-07-05. Every claim below was verified against the files on
+Date-stamped 2026-07-09. Every claim below was verified against the files on
 `main` at that date; re-verify paths before trusting this after major
 reorganizations.
 
@@ -36,7 +36,7 @@ This skill is for prose: what to write, where it lives, how it should read.
 ## 1. The docs-of-record map — one home per fact
 
 Every fact has exactly one home; everywhere else gets a pointer. All paths
-exist and are current as of 2026-07-05.
+exist and are current as of 2026-07-09.
 
 | Doc | Owns | Notes |
 | --- | --- | --- |
@@ -45,8 +45,9 @@ exist and are current as of 2026-07-05.
 | `CHANGELOG.md` | User-facing version history, Keep-a-Changelog style | `## [x.y.z]` sections are machine-extracted for release notes — exact format matters (§4 below). |
 | `docs/ROADMAP.md` | Versioned feature plan: `## v1.0.0`, `## v1.x`, `# v.2.0.0` sections of checkbox lists, grouped by theme (editing, extensions, macOS integrations) | Has a `Last updated: YYYY-MM-DD` line under the title — refresh it when you edit. |
 | `misc/backlog.md` | The maintainer's working priority list: `## Now (small releases)` (Marketing / On-going bugs / Bugs / UI/UX / Features), `## Next`, `## Later`, roadmap mirrors, `### Lurking (Unreproduceable)`, `## Done` | Stated priority: **Marketing = Bugs >= UI/UX > Features**. Bug entries carry repro pointers (`misc/bug-repros/*.mov`, `.log`, or `~/Desktop` paths). |
-| `docs/<topic>-investigation.md` | Deep multi-round investigation chronicles | Existing: `delete-drift-`, `viewport-glitch-`, `callout-title-wrap-investigation.md`. Template in §5. |
-| `docs/live-repro-guide.md` | Method doc: the escalation ladder for reproducing live-app bugs | Referenced from ARCHITECTURE §11. |
+| `docs/investigations/<topic>-investigation.md` | Deep multi-round investigation chronicles for active bug classes | Existing: `delete-drift-`, `viewport-glitch-investigation.md`. Template in §5. |
+| `docs/investigations/archives/<topic>-investigation.md` | Chronicles for closed/resolved bug classes | Existing: `callout-bottom-line-`, `callout-title-wrap-investigation.md`. |
+| `docs/dev-guides/live-repro-guide.md` | Method doc: the escalation ladder for reproducing live-app bugs | Referenced from ARCHITECTURE §11. |
 | `misc/before-you-release.md` | Pre-flight readiness checklist | Pairs with `how-to-release.md`; cross-ref `edmund-release-and-operate`. |
 | `misc/how-to-release.md` | Release mechanics (CI tag path, local `release.sh`) | Same. |
 | `CLAUDE.md` (root) | Behavior contract for agents: env, git practices, pre-commit checklist, the comment-at-the-code rule | Short by design; it delegates the "how" to ARCHITECTURE. |
@@ -77,7 +78,7 @@ Route the fact FIRST, then write. One home; cross-reference from elsewhere.
 | Bug that is really code debt (design limitation) | `ARCHITECTURE.md` §9 | e.g. the image-on-wrapping-fragment constraint. |
 | Feature idea, near-term (next few small releases) | `misc/backlog.md` (`Now`/`Next`/`Later`) | Sorted by priority + difficulty within category. |
 | Feature idea, versioned/strategic | `docs/ROADMAP.md` under the right version | Refresh `Last updated`. |
-| Repro method / debugging technique | `docs/live-repro-guide.md` | Method docs, not per-bug chronicles. |
+| Repro method / debugging technique | `docs/dev-guides/live-repro-guide.md` | Method docs, not per-bug chronicles. |
 | Release procedure change | `misc/how-to-release.md` / `misc/before-you-release.md` + `ARCHITECTURE.md` §13 | §13 owns the mechanism + failure modes; misc/ owns the operator checklist. |
 | Agent workflow improvement | `ARCHITECTURE.md` §12 | Its footer invites this: "If you (the agent) improve this workflow... update this section." |
 | Vendored third-party asset | `LICENSES/<name>.txt` + a feature-map note in §6 | Follow the Lucide precedent. |
@@ -160,8 +161,8 @@ House format (verify against the file; current entries follow this):
 
 ## 5. The investigation-doc template
 
-Derived from `docs/delete-drift-investigation.md` (6 rounds) and
-`docs/viewport-glitch-investigation.md`. Both open with why the doc exists
+Derived from `docs/investigations/delete-drift-investigation.md` (6 rounds) and
+`docs/investigations/viewport-glitch-investigation.md`. Both open with why the doc exists
 ("Context for anyone who sees the bug again... records the trail end to
 end") and name the fixing commits/branch up front. Chronicle structure: each
 recurrence is a new `## Round N` appended to the same doc — symptom →
@@ -243,12 +244,17 @@ Do these whenever you touch the relevant doc; they rot otherwise.
 Written 2026-07-05 against `main` at `fe8a1f5` (release 0.1.3). Sources, all
 read directly: `docs/ARCHITECTURE.md` (header, §8–§13),
 `README.md`, `CHANGELOG.md`, `docs/ROADMAP.md`, `misc/backlog.md`,
-`docs/delete-drift-investigation.md`, `docs/viewport-glitch-investigation.md`,
-`docs/live-repro-guide.md` (§1), `misc/before-you-release.md`,
+`docs/investigations/delete-drift-investigation.md`, `docs/investigations/viewport-glitch-investigation.md`,
+`docs/dev-guides/live-repro-guide.md` (§1), `misc/before-you-release.md`,
 `misc/how-to-release.md`, root `CLAUDE.md`,
 `.github/workflows/release.yml` (awk extraction quoted verbatim),
-`git log --oneline -50` (commit-style tally), directory listings of `docs/`,
+`git log --oneline -50` (commit-style tally), directory listings of
+`docs/` (`architecture/`, `investigations/` incl. `archives/`, `dev-guides/`),
 `misc/`, `misc/bug-repros/`, `LICENSES/`.
+
+§1 map re-verified 2026-07-09 against the `docs/` reorg (investigation docs
+split into `docs/investigations/` + `docs/investigations/archives/`;
+`docs/live-repro-guide.md` moved to `docs/dev-guides/`).
 
 Maintain this skill when: a doc of record moves or splits (update the §1
 map), ARCHITECTURE sections are renumbered (fix every § reference here),

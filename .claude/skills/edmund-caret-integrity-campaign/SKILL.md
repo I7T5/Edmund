@@ -21,7 +21,7 @@ reproduce in headless tests** — the harness runs AppKit's deferred machinery
 synchronously, so a green unit test proves nothing here. Success is measured by
 `PASS/FAIL` grep and byte counts, **never by eye or by reasoning**.
 
-Verified 2026-07-05 against `docs/delete-drift-investigation.md` (456 lines) and
+Verified 2026-07-05 against `docs/investigations/delete-drift-investigation.md` (456 lines) and
 the code. Read that doc fully before a deep dive.
 
 ---
@@ -65,7 +65,7 @@ four at once.
 **If none match and the symptom is scroll/viewport-shaped** (jump, wrong
 landing, can't-scroll-up) with the caret *not* leaping → this is the viewport
 class, not caret integrity → **edmund-debugging-playbook** +
-`docs/viewport-glitch-investigation.md`. Do not run this campaign on a viewport
+`docs/investigations/viewport-glitch-investigation.md`. Do not run this campaign on a viewport
 bug.
 
 ---
@@ -225,7 +225,7 @@ Pick by the observation pattern. Cheaper is higher.
    it locks the headless contract (assert `rawSource == string`; see the
    `BypassedEditSyncTests` / `MarkedTextDesyncTests` family). **Keep the `.repro`
    script** in the repo for the live half.
-5. **Update `docs/delete-drift-investigation.md`** with the new round (symptom →
+5. **Update `docs/investigations/delete-drift-investigation.md`** with the new round (symptom →
    root cause → repro recipe → fix → status), and `docs/ARCHITECTURE.md` §8 if an
    invariant changed — **same PR**.
 6. Route through **edmund-change-control**: branch `fix/…` off `main`, small
@@ -239,7 +239,7 @@ Pick by the observation pattern. Cheaper is higher.
 ## When NOT to use this skill
 
 - Viewport/scroll drift where the caret itself does not leap →
-  **edmund-debugging-playbook** + `docs/viewport-glitch-investigation.md`.
+  **edmund-debugging-playbook** + `docs/investigations/viewport-glitch-investigation.md`.
 - Just need the repro driver mechanics / trace decoding →
   **edmund-live-repro-and-diagnostics**.
 - The AppKit theory behind the mechanisms → **textkit2-appkit-reference**.
@@ -251,17 +251,17 @@ Pick by the observation pattern. Cheaper is higher.
 
 ## Provenance and maintenance
 
-Verified 2026-07-05 against `docs/delete-drift-investigation.md`,
+Verified 2026-07-05 against `docs/investigations/delete-drift-investigation.md`,
 `Sources/edmd/App/ReproScript.swift`, and
 `Sources/EdmundCore/TextView/EditorTextView+EditFlow.swift`.
 
 ```bash
-grep -nE '^## Round' docs/delete-drift-investigation.md          # round chronicle
+grep -nE '^## Round' docs/investigations/delete-drift-investigation.md          # round chronicle
 grep -n 'scheduleBypassedEditSyncCheck\|healing storage edit' Sources/EdmundCore/TextView/EditorTextView+EditFlow.swift
 grep -rn 'hasMarkedText' Sources/EdmundCore/TextView/
 grep -oiE '"(bypassdelete|assertcaret|logsel)"' Sources/edmd/App/ReproScript.swift | sort -u
 # round-6 discriminating numbers (321 broken / 290 fixed):
-grep -n '321\|290' docs/delete-drift-investigation.md
+grep -n '321\|290' docs/investigations/delete-drift-investigation.md
 ```
 
 When round 7 lands, add its row to Phase 1 and its dead ends to the fenced list.

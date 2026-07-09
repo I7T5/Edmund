@@ -114,7 +114,7 @@ struct CalloutRenderingTests {
         let styled = editor.styleBlock("> [!note] My Title\n> body")
         // The icon overlay anchors on "[" — as a vector path, NOT an image:
         // an image drawn on this wrapping header line wedges TextKit 2's
-        // layout to a single line (docs/callout-title-wrap-investigation.md).
+        // layout to a single line (docs/investigations/archives/callout-title-wrap-investigation.md).
         let att = styled.attribute(.fragmentOverlay, at: 2, effectiveRange: nil) as? FragmentOverlay
         #expect(att != nil)
         #expect(att?.path != nil)

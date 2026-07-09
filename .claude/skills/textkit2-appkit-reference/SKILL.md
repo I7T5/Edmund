@@ -65,7 +65,7 @@ a **widely documented TK2 limitation — even TextEdit shows it** *(background)*
   residual estimate error.
 
 **Rule:** never trust an off-screen fragment's y-coordinate without laying out
-its span first. Deep write-up: `docs/viewport-glitch-investigation.md`.
+its span first. Deep write-up: `docs/investigations/viewport-glitch-investigation.md`.
 
 ---
 
@@ -121,7 +121,7 @@ the text system:
 fragment to one line. Drawing a **shape/path** does not. So the wrapping
 callout title's icon is a stroked `CGPath` (parsed by `SVGPath` from vendored
 Lucide geometry), never an image. Full saga:
-`docs/callout-title-wrap-investigation.md`. This constraint holds for **any new
+`docs/investigations/archives/callout-title-wrap-investigation.md`. This constraint holds for **any new
 overlay** that could share a line with wrapping text.
 
 **Hiding text** = `hiddenFont` (≈0.01 pt) + clear `foregroundColor`. This is how
@@ -196,7 +196,7 @@ the caret** (the original delete-drift bug). Therefore **every storage-touching
 styling path must guard `!hasMarkedText()`** — including async ones scheduled
 *before* composition began (the caret-move restyle in `+SelectionTracking`).
 `becomeFirstResponder` resyncs from storage as a catch-all. Full write-up:
-`docs/delete-drift-investigation.md`.
+`docs/investigations/delete-drift-investigation.md`.
 
 ---
 

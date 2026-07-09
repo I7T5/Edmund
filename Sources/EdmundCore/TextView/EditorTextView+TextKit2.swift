@@ -116,7 +116,7 @@ public final class BlockDecorationList: NSObject, @unchecked Sendable {
 /// The path form exists because of a TextKit 2 wedge: drawing an *image* on a
 /// wrapping, multi-line layout fragment collapses that fragment's layout to a
 /// single line, while drawing a *shape* does not (see
-/// docs/callout-title-wrap-investigation.md). Overlays that can share a line
+/// docs/investigations/archives/callout-title-wrap-investigation.md). Overlays that can share a line
 /// with wrapping text (the custom-callout-title icon) must use the path form.
 public final class FragmentOverlay: NSObject, @unchecked Sendable {
     public let image: NSImage?

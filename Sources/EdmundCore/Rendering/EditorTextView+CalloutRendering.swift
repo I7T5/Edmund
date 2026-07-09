@@ -128,7 +128,7 @@ extension EditorTextView {
                 // multi-line, wrapping) header line wedges TextKit 2's layout to
                 // a single line — clipping the title — by every image-drawing
                 // mechanism tried, while shape drawing is unaffected. See
-                // docs/callout-title-wrap-investigation.md. Default callouts (the
+                // docs/investigations/archives/callout-title-wrap-investigation.md. Default callouts (the
                 // `else` below) keep their icon+name image: their synthesized
                 // type name is short and never wraps, so the single-line image
                 // overlay never hits the wedge.
@@ -409,7 +409,7 @@ extension EditorTextView {
     /// title's optical middle (same optics as the header image below). A path
     /// — not an image — because the custom-title line wraps, and an image
     /// drawn on a multi-line fragment wedges its layout to one line (see
-    /// docs/callout-title-wrap-investigation.md). `nil` for an unknown icon.
+    /// docs/investigations/archives/callout-title-wrap-investigation.md). `nil` for an unknown icon.
     private func calloutIconPathOverlay(iconName: String, color: NSColor,
                                         titleFont: NSFont, iconNudge: CGFloat) -> FragmentOverlay? {
         let pointSize = bodyFont.pointSize

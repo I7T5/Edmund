@@ -132,7 +132,7 @@ rawSource ──BlockParser──▶ [Block]  ──styleBlock per block──�
   a *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it
   to one line; drawing a *shape* does not. So the wrapping callout custom
   title's icon is a stroked `CGPath` (`SVGPath` parses the vendored Lucide
-  geometry), never an image — see `docs/callout-title-wrap-investigation.md`
+  geometry), never an image — see `docs/investigations/archives/callout-title-wrap-investigation.md`
   for the full saga.
 
 ---
@@ -346,7 +346,7 @@ them and route through the app's document graph without JavaScript.
   ones scheduled *before* composition began (the caret-move restyle in
   `+SelectionTracking`). `becomeFirstResponder` resyncs from storage as a
   catch-all if a composition is ever left stranded. Full write-up:
-  `docs/delete-drift-investigation.md`.
+  `docs/investigations/delete-drift-investigation.md`.
 - **AppKit does not pair every storage mutation with `didChangeText`.** A
   drag-move of the selected text whose drop lands on no valid target (e.g.
   released past the end of the document) deletes the dragged range via
@@ -375,8 +375,8 @@ them and route through the app's document graph without JavaScript.
   keystroke scripts (`caret` / `type` / `backspace` / `bypassdelete` /
   `assertcaret` / `logsel`) through the real `window.sendEvent` key path — no
   Accessibility/TCC needed, works with the window on an invisible Space. Full
-  chronicle: `docs/delete-drift-investigation.md` round 6; step-by-step method
-  for producing such repros: `docs/live-repro-guide.md`.
+  chronicle: `docs/investigations/delete-drift-investigation.md` round 6; step-by-step method
+  for producing such repros: `docs/dev-guides/live-repro-guide.md`.
 - **A custom toolbar item can't win a right-click from a view-level handler.**
   With `NSToolbar.allowsUserCustomization = true`, the toolbar turns any
   secondary (right / control) click over the toolbar — *including* a custom item
@@ -406,7 +406,7 @@ them and route through the app's document graph without JavaScript.
   callout custom-title icon by drawing it as a stroked `CGPath` instead
   (shapes don't trigger the wedge); the constraint still holds for any *new*
   overlay that could share a line with wrapping text. Full investigation:
-  `docs/callout-title-wrap-investigation.md`.
+  `docs/investigations/archives/callout-title-wrap-investigation.md`.
 - *(Add new ones here as you find them — with a one-line repro and a pointer to
   any deeper write-up in `docs/`.)*
 
@@ -442,7 +442,7 @@ them and route through the app's document graph without JavaScript.
 5. Verify per §12 before committing.
 
 Debugging a live-only bug (caret, IME, drag, viewport timing)? Follow
-`docs/live-repro-guide.md` — trace-reading first, then the in-process
+`docs/dev-guides/live-repro-guide.md` — trace-reading first, then the in-process
 ReproScript driver; don't burn time on headless attempts for that class.
 
 ---

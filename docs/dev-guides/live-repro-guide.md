@@ -2,7 +2,7 @@
 
 How to turn a "happens sometimes while typing" field report into a
 deterministic, scriptable reproduction against the real app. Distilled from
-the delete-drift investigation (`delete-drift-investigation.md`), where six
+the delete-drift investigation (`../investigations/delete-drift-investigation.md`), where six
 rounds of trace-reading became a one-command repro only after the techniques
 below were assembled. Written for both humans and agents debugging Edmund.
 
@@ -222,7 +222,7 @@ across runs confirms the whole chain is deterministic.
    falsify fix candidates — round 6's first fix "worked" by reasoning and
    failed in the repro within a minute.
 5. Fix verified → soak (§6) → full `swift test` → keep the script and the
-   new diagnostics; update `delete-drift-investigation.md` (or the relevant
+   new diagnostics; update `../investigations/delete-drift-investigation.md` (or the relevant
    investigation doc) with the mechanism and the repro recipe.
 
 The meta-lesson from six rounds: **time spent making the failure cheap to

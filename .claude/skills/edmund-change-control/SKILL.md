@@ -38,7 +38,7 @@ Classify FIRST, before writing code. The class decides the verification bar.
 | Docs-only | ARCHITECTURE.md, README, docs/*.md, comments | None beyond review. `swift test` still runs as a Stop hook; ignore no failures it surfaces. |
 | Code (logic) change | Parser, block model, helpers, non-drawing refactor | `swift test` green. New behavior or bug fix → add a test that fails without the change. |
 | Visually-drawing change | Anything in `Rendering/`, overlays, decorations, padding, fonts, layout fragments | All of the above, PLUS build the app and `screencapture` the result (window-by-id method — see `edmund-live-repro-and-diagnostics`). Headless layout is not proof for anything that draws. |
-| Edit-pipeline / selection behavior | `+EditFlow`, `+Composition`, `+SelectionTracking`, `+Undo`, caret, IME, drag, viewport timing | All of the above, PLUS a live repro or soak script (`-debug.reproScript`, see `edmund-caret-integrity-campaign` and `docs/live-repro-guide.md`). Headless tests cannot exercise deferred AppKit machinery — the queued selection fixup, drag paths, IME. Rounds 1–5 of delete-drift shipped on tests + reasoning; all recurred. |
+| Edit-pipeline / selection behavior | `+EditFlow`, `+Composition`, `+SelectionTracking`, `+Undo`, caret, IME, drag, viewport timing | All of the above, PLUS a live repro or soak script (`-debug.reproScript`, see `edmund-caret-integrity-campaign` and `docs/dev-guides/live-repro-guide.md`). Headless tests cannot exercise deferred AppKit machinery — the queued selection fixup, drag paths, IME. Rounds 1–5 of delete-drift shipped on tests + reasoning; all recurred. |
 | Release | Version bump, tag, appcast | Run `misc/before-you-release.md` top to bottom, then `misc/how-to-release.md`. See `edmund-release-and-operate`. Never start a release without being asked. |
 
 Notes on the gates:
@@ -95,11 +95,11 @@ arguing an exception.
 
 | Rule | Rationale | Incident |
 |---|---|---|
-| Text storage always equals `rawSource`; rendering is attribute-only. Never insert/delete display characters — hide delimiters, never strip them. | Display offset == raw offset (identity mapping) is what every selection, sync, and heal path assumes. Break it and every later edit drifts. | The delete-drift saga: six rounds over months, each recurrence traced to storage/rawSource divergence in some path. `docs/delete-drift-investigation.md`. |
+| Text storage always equals `rawSource`; rendering is attribute-only. Never insert/delete display characters — hide delimiters, never strip them. | Display offset == raw offset (identity mapping) is what every selection, sync, and heal path assumes. Break it and every later edit drifts. | The delete-drift saga: six rounds over months, each recurrence traced to storage/rawSource divergence in some path. `docs/investigations/delete-drift-investigation.md`. |
 | TextKit 2 only. Never touch `NSTextView.layoutManager`; never store `NSTextBlock`/`NSTextTable` attributes. | Either one **silently and permanently** reverts the view to TextKit 1. A DEBUG tripwire asserts if TK1 engages — heed it. | ARCHITECTURE §2; the tripwire exists because the reversion is otherwise invisible. |
 | No `NSTextAttachment`. Images/icons are drawn as overlays. | TK2 only honors attachments on U+FFFC, which `rawSource` never contains (see rule 1). | ARCHITECTURE §2, §5. |
-| Never draw images on wrapping (multi-line) fragments; use stroked `CGPath`s instead. | A TK2 image on a wrapping fragment wedges layout — collapses the fragment to one line. Shapes don't trigger it. | The callout custom-title icon: `docs/callout-title-wrap-investigation.md`; fix in ae61644 (stroked path, not image). |
-| Every storage-touching styling path guards `!hasMarkedText()` — including async paths scheduled before composition began. | Mutating storage mid-IME-composition strands the marked text; `didChangeText` then bails forever on its own guard and every later edit drifts. | Delete-drift rounds 1–2 (IME stranding cascade). `docs/delete-drift-investigation.md`. |
+| Never draw images on wrapping (multi-line) fragments; use stroked `CGPath`s instead. | A TK2 image on a wrapping fragment wedges layout — collapses the fragment to one line. Shapes don't trigger it. | The callout custom-title icon: `docs/investigations/archives/callout-title-wrap-investigation.md`; fix in ae61644 (stroked path, not image). |
+| Every storage-touching styling path guards `!hasMarkedText()` — including async paths scheduled before composition began. | Mutating storage mid-IME-composition strands the marked text; `didChangeText` then bails forever on its own guard and every later edit drifts. | Delete-drift rounds 1–2 (IME stranding cascade). `docs/investigations/delete-drift-investigation.md`. |
 | Never assume `didChangeText` follows every edit. Sync paths must survive a bypassed edit. | AppKit's drag-move-to-nowhere deletes via `shouldChangeText` → `replaceCharacters` and never calls `didChangeText`, silently freezing `rawSource`. The heal (`scheduleBypassedEditSyncCheck` in `+EditFlow`) exists for this. | Delete-drift round 4 (9f99795); rounds 5–6 hardened the heal itself. |
 | Attribute-only restyles that change geometry must `invalidateLayout(for:)` the range. | TK2 does not re-measure on attribute change; the fragment keeps a stale frame — empty bands, clipped lines. | ARCHITECTURE §8; `recomposeDirty` and the idle drain already do this — new paths must too. |
 | Undo restore is diff-based `recomposeReplacing` — never a full `recompose`. | Full recompose resets every fragment to a TK2 height estimate; the follow-up scroll lands wrong and the viewport drifts. | Undo/redo viewport drift — one of the costliest failures here. Fixed in 5bb2b40 (`fix(undo): select + center the changed text; diff-based snapshot restore`). |
@@ -107,7 +107,7 @@ arguing an exception.
 | Never request macOS Computer Access (Screen Recording / Accessibility). | Both are already granted to the tools you use. Requesting again re-prompts the maintainer and can wedge TCC state. | CLAUDE.md "Environment"; the `-debug.reproScript` driver exists precisely so repros need no new TCC grants. |
 | Visual judgments ("balance the padding", "is it centered") are MEASURED from screencapture pixels, not eyeballed. | Eyeballed "looks right" repeatedly shipped asymmetric spacing. Crop the window, count pixels, state the numbers. | Maintainer's explicit rule from UI-polish rounds (status-bar / table-padding branches). |
 | Files in `test-files/` are the maintainer's manual test corpus. Never rewrite them for automation; `test-files/todo.md` especially is owner-edited. | They encode the maintainer's by-hand regression walk. Automation churn destroys that. Create your own fixtures in a scratch dir or `Tests/`. | Standing maintainer rule. |
-| Never ship a fix for a live-input-layer bug (caret, IME, drag, selection timing) on reasoning alone. A frozen repro script must falsify the bug before and confirm the fix after. | This bug class does not reproduce headless (the test harness runs TK2's queued fixup synchronously). Reasoning about deferred AppKit machinery has a ~0% shipping record here. | Delete-drift rounds 1–5 each shipped a plausible fix; each came back. Round 6 finally held because the ReproScript driver reproduced the drift deterministically first. `docs/live-repro-guide.md`. |
+| Never ship a fix for a live-input-layer bug (caret, IME, drag, selection timing) on reasoning alone. A frozen repro script must falsify the bug before and confirm the fix after. | This bug class does not reproduce headless (the test harness runs TK2's queued fixup synchronously). Reasoning about deferred AppKit machinery has a ~0% shipping record here. | Delete-drift rounds 1–5 each shipped a plausible fix; each came back. Round 6 finally held because the ReproScript driver reproduced the drift deterministically first. `docs/dev-guides/live-repro-guide.md`. |
 
 ### The two incidents that shaped this table
 
@@ -196,8 +196,8 @@ Never do these unprompted; ask and wait for an explicit yes:
 
 - Sources: `CLAUDE.md` (repo root), `docs/ARCHITECTURE.md` §1 §2 §8 §9 §12,
   `.claude/settings.json` (Stop hook), `misc/before-you-release.md`,
-  `misc/how-to-release.md`, `docs/delete-drift-investigation.md` (rounds 1–6),
-  `docs/callout-title-wrap-investigation.md`, `git log` / `git branch -a` as of
+  `misc/how-to-release.md`, `docs/investigations/delete-drift-investigation.md` (rounds 1–6),
+  `docs/investigations/archives/callout-title-wrap-investigation.md`, `git log` / `git branch -a` as of
   fe8a1f5 (2026-07-05).
 - Commits cited were verified in `git log`: 5bb2b40 (diff-based undo restore),
   9f99795 (round-4 heal), ae61644 (stroked-path callout icon), 1b1420a

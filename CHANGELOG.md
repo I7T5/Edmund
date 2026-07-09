@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [0.1.3] — 2026-07-04
 
 ### Fixed
-- Delete caret drift *with reproduction* ([docs](docs/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)
+- Delete caret drift *with reproduction* ([docs](docs/investigations/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)
 
 ---
 
@@ -20,9 +20,9 @@ Polishing the editor and trying to have Fable 5 fix all the big bugs while I sti
 
 ### Fixed
 - Updater [#158](https://github.com/I7T5/Edmund/issues/158)
-- Icon display for callouts with custom titles ([docs](docs/callout-title-wrap-investigation.md))
-- Undo/redo viewport glitches from TextKit 2 ([docs](docs/viewport-glitch-investigation.md))
-- Delete caret drift ([docs](docs/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)
+- Icon display for callouts with custom titles ([docs](docs/investigations/archives/callout-title-wrap-investigation.md))
+- Undo/redo viewport glitches from TextKit 2 ([docs](docs/investigations/viewport-glitch-investigation.md))
+- Delete caret drift ([docs](docs/investigations/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)
 
 ---
 

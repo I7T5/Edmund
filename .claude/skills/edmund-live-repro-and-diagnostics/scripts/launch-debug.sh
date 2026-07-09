@@ -4,7 +4,7 @@
 # flags (and optionally replay a ReproScript). Kills only its OWN prior debug
 # instance, never the user's daily-driver edmd.
 #
-# Steps (from docs/live-repro-guide.md §4):
+# Steps (from docs/dev-guides/live-repro-guide.md §4):
 #   1. swift build (debug).
 #   2. Assemble EdmundDbg.app: Info.plist copy + debug edmd + Sparkle.framework
 #      (dyld aborts without the framework; a bare .build/debug/edmd never makes

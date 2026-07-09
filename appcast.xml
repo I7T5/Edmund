@@ -40,9 +40,9 @@
 <p>## Fixed</p>
 <ul>
 <li>Updater [#158](https://github.com/I7T5/Edmund/issues/158)</li>
-<li>Icon display for callouts with custom titles ([docs](docs/callout-title-wrap-investigation.md))</li>
-<li>Undo/redo viewport glitches from TextKit 2 ([docs](docs/viewport-glitch-investigation.md))</li>
-<li>Delete caret drift ([docs](docs/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)</li>
+<li>Icon display for callouts with custom titles ([docs](docs/investigations/archives/callout-title-wrap-investigation.md))</li>
+<li>Undo/redo viewport glitches from TextKit 2 ([docs](docs/investigations/viewport-glitch-investigation.md))</li>
+<li>Delete caret drift ([docs](docs/investigations/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)</li>
 </ul>
 ]]></description>
             <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.1.2/Edmund-0.1.2.dmg"
@@ -59,7 +59,7 @@
 <style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
 <h3>Fixed</h3>
 <ul>
-<li>Delete caret drift *with reproduction* ([docs](docs/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)</li>
+<li>Delete caret drift *with reproduction* ([docs](docs/investigations/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)</li>
 </ul>
 ]]></description>
             <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.1.3/Edmund-0.1.3.dmg"
