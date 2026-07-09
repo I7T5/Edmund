@@ -273,6 +273,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
 
+        // Zoom (font size + max content width, scaled together). Target nil
+        // routes through the responder chain to the key window's Document.
+        viewMenu.addItem(withTitle: "Actual Size",
+                         action: #selector(Document.actualSize(_:)),
+                         keyEquivalent: "0")
+        viewMenu.addItem(withTitle: "Zoom In",
+                         action: #selector(Document.zoomIn(_:)),
+                         keyEquivalent: "=")
+        viewMenu.addItem(withTitle: "Zoom Out",
+                         action: #selector(Document.zoomOut(_:)),
+                         keyEquivalent: "-")
+        viewMenu.addItem(.separator())
+
         let typewriterItem = viewMenu.addItem(
             withTitle: "Typewriter Scroll",
             action: #selector(AppDelegate.toggleTypewriterMode(_:)),

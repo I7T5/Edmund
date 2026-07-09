@@ -14,6 +14,13 @@ class Document: NSDocument, HeadingNavigable {
     private var viewModeButton: NSButton?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
+    /// Session-only zoom scale (View ▸ Actual Size/Zoom In/Zoom Out), applied on
+    /// top of the persisted font size and content width. Not saved — each new
+    /// window starts back at 100%.
+    private var zoomFactor: CGFloat = 1.0
+    private static let zoomStep: CGFloat = 0.1
+    private static let zoomRange: ClosedRange<CGFloat> = 0.5...3.0
+
     /// Editor scroll view and its container, held so Read mode can swap the
     /// editor out for a `ReadModeWebView` (created lazily on first read).
     private var scrollView: NSScrollView!
@@ -208,7 +215,33 @@ class Document: NSDocument, HeadingNavigable {
     @objc private func windowDidChangeScreen(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
               let screen = window.screen else { return }
-        editor?.maxContentWidthPoints = screen.cmToPoints(AppSettings.maxContentWidthCm)
+        editor?.maxContentWidthPoints = screen.cmToPoints(AppSettings.maxContentWidthCm) * zoomFactor
+    }
+
+    // MARK: - Zoom (View ▸ Actual Size / Zoom In / Zoom Out)
+
+    @objc func zoomIn(_ sender: Any?) { setZoom(zoomFactor + Self.zoomStep) }
+    @objc func zoomOut(_ sender: Any?) { setZoom(zoomFactor - Self.zoomStep) }
+    @objc func actualSize(_ sender: Any?) { setZoom(1.0) }
+
+    /// Scales font size (standard + code) and max content width together by
+    /// `factor`, off the persisted base values — never off the currently
+    /// applied (possibly already-zoomed) theme, so repeated zooming doesn't
+    /// compound rounding error and Actual Size always returns to the true base.
+    private func setZoom(_ factor: CGFloat) {
+        guard let editor else { return }
+        zoomFactor = min(Self.zoomRange.upperBound, max(Self.zoomRange.lowerBound, factor))
+
+        let base = EditorTheme.load(from: editor.themeDefaults)
+        var zoomed = base
+        zoomed.fontSize = base.fontSize * zoomFactor
+        zoomed.monospaceFontSize = base.monospaceFontSize * zoomFactor
+        editor.applyTheme(zoomed, persist: false)
+
+        let screen = editor.window?.screen ?? NSScreen.main
+        editor.maxContentWidthPoints = (screen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000) * zoomFactor
+
+        refreshReadView()
     }
 
     @objc private func editorDidChange(_ notification: Notification) {
