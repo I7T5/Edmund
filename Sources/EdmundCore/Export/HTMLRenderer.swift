@@ -273,7 +273,7 @@ struct HTMLRenderer: MarkupVisitor {
             case .right:  return " style=\"text-align:right\""
             }
         }
-        var html = "<table><thead><tr>"
+        var html = "<div class=\"table-wrap\"><table><thead><tr>"
         for (col, cell) in table.head.cells.enumerated() {
             html += "<th\(cellStyle(col))>\(renderChildren(of: cell))</th>"
         }
@@ -285,7 +285,7 @@ struct HTMLRenderer: MarkupVisitor {
             }
             html += "</tr>"
         }
-        html += "</tbody></table>"
+        html += "</tbody></table></div>"
         return html
     }
 

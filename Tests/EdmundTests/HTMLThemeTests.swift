@@ -55,6 +55,13 @@ struct HTMLThemeTests {
         #expect(css(dark: true).contains("--bg: #1e1e1e;"))
     }
 
+    @Test("Wide tables scroll horizontally instead of wrapping cell text")
+    func tableScrolls() {
+        let out = css(dark: false)
+        #expect(out.contains(".table-wrap { overflow-x: auto; margin: 1em 0; }"))
+        #expect(!out.contains("overflow-wrap"))
+    }
+
     @Test("Emits code token colors from the shared palette, per appearance")
     func codeTokenColors() {
         let light = css(dark: false)
