@@ -7,22 +7,22 @@ Last updated: 2026-07-09
 
 Basic editing experience
 - [ ] Full GFM support: Table alignment, escape delimiters with backslash, render HTML tags
-- [ ] TextKit 2 viewport stabilization
+- [ ] Smooth editing experience: Delete caret drift, TextKit 2 viewport stabilization, retain block delimiters when jumping between tokens within block, automatic renumbering of numbered lists, etc. 
 - [ ] UI details: Nested block quote, callout icon baseline, code block rendering, etc. 
 
 Advanced editing features
 - [ ] File outline
 - [ ] Find and replace within file
-- [ ] Format bar (to be renamed)
-- [ ] Advanced Syntax Highlighting official extension
+- [ ] Format bar
+- [ ] Advanced Code official extension
 - [ ] Advanced Math official extension
 
 Customization and extensions
-- [ ] Settings > Edit (design: docs/architecture/extensibility.md)
+- [ ] Settings > Edit
 - [ ] User-configurable keyboard shortcuts 
-- [ ] Themes: Customize code syntax highlighting and editor view. File-based and GUI editor (design: docs/architecture/extensibility.md)
-- [ ] Extensions API, documentations, primitive marketplace (design: docs/architecture/extensibility.md)
-- [ ] Finalize structure of settings (design: docs/architecture/extensibility.md)
+- [ ] Themes: Customize code syntax highlighting and editor view. File-based
+- [ ] Extensions API, documentations, primitive marketplace
+- [ ] Finalize structure of settings
 
 macOS integrations
 - [ ] Custom toolbar
@@ -42,7 +42,7 @@ Internationalization
 - [ ] RTL
 
 Misc
-- [ ] Extensions management
+- [ ] Advanced Theme official extension
 - [ ] Documentation
 - [ ] macOS help book
 - [ ] Accessibility
