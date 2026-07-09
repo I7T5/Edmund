@@ -50,27 +50,60 @@ struct ImageRenderingTests {
         #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
     }
 
-    @Test("Unloadable image falls back to alt text (no overlay)")
-    func fallbackNoOverlay() {
+    @Test("Missing local image shows a blocked-image placeholder overlay, not just alt text")
+    func fallbackShowsPlaceholder() {
         let editor = makeEditor()
         let styled = editor.styleBlock("![alt](/no/such/file.png)", cursorPosition: nil)
-        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) != nil)
+        guard case .blocked(.notFound) = editor.imageDisplay(destination: "/no/such/file.png") else {
+            Issue.record("expected .blocked(.notFound)"); return
+        }
     }
 
-    @Test("Plain-http image never overlays, even with remote images allowed")
-    func httpImageNeverOverlays() {
+    @Test("A path that resolves but isn't image data is classified as 'not an image'")
+    func notAnImage() {
+        let editor = makeEditor()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("md-not-image-\(UUID().uuidString).png")
+        try! Data("not a png".utf8).write(to: url)
+        guard case .blocked(.notAnImage) = editor.imageDisplay(destination: url.path) else {
+            Issue.record("expected .blocked(.notAnImage)"); return
+        }
+    }
+
+    @Test("Plain-http image always shows the placeholder, even with remote images allowed")
+    func httpImageAlwaysBlocked() {
         let editor = makeEditor()
         editor.allowRemoteImages = true
         let styled = editor.styleBlock("![alt](http://example.com/x.png)", cursorPosition: nil)
-        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) != nil)
+        guard case .blocked(.httpUnsupported) = editor.imageDisplay(destination: "http://example.com/x.png") else {
+            Issue.record("expected .blocked(.httpUnsupported)"); return
+        }
     }
 
-    @Test("Https image doesn't overlay while remote images are disallowed")
+    @Test("Https image shows the placeholder while remote images are disallowed")
     func httpsImageBlockedByDefault() {
         let editor = makeEditor()
         editor.allowRemoteImages = false
         let styled = editor.styleBlock("![alt](https://example.com/x.png)", cursorPosition: nil)
-        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) != nil)
+        guard case .blocked(.blockedBySetting) = editor.imageDisplay(destination: "https://example.com/x.png") else {
+            Issue.record("expected .blocked(.blockedBySetting)"); return
+        }
+    }
+
+    @Test("Https image is pending (no placeholder yet) while the fetch is in flight")
+    func httpsImagePendingWhileFetching() {
+        let editor = makeEditor()
+        editor.allowRemoteImages = true
+        // `.invalid` is RFC 2606-reserved (never resolves) — the request
+        // fails async, off the assertion below; only the synchronous
+        // first-call return value (.pending, before any response) matters.
+        let dest = "https://example.invalid/pending-\(UUID().uuidString).png"
+        guard case .pending = editor.imageDisplay(destination: dest) else {
+            Issue.record("expected .pending"); return
+        }
     }
 
     @Test("Narrowing the max-content-width column shrinks an already-rendered image")

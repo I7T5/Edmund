@@ -221,10 +221,15 @@ struct EditorStylingTests {
         #expect(isHidden(at: 0, in: styled))
     }
 
-    @Test("Image content has accent color and italic font")
+    @Test("Image content has accent color and italic font while its load is pending")
     @MainActor func imageStyling() {
+        // A resolvable-but-unresolved destination (a `.notFound`/`.notAnImage`/
+        // `.blockedBySetting` one) now gets a placeholder overlay instead — see
+        // ImageRenderingTests. Alt-text-as-link styling remains for the one
+        // case with nothing to show yet: a remote fetch still in flight.
         let editor = makeEditor()
-        let styled = editor.styleBlock("![photo](url)")
+        editor.allowRemoteImages = true
+        let styled = editor.styleBlock("![photo](https://example.invalid/\(UUID().uuidString).png)")
         // "photo" is at positions 2-6
         let color = styled.attribute(.foregroundColor, at: 2, effectiveRange: nil) as? NSColor
         #expect(color != nil)
