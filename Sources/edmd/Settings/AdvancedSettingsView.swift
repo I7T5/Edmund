@@ -4,6 +4,7 @@ import AppKit
 struct AdvancedSettingsView: View {
     @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
     private var autoCheckUpdates = true
+    @AppStorage(AppSettings.Key.blockExternalImages) private var blockExternalImages = true
     @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = false
     @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = false
     @AppStorage(AppSettings.Key.logRetention) private var logRetention = AppSettings.LogRetention.twoWeeks
@@ -19,6 +20,25 @@ struct AdvancedSettingsView: View {
                 Text("Software update:")
                     .gridColumnAlignment(.trailing)
                 Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
+            }
+
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+
+            GridRow {
+                Text("Privacy & Security:")
+                    .gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Block external images", isOn: $blockExternalImages)
+                        .onChange(of: blockExternalImages) { refreshOpenReadViews() }
+                    Text("Increases security. The dev has subscribed to [this proposal](https://github.com/opencloud-eu/opencloud/issues/1145) to receive updates on the research.")
+                        .foregroundStyle(.secondary)
+                        .controlSize(.small)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                }
             }
 
             GridRow {
@@ -87,6 +107,13 @@ struct AdvancedSettingsView: View {
         .settingsPanePadding()
         .sheet(isPresented: $showingWarnings) {
             ManageWarningsView()
+        }
+    }
+
+    /// Re-renders every open Read view so a toggle change takes effect immediately.
+    private func refreshOpenReadViews() {
+        for case let document as Document in NSDocumentController.shared.documents {
+            document.refreshReadView()
         }
     }
 }

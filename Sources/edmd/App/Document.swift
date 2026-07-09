@@ -432,6 +432,7 @@ class Document: NSDocument, HeadingNavigable {
     /// the window's screen PPI) so Read mode's column matches Edit mode's.
     private var renderOptions: ReadRenderOptions {
         ReadRenderOptions(preserveBlankLines: AppSettings.renderBlankLinesAsBreaks,
+                         allowRemoteImages: !AppSettings.blockExternalImages,
                          maxContentWidthPoints: Double(editor.maxContentWidthPoints))
     }
 
