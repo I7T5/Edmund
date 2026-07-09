@@ -69,5 +69,43 @@
                        length="7613566"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.1.4</title>
+            <pubDate>Thu, 09 Jul 2026 22:31:31 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Various small fixes and improvement and new round of grind at the [delete caret drift](https://github.com/I7T5/Edmund/issues/156). I think it actually worked this time, but don&#x27;t quote me on it.</p>
+<h3>Added</h3>
+<ul>
+<li><code>CMD+=</code>, <code>CMD+-</code>, and <code>CMD+0</code> to zoom in/out/reset. Also in View menu</li>
+<li>External images rendering in editor</li>
+<li>Block external images setting in Settings &gt; Advanced</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Rename &quot;Source Mode&quot; to &quot;Show Source in Editor&quot; in app and button menu. Removed icon from button menu.</li>
+<li>Opening an existing file closes the last opened Untitled window with no edit history</li>
+<li>Move Automatic updates to Settings &gt; General</li>
+<li>Apply Settings &gt; Appearance &gt; Max content width to read mode</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Images have extra bottom padding when editor is not in full screen</li>
+<li>Images do not resize with max content width if the user changes the setting when the app is open</li>
+<li>Tables overflow handled by horizontal scroll</li>
+<li>Callouts have an extra line at the bottom when they are the last element of a file</li>
+<li>Footnotes rendering in edit mode and linking between inline marker and content in read mode</li>
+<li>Math environments <code>\begin{}...\end{}</code> padding offset in edit mode</li>
+<li>Math environments <code>\begin{}...\end{}</code> rendering in read mode</li>
+<li>Delete caret drift, round 7 ([docs](docs/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.1.4/Edmund-0.1.4.dmg"
+                       sparkle:version="5"
+                       sparkle:shortVersionString="0.1.4"
+                       sparkle:edSignature="hQbq7SUuGBrGD9hUxZBk3zTzwuW7HhE6amJfDu6/PKZh9pcvL0OBkcQtblFXHXQMMLvzu/YsU7sgILAsVnslDQ=="
+                       length="7639308"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
