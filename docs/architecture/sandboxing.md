@@ -17,6 +17,12 @@ on `main` the same day. When a stage below lands, move its facts into
 - **Distribution is GitHub releases plus Sparkle** (`SUFeedURL` pointing at
   `appcast.xml` on `main`, EdDSA-signed updates). There is no
   GitHub-vs-App-Store switch anywhere in the code or build scripts.
+- **The document layer is already `NSDocument`.** `Document` subclasses
+  `NSDocument` and `DocumentController` subclasses `NSDocumentController`
+  (`Sources/edmd/App/`), so file coordination, autosave, recent documents,
+  and sandbox-blessed access to every file the user opens or saves come
+  with the framework. The sandbox work below is almost entirely about
+  access *outside* the document system.
 - Several shipping features currently depend on unrestricted filesystem
   access. §3 inventories them.
 
@@ -113,6 +119,20 @@ Everything on `main` that breaks or needs review under the sandbox.
   `SPUStandardUpdaterController`, and the "Check for Updates…" menu item in
   `main.swift`; `build-app.sh` skips embedding the framework; the `SU*`
   Info.plist keys go away.
+- **RaTeX WASM payload (on `feat/extensions-registry-and-tab`).**
+  Compatible with the sandbox, and deliberately so: App Review forbids
+  downloaded executable code *except* scripts run by Apple's WebKit or
+  JavaScriptCore (guideline 2.5.2), and RaTeX executes as WASM inside an
+  in-process `JSContext`. Decision (2026-07-09): the payload
+  runtime-downloads on **both** builds; the App Store entitlements gain
+  `network.client` when Advanced Math ships there. Two verify items for
+  Stage SB1: (a) without the `com.apple.security.cs.allow-jit` entitlement,
+  JavaScriptCore cannot `MAP_JIT` on Apple Silicon, so RaTeX must run
+  acceptably on JSC's interpreter-only WASM tier (if it cannot, add
+  `allow-jit`); (b) the installer's Application Support path must come from
+  `FileManager.urls(for: .applicationSupportDirectory)`, which resolves to
+  the container automatically, not `homeDirectoryForCurrentUser`; check at
+  rebase time.
 - **Read mode and PDF export.** The `WKWebView`s load HTML strings with
   images pre-inlined as `data:` URIs and do no file access of their own, so
   they are unaffected once the inlining path (sibling images above) has
@@ -171,7 +191,9 @@ Edmund has no Xcode project, so CotEditor's xcconfig layer becomes files plus
 - **`Edmund.entitlements`** (App Store): `com.apple.security.app-sandbox`,
   `com.apple.security.files.user-selected.read-write`,
   `com.apple.security.print`. No `network.client` until crash reporting or
-  another network feature actually ships. CotEditor's
+  another network feature actually ships. Advanced Math's runtime download
+  is that feature: when it ships on the App Store build, `network.client`
+  comes with it. CotEditor's
   `files.user-selected.executable` is omitted; Edmund has no feature that
   needs it.
 - **`Edmund-Sparkle.entitlements`** (GitHub build): the above plus
@@ -208,8 +230,9 @@ Each stage is a standalone future task; none is started.
   `LSApplicationCategoryType`, and the `--variant` plumbing in
   `build-app.sh`. Build with sandbox on, then run a manual smoke checklist:
   open, edit, save, autosave, rename, move, print/PDF export, read mode,
-  relative and absolute images, wiki links, logging, and the
-  preferences-migration question from §3. Record every breakage in this doc.
+  relative and absolute images, wiki links, logging, the
+  preferences-migration question from §3, and (once the extensions branch
+  merges) RaTeX WASM execution without `allow-jit`. Record every breakage in this doc.
   Nothing ships from this stage; it exists to turn §3's predictions into
   observed facts.
 - **Stage SB2: the `~/.edmund` bookmark.** Implement §4 behind `-DSANDBOX`:
@@ -227,11 +250,12 @@ Each stage is a standalone future task; none is started.
 
 ## 7. Open decisions
 
-| Decision | Options | Leaning |
+| Decision | Options | Status |
 |---|---|---|
-| Sibling-image access UX | per-folder grant prompt / per-document bookmarks / let them break | per-folder grant (§3) |
-| Dev (ad-hoc) build sandboxed? | yes, CotEditor-style / no, keep repro tooling alive | no; sandbox testing is an explicit variant (§3, ReproScript) |
+| Sibling-image access UX | per-folder grant prompt / per-document bookmarks / let them break | **Decided 2026-07-09: per-folder grant** |
+| Dev (ad-hoc) build sandboxed? | yes, CotEditor-style / no, keep repro tooling alive | **Decided 2026-07-09: no**; sandbox testing is an explicit variant (§3, ReproScript) |
+| RaTeX / Advanced Math on the App Store build | runtime download (the JavaScriptCore exception) / bundle the WASM / GitHub-only | **Decided 2026-07-09: runtime download on both builds** (§3) |
 | Crash reporter under sandbox | MetricKit rewrite / delete the feature | undecided; feature is dormant anyway |
 | Preferences migration | automatic (verify) / explicit importer | verify in SB1 before deciding |
-| Grant target | exactly `~/.edmund` / any user-chosen folder | exactly `~/.edmund` |
+| Grant target | exactly `~/.edmund` / any user-chosen folder | leaning: exactly `~/.edmund` |
 | iCloud documents | adopt CotEditor's entitlements / defer | defer |
