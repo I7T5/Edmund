@@ -525,6 +525,14 @@ hit Gatekeeper on first launch; the README documents the
 `xattr -dr com.apple.quarantine` / right-click-Open workarounds. A Developer ID
 cert + notarization (see §8) would remove the prompt entirely.
 
+**Never release anything through this pipeline except the main app.** The
+tag-triggered flow above builds and ships `Edmund.app` only. Extension
+payloads (e.g. the RaTeX WASM) are a separate concern with their own
+hosting/release path — never bundled into or triggered by an Edmund version
+tag. Case in point: the RaTeX WASM asset was pulled from release pending
+`erweixin/RaTeX` inline-mode support and the Advanced Math extension's own
+repo migration — see `misc/backlog.md`.
+
 ---
 
 ## 14. References
