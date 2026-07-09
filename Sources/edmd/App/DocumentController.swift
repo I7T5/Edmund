@@ -55,4 +55,34 @@ class DocumentController: NSDocumentController {
             }
         }
     }
+
+    // MARK: - Untitled Window Cleanup
+    //
+    // Apple's documented single funnel for opening an existing file — the Open
+    // panel, Recent Items, and drag-and-drop all call this — so hooking it
+    // here catches every "open another file" path in one place.
+    override func openDocument(withContentsOf url: URL, display displayDocument: Bool,
+                               completionHandler: @escaping (NSDocument?, Bool, Error?) -> Void) {
+        super.openDocument(withContentsOf: url, display: displayDocument) { document, alreadyOpen, error in
+            if let document, error == nil {
+                self.closeLastUntouchedUntitledWindow(keeping: document)
+            }
+            completionHandler(document, alreadyOpen, error)
+        }
+    }
+
+    /// Closes the most-recently-opened blank Untitled window the user never
+    /// typed into — e.g. the automatic blank document from launch — once a
+    /// real file opens. Only the last one, so opening several Untitled
+    /// windows on purpose still leaves the earlier ones alone.
+    /// `isDocumentEdited` already tracks "untyped": edits call
+    /// `updateChangeCount` (`EditorTextView+EditFlow.swift`), so an untouched
+    /// Untitled document is never marked edited.
+    private func closeLastUntouchedUntitledWindow(keeping opened: NSDocument) {
+        let stale = documents.last { doc in
+            guard let doc = doc as? Document, doc !== opened else { return false }
+            return doc.fileURL == nil && !doc.isDocumentEdited
+        }
+        stale?.close()
+    }
 }
