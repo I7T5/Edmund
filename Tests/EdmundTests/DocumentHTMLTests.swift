@@ -119,4 +119,17 @@ struct DocumentHTMLTests {
                                    options: ReadRenderOptions(allowRemoteImages: true))
         #expect(on.contains("src=\"https://example.com/x.png\""))
     }
+
+    @Test("Plain-http image always shows the blocked-image placeholder, even opted in")
+    func httpImageAlwaysBlocked() {
+        let md = "![r](http://example.com/x.png)"
+        for allow in [false, true] {
+            let out = DocumentHTML.full(markdown: md, theme: .default,
+                                        callouts: Callout.defaultStyles, dark: false,
+                                        options: ReadRenderOptions(allowRemoteImages: allow))
+            #expect(!out.contains("http://example.com/x.png"))
+            #expect(out.contains("md-image-blocked"))
+            #expect(out.contains(">r<"))
+        }
+    }
 }

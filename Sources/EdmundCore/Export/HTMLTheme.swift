@@ -239,6 +239,12 @@ enum HTMLTheme {
     img { max-width: 100%; }
     img.math { vertical-align: middle; }
     .math-display { text-align: center; margin: 1em 0; }
+    /* Stand-in for a plain-http image, which never loads under ATS. */
+    .md-image-blocked { display: inline-flex; align-items: center; gap: 0.4em;
+                        color: var(--faint); background: var(--code-bg);
+                        border: 1px dashed var(--rule); border-radius: 6px;
+                        padding: 0.3em 0.6em; font-size: 0.9em; }
+    .md-image-blocked svg { width: 1.1em; height: 1.1em; flex: 0 0 auto; }
 
     /* Callouts: tinted box + colored title; the icon sits as a non-shrinking
        flex child so a long custom title wraps under the title text, never under

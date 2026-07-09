@@ -99,8 +99,11 @@ enum DocumentHTML {
 
     /// Resolves each `md-image` placeholder: local/relative paths are read and
     /// inlined as a data URI (self-contained, no file access needed at render
-    /// time); a `data:` source passes through; remote `http(s)` sources load
-    /// only when `options.allowRemoteImages` is set, else the alt text shows.
+    /// time); a `data:` source passes through; remote `https` sources load only
+    /// when `options.allowRemoteImages` is set, else the alt text shows; plain
+    /// `http` never loads — App Transport Security refuses an insecure
+    /// connection regardless of the setting — so it always gets a visible
+    /// blocked-image placeholder instead of silently showing nothing.
     private static func fillImages(_ html: String, baseURL: URL?,
                                    options: ReadRenderOptions) -> String {
         var cache: [String: String] = [:]   // resolved path → data URI
@@ -114,7 +117,10 @@ enum DocumentHTML {
             if lower.hasPrefix("data:") {
                 return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\">"
             }
-            if lower.hasPrefix("http://") || lower.hasPrefix("https://") {
+            if lower.hasPrefix("http://") {
+                return blockedImagePlaceholder(alt: alt)
+            }
+            if lower.hasPrefix("https://") {
                 guard options.allowRemoteImages else { return placeholder() }
                 return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\">"
             }
@@ -130,6 +136,14 @@ enum DocumentHTML {
             guard !uri.isEmpty else { return placeholder() }
             return "<img class=\"md-image\" src=\"\(uri)\" alt=\"\(alt)\">"
         }
+    }
+
+    /// A visible stand-in for a plain-`http` image, which never loads (ATS
+    /// refuses the insecure connection outright): an icon plus the alt text,
+    /// instead of just empty space.
+    private static func blockedImagePlaceholder(alt: String) -> String {
+        let icon = LucideIcons.inlineSVG("image-off") ?? ""
+        return "<span class=\"md-image-blocked\">\(icon)<span>\(alt)</span></span>"
     }
 
     /// Resolves a local image `path` to a file URL: absolute / `~` / `file:`
