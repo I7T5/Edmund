@@ -2,6 +2,20 @@ import Testing
 import AppKit
 @testable import EdmundCore
 
+// MARK: - Shared Global-Test Isolation
+
+/// Serializes tests that reconfigure the process-wide logger. Swift Testing's
+/// `.serialized` trait is suite-local, so separate log suites can still overlap.
+enum LogTestIsolation {
+    private static let lock = NSLock()
+
+    static func withLock<T>(_ body: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body()
+    }
+}
+
 // MARK: - Editor Construction
 
 /// Creates an EditorTextView with the TextKit 2 text system chain,

@@ -11,20 +11,22 @@ struct EditorDiagnosticsTests {
     /// Configures `Log` to a fresh temp dir, runs `body`, flushes, and returns the
     /// log file's contents. Always restores logging to off.
     private func captureLog(verbose: Bool, _ body: () -> Void) -> String {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("edmund-diag-\(UUID().uuidString)", isDirectory: true)
-        Log.configure(enabled: true, directory: dir, retention: nil)
-        Log.setVerbose(verbose)
-        defer {
-            Log.configure(enabled: false, directory: dir, retention: nil)
-            Log.setVerbose(false)
-            try? FileManager.default.removeItem(at: dir)
+        LogTestIsolation.withLock {
+            let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("edmund-diag-\(UUID().uuidString)", isDirectory: true)
+            Log.configure(enabled: true, directory: dir, retention: nil)
+            Log.setVerbose(verbose)
+            defer {
+                Log.configure(enabled: false, directory: dir, retention: nil)
+                Log.setVerbose(false)
+                try? FileManager.default.removeItem(at: dir)
+            }
+            body()
+            Log.flush()
+            let files = (try? FileManager.default.contentsOfDirectory(at: dir,
+                includingPropertiesForKeys: nil)) ?? []
+            return files.compactMap { try? String(contentsOf: $0, encoding: .utf8) }.joined()
         }
-        body()
-        Log.flush()
-        let files = (try? FileManager.default.contentsOfDirectory(at: dir,
-            includingPropertiesForKeys: nil)) ?? []
-        return files.compactMap { try? String(contentsOf: $0, encoding: .utf8) }.joined()
     }
 
     @Test func verboseTracingEmitsEditLines() {
