@@ -6,6 +6,8 @@ import AppKit
 // MARK: - General
 
 struct GeneralSettingsView: View {
+    @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
+    private var autoCheckUpdates = true
     @AppStorage(AppSettings.Key.reopenWindows) private var reopenWindows = false
     @AppStorage(AppSettings.Key.startupAction) private var startupAction = AppSettings.StartupAction.createNewDocument
     @AppStorage(AppSettings.Key.autoSaveWithVersions) private var autoSave = true
@@ -17,6 +19,7 @@ struct GeneralSettingsView: View {
                 Text("On startup:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
                     Toggle("Reopen windows from last session", isOn: $reopenWindows)
                     Text("When nothing else is open:")
                     Picker("", selection: $startupAction) {

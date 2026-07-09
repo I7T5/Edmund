@@ -2,8 +2,6 @@ import SwiftUI
 import AppKit
 
 struct AdvancedSettingsView: View {
-    @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
-    private var autoCheckUpdates = true
     @AppStorage(AppSettings.Key.blockExternalImages) private var blockExternalImages = true
     @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = false
     @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = false
@@ -16,16 +14,6 @@ struct AdvancedSettingsView: View {
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
-            GridRow {
-                Text("Software update:")
-                    .gridColumnAlignment(.trailing)
-                Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
-            }
-
-            GridRow {
-                Divider().gridCellColumns(2)
-            }
-
             GridRow {
                 Text("Privacy & Security:")
                     .gridColumnAlignment(.trailing)
