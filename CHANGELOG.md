@@ -3,6 +3,33 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-07-09
+
+Various small fixes and improvement and new round of grind at the [delete caret drift](https://github.com/I7T5/Edmund/issues/156). I think it actually worked this time, but don't quote me on it. 
+
+### Added
+- `CMD+=`, `CMD+-`, and `CMD+0` to zoom in/out/reset. Also in View menu
+- External images rendering in editor
+- Block external images setting in Settings > Advanced 
+
+### Changed
+- Rename "Source Mode" to "Show Source in Editor" in app and button menu. Removed icon from button menu. 
+- Opening an existing file closes the last opened Untitled window with no edit history
+- Move Automatic updates to Settings > General
+- Apply Settings > Appearance > Max content width to read mode 
+
+### Fixed
+- Images have extra bottom padding when editor is not in full screen
+- Images do not resize with max content width if the user changes the setting when the app is open
+- Tables overflow handled by horizontal scroll
+- Callouts have an extra line at the bottom when they are the last element of a file
+- Footnotes rendering in edit mode and linking between inline marker and content in read mode
+- Math environments `\begin{}...\end{}` padding offset in edit mode
+- Math environments `\begin{}...\end{}` rendering in read mode
+- Delete caret drift, round 7 ([docs](docs/delete-drift-investigation.md)) [#156](https://github.com/I7T5/Edmund/issues/156)
+
+---
+
 ## [0.1.3] — 2026-07-04
 
 ### Fixed
