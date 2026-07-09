@@ -57,6 +57,22 @@ struct ImageRenderingTests {
         #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
     }
 
+    @Test("Plain-http image never overlays, even with remote images allowed")
+    func httpImageNeverOverlays() {
+        let editor = makeEditor()
+        editor.allowRemoteImages = true
+        let styled = editor.styleBlock("![alt](http://example.com/x.png)", cursorPosition: nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
+    }
+
+    @Test("Https image doesn't overlay while remote images are disallowed")
+    func httpsImageBlockedByDefault() {
+        let editor = makeEditor()
+        editor.allowRemoteImages = false
+        let styled = editor.styleBlock("![alt](https://example.com/x.png)", cursorPosition: nil)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
+    }
+
     @Test("Narrowing the max-content-width column shrinks an already-rendered image")
     func shrinksOnColumnNarrow() {
         let editor = EditorTextView.makeTextKit2(

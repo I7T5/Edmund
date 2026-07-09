@@ -103,9 +103,11 @@ struct AdvancedSettingsView: View {
         }
     }
 
-    /// Re-renders every open Read view so a toggle change takes effect immediately.
+    /// Pushes the toggle to every open document's editor (Edit mode's inline
+    /// image overlay) and Read view, so the change takes effect immediately.
     private func refreshOpenReadViews() {
         for case let document as Document in NSDocumentController.shared.documents {
+            document.editor?.allowRemoteImages = !blockExternalImages
             document.refreshReadView()
         }
     }

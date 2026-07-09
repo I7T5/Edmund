@@ -117,6 +117,7 @@ class Document: NSDocument, HeadingNavigable {
         let initScreen = NSScreen.main
         editor.maxContentWidthPoints = initScreen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000
         editor.updateContentInset()
+        editor.allowRemoteImages = !AppSettings.blockExternalImages
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         editor.document = self
 
