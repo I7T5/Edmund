@@ -273,17 +273,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
 
-        // Zoom (font size + max content width, scaled together). Target nil
-        // routes through the responder chain to the key window's Document.
-        viewMenu.addItem(withTitle: "Actual Size",
-                         action: #selector(Document.actualSize(_:)),
-                         keyEquivalent: "0")
-        viewMenu.addItem(withTitle: "Zoom In",
-                         action: #selector(Document.zoomIn(_:)),
-                         keyEquivalent: "=")
-        viewMenu.addItem(withTitle: "Zoom Out",
-                         action: #selector(Document.zoomOut(_:)),
-                         keyEquivalent: "-")
+        // Routes through the responder chain to the key window's toolbar.
+        viewMenu.addItem(withTitle: "Customize Toolbar…",
+                         action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
+                         keyEquivalent: "")
         viewMenu.addItem(.separator())
 
         let typewriterItem = viewMenu.addItem(
@@ -298,12 +291,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         viewMenu.addItem(withTitle: "Source Mode",
                          action: #selector(Document.toggleSourceMode(_:)),
                          keyEquivalent: "")
-        viewMenu.addItem(.separator())
 
-        // Routes through the responder chain to the key window's toolbar.
-        viewMenu.addItem(withTitle: "Customize Toolbar…",
-                         action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
-                         keyEquivalent: "")
+        // Zoom (font size + max content width, scaled together). Target nil
+        // routes through the responder chain to the key window's Document.
+        // Kept last, directly above the separator AppKit inserts before its
+        // automatic "Enter/Exit Full Screen" item at the menu's end.
+        viewMenu.addItem(withTitle: "Actual Size",
+                         action: #selector(Document.actualSize(_:)),
+                         keyEquivalent: "0")
+        viewMenu.addItem(withTitle: "Zoom In",
+                         action: #selector(Document.zoomIn(_:)),
+                         keyEquivalent: "=")
+        viewMenu.addItem(withTitle: "Zoom Out",
+                         action: #selector(Document.zoomOut(_:)),
+                         keyEquivalent: "-")
+        viewMenu.addItem(.separator())
 
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
