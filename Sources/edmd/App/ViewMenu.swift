@@ -29,7 +29,7 @@ enum ViewMenu {
         // View-mode toggle (Edit ↔ Read) + the Source-mode checkbox.
         viewMenu.addItem(.separator())
         viewMenu.addItem(FormatMenu.viewModeToggleItem())
-        viewMenu.addItem(withTitle: "Source Mode",
+        viewMenu.addItem(withTitle: "Show Source in Editor",
                          action: #selector(Document.toggleSourceMode(_:)),
                          keyEquivalent: "")
         viewMenu.addItem(.separator())
