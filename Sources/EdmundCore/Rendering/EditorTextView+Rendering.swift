@@ -338,8 +338,8 @@ extension EditorTextView {
                                               in: result)
                         }
                         // Display math sits centered on its own line, with
-                        // vertical padding and the image's height reserved on
-                        // the (first) line that carries it.
+                        // vertical padding and the image's ascent/descent
+                        // reserved on the (first) line that carries it.
                         if display {
                             let fullStr = result.string as NSString
                             result.addAttribute(.paragraphStyle,
@@ -350,9 +350,12 @@ extension EditorTextView {
                                 ? span.fullRange
                                 : NSRange(location: span.fullRange.location,
                                           length: nl.location - span.fullRange.location + 1)
+                            let imageDescent = -overlay.bounds.minY
+                            let imageAscent = overlay.bounds.height - imageDescent
                             result.addAttribute(.paragraphStyle,
                                                 value: displayMathParagraphStyle(padded: true,
-                                                                                 imageHeight: overlay.bounds.height),
+                                                                                 imageAscent: imageAscent,
+                                                                                 imageDescent: imageDescent),
                                                 range: firstLine)
                         }
                     } else {

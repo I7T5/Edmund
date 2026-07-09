@@ -61,6 +61,23 @@ struct DocumentHTMLTests {
         #expect(out.contains("<code>\\frac{</code>"))
     }
 
+    // End-to-end regression for the read-mode environment bug: with intact `\\`
+    // row separators, SwiftMath renders the environment to an image instead of
+    // the corrupted-latex `<code>` fallback. (misc/bug-repros/math-env-read-mode.png)
+    @Test("Display environment renders to an image, not the source fallback")
+    func displayEnvironmentRenders() {
+        let out = doc("$$\n\\begin{aligned} \\pi &= 3 \\\\ e &= 2 \\end{aligned}\n$$")
+        #expect(out.contains("<div class=\"math-display\"><img class=\"math\""))
+        #expect(!out.contains("<code>"))
+    }
+
+    @Test("Inline environment renders to an image, not the source fallback")
+    func inlineEnvironmentRenders() {
+        let out = doc("m $\\begin{cases} 1 & i=j \\\\ 0 & i\\neq j \\end{cases}$ ok")
+        #expect(out.contains("<img class=\"math math-inline\""))
+        #expect(!out.contains("<code>"))
+    }
+
     // MARK: Images
 
     @Test("Local image is read and inlined as a data URI")

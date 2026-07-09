@@ -49,7 +49,58 @@ struct RenderingRegressionTests {
                 "inline math line must reserve the equation's height")
     }
 
-    @Test("Display math still reserves its own line height")
+    // MARK: Full-width image doesn't double its reserved height
+
+    /// Writes a square solid PNG wider than any reasonable text column, so the
+    /// image renderer scales it down to exactly fill the available width.
+    private func tempWidePNGPath() -> String {
+        let size = NSSize(width: 2000, height: 2000)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSRect(origin: .zero, size: size).fill()
+        img.unlockFocus()
+        let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
+        let data = rep.representation(using: .png, properties: [:])!
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("md-wide-img-test-\(UUID().uuidString).png")
+        try! data.write(to: url)
+        return url.path
+    }
+
+    @Test("A full-width image's hidden markdown doesn't wrap onto a second, needlessly tall line")
+    @MainActor func fullWidthImageNoDoubleHeight() {
+        let path = tempWidePNGPath()
+        let doc = "![alt](\(path))\n# Next"
+        let (e, _) = windowed(doc)
+        // Move the cursor off the image block so it renders the overlay
+        // (not the raw, active markdown).
+        e.setSelectedRange(NSRange(location: (doc as NSString).length, length: 0))
+        e.recomposeIncremental(cursorInRaw: (doc as NSString).length)
+        ensureFullLayout(e); drainAllStyling(e)
+        e.sizeToFit(); e.layoutSubtreeIfNeeded(); ensureFullLayout(e)
+
+        guard let overlay = e.imageOverlay(destination: path) else {
+            Issue.record("expected an overlay for the wide image")
+            return
+        }
+        guard let tlm = e.textLayoutManager else { Issue.record("no text layout manager"); return }
+        var imageFragmentHeight: CGFloat?
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) { frag in
+            if imageFragmentHeight == nil, frag.textLineFragments.count >= 1,
+               frag.layoutFragmentFrame.height >= overlay.bounds.height {
+                imageFragmentHeight = frag.layoutFragmentFrame.height
+                #expect(frag.textLineFragments.count == 1,
+                        "the hidden markdown after the image anchor must fit on the image's own line")
+            }
+            return true
+        }
+        #expect(imageFragmentHeight != nil)
+        #expect((imageFragmentHeight ?? 0) < overlay.bounds.height * 1.5,
+                "the image's fragment must not double-reserve height for a phantom wrapped line")
+    }
+
+    @Test("Display math still reserves enough room for its equation image")
     @MainActor func displayMathReservesHeight() {
         let editor = makeEditor()
         let styled = editor.styleBlock("$$\n\\frac{a}{b}\n$$")
@@ -58,8 +109,17 @@ struct RenderingRegressionTests {
                                   in: NSRange(location: 0, length: styled.length)) { v, _, _ in
             if let o = v as? FragmentOverlay { overlayH = max(overlayH, o.bounds.height) }
         }
+        #expect(overlayH > 0)
         let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        #expect((ps?.minimumLineHeight ?? 0) >= overlayH - 0.5)
+        // The image's ascent is reserved as the line's own height and its
+        // descent is folded into the trailing spacing instead (see
+        // MathRenderingTests' "Tall multi-row display math..." for why a tall,
+        // descent-heavy equation can't reserve its *whole* height as
+        // minimumLineHeight without leaving a gap above it) — together they
+        // must still cover the whole image so it can't overlap what follows.
+        let reserved = (ps?.minimumLineHeight ?? 0) + (ps?.paragraphSpacing ?? 0)
+        #expect(reserved >= overlayH - 0.5,
+                "combined line height + trailing spacing must cover the equation image")
     }
 
     // MARK: Thematic break — symmetric breathing space
