@@ -4,6 +4,8 @@ Last updated: 2026-07-09
 ## v1.0.0
 
 - [ ] Onboarding
+- [ ] Benchmark performance on large files
+- [ ] App Store version
 
 Basic editing experience
 - [ ] Full GFM support: Table alignment, escape delimiters with backslash, render HTML tags
@@ -42,7 +44,6 @@ Internationalization
 - [ ] RTL
 
 Misc
-- [ ] Advanced Theme official extension
 - [ ] Documentation
 - [ ] macOS help book
 - [ ] Accessibility
@@ -50,16 +51,18 @@ Misc
 - [ ] Various features / integrations / UI/UX improvements
 
 
-# v.2.0.0
+## v.2.0.0
 
 Editing features
 - [ ] File info
 - [ ] Outgoing links
+- [ ] Theme preview GUI
 - [ ] Source view: the MarkEdit experience
 - [ ] Multi-tab and split-screen
 - [ ] Folders sidebar
 
 Official extensions
+- [ ] Advanced Theme
 - [ ] Diagrams (D2)
 - [ ] Export with Pandoc
 
@@ -71,5 +74,11 @@ Funsies
 - [ ] Opt-in hand-drawn-style UI/UX
 - [ ] Prettier DMG
 
+## v2.x
+
+Official extensions
+- [ ] Mermaid diagrams (Read mode only)
+- [ ] Slides (read mode preview)
+- [ ] Typst: Import from / Export to Typst
 
 TBD: iPadOS and iOS
