@@ -20,13 +20,7 @@ struct AdvancedSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Block external images", isOn: $blockExternalImages)
                         .onChange(of: blockExternalImages) { refreshOpenReadViews() }
-                    Text("HTTPS connections only. Plain HTTP images never load, since the connection isn't encrypted.")
-                        .foregroundStyle(.secondary)
-                        .controlSize(.small)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 380, alignment: .leading)
-                        .padding(.leading, 20)
-                    Text("Increases security. Refer to this [proposal](https://github.com/opencloud-eu/opencloud/issues/1145) for more information.")
+                    Text("For more information, refer to this [proposal](https://github.com/opencloud-eu/opencloud/issues/1145).")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
