@@ -20,12 +20,17 @@ struct AdvancedSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Block external images", isOn: $blockExternalImages)
                         .onChange(of: blockExternalImages) { refreshOpenReadViews() }
-                    Text("Increases security. The dev has subscribed to [this proposal](https://github.com/opencloud-eu/opencloud/issues/1145) to receive updates on the research.")
+                    Text("Increases security. Refer to this [proposal](https://github.com/opencloud-eu/opencloud/issues/1145) for more information.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
+                        
+                    // TODO: Add a "Enable HTTP whitelist" toggle here
+                    // with a short scrollable view of the whitelist that allows user addition
+                    // with +/- signs at the bottom-right corner
+                    // Implement later
                 }
             }
 

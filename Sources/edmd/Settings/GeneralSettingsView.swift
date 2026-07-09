@@ -16,10 +16,21 @@ struct GeneralSettingsView: View {
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
             GridRow {
-                Text("On startup:")
+                Text("Software updates:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
+                }
+            }
+            
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+            
+            GridRow {
+                Text("On startup:")
+                    .gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
                     Toggle("Reopen windows from last session", isOn: $reopenWindows)
                     Text("When nothing else is open:")
                     Picker("", selection: $startupAction) {
