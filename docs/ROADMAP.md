@@ -1,5 +1,5 @@
 # Roadmap
-Last updated: 2026-07-03
+Last updated: 2026-07-09
 
 ## v1.0.0
 
@@ -18,11 +18,11 @@ Advanced editing features
 - [ ] Advanced Math official extension
 
 Customization and extensions
-- [ ] Settings > Edit
+- [ ] Settings > Edit (design: docs/architecture/extensibility.md)
 - [ ] User-configurable keyboard shortcuts 
-- [ ] Themes: Customize code syntax highlighting and editor view. File-based and GUI editor
-- [ ] Extensions API, documentations, primitive marketplace
-- [ ] Finalize structure of settings
+- [ ] Themes: Customize code syntax highlighting and editor view. File-based and GUI editor (design: docs/architecture/extensibility.md)
+- [ ] Extensions API, documentations, primitive marketplace (design: docs/architecture/extensibility.md)
+- [ ] Finalize structure of settings (design: docs/architecture/extensibility.md)
 
 macOS integrations
 - [ ] Custom toolbar
