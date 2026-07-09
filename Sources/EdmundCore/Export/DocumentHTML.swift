@@ -100,50 +100,57 @@ enum DocumentHTML {
     /// Resolves each `md-image` placeholder: local/relative paths are read and
     /// inlined as a data URI (self-contained, no file access needed at render
     /// time); a `data:` source passes through; remote `https` sources load only
-    /// when `options.allowRemoteImages` is set, else the alt text shows; plain
-    /// `http` never loads — App Transport Security refuses an insecure
-    /// connection regardless of the setting — so it always gets a visible
-    /// blocked-image placeholder instead of silently showing nothing.
+    /// when `options.allowRemoteImages` is set. Anything that can't be shown
+    /// gets a visible icon + reason (`ImageLoadFailure`, shared with Edit
+    /// mode's inline preview) instead of silently showing nothing.
     private static func fillImages(_ html: String, baseURL: URL?,
                                    options: ReadRenderOptions) -> String {
         var cache: [String: String] = [:]   // resolved path → data URI
         return replaceMatches(html, pattern: imagePattern) { groups in
             let src = unescapeAttr(groups[1])
             let alt = groups[2]   // already attribute-escaped by the renderer
-            func placeholder() -> String { "<img class=\"md-image\" alt=\"\(alt)\">" }
 
-            if src.isEmpty { return placeholder() }
+            if src.isEmpty { return blockedImagePlaceholder(reason:.notFound) }
             let lower = src.lowercased()
             if lower.hasPrefix("data:") {
                 return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\">"
             }
             if lower.hasPrefix("http://") {
-                return blockedImagePlaceholder(alt: alt)
+                return blockedImagePlaceholder(reason:.httpUnsupported)
             }
             if lower.hasPrefix("https://") {
-                guard options.allowRemoteImages else { return placeholder() }
+                guard options.allowRemoteImages else {
+                    return blockedImagePlaceholder(reason:.blockedBySetting)
+                }
                 return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\">"
             }
             // Local: resolve against the document directory, read, inline.
-            guard let fileURL = resolveLocalImage(src, baseURL: baseURL) else { return placeholder() }
-            let uri: String
-            if let cached = cache[fileURL.path] {
-                uri = cached
-            } else {
-                uri = imageDataURI(fileURL) ?? ""
-                cache[fileURL.path] = uri
+            guard let fileURL = resolveLocalImage(src, baseURL: baseURL) else {
+                return blockedImagePlaceholder(reason:.notFound)
             }
-            guard !uri.isEmpty else { return placeholder() }
+            if let cached = cache[fileURL.path] {
+                return "<img class=\"md-image\" src=\"\(cached)\" alt=\"\(alt)\">"
+            }
+            // `resolveLocalImage`'s absolute/`~` branches don't check existence
+            // (only the relative-path branch does), so a missing file and an
+            // undecodable one would otherwise fail `imageDataURI` identically —
+            // check existence first so the two get distinct, accurate messages.
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                return blockedImagePlaceholder(reason:.notFound)
+            }
+            guard let uri = imageDataURI(fileURL) else {
+                return blockedImagePlaceholder(reason:.notAnImage)
+            }
+            cache[fileURL.path] = uri
             return "<img class=\"md-image\" src=\"\(uri)\" alt=\"\(alt)\">"
         }
     }
 
-    /// A visible stand-in for a plain-`http` image, which never loads (ATS
-    /// refuses the insecure connection outright): an icon plus the alt text,
-    /// instead of just empty space.
-    private static func blockedImagePlaceholder(alt: String) -> String {
+    /// A visible stand-in for an image that can't be shown: an icon plus a
+    /// short reason, instead of just empty space.
+    private static func blockedImagePlaceholder(reason: ImageLoadFailure) -> String {
         let icon = LucideIcons.inlineSVG("image-off") ?? ""
-        return "<span class=\"md-image-blocked\">\(icon)<span>\(alt)</span></span>"
+        return "<span class=\"md-image-blocked\">\(icon)<span>\(reason.label)</span></span>"
     }
 
     /// Resolves a local image `path` to a file URL: absolute / `~` / `file:`
@@ -160,9 +167,13 @@ enum DocumentHTML {
     }
 
     /// Reads an image file and returns a `data:` URI, with the MIME type guessed
-    /// from the file extension (covers the common web image formats).
+    /// from the file extension (covers the common web image formats). Decodes
+    /// the bytes first (discarding the result) so a file that merely has an
+    /// image extension but isn't actually image data is caught here — as
+    /// "Not an image" — rather than silently inlining garbage the browser
+    /// then fails to render with no explanation.
     private static func imageDataURI(_ url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let data = try? Data(contentsOf: url), NSImage(data: data) != nil else { return nil }
         let mime: String
         switch url.pathExtension.lowercased() {
         case "png":          mime = "image/png"
