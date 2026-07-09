@@ -24,13 +24,22 @@ extension EditorTextView {
     }
 
     /// Recomputes the horizontal text inset from the current bounds + max-column cap,
-    /// preserving the vertical inset. Cheap (no recompose) — only the inset changes.
+    /// preserving the vertical inset. Usually no recompose — only the inset
+    /// changes and TextKit 2 reflows wrapped text on its own. The exception is
+    /// image overlays: their scaled-to-fit size is baked into the styled
+    /// attribute at render time (§4 fragmentOverlay), not recomputed at draw
+    /// time, so a column narrower than an already-rendered image needs those
+    /// blocks restyled to shrink it.
     public func updateContentInset() {
         let target = Self.horizontalInset(viewWidth: bounds.width,
                                           maxContentWidth: maxContentWidthPoints)
-        if abs(textContainerInset.width - target) > 0.5 {
-            textContainerInset = NSSize(width: target, height: textContainerInset.height)
-        }
+        guard abs(textContainerInset.width - target) > 0.5 else { return }
+        textContainerInset = NSSize(width: target, height: textContainerInset.height)
+
+        let imageBlocks = IndexSet(blocks.indices.filter { blocks[$0].content.contains("![") })
+        guard !imageBlocks.isEmpty else { return }
+        for idx in imageBlocks { blocks[idx].isStyled = false }
+        recomposeDirty(imageBlocks, cursorInRaw: currentCursorInRaw(), settingSelection: true)
     }
 
     /// Recompute the centered inset as the view width changes (window resize).
