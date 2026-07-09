@@ -193,11 +193,13 @@ public class EditorTextView: NSTextView {
         return ps
     }
 
-    /// Apply a new theme, persist it, and restyle every block in place.
-    public func applyTheme(_ newTheme: EditorTheme) {
+    /// Apply a new theme and restyle every block in place. `persist: false`
+    /// (used for zoom, which scales font sizes without changing the saved
+    /// preference) applies the theme live without writing it to defaults.
+    public func applyTheme(_ newTheme: EditorTheme, persist: Bool = true) {
         let antialiasChanged = theme.antialias != newTheme.antialias
         theme = newTheme
-        theme.save(to: themeDefaults)
+        if persist { theme.save(to: themeDefaults) }
         typingAttributes = baseAttributes
         recomposeAllDirty()
         // Antialiasing isn't a text attribute, so a recompose alone won't re-vend

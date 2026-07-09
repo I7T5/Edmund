@@ -14,6 +14,13 @@ class Document: NSDocument, HeadingNavigable {
     private var viewModeButton: NSButton?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
+    /// Session-only zoom scale (View ▸ Actual Size/Zoom In/Zoom Out), applied on
+    /// top of the persisted font size and content width. Not saved — each new
+    /// window starts back at 100%.
+    private var zoomFactor: CGFloat = 1.0
+    private static let zoomStep: CGFloat = 0.1
+    private static let zoomRange: ClosedRange<CGFloat> = 0.5...3.0
+
     /// Editor scroll view and its container, held so Read mode can swap the
     /// editor out for a `ReadModeWebView` (created lazily on first read).
     private var scrollView: NSScrollView!
@@ -208,7 +215,33 @@ class Document: NSDocument, HeadingNavigable {
     @objc private func windowDidChangeScreen(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
               let screen = window.screen else { return }
-        editor?.maxContentWidthPoints = screen.cmToPoints(AppSettings.maxContentWidthCm)
+        editor?.maxContentWidthPoints = screen.cmToPoints(AppSettings.maxContentWidthCm) * zoomFactor
+    }
+
+    // MARK: - Zoom (View ▸ Actual Size / Zoom In / Zoom Out)
+
+    @objc func zoomIn(_ sender: Any?) { setZoom(zoomFactor + Self.zoomStep) }
+    @objc func zoomOut(_ sender: Any?) { setZoom(zoomFactor - Self.zoomStep) }
+    @objc func actualSize(_ sender: Any?) { setZoom(1.0) }
+
+    /// Scales font size (standard + code) and max content width together by
+    /// `factor`, off the persisted base values — never off the currently
+    /// applied (possibly already-zoomed) theme, so repeated zooming doesn't
+    /// compound rounding error and Actual Size always returns to the true base.
+    private func setZoom(_ factor: CGFloat) {
+        guard let editor else { return }
+        zoomFactor = min(Self.zoomRange.upperBound, max(Self.zoomRange.lowerBound, factor))
+
+        let base = EditorTheme.load(from: editor.themeDefaults)
+        var zoomed = base
+        zoomed.fontSize = base.fontSize * zoomFactor
+        zoomed.monospaceFontSize = base.monospaceFontSize * zoomFactor
+        editor.applyTheme(zoomed, persist: false)
+
+        let screen = editor.window?.screen ?? NSScreen.main
+        editor.maxContentWidthPoints = (screen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000) * zoomFactor
+
+        refreshReadView()
     }
 
     @objc private func editorDidChange(_ notification: Notification) {
@@ -335,9 +368,10 @@ class Document: NSDocument, HeadingNavigable {
     private func icon(for mode: EditorTextView.ViewMode) -> NSImage? {
         let name: String
         switch mode {
-        case .edit:    name = "pencil"
-        case .reading: name = "book"
-        case .source:  name = "chevron.left.forwardslash.chevron.right"
+        // Source is a raw-text view of the same editing mode as Edit, so it
+        // shares the pencil icon rather than getting a distinct glyph.
+        case .edit, .source: name = "pencil"
+        case .reading:       name = "book"
         }
         return NSImage(systemSymbolName: name, accessibilityDescription: label(for: mode))
     }
@@ -353,11 +387,8 @@ class Document: NSDocument, HeadingNavigable {
     /// Shows the active mode's icon on the button and keeps the tooltip in sync.
     private func refreshViewModeButton() {
         guard let editor else { return }
-        // The `</>` source glyph reads wider/larger than pencil and book at the
-        // same point size, so render it a touch smaller to match visually.
-        let pointSize: CGFloat = editor.viewMode == .source ? 11 : 13
         viewModeButton?.image = icon(for: editor.viewMode)?
-            .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
         viewModeButton?.toolTip = "View mode: \(label(for: editor.viewMode))"
     }
 
@@ -466,15 +497,15 @@ class Document: NSDocument, HeadingNavigable {
     @objc private func selectEditMode(_ sender: Any?)    { setViewMode(editingMode) }
     @objc private func selectReadingMode(_ sender: Any?) { setViewMode(.reading) }
 
-    /// The "Source mode" checkbox (button menu and View menu). Persists the
-    /// setting and, if we're in the editing view, swaps it to the new editing
-    /// mode right away.
+    /// The "Show source in editor" checkbox (button menu and View menu).
+    /// Persists the setting and, if we're in the editing view, swaps it to
+    /// the new editing mode right away.
     @objc func toggleSourceMode(_ sender: Any?) {
         AppSettings.sourceMode.toggle()
         if editor.viewMode != .reading { setViewMode(editingMode) }
     }
 
-    /// Keeps the View-menu "Source Mode" checkmark in sync with the setting.
+    /// Keeps the View-menu "Show Source in Editor" checkmark in sync with the setting.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(toggleSourceMode(_:)) {
             item.state = AppSettings.sourceMode ? .on : .off
@@ -500,7 +531,7 @@ class Document: NSDocument, HeadingNavigable {
     }
 
     /// The right-click menu: Edit / Read selection, a divider, then the
-    /// "Source mode" checkbox. Built fresh each time so state stays current.
+    /// "Show source in editor" checkbox. Built fresh each time so state stays current.
     fileprivate func viewModeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false   // actions always fire on selection
@@ -510,7 +541,7 @@ class Document: NSDocument, HeadingNavigable {
         menu.addItem(menuItem("Read", icon(for: .reading),
                               #selector(selectReadingMode(_:)), on: !inEditing))
         menu.addItem(.separator())
-        menu.addItem(menuItem("Source mode", icon(for: .source),
+        menu.addItem(menuItem("Show source in editor", nil,
                               #selector(toggleSourceMode(_:)), on: AppSettings.sourceMode))
         return menu
     }

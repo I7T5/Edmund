@@ -269,31 +269,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Format menu — built from the declarative command registry.
         mainMenu.addItem(FormatMenu.build())
 
-        // View menu
-        let viewMenuItem = NSMenuItem()
-        let viewMenu = NSMenu(title: "View")
-
-        let typewriterItem = viewMenu.addItem(
-            withTitle: "Typewriter Scroll",
-            action: #selector(AppDelegate.toggleTypewriterMode(_:)),
-            keyEquivalent: "")
-        typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
-
-        // View-mode toggle (Edit ↔ Read) + the Source-mode checkbox.
-        viewMenu.addItem(.separator())
-        viewMenu.addItem(FormatMenu.viewModeToggleItem())
-        viewMenu.addItem(withTitle: "Source Mode",
-                         action: #selector(Document.toggleSourceMode(_:)),
-                         keyEquivalent: "")
-        viewMenu.addItem(.separator())
-
-        // Routes through the responder chain to the key window's toolbar.
-        viewMenu.addItem(withTitle: "Customize Toolbar…",
-                         action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
-                         keyEquivalent: "")
-
-        viewMenuItem.submenu = viewMenu
-        mainMenu.addItem(viewMenuItem)
+        // View menu — built in its own file (ViewMenu.swift).
+        mainMenu.addItem(ViewMenu.build())
 
         NSApplication.shared.mainMenu = mainMenu
     }
