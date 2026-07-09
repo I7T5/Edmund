@@ -55,12 +55,11 @@ struct HTMLThemeTests {
         #expect(css(dark: true).contains("--bg: #1e1e1e;"))
     }
 
-    @Test("Table cells allow wrapping long unbreakable tokens")
-    func tableCellWrap() {
+    @Test("Wide tables scroll horizontally instead of wrapping cell text")
+    func tableScrolls() {
         let out = css(dark: false)
-        #expect(out.contains("overflow-wrap: anywhere"))
-        // Must be scoped to th/td, not applied globally.
-        #expect(out.contains("th, td { border: 1px solid var(--rule); padding: 6px 10px; overflow-wrap: anywhere; }"))
+        #expect(out.contains(".table-wrap { overflow-x: auto; margin: 1em 0; }"))
+        #expect(!out.contains("overflow-wrap"))
     }
 
     @Test("Emits code token colors from the shared palette, per appearance")

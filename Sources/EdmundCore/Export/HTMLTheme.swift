@@ -229,12 +229,12 @@ enum HTMLTheme {
        number marker to the right — so sibling markers stop lining up. */
     li.task::after { content: ""; display: block; clear: both; }
     .blank-line { height: calc(var(--body-size) * var(--line-height)); }
-    table { border-collapse: collapse; margin: 1em 0; width: 100%; }
-    /* overflow-wrap: anywhere lets a long unbreakable word (URL, token) wrap
-       inside its cell — without it, the browser's min-content width for that
-       cell is the word's full width, so the table overflows past the page's
-       max content width instead of shrinking to fit. */
-    th, td { border: 1px solid var(--rule); padding: 6px 10px; overflow-wrap: anywhere; }
+    /* Tables keep their natural (content-driven) width and scroll horizontally
+       inside .table-wrap instead of squeezing columns or forcing cell text to
+       wrap — same idiom as `pre`'s overflow-x below. */
+    .table-wrap { overflow-x: auto; margin: 1em 0; }
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid var(--rule); padding: 6px 10px; }
     thead th { background: var(--code-bg); }
     img { max-width: 100%; }
     img.math { vertical-align: middle; }
@@ -294,7 +294,7 @@ enum HTMLTheme {
          keeps them. `print-color-adjust: exact` forces faithful color output
          so callout backgrounds, code blocks, and highlights survive printing. */
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .callout, pre, blockquote, table, .math-display { break-inside: avoid; }
+      .callout, pre, blockquote, .table-wrap, .math-display { break-inside: avoid; }
       h1, h2, h3, h4, h5, h6 { break-after: avoid; }
       thead { display: table-header-group; }
     }

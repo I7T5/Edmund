@@ -51,7 +51,8 @@ struct HTMLRendererCoreTests {
     @Test("Table emits thead/tbody with per-column alignment")
     func table() {
         let out = html("| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |")
-        #expect(out.contains("<table><thead><tr>"))
+        #expect(out.contains("<div class=\"table-wrap\"><table><thead><tr>"))
+        #expect(out.contains("</tbody></table></div>"))
         #expect(out.contains("<th style=\"text-align:left\">a</th>"))
         #expect(out.contains("<th style=\"text-align:center\">b</th>"))
         #expect(out.contains("<th style=\"text-align:right\">c</th>"))
