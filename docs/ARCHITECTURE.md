@@ -461,6 +461,13 @@ only with reason):
    (don't commit straight to it); each fix on its own branch.
 5. Touch only what the task needs; match surrounding style; don't refactor
    unrelated code.
+6. **Concurrent local work uses `git worktree`, not multiple clones or
+   branch-switching.** `git worktree add .worktrees/<branch> <branch>` — the
+   directory path mirrors the branch name (e.g. `.worktrees/fix/foo` for
+   `fix/foo`), so branches keep the normal `type/slug` naming and never get
+   renamed to `worktree-*`. `.worktrees/` is gitignored. This is distinct from
+   `.claude/worktrees/`, which Claude Code's own EnterWorktree tool manages
+   automatically for agent isolation — don't hand-edit that one.
 
 If you (the agent) improve this workflow or discover a better verification
 trick, update this section.
