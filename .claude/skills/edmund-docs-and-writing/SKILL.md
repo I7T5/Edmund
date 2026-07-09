@@ -41,6 +41,8 @@ exist and are current as of 2026-07-09.
 | Doc | Owns | Notes |
 | --- | --- | --- |
 | `docs/ARCHITECTURE.md` | HOW the system works: build/test commands (§1), the two invariants (§2), render pipeline (§3), edit/undo flow (§4), TextKit 2 drawing (§5), feature map (§6), settings (§7), gotchas (§8), known issues (§9), code debt (§10), agent quick start (§11), working agreements (§12), release/CI (§13), references (§14) | THE agent-onboarding doc. Its own header states the rule: **when you learn something non-obvious or change an invariant, edit this file in the same PR.** |
+| `docs/architecture/README.md` | Human developer overview: what Edmund is, the two invariants (summarized, not owned), a map of `docs/architecture/`'s deep docs and the sibling `investigations/`/`dev-guides/` folders, common quirks (each a pointer, never a new claim), getting-started commands | The human entry point ARCHITECTURE.md's header note links to. Every fact here traces to ARCHITECTURE.md or a deep doc — this file summarizes, never owns. |
+| `docs/architecture/<topic>.md` | Deep narrative write-up of one subsystem (e.g. `editor-pipeline.md`, `text-system.md`, `extensibility.md`) | The "deep-doc" pattern: a fact's *statement* lives in `ARCHITECTURE.md`, its *explanation* lives here, each links to the other. |
 | `README.md` | WHAT/WHY for users: differentiators, screenshots, install (incl. the Gatekeeper "DAMAGED" `xattr -dr com.apple.quarantine` workaround), dependencies, alternatives, acknowledgements, license | User-facing; no internals. |
 | `CHANGELOG.md` | User-facing version history, Keep-a-Changelog style | `## [x.y.z]` sections are machine-extracted for release notes — exact format matters (§4 below). |
 | `docs/ROADMAP.md` | Versioned feature plan: `## v1.0.0`, `## v1.x`, `# v.2.0.0` sections of checkbox lists, grouped by theme (editing, extensions, macOS integrations) | Has a `Last updated: YYYY-MM-DD` line under the title — refresh it when you edit. |
@@ -82,6 +84,7 @@ Route the fact FIRST, then write. One home; cross-reference from elsewhere.
 | Release procedure change | `misc/how-to-release.md` / `misc/before-you-release.md` + `ARCHITECTURE.md` §13 | §13 owns the mechanism + failure modes; misc/ owns the operator checklist. |
 | Agent workflow improvement | `ARCHITECTURE.md` §12 | Its footer invites this: "If you (the agent) improve this workflow... update this section." |
 | Vendored third-party asset | `LICENSES/<name>.txt` + a feature-map note in §6 | Follow the Lucide precedent. |
+| Deep explanation of an existing subsystem | `docs/architecture/<topic>.md` | A fact's *statement* lives in `ARCHITECTURE.md`; its *explanation* lives in the deep doc; each links to the other. |
 
 **The same-PR rule is the load-bearing one.** Doc updates that ride the code
 PR actually happen (see `cf10741`, `b600e12`, `c4a602b` in history); doc

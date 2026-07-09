@@ -5,6 +5,12 @@ macOS 14+). This doc gets an AI agent productive fast: read it before any
 non-trivial change. **Keep it updated** — when you learn something non-obvious
 or change an invariant, edit this file in the same PR.
 
+This is the agent-oriented canonical summary — dense, terse, optimized for
+fast onboarding before a change. Humans wanting the fuller narrative write-up
+(rationale, worked examples, prose) start at
+[`docs/architecture/README.md`](architecture/README.md); the same-PR update
+rule above still applies to both.
+
 ---
 
 ## 1. Build / run / test
