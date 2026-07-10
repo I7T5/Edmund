@@ -207,44 +207,73 @@ extension SyntaxHighlighter {
         // MARK: - Block Quotes
 
         mutating func visitBlockQuote(_ blockQuote: BlockQuote) {
-            // A block quote nested inside a plain block quote is fully literal:
-            // emit no span and don't descend (matches showing `> [!note]` raw
-            // inside an outer quote).
-            if plainQuoteDepth > 0 { return }
             guard let range = blockQuote.range else {
                 descendInto(blockQuote)
                 return
             }
             let full = nsRange(for: range)
             let nsSource = source as NSString
+            let opensCallout = Self.quoteOpensCallout(firstLineOf: full, in: nsSource)
 
-            // Scan each line within the blockquote for "> " prefixes
+            // A callout nested inside a plain quote is fully literal: emit no
+            // span and don't descend (matches showing `> [!note]` raw inside an
+            // outer quote — callouts render via their own recursive splice,
+            // which isn't set up to stack with an enclosing quote's bar). A
+            // nested *plain* quote is the one exception to "nested blocks stay
+            // literal": it gets its own span (below) so its marker hides and it
+            // draws its own bar, stacked with its ancestors'.
+            if plainQuoteDepth > 0 && opensCallout { return }
+
+            // `plainQuoteDepth` doubles as this quote's nesting depth (0 =
+            // outermost) — captured before incrementing for our own descent.
+            let depth = plainQuoteDepth
+
+            // Scan each line within the blockquote for its OWN "> " marker.
+            // swift-markdown's nested-BlockQuote `range` only skips ancestor
+            // markers on the *first* line (its start position lands right on
+            // this quote's own `>`) — every subsequent line is the raw source
+            // verbatim, ancestor markers and all. So each later line must peel
+            // exactly `depth` ancestor markers before this quote's own can be
+            // at hand. A line that runs out of markers partway through that
+            // peel is CommonMark "lazy continuation" (e.g. a bare `>` line
+            // right after a `> >` one, absorbed by swift-markdown as a
+            // continuation of the deepest active quote's paragraph) — it
+            // belongs to a shallower ancestor's span instead. Bail out of the
+            // scan there, clipping `fullRange` before that line.
             var delims: [NSRange] = []
             var cursor = full.location
-            while cursor < full.upperBound {
-                // Find the end of this line
-                let remaining = NSRange(location: cursor, length: full.upperBound - cursor)
+            var clippedEnd = full.upperBound
+            var isFirstLine = true
+            while cursor < clippedEnd {
+                let remaining = NSRange(location: cursor, length: clippedEnd - cursor)
                 let nlRange = nsSource.range(of: "\n", options: [], range: remaining)
-                let lineEnd = nlRange.location != NSNotFound ? nlRange.location : full.upperBound
+                let lineEnd = nlRange.location != NSNotFound ? nlRange.location : clippedEnd
 
-                // Check if line starts with optional spaces then ">"
-                let lineRange = NSRange(location: cursor, length: lineEnd - cursor)
-                let line = nsSource.substring(with: lineRange)
-                let stripped = line.drop(while: { $0 == " " })
-                if stripped.first == ">" {
-                    let prefixLen = line.count - stripped.count + 1  // spaces + ">"
-                    let delimLen = prefixLen + (stripped.dropFirst().first == " " ? 1 : 0)  // include trailing space
-                    delims.append(NSRange(location: cursor, length: delimLen))
+                var p = cursor
+                var ranOut = false
+                for _ in 0..<(isFirstLine ? 0 : depth) {
+                    guard let after = Self.peelOneMarker(nsSource, from: p, lineEnd: lineEnd) else {
+                        ranOut = true
+                        break
+                    }
+                    p = after
                 }
+                guard !ranOut, let markerEnd = Self.peelOneMarker(nsSource, from: p, lineEnd: lineEnd) else {
+                    clippedEnd = cursor
+                    break
+                }
+                delims.append(NSRange(location: p, length: markerEnd - p))
 
-                cursor = nlRange.location != NSNotFound ? nlRange.location + 1 : full.upperBound
+                cursor = nlRange.location != NSNotFound ? nlRange.location + 1 : clippedEnd
+                isFirstLine = false
             }
 
-            let content = contentRange(full: full, delims: delims)
+            let clippedFull = NSRange(location: full.location, length: clippedEnd - full.location)
+            let content = contentRange(full: clippedFull, delims: delims)
 
             spans.append(Span(
-                kind: .blockquote,
-                fullRange: full,
+                kind: .blockquote(depth: depth),
+                fullRange: clippedFull,
                 contentRange: content,
                 delimiterRanges: delims
             ))
@@ -252,12 +281,28 @@ extension SyntaxHighlighter {
             // A callout's body is rendered recursively by the styling layer
             // (which strips the `>` prefixes and re-parses), so don't descend —
             // doing so would emit nested spans over `>`-prefixed source ranges.
-            // A plain quote descends, but with a depth guard so only its inline
-            // content renders (nested blocks stay literal).
-            if Self.quoteOpensCallout(firstLineOf: full, in: nsSource) { return }
+            // A plain quote descends, but with a depth guard so only inline
+            // content and further nested plain quotes render (other nested
+            // blocks stay literal).
+            if opensCallout { return }
             plainQuoteDepth += 1
             descendInto(blockQuote)
             plainQuoteDepth -= 1
+        }
+
+        /// Peels one `>` marker (optional leading spaces, `>`, optional single
+        /// trailing space) starting at `from`, returning the position right
+        /// after it — or `nil` if `[from, lineEnd)` doesn't start with `>`
+        /// (after skipping spaces). Used both to skip `depth` ancestor
+        /// markers and to locate this quote's own marker on a line (see
+        /// `visitBlockQuote`).
+        private static func peelOneMarker(_ source: NSString, from: Int, lineEnd: Int) -> Int? {
+            var q = from
+            while q < lineEnd, source.character(at: q) == 0x20 { q += 1 }
+            guard q < lineEnd, source.character(at: q) == 0x3E else { return nil }
+            q += 1
+            if q < lineEnd, source.character(at: q) == 0x20 { q += 1 }
+            return q
         }
 
         /// Whether the first line of a block quote (its source `range`) opens a

@@ -63,11 +63,12 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
     }
 
     public let kind: Kind
-    /// Horizontal inset (points) from the text column's left and right edges at
-    /// which a `.box` is drawn. Non-zero for boxes nested inside another box
-    /// (e.g. a callout inside a callout), so the inner box sits within the outer
-    /// one. Ignored by `.leftBar` (which draws relative to the indented text
-    /// origin and so already follows nesting) and the other kinds.
+    /// For `.box`: horizontal inset (points) from the text column's left and
+    /// right edges, non-zero for a box nested inside another box (e.g. a
+    /// callout inside a callout), so the inner box sits within the outer one.
+    /// For `.leftBar`: extra leftward shift (points) so a bar nested inside
+    /// another quote's bar (e.g. `> > text`) draws further from the text,
+    /// outermost quote's bar leftmost. Ignored by other kinds.
     public let inset: CGFloat
 
     public init(_ kind: Kind, inset: CGFloat = 0) {
@@ -367,9 +368,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .leftBar(let color, let width):
             // The bar sits immediately left of the text (the paragraph style
-            // insets the text by the bar's width).
+            // insets the text by the bar's width) — or `inset` further left,
+            // for a quote nested inside another quote's bar.
             context.setFillColor(color.cgColor)
-            context.fill(CGRect(x: point.x - width, y: point.y,
+            context.fill(CGRect(x: point.x - width - decoration.inset, y: point.y,
                                 width: width, height: fillHeight))
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator):

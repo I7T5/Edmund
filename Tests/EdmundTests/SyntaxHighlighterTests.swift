@@ -375,14 +375,14 @@ struct BlockquoteTests {
     @Test("Basic blockquote > text produces a blockquote span")
     func basicBlockquote() {
         let spans = SyntaxHighlighter.parse("> hello")
-        let quotes = spans.filter { $0.kind == .blockquote }
+        let quotes = spans.filter { $0.kind == .blockquote(depth: 0) }
         #expect(quotes.count == 1)
     }
 
     @Test("Blockquote delimiter is the > prefix")
     func blockquoteDelimiter() {
         let spans = SyntaxHighlighter.parse("> hello")
-        let quotes = spans.filter { $0.kind == .blockquote }
+        let quotes = spans.filter { $0.kind == .blockquote(depth: 0) }
         #expect(quotes.count == 1)
         #expect(quotes[0].delimiterRanges.count >= 1)
         // Content should be "hello"
@@ -392,7 +392,7 @@ struct BlockquoteTests {
     @Test("Bold inside blockquote is detected")
     func boldInsideBlockquote() {
         let spans = SyntaxHighlighter.parse("> **bold**")
-        let quotes = spans.filter { $0.kind == .blockquote }
+        let quotes = spans.filter { $0.kind == .blockquote(depth: 0) }
         let bolds = spans.filter { $0.kind == .bold }
         #expect(quotes.count == 1)
         #expect(bolds.count == 1)

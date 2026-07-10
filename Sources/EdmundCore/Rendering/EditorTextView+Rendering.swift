@@ -113,6 +113,15 @@ extension EditorTextView {
         return ps
     }
 
+    /// A `.leftBar` decoration pushed `step` further left — used when a nested
+    /// quote's own bar is stacked outside an ancestor quote's bar (which was
+    /// drawn first, at whatever inset was correct *before* this deeper level
+    /// existed). Other decoration kinds pass through unchanged.
+    private func bumpedBar(_ deco: BlockDecoration, by step: CGFloat) -> BlockDecoration {
+        guard case .leftBar = deco.kind else { return deco }
+        return BlockDecoration(deco.kind, inset: deco.inset + step)
+    }
+
     // MARK: - Delimiter Hiding Classification
 
     /// Returns true if this span kind's delimiters should be hidden (not just
@@ -121,7 +130,7 @@ extension EditorTextView {
         switch kind {
         case .bold, .italic, .boldItalic, .strikethrough, .highlight,
              .code, .link, .image, .lineBreak,
-             .heading, .blockquote, .footnoteReference, .escape:
+             .heading, .blockquote(_), .footnoteReference, .escape:
             return true
         case .listItem, .table, .codeBlock, .thematicBreak, .footnoteDefinition, .comment,
              .htmlTag, .htmlFormat:
@@ -249,26 +258,67 @@ extension EditorTextView {
                     result.addAttribute(.font, value: italic, range: span.contentRange)
                 }
 
-            case .blockquote:
+            case .blockquote(let depth):
                 guard span.fullRange.upperBound <= result.length else { continue }
                 // A block quote whose first line is `[!type]` is a callout
                 // (GitHub-flavored) — render it with an icon, colored label, and
-                // colored bar instead of the plain quote styling.
+                // colored bar instead of the plain quote styling. Only depth 0
+                // ever detects as a callout: a callout nested inside a plain
+                // quote stays literal (see SyntaxHighlighter+Walker's
+                // visitBlockQuote), so no deeper span is ever callout-shaped.
                 if let callout = calloutInfo(forBlockquote: span, markdown: markdown), !cursorInToken {
                     styleCalloutContent(result, span: span, info: callout)
                 } else {
-                    // Plain block quote — also the editing form of a callout: when
-                    // the cursor is inside a callout we fall through here so its raw
-                    // `>` / `[!type]` source shows (dimmed) and the markers can be
-                    // edited, instead of the box/header/nested chrome.
-                    // Attributes must cover fullRange so the first character of each
-                    // paragraph (the `> ` delimiter) carries the style/decoration —
-                    // the fragment vendor reads the paragraph's first character.
-                    result.addAttribute(.paragraphStyle, value: blockquoteParagraphStyle(), range: span.fullRange)
-                    result.addAttribute(.blockDecoration,
-                                        value: BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2)),
-                                        range: span.fullRange)
-                    result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.contentRange)
+                    // Plain block quote (any nesting depth). Indent and draw
+                    // this level's own bar regardless of active/inactive — the
+                    // generic delimiter pass (elsewhere in this function)
+                    // separately decides whether this level's own `>` marker
+                    // is hidden (inactive) or shown dimmed (active/editing).
+                    //
+                    // A nested quote's span range is a *subset* of its
+                    // ancestors' (processed earlier, in outer-to-inner order:
+                    // the walker emits a parent before descending to its
+                    // children), so stacking here only has to bump whatever
+                    // decoration the ancestor already painted over this same
+                    // range — by construction that decoration only covers
+                    // lines that actually nest this deep.
+                    let step = 2 + quoteMarkerWidth
+                    let ps = blockquoteParagraphStyle().mutableCopy() as! NSMutableParagraphStyle
+                    ps.firstLineHeadIndent += CGFloat(depth) * step
+                    ps.headIndent += CGFloat(depth) * step
+                    result.addAttribute(.paragraphStyle, value: ps, range: span.fullRange)
+
+                    let ownBar = BlockDecoration(.leftBar(color: .tertiaryLabelColor, width: 2))
+                    if depth == 0 {
+                        result.addAttribute(.blockDecoration, value: ownBar, range: span.fullRange)
+                    } else {
+                        let ancestor = result.attribute(.blockDecoration, at: span.fullRange.location,
+                                                        effectiveRange: nil)
+                        let bumped: [BlockDecoration]
+                        if let list = ancestor as? BlockDecorationList {
+                            bumped = list.decorations.map { bumpedBar($0, by: step) }
+                        } else if let single = ancestor as? BlockDecoration {
+                            bumped = [bumpedBar(single, by: step)]
+                        } else {
+                            bumped = []
+                        }
+                        result.addAttribute(.blockDecoration,
+                                            value: BlockDecorationList(bumped + [ownBar]),
+                                            range: span.fullRange)
+                    }
+
+                    // Only the outermost span fills content color: `contentRange`
+                    // only trims a span's very first/last delimiter, not ones in
+                    // the middle (a nested quote's own markers on later lines) —
+                    // a nested span's fill would repaint an ancestor's marker
+                    // right back to visible, undoing that ancestor's delimiter
+                    // pass (which already ran, earlier in this same loop). The
+                    // outermost span's fill already covers all nested text, so
+                    // deeper spans don't need to (re-)apply it.
+                    if depth == 0 {
+                        result.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor,
+                                            range: span.contentRange)
+                    }
                 }
 
             case .listItem(let ordered, let checkbox):
@@ -487,7 +537,7 @@ extension EditorTextView {
                 } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
-                } else if case .blockquote = span.kind {
+                } else if case .blockquote(_) = span.kind {
                     // Blockquote: invisible but preserve width for indentation
                     result.addAttribute(.foregroundColor, value: NSColor.clear, range: dr)
                 } else {
