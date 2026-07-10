@@ -16,7 +16,7 @@ description: >
 
 # Edmund — build & environment runbook
 
-All paths relative to the repo root: `/Users/inatang/Developer/Edmund`.
+All paths relative to the repo root.
 Facts date-stamped 2026-07-05 are volatile — re-verify per the last section.
 
 ## When NOT to use this skill

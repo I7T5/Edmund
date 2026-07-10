@@ -31,7 +31,7 @@ count. The hardest live problem class to date is **delete-drift**
 were delete-drift and undo/redo viewport drift. Every rule below traces to one
 of those scars.
 
-Ground truth this file distills: `/Users/inatang/Developer/Edmund/docs/ARCHITECTURE.md`.
+Ground truth this file distills: `docs/ARCHITECTURE.md` (repo root).
 Treat that doc as authoritative if the two ever disagree, and fix this skill.
 
 ## Glossary (each term defined once)
