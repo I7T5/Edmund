@@ -257,13 +257,21 @@ extension EditorTextView {
 
             case .codeBlock(let language):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                // Monospace across the fullRange, fences included: the fence
-                // line keeps its natural (now code-line) height whether shown
-                // dimmed (active) or ink-cleared (rendered, blockquote-style).
-                result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
-                highlightCodeBlock(result, contentRange: span.contentRange, language: language)
-                if !cursorInToken {
-                    styleCodeBlockBox(result, span: span, language: language)
+                let isMermaid = markdownFeatures.contains(.mermaid)
+                    && MermaidSyntax.matches(language: language)
+                let source = span.contentRange.upperBound <= result.length
+                    ? (markdown as NSString).substring(with: span.contentRange) : ""
+                let renderedMermaid = isMermaid && !cursorInToken
+                    && styleMermaidBlock(result, span: span, source: source)
+                if !renderedMermaid {
+                    // Monospace across the fullRange, fences included: the fence
+                    // line keeps its natural (now code-line) height whether shown
+                    // dimmed (active) or ink-cleared (rendered, blockquote-style).
+                    result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
+                    highlightCodeBlock(result, contentRange: span.contentRange, language: language)
+                    if !cursorInToken {
+                        styleCodeBlockBox(result, span: span, language: language)
+                    }
                 }
 
             case .strikethrough:

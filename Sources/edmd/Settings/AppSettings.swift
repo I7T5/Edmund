@@ -106,6 +106,7 @@ enum AppSettings {
         static let enableNonGFM      = "settings.syntax.enableNonGFM"
         static let synFrontMatter    = "settings.syntax.frontMatter"
         static let synMath           = "settings.syntax.math"
+        static let synMermaid        = "settings.syntax.mermaid"
         static let synHighlight      = "settings.syntax.highlight"
         static let synComment        = "settings.syntax.comment"
         static let synWikilink       = "settings.syntax.wikilink"
@@ -175,11 +176,12 @@ enum AppSettings {
         // ordinary image dimensions `![alt|200](url)` aren't tied to any grid item.
         f.insert(.imageDimensions)
 
-        // The 5x2 grid. Related sub-syntaxes fold into their grid toggle:
+        // The feature grid. Related sub-syntaxes fold into their grid toggle:
         // wikilink image embeds under Wikilink, collapsible under the Obsidian
         // callout, multi-block comments under Comment.
         if boolDefaultTrue(Key.synFrontMatter)    { f.insert(.frontMatter) }
         if boolDefaultTrue(Key.synMath)           { f.insert(.math) }
+        if boolDefaultTrue(Key.synMermaid)        { f.insert(.mermaid) }
         if boolDefaultTrue(Key.synHighlight)      { f.insert(.highlight) }
         if boolDefaultTrue(Key.synComment)        { f.formUnion([.inlineComment, .multiBlockComment]) }
         if boolDefaultTrue(Key.synWikilink)       { f.formUnion([.wikilink, .wikilinkEmbed]) }

@@ -12,6 +12,7 @@ struct SyntaxSettingsView: View {
     @AppStorage(AppSettings.Key.enableNonGFM)       private var enableNonGFM = true
     @AppStorage(AppSettings.Key.synFrontMatter)     private var frontMatter = true
     @AppStorage(AppSettings.Key.synMath)            private var math = true
+    @AppStorage(AppSettings.Key.synMermaid)         private var mermaid = true
     @AppStorage(AppSettings.Key.synHighlight)       private var highlight = true
     @AppStorage(AppSettings.Key.synComment)         private var comment = true
     @AppStorage(AppSettings.Key.synWikilink)        private var wikilink = true
@@ -178,8 +179,8 @@ struct SyntaxSettingsView: View {
                 cell("Block ^1", $blockRef)
             }
             GridRow {
+                cell("Mermaid diagrams", $mermaid)
                 cell("Obsidian callout > [!note]", $obsidianCallout)
-                    .gridCellColumns(2)
             }
         }
     }

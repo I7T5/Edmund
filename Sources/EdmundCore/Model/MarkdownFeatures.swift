@@ -36,11 +36,14 @@ public struct MarkdownFeatures: OptionSet, Sendable, Equatable {
     /// alerts. Non-GFM: cleared by the master switch, so with it off only the
     /// GFM alert types render as callouts and the rest fall back to plain quotes.
     public static let calloutExtendedTypes = MarkdownFeatures(rawValue: 1 << 13)
+    /// Native rendering for fenced code blocks whose info string starts with
+    /// `mermaid`. The source remains the literal fenced block in text storage.
+    public static let mermaid            = MarkdownFeatures(rawValue: 1 << 14)
 
     /// Every feature enabled — the default.
     public static let all: MarkdownFeatures = [
         .highlight, .inlineComment, .callout, .wikilink, .footnote, .math,
         .frontMatter, .tag, .blockRef, .imageDimensions, .wikilinkEmbed,
-        .collapsibleCallout, .multiBlockComment, .calloutExtendedTypes,
+        .collapsibleCallout, .multiBlockComment, .calloutExtendedTypes, .mermaid,
     ]
 }

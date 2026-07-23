@@ -34,15 +34,17 @@ flowchart LR
 | --- | --- |
 | `HTMLRenderer.swift` | `MarkupVisitor` → HTML; raw-HTML filtering; line anchors |
 | `HTMLTheme.swift` | `EditorTheme` → CSS |
-| `DocumentHTML.swift` | Page assembly, CSP meta, asset inlining (math + local images → data URIs), the image-policy chokepoint |
+| `DocumentHTML.swift` | Page assembly, CSP meta, asset inlining (Mermaid → sanitized inline SVG; math + local images → data URIs), the image-policy chokepoint |
 | `ReadModeWebView.swift` | The sandboxed webview + scroll-position mapping |
 | `MarkdownPrinter.swift` | Same HTML through `WKWebView.printOperation` — real vector (selectable) text |
 
 `Document.refreshReadView()` keeps an open Read view in sync with edits and
 theme changes. Code blocks are syntax-colored by the same `CodeHighlighter`
-+ `CodeSyntaxPalette` as Edit mode. Callout/checkbox icons are inline
-Lucide SVG (vector); math glyphs are high-DPI PNG (SwiftMath has no SVG
-output yet) — in PDF export, everything else is vector.
++ `CodeSyntaxPalette` as Edit mode. A Mermaid-tagged fence is handed to
+`beautiful-mermaid-swift`; `DocumentHTML` validates and inlines its SVG, so
+the diagram remains vector in PDF output. Callout/checkbox icons are also
+inline Lucide SVG; math glyphs are high-DPI PNG (SwiftMath has no SVG output
+yet).
 
 Math classing (classing agrees with Edit mode via the shared
 `parseDisplayMath`): a `$$…$$` that is a whole paragraph is a block
@@ -64,8 +66,9 @@ The webview needs no file or network reach:
 - JavaScript disabled (`allowsContentJavaScript = false`); the page carries
   a `script-src 'none'` CSP meta (`DocumentHTML.full` — Read and Print/PDF
   both consume it); loaded against `baseURL: nil` / explicit `about:blank`.
-- Every asset is inlined: math and icons as data URIs; local images as data
-  URIs via a `baseURL` (the document's directory) threaded through
+- Every asset is inlined: Mermaid diagrams and icons as SVG, math as a data
+  URI, and local images as data URIs via a `baseURL` (the document's
+  directory) threaded through
   `DocumentHTML`/`ReadModeWebView`/`MarkdownPrinter`. Remote images are off
   by default (`ReadRenderOptions.allowRemoteImages`).
 - External `http`/`https`/`mailto` links open in the default browser;
