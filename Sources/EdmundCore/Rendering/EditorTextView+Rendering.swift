@@ -269,7 +269,9 @@ extension EditorTextView {
                     // dimmed (active) or ink-cleared (rendered, blockquote-style).
                     result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
                     highlightCodeBlock(result, contentRange: span.contentRange, language: language)
-                    if !cursorInToken {
+                    if isMermaid && cursorInToken {
+                        styleActiveMermaidBlock(result, span: span, source: source)
+                    } else if !cursorInToken {
                         styleCodeBlockBox(result, span: span, language: language)
                     }
                 }

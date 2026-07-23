@@ -213,7 +213,9 @@ enum HTMLTheme {
        at rest. */
     .code-copy-icon { opacity: 0; transition: opacity .15s; }
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
-    .mermaid-diagram { margin: 1em 0; overflow-x: auto; text-align: center; }
+    .mermaid-diagram { margin: 1em 0; padding: 14px 16px; overflow-x: auto;
+                       text-align: center; background: var(--code-bg);
+                       border: 1px solid var(--table-border); }
     .mermaid-diagram svg { display: block; width: auto; height: auto; max-width: 100%; margin: 0 auto; }
     /* Dark mode lifts the bar to the marker gray (--rule is nearly invisible
        there); light mode keeps --rule. */

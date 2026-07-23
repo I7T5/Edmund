@@ -49,8 +49,23 @@ public enum NativeMermaidRenderer {
                            theme: NativeMermaidTheme) throws -> String {
         lock.lock()
         defer { lock.unlock() }
-        return try MermaidRenderer.renderSVG(
-            source: source, theme: theme.diagramTheme)
+        let diagramTheme = theme.diagramTheme
+        let options = RenderOptions(
+            bg: diagramTheme.background.hexString,
+            fg: diagramTheme.foreground.hexString,
+            line: diagramTheme.effectiveLine().hexString,
+            accent: diagramTheme.effectiveAccent().hexString,
+            muted: diagramTheme.effectiveMuted().hexString,
+            surface: diagramTheme.effectiveSurface().hexString,
+            border: diagramTheme.effectiveBorder().hexString,
+            font: theme.font.fontName,
+            transparent: false
+        )
+        // BeautifulMermaid 1.0.4's convenience SVG path tries to flatten
+        // nested CSS fallbacks and can produce invalid paint values such as
+        // `#F8F8F8 3%, #FFFFFF))`. WKWebView supports the renderer's original
+        // SVG variables, so retain that valid vector output at our boundary.
+        return try renderMermaidSVG(source, options)
     }
 
     private static func verticallyFlipped(_ image: NSImage) -> NSImage? {

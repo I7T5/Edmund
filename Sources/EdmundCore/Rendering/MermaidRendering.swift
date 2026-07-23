@@ -131,30 +131,104 @@ final class MermaidImageStore {
 }
 
 extension EditorTextView {
+    private var mermaidFrameHorizontalPadding: CGFloat { 16 }
+    private var mermaidFrameVerticalPadding: CGFloat { 14 }
+
+    private var mermaidFrameBorderColor: NSColor {
+        isDarkAppearance ? Self.darkRuleGray : .separatorColor
+    }
+
+    private var mermaidSourceParagraphStyle: NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+        ps.lineSpacing = bodyParagraphStyle.lineSpacing
+        ps.firstLineHeadIndent = mermaidFrameHorizontalPadding
+        ps.headIndent = mermaidFrameHorizontalPadding
+        ps.tailIndent = -mermaidFrameHorizontalPadding
+        return ps
+    }
+
+    private func mermaidImageAndHeight(source: String,
+                                       result: NSAttributedString,
+                                       span: SyntaxHighlighter.Span)
+        -> (image: NSImage, width: CGFloat, height: CGFloat, frameHeight: CGFloat)? {
+        let style = MermaidRenderStyle(editorTheme: theme, dark: isDarkAppearance)
+        guard let image = MermaidImageStore.shared.image(
+            source: source, style: style, requesting: self),
+              image.size.width > 0, image.size.height > 0 else { return nil }
+
+        let innerWidth = max(1, availableContentWidth - 2 * mermaidFrameHorizontalPadding)
+        let scale = min(1, innerWidth / image.size.width)
+        let width = image.size.width * scale
+        let height = image.size.height * scale
+
+        // Measure the active source with the exact font, line spacing, and
+        // horizontal inset it receives below. This keeps the container height
+        // identical on both sides of the preview/source transition, including
+        // wrapped Mermaid lines.
+        let measured = NSMutableAttributedString(
+            attributedString: result.attributedSubstring(from: span.fullRange))
+        measured.addAttribute(.font, value: codeBlockFont,
+                              range: NSRange(location: 0, length: measured.length))
+        measured.addAttribute(.paragraphStyle, value: mermaidSourceParagraphStyle,
+                              range: NSRange(location: 0, length: measured.length))
+        let sourceHeight = ceil(measured.boundingRect(
+            with: CGSize(width: max(1, availableContentWidth),
+                         height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        ).height)
+        let frameHeight = max(height, sourceHeight) + 2 * mermaidFrameVerticalPadding
+        return (image, width, height, frameHeight)
+    }
+
+    private func mermaidLineRanges(_ string: NSString,
+                                   in range: NSRange) -> [NSRange] {
+        var lines: [NSRange] = []
+        var location = range.location
+        while location < range.upperBound {
+            let line = NSIntersectionRange(
+                string.lineRange(for: NSRange(location: location, length: 0)),
+                range
+            )
+            guard line.length > 0 else { break }
+            lines.append(line)
+            location = line.upperBound
+        }
+        return lines
+    }
+
+    private func mermaidFrameDecoration(edges: CalloutStyle.Edges,
+                                        bottomPad: CGFloat = 0)
+        -> BlockDecoration {
+        BlockDecoration(.box(
+            background: codeBlockBackground,
+            borderColor: mermaidFrameBorderColor,
+            borderEdges: edges,
+            borderWidth: 1,
+            bottomPad: bottomPad
+        ))
+    }
+
     /// Replaces an inactive Mermaid fence with the cached native image. On a
     /// cache miss the ordinary code-block box remains visible until the
     /// background render completes.
     func styleMermaidBlock(_ result: NSMutableAttributedString,
                            span: SyntaxHighlighter.Span,
                            source: String) -> Bool {
-        let style = MermaidRenderStyle(editorTheme: theme, dark: isDarkAppearance)
-        guard let image = MermaidImageStore.shared.image(
-            source: source, style: style, requesting: self),
-              image.size.width > 0, image.size.height > 0 else { return false }
+        guard let metrics = mermaidImageAndHeight(
+            source: source, result: result, span: span) else { return false }
 
-        let maxWidth = max(1, availableContentWidth)
-        let scale = min(1, maxWidth / image.size.width)
-        let width = image.size.width * scale
-        let height = image.size.height * scale
-        let x = max(0, (maxWidth - width) / 2)
+        let x = max(mermaidFrameHorizontalPadding,
+                    (availableContentWidth - metrics.width) / 2)
+        let y = (metrics.frameHeight - metrics.height) / 2
         let overlay = FragmentOverlay(
-            image: image,
-            bounds: CGRect(x: x, y: 0, width: width, height: height)
+            image: metrics.image,
+            bounds: CGRect(x: x, y: y,
+                           width: metrics.width, height: metrics.height)
         )
 
         // Every source character remains in storage. Near-zero hidden rows
         // collapse the code body while the opening-fence paragraph reserves
-        // the diagram's height and carries its overlay.
+        // the stable frame height and carries its overlay.
         result.addAttribute(.font, value: hiddenFont, range: span.fullRange)
         result.addAttribute(.foregroundColor, value: NSColor.clear, range: span.fullRange)
         let collapsed = NSMutableParagraphStyle()
@@ -163,7 +237,7 @@ extension EditorTextView {
 
         let anchor = NSRange(location: span.fullRange.location, length: 1)
         applyOverlay(overlay, anchor: anchor, in: result)
-        reserveLineHeight(ascent: height, descent: 0,
+        reserveLineHeight(ascent: metrics.frameHeight, descent: 0,
                           forOverlayAt: anchor.location, in: result)
 
         let ns = result.string as NSString
@@ -171,15 +245,70 @@ extension EditorTextView {
             ns.paragraphRange(for: NSRange(location: anchor.location, length: 0)),
             span.fullRange
         )
-        if firstLine.length > 0,
-           let base = result.attribute(.paragraphStyle, at: anchor.location,
-                                       effectiveRange: nil) as? NSParagraphStyle {
-            let spaced = base.mutableCopy() as! NSMutableParagraphStyle
-            spaced.paragraphSpacingBefore = 8
-            spaced.paragraphSpacing = 8
-            result.addAttribute(.paragraphStyle, value: spaced, range: firstLine)
+        if firstLine.length > 0 {
+            result.addAttribute(.blockDecoration,
+                                value: mermaidFrameDecoration(edges: .all),
+                                range: firstLine)
         }
         return true
+    }
+
+    /// Keeps the editable source inside the same framed height as its preview.
+    /// Source lines retain their natural metrics; only the last fragment grows
+    /// to absorb the unused part of the frame, so caret placement and selection
+    /// hit-testing remain ordinary TextKit behavior.
+    func styleActiveMermaidBlock(_ result: NSMutableAttributedString,
+                                 span: SyntaxHighlighter.Span,
+                                 source: String) {
+        guard let metrics = mermaidImageAndHeight(
+            source: source, result: result, span: span) else { return }
+
+        let ns = result.string as NSString
+        let lines = mermaidLineRanges(ns, in: span.fullRange)
+        guard !lines.isEmpty else { return }
+
+        result.addAttribute(.paragraphStyle, value: mermaidSourceParagraphStyle,
+                            range: span.fullRange)
+
+        let firstStyle = mermaidSourceParagraphStyle.mutableCopy()
+            as! NSMutableParagraphStyle
+        firstStyle.paragraphSpacingBefore = mermaidFrameVerticalPadding
+        result.addAttribute(.paragraphStyle, value: firstStyle, range: lines[0])
+
+        let measured = NSMutableAttributedString(
+            attributedString: result.attributedSubstring(from: span.fullRange))
+        // The active source already includes its top inset. The remaining
+        // height belongs below the final line; the decoration grows that
+        // fragment directly, keeping the space painted and clickable.
+        let activeHeight = ceil(measured.boundingRect(
+            with: CGSize(width: max(1, availableContentWidth),
+                         height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        ).height)
+        // NSString drawing omits the final line's trailing lineSpacing while
+        // TextKit includes it in the fragment stack. Account for that and the
+        // explicit top inset before assigning the remainder to the last line.
+        let bottomPad = max(
+            0,
+            metrics.frameHeight - activeHeight
+                - mermaidFrameVerticalPadding
+                - mermaidSourceParagraphStyle.lineSpacing
+        )
+
+        for (index, line) in lines.enumerated() {
+            var edges: CalloutStyle.Edges = [.left, .right]
+            if index == lines.startIndex { edges.insert(.top) }
+            if index == lines.index(before: lines.endIndex) { edges.insert(.bottom) }
+            result.addAttribute(
+                .blockDecoration,
+                value: mermaidFrameDecoration(
+                    edges: edges,
+                    bottomPad: index == lines.index(before: lines.endIndex)
+                        ? bottomPad : 0
+                ),
+                range: line
+            )
+        }
     }
 
     /// A background render may finish during typing or IME composition. In

@@ -175,7 +175,12 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   serialized background actor, caches the native image, hides/collapses the
   remaining raw fence rows, and invalidates only matching blocks on completion.
   The opening fence is a single-line fragment, so it stays outside the image
-  overlay wrapping wedge above. Active fences remain ordinary editable code.
+  overlay wrapping wedge above. Preview and active source share one full-column
+  framed height: the frame takes the larger of the scaled image and measured
+  source, and the active form grows only its final fragment to consume the
+  remainder. This keeps ordinary source-line/caret metrics while preventing
+  content below from jumping when the block activates. Read/PDF uses the same
+  framed surface around its inline SVG.
 
 ---
 
