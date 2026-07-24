@@ -18,6 +18,7 @@ rule applies to both.
 swift build                 # debug build of both targets
 swift test                  # full suite (≈750+ tests, ~10s)
 swift test --filter Callout # one suite
+./scripts/benchmark-open.sh report # release-mode open-document benchmark
 ./scripts/build-app.sh      # builds build/Edmund.app (release + bundles + icon + codesign)
 ```
 
@@ -159,6 +160,16 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   icon is a stroked `CGPath` (`SVGPath` parses the vendored Lucide
   geometry), never an image — see
   `docs/investigations/archives/callout-title-wrap-investigation.md`.
+- **Repeated immutable overlays are process-cached.** List markers, callout
+  headers/icons, and identical math overlays must reuse the same
+  `FragmentOverlay` value across editor instances. Creating one per block
+  grows Foundation's process-wide weak attribute-dictionary intern table and
+  makes later lazy-styling slices progressively slower. Cache keys include
+  every visual/metric input, and the `NSCache`-backed marker caches are bounded.
+- **Custom attributed-string values need discriminating hashes.** Value
+  equality paired with constant-by-kind/count hashes turns Foundation's global
+  attribute-dictionary interner into a collision chain and makes styling
+  superlinear. Hash every field used by equality whenever the value permits it.
 
 ---
 
@@ -526,6 +537,13 @@ only with reason):
    get renamed to `worktree-*`. `.worktrees/` is gitignored. Distinct from
    `.claude/worktrees/`, which Claude Code's own EnterWorktree tool manages
    automatically for agent isolation — don't hand-edit that one.
+7. **Performance changes start from the benchmark contract.** Normal
+   `swift test` pins the generated workloads, validation, statistics, and gate
+   behavior. Authoritative reports require a clean tree and clean release
+   build; each sample runs in a fresh process. The opt-in gate combines paired
+   scaling, dispersion, and same-machine baseline-regression checks. Wall-clock
+   gates do not run on shared CI hardware. Full method:
+   `docs/dev-guides/performance-benchmarks.md`.
 
 If you (the agent) improve this workflow or discover a better verification
 trick, update this section.

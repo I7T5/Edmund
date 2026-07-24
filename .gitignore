@@ -13,6 +13,7 @@ Tests/EdmundTests/_RenderEdit.swift
 /test-files/
 /misc/
 /tmp/
+/benchmark-results/
 
 # dev stuff
 .build/

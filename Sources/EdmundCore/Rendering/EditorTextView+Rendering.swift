@@ -51,17 +51,29 @@ extension EditorTextView {
     var linkColor: NSColor { theme.linkBlueColor }
 
     /// Monospaced font for tables.
-    var tableFont: NSFont { theme.monospaceFont() }
+    var tableFont: NSFont { renderingMonospaceFont }
 
     /// Monospaced font for code blocks.
-    var codeBlockFont: NSFont { theme.monospaceFont() }
+    var codeBlockFont: NSFont { renderingMonospaceFont }
 
     /// Font used to visually hide delimiter characters.
     /// Near-zero size makes them effectively invisible and zero-width.
-    var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
+    var hiddenFont: NSFont {
+        if let cachedHiddenFont { return cachedHiddenFont }
+        let font = NSFont.systemFont(ofSize: 0.01)
+        cachedHiddenFont = font
+        return font
+    }
 
     /// Monospaced font for inline code spans.
-    var inlineCodeFont: NSFont { theme.monospaceFont() }
+    var inlineCodeFont: NSFont { renderingMonospaceFont }
+
+    private var renderingMonospaceFont: NSFont {
+        if let cachedMonospaceFont { return cachedMonospaceFont }
+        let font = theme.monospaceFont()
+        cachedMonospaceFont = font
+        return font
+    }
 
     /// Subtle background color for inline code spans. The 10% wash reads fine
     /// on white but nearly disappears on the dark background (it lands ~4 levels
@@ -69,6 +81,26 @@ extension EditorTextView {
     /// visible step as Read mode's --inline-code-bg.
     var inlineCodeBackground: NSColor {
         NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
+    }
+
+    /// Stable cache-key representation for dynamic AppKit colors. Hash values
+    /// alone can collide, and unresolved semantic colors can change with the
+    /// view's appearance.
+    func renderingCacheColorKey(_ color: NSColor) -> String {
+        var resolved = color
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            resolved = color.usingColorSpace(.deviceRGB) ?? color
+        }
+        guard let rgb = resolved.usingColorSpace(.deviceRGB) else {
+            return String(reflecting: resolved)
+        }
+        return String(
+            format: "%.6f,%.6f,%.6f,%.6f",
+            rgb.redComponent,
+            rgb.greenComponent,
+            rgb.blueComponent,
+            rgb.alphaComponent
+        )
     }
 
     /// Paragraph style for thematic breaks. The raw dashes are hidden with a
@@ -881,4 +913,3 @@ extension EditorTextView {
 }
 
 // MARK: - ThematicBreakTextBlock
-

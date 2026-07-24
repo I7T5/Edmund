@@ -1,0 +1,300 @@
+{
+  "allowedRelativeMAD" : 0.25,
+  "environment" : {
+    "buildConfiguration" : "release",
+    "hardwareModel" : "Mac17,3",
+    "operatingSystem" : "Version 26.5.1 (Build 25F80)",
+    "processorArchitecture" : "arm64",
+    "processorCount" : 10,
+    "swiftVersion" : "Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)"
+  },
+  "evidenceFailures" : [
+
+  ],
+  "evidenceValid" : true,
+  "freshProcessCount" : 14,
+  "gateFailures" : [
+    "Active-drain scaling 6.75× exceeds 2.25×"
+  ],
+  "gatePassed" : false,
+  "generatedAt" : "2026-07-23T23:28:37Z",
+  "maximumActiveDrainScalingRatio" : 2.25,
+  "maximumBaselineRegressionRatio" : 1.15,
+  "maximumFirstPresentationScalingRatio" : 2.25,
+  "maximumRelativeMAD" : 0.1220295139478575,
+  "measuredIterations" : 7,
+  "mode" : "report",
+  "pairedActiveDrainScalingRatio" : 6.754259366939795,
+  "pairedFirstPresentationScalingRatio" : 1.8115271305212506,
+  "provenance" : {
+    "authoritative" : true,
+    "benchmarkDefinitionSHA256" : "57cc2a2acf903f2832e6794e36f1b52564eecca9e43d65c085f54b36cb86c5a3",
+    "contractSHA256" : "0a5102c9c543c04d46631a1fa3f51a653f1ea6be60239011f13ee229ffb1d145",
+    "sourceRevision" : "af81ca8345452f83596a115613bbde228a4a8023",
+    "sourceTreeDirty" : false,
+    "testBinarySHA256" : "de5d3eb380218b9fd17884461c3a276d7aa76cb12dea1878cca390375a5bba44",
+    "usedSkipBuild" : false
+  },
+  "regressionRatios" : [
+
+  ],
+  "scenarios" : [
+    {
+      "approximateBytes" : 100000,
+      "blockCount" : 1506,
+      "medianActiveDrainCPUMilliseconds" : 299.941081,
+      "medianFirstPresentationMilliseconds" : 40.833458,
+      "medianSynchronousLoadMilliseconds" : 33.9065,
+      "name" : "lazy-100k",
+      "relativeMADActiveDrainCPU" : 0.05636953078794828,
+      "relativeMADFirstPresentation" : 0.057810019420838625,
+      "relativeMADSynchronousLoad" : 0.04785831625204615,
+      "samples" : [
+        {
+          "iteration" : 1,
+          "processIdentifier" : 48729,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 299.941081,
+            "converged" : true,
+            "drainSlices" : 42,
+            "finalStyledBlockCount" : 1506,
+            "firstPresentationMilliseconds" : 39.818709,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 33.203041,
+            "totalBlockCount" : 1506
+          },
+          "scenarioName" : "lazy-100k"
+        },
+        {
+          "iteration" : 2,
+          "processIdentifier" : 49354,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 299.25741300000004,
+            "converged" : true,
+            "drainSlices" : 42,
+            "finalStyledBlockCount" : 1506,
+            "firstPresentationMilliseconds" : 39.223334,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 32.699708,
+            "totalBlockCount" : 1506
+          },
+          "scenarioName" : "lazy-100k"
+        },
+        {
+          "iteration" : 3,
+          "processIdentifier" : 49544,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 379.080796,
+            "converged" : true,
+            "drainSlices" : 53,
+            "finalStyledBlockCount" : 1506,
+            "firstPresentationMilliseconds" : 47.914166,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 39.595042,
+            "totalBlockCount" : 1506
+          },
+          "scenarioName" : "lazy-100k"
+        },
+        {
+          "iteration" : 4,
+          "processIdentifier" : 50178,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 461.01982900000013,
+            "converged" : true,
+            "drainSlices" : 64,
+            "finalStyledBlockCount" : 1506,
+            "firstPresentationMilliseconds" : 78.419583,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 64.169875,
+            "totalBlockCount" : 1506
+          },
+          "scenarioName" : "lazy-100k"
+        },
+        {
+          "iteration" : 5,
+          "processIdentifier" : 50398,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 338.107463,
+            "converged" : true,
+            "drainSlices" : 47,
+            "finalStyledBlockCount" : 1506,
+            "firstPresentationMilliseconds" : 53.589125,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 45.435333,
+            "totalBlockCount" : 1506
+          },
+          "scenarioName" : "lazy-100k"
+        },
+        {
+          "iteration" : 6,
+          "processIdentifier" : 51024,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 283.033543,
+            "converged" : true,
+            "drainSlices" : 40,
+            "finalStyledBlockCount" : 1506,
+            "firstPresentationMilliseconds" : 38.472875,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 32.283792,
+            "totalBlockCount" : 1506
+          },
+          "scenarioName" : "lazy-100k"
+        },
+        {
+          "iteration" : 7,
+          "processIdentifier" : 51234,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 289.7992940000001,
+            "converged" : true,
+            "drainSlices" : 41,
+            "finalStyledBlockCount" : 1506,
+            "firstPresentationMilliseconds" : 40.833458,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 33.9065,
+            "totalBlockCount" : 1506
+          },
+          "scenarioName" : "lazy-100k"
+        }
+      ],
+      "seed" : 42,
+      "sha256" : "3eda28d346ef0f71373a299a81ae68c0dd6a4d956d8afe0654b3c8bf00ac11fe",
+      "utf16Length" : 100203
+    },
+    {
+      "approximateBytes" : 200000,
+      "blockCount" : 3124,
+      "medianActiveDrainCPUMilliseconds" : 2052.544457000001,
+      "medianFirstPresentationMilliseconds" : 84.261042,
+      "medianSynchronousLoadMilliseconds" : 76.551042,
+      "name" : "lazy-200k",
+      "relativeMADActiveDrainCPU" : 0.05917671190300518,
+      "relativeMADFirstPresentation" : 0.1220295139478575,
+      "relativeMADSynchronousLoad" : 0.12115663951380301,
+      "samples" : [
+        {
+          "iteration" : 1,
+          "processIdentifier" : 48938,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 1891.7268300000003,
+            "converged" : true,
+            "drainSlices" : 216,
+            "finalStyledBlockCount" : 3124,
+            "firstPresentationMilliseconds" : 72.377208,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 65.548667,
+            "totalBlockCount" : 3124
+          },
+          "scenarioName" : "lazy-200k"
+        },
+        {
+          "iteration" : 2,
+          "processIdentifier" : 49146,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 2174.007289,
+            "converged" : true,
+            "drainSlices" : 241,
+            "finalStyledBlockCount" : 3124,
+            "firstPresentationMilliseconds" : 84.261042,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 76.551042,
+            "totalBlockCount" : 3124
+          },
+          "scenarioName" : "lazy-200k"
+        },
+        {
+          "iteration" : 3,
+          "processIdentifier" : 49757,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 2019.8830050000008,
+            "converged" : true,
+            "drainSlices" : 226,
+            "finalStyledBlockCount" : 3124,
+            "firstPresentationMilliseconds" : 86.790833,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 77.901834,
+            "totalBlockCount" : 3124
+          },
+          "scenarioName" : "lazy-200k"
+        },
+        {
+          "iteration" : 4,
+          "processIdentifier" : 49969,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 2052.544457000001,
+            "converged" : true,
+            "drainSlices" : 232,
+            "finalStyledBlockCount" : 3124,
+            "firstPresentationMilliseconds" : 98.339042,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 88.451667,
+            "totalBlockCount" : 3124
+          },
+          "scenarioName" : "lazy-200k"
+        },
+        {
+          "iteration" : 5,
+          "processIdentifier" : 50590,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 2283.665499,
+            "converged" : true,
+            "drainSlices" : 251,
+            "finalStyledBlockCount" : 3124,
+            "firstPresentationMilliseconds" : 85.184792,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 77.404959,
+            "totalBlockCount" : 3124
+          },
+          "scenarioName" : "lazy-200k"
+        },
+        {
+          "iteration" : 6,
+          "processIdentifier" : 50803,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 2027.832419,
+            "converged" : true,
+            "drainSlices" : 225,
+            "finalStyledBlockCount" : 3124,
+            "firstPresentationMilliseconds" : 73.978708,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 67.276375,
+            "totalBlockCount" : 3124
+          },
+          "scenarioName" : "lazy-200k"
+        },
+        {
+          "iteration" : 7,
+          "processIdentifier" : 51447,
+          "sample" : {
+            "activeDrainCPUMilliseconds" : 2242.663075,
+            "converged" : true,
+            "drainSlices" : 249,
+            "finalStyledBlockCount" : 3124,
+            "firstPresentationMilliseconds" : 73.970917,
+            "schedulerYields" : 1,
+            "styledAtFirstPresentation" : 17,
+            "synchronousLoadMilliseconds" : 67.09325,
+            "totalBlockCount" : 3124
+          },
+          "scenarioName" : "lazy-200k"
+        }
+      ],
+      "seed" : 42,
+      "sha256" : "861fd7a30a2f61c0f3f723a8a15e018c49bc9da85232d4ba08640884def0a560",
+      "utf16Length" : 200190
+    }
+  ],
+  "schemaVersion" : 3
+}

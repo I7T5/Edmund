@@ -39,6 +39,294 @@ struct EditorStylingTests {
 
     // MARK: - String Preservation
 
+    @Test("Rendered marker cache reuses matches and separates visual variants")
+    @MainActor func renderedMarkerOverlayReuse() throws {
+        let editor = makeEditor()
+
+        let firstBullet = try #require(
+            editor.styleBlock("- first")
+                .attribute(.fragmentOverlay, at: 0, effectiveRange: nil)
+                as? FragmentOverlay
+        )
+        let secondBullet = try #require(
+            editor.styleBlock("- second")
+                .attribute(.fragmentOverlay, at: 0, effectiveRange: nil)
+                as? FragmentOverlay
+        )
+        #expect(firstBullet === secondBullet)
+
+        func calloutOverlay(
+            _ source: String,
+            in editor: EditorTextView
+        ) throws -> FragmentOverlay {
+            let styled = editor.styleBlock(source)
+            var overlay: FragmentOverlay?
+            styled.enumerateAttribute(
+                .fragmentOverlay,
+                in: NSRange(location: 0, length: styled.length)
+            ) { value, _, stop in
+                guard let value = value as? FragmentOverlay else { return }
+                overlay = value
+                stop.pointee = true
+            }
+            return try #require(overlay)
+        }
+
+        let firstCallout = try calloutOverlay("> [!note]\n> first", in: editor)
+        let secondCallout = try calloutOverlay("> [!note]\n> second", in: editor)
+        #expect(firstCallout === secondCallout)
+
+        let firstMath = try #require(editor.mathOverlay(
+            latex: "x_1 = y",
+            display: true,
+            fontSize: editor.bodyFont.pointSize
+        ))
+        let secondMath = try #require(editor.mathOverlay(
+            latex: "x_1 = y",
+            display: true,
+            fontSize: editor.bodyFont.pointSize
+        ))
+        #expect(firstMath === secondMath)
+
+        let nextEditor = makeEditor()
+        let nextBullet = try #require(
+            nextEditor.styleBlock("- next")
+                .attribute(.fragmentOverlay, at: 0, effectiveRange: nil)
+                as? FragmentOverlay
+        )
+        #expect(firstBullet === nextBullet)
+
+        let nextCallout = try calloutOverlay("> [!note]\n> next", in: nextEditor)
+        #expect(firstCallout === nextCallout)
+
+        let nextMath = try #require(nextEditor.mathOverlay(
+            latex: "x_1 = y",
+            display: true,
+            fontSize: nextEditor.bodyFont.pointSize
+        ))
+        #expect(firstMath === nextMath)
+
+        let largerEditor = makeEditor()
+        var largerTheme = largerEditor.theme
+        largerTheme.fontSize += 4
+        largerEditor.theme = largerTheme
+        let largerBullet = try #require(
+            largerEditor.styleBlock("- larger")
+                .attribute(.fragmentOverlay, at: 0, effectiveRange: nil)
+                as? FragmentOverlay
+        )
+        #expect(firstBullet !== largerBullet)
+        #expect(firstBullet.bounds != largerBullet.bounds)
+
+        let lightEditor = makeEditor()
+        lightEditor.appearance = NSAppearance(named: .aqua)
+        let lightCallout = try calloutOverlay("> [!important]\n> light", in: lightEditor)
+        let darkEditor = makeEditor()
+        darkEditor.appearance = NSAppearance(named: .darkAqua)
+        let darkCallout = try calloutOverlay("> [!important]\n> dark", in: darkEditor)
+        #expect(lightCallout !== darkCallout)
+
+        let customColorEditor = makeEditor()
+        customColorEditor.calloutStyleOverrides["note"] = CalloutStyle(
+            iconName: "pencil",
+            colorHex: "#E11900"
+        )
+        let customColorCallout = try calloutOverlay(
+            "> [!note] Custom title\n> body",
+            in: customColorEditor
+        )
+        let defaultColorCallout = try calloutOverlay(
+            "> [!note] Custom title\n> body",
+            in: editor
+        )
+        #expect(customColorCallout !== defaultColorCallout)
+        #expect(customColorCallout.pathColor != defaultColorCallout.pathColor)
+
+        let noLigatureEditor = makeEditor()
+        var noLigatureTheme = noLigatureEditor.theme
+        noLigatureTheme.standardLigatures = false
+        noLigatureEditor.theme = noLigatureTheme
+        let noLigatureCallout = try calloutOverlay(
+            "> [!note]\n> body",
+            in: noLigatureEditor
+        )
+        #expect(firstCallout !== noLigatureCallout)
+
+        let wideLatex = "a_{10}x^{10}+a_9x^9+a_8x^8+a_7x^7+a_6x^6+a_5x^5+a_4x^4+a_3x^3+a_2x^2+a_1x+a_0"
+        let wideMathEditor = makeEditor()
+        wideMathEditor.textContainer?.widthTracksTextView = false
+        wideMathEditor.textContainer?.size = NSSize(
+            width: 500,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        let wideMath = try #require(wideMathEditor.mathOverlay(
+            latex: wideLatex,
+            display: true,
+            fontSize: 24
+        ))
+        let narrowMathEditor = makeEditor()
+        narrowMathEditor.textContainer?.widthTracksTextView = false
+        narrowMathEditor.textContainer?.size = NSSize(
+            width: 240,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        let narrowMath = try #require(narrowMathEditor.mathOverlay(
+            latex: wideLatex,
+            display: true,
+            fontSize: 24
+        ))
+        #expect(wideMath !== narrowMath)
+        #expect(wideMath.bounds.width > narrowMath.bounds.width)
+    }
+
+    @Test("Custom attribute values do not collapse into constant hash buckets")
+    @MainActor func customAttributeHashDispersion() {
+        let decorations = (0..<32).map { index in
+            BlockDecoration(.box(
+                background: NSColor(
+                    srgbRed: CGFloat(index) / 31,
+                    green: 0.25,
+                    blue: 0.75,
+                    alpha: 1
+                ),
+                borderColor: nil,
+                borderEdges: [],
+                borderWidth: 3,
+                bottomPad: CGFloat(index)
+            ))
+        }
+        #expect(Set(decorations.map(\.hash)).count > 28)
+
+        let overlays = (0..<32).map { index in
+            FragmentOverlay(
+                image: NSImage(size: NSSize(width: index + 1, height: index + 1)),
+                bounds: CGRect(x: 0, y: 0, width: 16, height: 16)
+            )
+        }
+        #expect(Set(overlays.map(\.hash)).count > 28)
+
+        let pathOverlays = (0..<32).map { index in
+            let path = CGMutablePath()
+            path.move(to: .zero)
+            path.addLine(to: CGPoint(x: index + 1, y: index * 2 + 1))
+            return FragmentOverlay(
+                path: path,
+                color: .systemBlue,
+                lineWidth: 2,
+                bounds: CGRect(x: 0, y: 0, width: 16, height: 16)
+            )
+        }
+        #expect(Set(pathOverlays.map(\.hash)).count > 28)
+
+        let geometryWraps = (0..<32).map {
+            TableCellWrap(
+                styled: NSAttributedString(
+                    string: "cell",
+                    attributes: [.font: NSFont.systemFont(ofSize: 14)]
+                ),
+                x: CGFloat($0),
+                contentWidth: 120
+            )
+        }
+        #expect(Set(geometryWraps.map(\.hash)).count > 28)
+
+        let styleWraps = (0..<32).map { index in
+            TableCellWrap(
+                styled: NSAttributedString(
+                    string: "cell",
+                    attributes: [
+                        .foregroundColor: NSColor(
+                            srgbRed: CGFloat(index) / 31,
+                            green: 0.25,
+                            blue: 0.75,
+                            alpha: 1
+                        ),
+                    ]
+                ),
+                x: 20,
+                contentWidth: 120
+            )
+        }
+        #expect(Set(styleWraps.map(\.hash)).count > 28)
+    }
+
+    @Test("Equal custom attribute values have equal hashes")
+    @MainActor func customAttributeHashEqualityContract() {
+        let firstDecoration = BlockDecoration(.leftBar(color: .systemBlue, width: 2))
+        let secondDecoration = BlockDecoration(.leftBar(color: .systemBlue, width: 2))
+        #expect(firstDecoration == secondDecoration)
+        #expect(firstDecoration.hash == secondDecoration.hash)
+
+        func makePathOverlay() -> FragmentOverlay {
+            let path = CGMutablePath()
+            path.move(to: .zero)
+            path.addCurve(
+                to: CGPoint(x: 8, y: 12),
+                control1: CGPoint(x: 2, y: 4),
+                control2: CGPoint(x: 6, y: 10)
+            )
+            return FragmentOverlay(
+                path: path,
+                color: .systemBlue,
+                lineWidth: 2,
+                bounds: CGRect(x: 0, y: 0, width: 16, height: 16)
+            )
+        }
+        let firstOverlay = makePathOverlay()
+        let secondOverlay = makePathOverlay()
+        #expect(firstOverlay == secondOverlay)
+        #expect(firstOverlay.hash == secondOverlay.hash)
+
+        let mutablePath = CGMutablePath()
+        mutablePath.move(to: .zero)
+        mutablePath.addLine(to: CGPoint(x: 8, y: 12))
+        let frozenOverlay = FragmentOverlay(
+            path: mutablePath,
+            color: .systemBlue,
+            lineWidth: 2,
+            bounds: CGRect(x: 0, y: 0, width: 16, height: 16)
+        )
+        let frozenHash = frozenOverlay.hash
+        mutablePath.addLine(to: CGPoint(x: 16, y: 24))
+        #expect(frozenOverlay.hash == frozenHash)
+        #expect(frozenOverlay.path != mutablePath)
+
+        let firstStyled = NSAttributedString(
+            string: "cell",
+            attributes: [.font: NSFont.systemFont(ofSize: 14)]
+        )
+        let secondStyled = NSAttributedString(
+            string: "cell",
+            attributes: [.font: NSFont.systemFont(ofSize: 14)]
+        )
+        let firstWrap = TableCellWrap(styled: firstStyled, x: 20, contentWidth: 120)
+        let secondWrap = TableCellWrap(styled: secondStyled, x: 20, contentWidth: 120)
+        #expect(firstWrap == secondWrap)
+        #expect(firstWrap.hash == secondWrap.hash)
+
+        let differentlyStyled = TableCellWrap(
+            styled: NSAttributedString(
+                string: "cell",
+                attributes: [.font: NSFont.boldSystemFont(ofSize: 14)]
+            ),
+            x: 20,
+            contentWidth: 120
+        )
+        #expect(firstWrap != differentlyStyled)
+        #expect(firstWrap.hash != differentlyStyled.hash)
+
+        let mutableStyled = NSMutableAttributedString(string: "cell")
+        let frozenWrap = TableCellWrap(styled: mutableStyled, x: 20, contentWidth: 120)
+        let frozenWrapHash = frozenWrap.hash
+        mutableStyled.addAttribute(
+            .foregroundColor,
+            value: NSColor.systemRed,
+            range: NSRange(location: 0, length: mutableStyled.length)
+        )
+        #expect(frozenWrap.hash == frozenWrapHash)
+        #expect(frozenWrap.styled != mutableStyled)
+    }
+
     @Test("styleBlock preserves raw text (no stripping)")
     @MainActor func preservesRawText() {
         let editor = makeEditor()

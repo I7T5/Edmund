@@ -116,10 +116,22 @@ public class EditorTextView: NSTextView {
 
     public var theme: EditorTheme = .load() {
         didSet {
+            cachedBodyFont = nil
+            cachedBodyParagraphStyle = nil
+            cachedMonospaceFont = nil
+            cachedHiddenFont = nil
             textAntialias = theme.antialias
             codeBlockLabelFont = theme.monospaceFont(ofSize: max(9, theme.monospaceFontSize - 3))
         }
     }
+
+    /// Styling touches these values for every block. Reusing the immutable
+    /// objects avoids feeding thousands of short-lived, equivalent attribute
+    /// values into Foundation's process-wide attribute-dictionary interner.
+    var cachedBodyFont: NSFont?
+    var cachedBodyParagraphStyle: NSParagraphStyle?
+    var cachedMonospaceFont: NSFont?
+    var cachedHiddenFont: NSFont?
 
     /// Mirror of `theme.antialias`, readable from the `nonisolated`
     /// layout-fragment vendor.
@@ -269,14 +281,22 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Font & Paragraph Style (derived from theme)
 
-    public var bodyFont: NSFont { theme.bodyFont }
+    public var bodyFont: NSFont {
+        if let cachedBodyFont { return cachedBodyFont }
+        let font = theme.bodyFont
+        cachedBodyFont = font
+        return font
+    }
 
     var bodyParagraphStyle: NSParagraphStyle {
+        if let cachedBodyParagraphStyle { return cachedBodyParagraphStyle }
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = theme.lineSpacing
         ps.paragraphSpacingBefore = theme.paragraphSpacingBefore
         ps.paragraphSpacing = 0
-        return ps
+        let style = ps.copy() as! NSParagraphStyle
+        cachedBodyParagraphStyle = style
+        return style
     }
 
     /// Apply a new theme and restyle every block in place. `persist: false`

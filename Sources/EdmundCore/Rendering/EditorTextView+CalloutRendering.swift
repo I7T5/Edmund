@@ -1,5 +1,23 @@
 import AppKit
 
+nonisolated(unsafe) private let reusableCalloutHeaderOverlayCache: NSCache<
+    NSString,
+    FragmentOverlay
+> = {
+    let cache = NSCache<NSString, FragmentOverlay>()
+    cache.countLimit = 128
+    return cache
+}()
+
+nonisolated(unsafe) private let reusableCalloutPathOverlayCache: NSCache<
+    NSString,
+    FragmentOverlay
+> = {
+    let cache = NSCache<NSString, FragmentOverlay>()
+    cache.countLimit = 64
+    return cache
+}()
+
 // MARK: - Callout Rendering
 //
 // A callout is a block quote whose first line is `[!type]` (case-insensitive).
@@ -135,6 +153,10 @@ extension EditorTextView {
         let header = info.headerRange
         let headerLine = NSRange(location: span.fullRange.location,
                                  length: headerLineEnd - span.fullRange.location)
+        let accentHex = info.style.accentHex(dark: isDarkAppearance)
+        let accentCacheKey = NSColor(hex: accentHex) == nil
+            ? renderingCacheColorKey(c.accent)
+            : accentHex
         if header.length > 0, header.upperBound <= result.length {
             if let titleRange = info.customTitleRange, titleRange.upperBound <= result.length {
                 // Custom title: hide the `[!type]` marker and render the title as
@@ -165,7 +187,9 @@ extension EditorTextView {
                 // width — overwrite it).
                 var iconAdvance: CGFloat = 0
                 if let icon = calloutIconPathOverlay(iconName: info.style.iconName,
-                                                     color: c.accent, titleFont: titleFont,
+                                                     color: c.accent,
+                                                     colorKey: accentCacheKey,
+                                                     titleFont: titleFont,
                                                      iconNudge: info.style.iconBaselineNudge) {
                     let anchor = NSRange(location: header.location, length: 1)
                     applyOverlay(icon, anchor: anchor, in: result)
@@ -205,6 +229,7 @@ extension EditorTextView {
                 }
                 if let overlay = calloutHeaderOverlay(iconName: info.style.iconName,
                                                       title: headerTitle, color: c.accent,
+                                                      colorKey: accentCacheKey,
                                                       iconNudge: info.style.iconBaselineNudge) {
                     applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
                                  in: result)
@@ -438,9 +463,18 @@ extension EditorTextView {
     /// — not an image — because the custom-title line wraps, and an image
     /// drawn on a multi-line fragment wedges its layout to one line (see
     /// docs/investigations/archives/callout-title-wrap-investigation.md). `nil` for an unknown icon.
-    private func calloutIconPathOverlay(iconName: String, color: NSColor,
+    private func calloutIconPathOverlay(iconName: String, color: NSColor, colorKey: String,
                                         titleFont: NSFont, iconNudge: CGFloat) -> FragmentOverlay? {
         let pointSize = bodyFont.pointSize
+        let cacheKey = "\(iconName)|\(titleFont.fontName)|\(titleFont.pointSize)|"
+            + "\(theme.standardLigatures)|"
+            + colorKey + "|\(iconNudge)"
+        if let cached = reusableCalloutPathOverlayCache.object(
+            forKey: cacheKey as NSString
+        ) {
+            return cached
+        }
+
         guard let svgPath = LucideIcons.path(iconName) else { return nil }
         let scale = pointSize / 24   // Lucide viewBox → icon square
         var transform = CGAffineTransform(scaleX: scale, y: scale)
@@ -449,10 +483,22 @@ extension EditorTextView {
         // the square on the title's optical middle (midpoint of x-height and
         // cap-height centers — matches the header image's icon placement).
         let opticalCenter = (titleFont.xHeight + titleFont.capHeight) / 4
-        return FragmentOverlay(path: scaled, color: color, lineWidth: 2 * scale,
-                               bounds: CGRect(x: 0,
-                                              y: opticalCenter - pointSize / 2 + iconNudge,
-                                              width: pointSize, height: pointSize))
+        let overlay = FragmentOverlay(
+            path: scaled,
+            color: color,
+            lineWidth: 2 * scale,
+            bounds: CGRect(
+                x: 0,
+                y: opticalCenter - pointSize / 2 + iconNudge,
+                width: pointSize,
+                height: pointSize
+            )
+        )
+        reusableCalloutPathOverlayCache.setObject(
+            overlay,
+            forKey: cacheKey as NSString
+        )
+        return overlay
     }
 
     // MARK: Header image (icon + title)
@@ -462,12 +508,22 @@ extension EditorTextView {
     /// be resolved. The top breathing room is NOT in the image — the caller
     /// raises the header line's minimum line height instead.
     private func calloutHeaderOverlay(iconName: String, title: String, color: NSColor,
+                                      colorKey: String,
                                       iconNudge: CGFloat) -> FragmentOverlay? {
         let pointSize = bodyFont.pointSize
+        let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+        let cacheKey = "\(iconName)|\(title)|\(titleFont.fontName)|\(titleFont.pointSize)|"
+            + "\(theme.standardLigatures)|"
+            + colorKey + "|\(iconNudge)"
+        if let cached = reusableCalloutHeaderOverlayCache.object(
+            forKey: cacheKey as NSString
+        ) {
+            return cached
+        }
+
         guard let symbol = LucideIcons.image(iconName, color: color, pointSize: pointSize)
         else { return nil }
 
-        let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
         let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: color]
         let titleStr = NSAttributedString(string: title, attributes: titleAttrs)
         let titleSize = titleStr.size()
@@ -493,8 +549,19 @@ extension EditorTextView {
         // caching a 1× bitmap (which would render the composited title soft).
         image.cacheMode = .never
 
-        return FragmentOverlay(image: image,
-                               bounds: CGRect(x: 0, y: -pointSize * 0.15,
-                                              width: width, height: contentHeight))
+        let overlay = FragmentOverlay(
+            image: image,
+            bounds: CGRect(
+                x: 0,
+                y: -pointSize * 0.15,
+                width: width,
+                height: contentHeight
+            )
+        )
+        reusableCalloutHeaderOverlayCache.setObject(
+            overlay,
+            forKey: cacheKey as NSString
+        )
+        return overlay
     }
 }

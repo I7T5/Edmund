@@ -40,7 +40,6 @@ extension EditorTextView {
         let budget = Duration.milliseconds(6)
 
         isUpdating = true
-        let nsString = ts.string as NSString
         let cursor = selectedRange().location
         var remaining = false
         // Blocks restyled this slice need their TextKit 2 layout invalidated
@@ -70,10 +69,6 @@ extension EditorTextView {
                     restyleBlock(idx, cursorInBlock: cursorInBlock)
                     blocks[idx].isStyled = true
                     restyled.insert(idx)
-                    let sep = blocks[idx].range.upperBound
-                    if sep < nsString.length && nsString.character(at: sep) == 0x0A {
-                        ts.setAttributes(baseAttributes, range: NSRange(location: sep, length: 1))
-                    }
                     if ContinuousClock.now - start > budget {
                         remaining = true
                         idx += 1
@@ -88,11 +83,7 @@ extension EditorTextView {
         }
 
         if let tlm = textLayoutManager {
-            for idx in restyled where idx < blocks.count {
-                if let range = blockTextRange(blocks[idx].range, tlm) {
-                    tlm.invalidateLayout(for: range)
-                }
-            }
+            invalidateLayout(forBlocks: restyled, in: tlm)
         }
         isUpdating = false
 
@@ -200,7 +191,6 @@ extension EditorTextView {
         let unstyled = (0...last).filter { !blocks[$0].isStyled }
         guard !unstyled.isEmpty else { return }
         isUpdating = true
-        let nsString = ts.string as NSString
         let cursor = selectedRange().location
         autoreleasepool {
             ts.beginEditing()
@@ -209,19 +199,14 @@ extension EditorTextView {
                     ? max(0, cursor - blocks[idx].range.location) : nil
                 restyleBlock(idx, cursorInBlock: cursorInBlock)
                 blocks[idx].isStyled = true
-                let sep = blocks[idx].range.upperBound
-                if sep < nsString.length && nsString.character(at: sep) == 0x0A {
-                    ts.setAttributes(baseAttributes, range: NSRange(location: sep, length: 1))
-                }
             }
             ts.endEditing()
         }
         if let tlm = textLayoutManager {
-            for idx in unstyled where idx < blocks.count {
-                if let range = blockTextRange(blocks[idx].range, tlm) {
-                    tlm.invalidateLayout(for: range)
-                }
-            }
+            invalidateLayout(
+                forBlocks: IndexSet(unstyled),
+                in: tlm
+            )
         }
         isUpdating = false
     }

@@ -108,22 +108,12 @@ extension EditorTextView {
         }
         let deferred = dirty.subtracting(syncSet)
 
-        let nsString = ts.string as NSString
         ts.beginEditing()
         for idx in syncSet where idx < blocks.count {
             let cursorInBlock: Int? = (idx == newActiveIndex)
                 ? max(0, cursorInRaw - blocks[idx].range.location) : nil
             restyleBlock(idx, cursorInBlock: cursorInBlock)
             blocks[idx].isStyled = true
-
-            // Full recompose resets separator newlines to base attributes as
-            // a side effect of rebuilding the whole string; do the same for
-            // dirty blocks so stale paragraph styles can't linger on the `\n`
-            // after e.g. a former callout.
-            let sep = blocks[idx].range.upperBound
-            if sep < nsString.length && nsString.character(at: sep) == 0x0A {
-                ts.setAttributes(baseAttributes, range: NSRange(location: sep, length: 1))
-            }
         }
         ts.endEditing()
 
@@ -134,11 +124,7 @@ extension EditorTextView {
         // an attribute-only change. Force the restyled blocks to re-lay-out so
         // the new indent shows immediately instead of after the next cursor move.
         if let tlm = textLayoutManager {
-            for idx in syncSet where idx < blocks.count {
-                if let range = blockTextRange(blocks[idx].range, tlm) {
-                    tlm.invalidateLayout(for: range)
-                }
-            }
+            invalidateLayout(forBlocks: syncSet, in: tlm)
         }
 
         for idx in deferred where idx < blocks.count {
@@ -179,6 +165,29 @@ extension EditorTextView {
         guard let start = tlm.location(tlm.documentRange.location, offsetBy: nsRange.location),
               let end = tlm.location(start, offsetBy: nsRange.length) else { return nil }
         return NSTextRange(location: start, end: end)
+    }
+
+    /// Invalidates one TextKit range per contiguous run of blocks. Styling
+    /// typically advances through adjacent blocks, so mapping and invalidating
+    /// every block separately only repeats TextKit bookkeeping.
+    func invalidateLayout(
+        forBlocks indexes: IndexSet,
+        in textLayoutManager: NSTextLayoutManager
+    ) {
+        for run in indexes.rangeView {
+            let lower = run.lowerBound
+            let upper = min(run.upperBound, blocks.count)
+            guard lower >= 0, lower < upper else { continue }
+            let start = blocks[lower].range.location
+            let end = blocks[upper - 1].range.upperBound
+            guard let range = blockTextRange(
+                NSRange(location: start, length: end - start),
+                textLayoutManager
+            ) else {
+                continue
+            }
+            textLayoutManager.invalidateLayout(for: range)
+        }
     }
 
     /// Incremental recompose: only re-styles the old and new active blocks.

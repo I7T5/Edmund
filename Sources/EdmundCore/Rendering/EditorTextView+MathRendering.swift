@@ -6,9 +6,12 @@ import SwiftMath
 private final class MathRender {
     let image: NSImage
     let descent: CGFloat
+    let overlays = NSCache<NSString, FragmentOverlay>()
+
     init(image: NSImage, descent: CGFloat) {
         self.image = image
         self.descent = descent
+        overlays.countLimit = 8
     }
 }
 
@@ -100,8 +103,22 @@ extension EditorTextView {
         descent -= 1 / backingScale
         // Drop the image so its baseline (descent above the image bottom) lands
         // on the text baseline.
-        return FragmentOverlay(image: render.image,
-                               bounds: CGRect(x: 0, y: -descent, width: width, height: height))
+        let overlayKey = String(
+            format: "%@|%.3f|%.3f|%.3f",
+            key,
+            width,
+            height,
+            descent
+        )
+        if let cached = render.overlays.object(forKey: overlayKey as NSString) {
+            return cached
+        }
+        let overlay = FragmentOverlay(
+            image: render.image,
+            bounds: CGRect(x: 0, y: -descent, width: width, height: height)
+        )
+        render.overlays.setObject(overlay, forKey: overlayKey as NSString)
+        return overlay
     }
 
     /// The usable text width for one line — the text container minus its line

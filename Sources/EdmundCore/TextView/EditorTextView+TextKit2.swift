@@ -121,12 +121,36 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
     }
 
     public override var hash: Int {
+        var hasher = Hasher()
         switch kind {
-        case .box: return 1
-        case .leftBar: return 2
-        case .tableRow: return 3
-        case .horizontalRule: return 4
+        case .box(let background, let borderColor, let borderEdges,
+                  let borderWidth, let bottomPad):
+            hasher.combine(1)
+            hasher.combine(background)
+            hasher.combine(borderColor)
+            hasher.combine(borderEdges.rawValue)
+            hasher.combine(borderWidth)
+            hasher.combine(bottomPad)
+        case .leftBar(let color, let width):
+            hasher.combine(2)
+            hasher.combine(color)
+            hasher.combine(width)
+        case .tableRow(let offsets, let width, let leftInset,
+                       let separator, let bottomBorder):
+            hasher.combine(3)
+            hasher.combine(offsets)
+            hasher.combine(width)
+            hasher.combine(leftInset)
+            hasher.combine(separator)
+            hasher.combine(bottomBorder)
+        case .horizontalRule(let color, let centerOffset):
+            hasher.combine(4)
+            hasher.combine(color)
+            hasher.combine(centerOffset)
         }
+        hasher.combine(inset)
+        hasher.combine(hugsTextTop)
+        return hasher.finalize()
     }
 }
 
@@ -146,7 +170,13 @@ public final class BlockDecorationList: NSObject, @unchecked Sendable {
         return decorations == other.decorations
     }
 
-    public override var hash: Int { decorations.count }
+    public override var hash: Int {
+        var hasher = Hasher()
+        for decoration in decorations {
+            hasher.combine(decoration)
+        }
+        return hasher.finalize()
+    }
 }
 
 /// An image or stroked vector path drawn at a character's laid-out position,
@@ -166,6 +196,7 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
     public let pathColor: NSColor?
     public let pathLineWidth: CGFloat
     public let bounds: CGRect
+    private let cachedHash: Int
 
     public init(image: NSImage, bounds: CGRect) {
         self.image = image
@@ -173,15 +204,26 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
         self.pathColor = nil
         self.pathLineWidth = 0
         self.bounds = bounds
+        var hasher = Hasher()
+        hasher.combine(ObjectIdentifier(image))
+        Self.combine(bounds, into: &hasher)
+        self.cachedHash = hasher.finalize()
         super.init()
     }
 
     public init(path: CGPath, color: NSColor, lineWidth: CGFloat, bounds: CGRect) {
+        let frozenPath = path.copy() ?? path
         self.image = nil
-        self.path = path
+        self.path = frozenPath
         self.pathColor = color
         self.pathLineWidth = lineWidth
         self.bounds = bounds
+        var hasher = Hasher()
+        Self.combine(frozenPath, into: &hasher)
+        hasher.combine(color)
+        hasher.combine(lineWidth)
+        Self.combine(bounds, into: &hasher)
+        self.cachedHash = hasher.finalize()
         super.init()
     }
 
@@ -192,7 +234,40 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
             && other.bounds == bounds
     }
 
-    public override var hash: Int { Int(bounds.width) ^ Int(bounds.height) }
+    public override var hash: Int { cachedHash }
+
+    private static func combine(_ bounds: CGRect, into hasher: inout Hasher) {
+        hasher.combine(bounds.origin.x)
+        hasher.combine(bounds.origin.y)
+        hasher.combine(bounds.width)
+        hasher.combine(bounds.height)
+    }
+
+    /// `CGPath.hashValue` is always zero on current macOS, so hash the same
+    /// structural elements that Core Graphics uses for path equality.
+    private static func combine(_ path: CGPath, into hasher: inout Hasher) {
+        path.applyWithBlock { elementPointer in
+            let element = elementPointer.pointee
+            hasher.combine(element.type.rawValue)
+            let pointCount: Int
+            switch element.type {
+            case .moveToPoint, .addLineToPoint:
+                pointCount = 1
+            case .addQuadCurveToPoint:
+                pointCount = 2
+            case .addCurveToPoint:
+                pointCount = 3
+            case .closeSubpath:
+                pointCount = 0
+            @unknown default:
+                pointCount = 0
+            }
+            for index in 0..<pointCount {
+                hasher.combine(element.points[index].x)
+                hasher.combine(element.points[index].y)
+            }
+        }
+    }
 }
 
 /// A table cell too wide for its column: its real characters are hidden, and
@@ -204,20 +279,48 @@ public final class TableCellWrap: NSObject, @unchecked Sendable {
     public let styled: NSAttributedString
     public let x: CGFloat
     public let contentWidth: CGFloat
+    private let cachedHash: Int
 
     public init(styled: NSAttributedString, x: CGFloat, contentWidth: CGFloat) {
-        self.styled = styled
+        let frozenStyled = styled.copy() as! NSAttributedString
+        self.styled = frozenStyled
         self.x = x
         self.contentWidth = contentWidth
+        var hasher = Hasher()
+        Self.combine(frozenStyled, into: &hasher)
+        hasher.combine(x)
+        hasher.combine(contentWidth)
+        self.cachedHash = hasher.finalize()
     }
 
     public override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? TableCellWrap else { return false }
-        return other.styled.string == styled.string
-            && abs(other.x - x) < 0.5 && abs(other.contentWidth - contentWidth) < 0.5
+        return other.styled.isEqual(to: styled)
+            && other.x == x && other.contentWidth == contentWidth
     }
 
-    public override var hash: Int { styled.string.hashValue }
+    public override var hash: Int { cachedHash }
+
+    private static func combine(
+        _ styled: NSAttributedString,
+        into hasher: inout Hasher
+    ) {
+        hasher.combine(styled.string)
+        styled.enumerateAttributes(
+            in: NSRange(location: 0, length: styled.length)
+        ) { attributes, range, _ in
+            hasher.combine(range.location)
+            hasher.combine(range.length)
+            for key in attributes.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+                hasher.combine(key.rawValue)
+                if let object = attributes[key] as? NSObject {
+                    hasher.combine(object.hash)
+                } else {
+                    hasher.combine(String(reflecting: attributes[key]))
+                }
+            }
+        }
+    }
 }
 
 /// A table row's overflowing cells, one `TableCellWrap` per overflowing cell.
@@ -233,7 +336,13 @@ public final class TableCellWrapList: NSObject, @unchecked Sendable {
         return wraps == other.wraps
     }
 
-    public override var hash: Int { wraps.count }
+    public override var hash: Int {
+        var hasher = Hasher()
+        for wrap in wraps {
+            hasher.combine(wrap)
+        }
+        return hasher.finalize()
+    }
 }
 
 /// Layout fragment that draws its paragraph's `BlockDecoration` behind the
