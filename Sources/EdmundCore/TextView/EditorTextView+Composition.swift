@@ -124,7 +124,11 @@ extension EditorTextView {
         // an attribute-only change. Force the restyled blocks to re-lay-out so
         // the new indent shows immediately instead of after the next cursor move.
         if let tlm = textLayoutManager {
-            invalidateLayout(forBlocks: syncSet, in: tlm)
+            for idx in syncSet where idx < blocks.count {
+                if let range = blockTextRange(blocks[idx].range, tlm) {
+                    tlm.invalidateLayout(for: range)
+                }
+            }
         }
 
         for idx in deferred where idx < blocks.count {
@@ -165,29 +169,6 @@ extension EditorTextView {
         guard let start = tlm.location(tlm.documentRange.location, offsetBy: nsRange.location),
               let end = tlm.location(start, offsetBy: nsRange.length) else { return nil }
         return NSTextRange(location: start, end: end)
-    }
-
-    /// Invalidates one TextKit range per contiguous run of blocks. Styling
-    /// typically advances through adjacent blocks, so mapping and invalidating
-    /// every block separately only repeats TextKit bookkeeping.
-    func invalidateLayout(
-        forBlocks indexes: IndexSet,
-        in textLayoutManager: NSTextLayoutManager
-    ) {
-        for run in indexes.rangeView {
-            let lower = run.lowerBound
-            let upper = min(run.upperBound, blocks.count)
-            guard lower >= 0, lower < upper else { continue }
-            let start = blocks[lower].range.location
-            let end = blocks[upper - 1].range.upperBound
-            guard let range = blockTextRange(
-                NSRange(location: start, length: end - start),
-                textLayoutManager
-            ) else {
-                continue
-            }
-            textLayoutManager.invalidateLayout(for: range)
-        }
     }
 
     /// Incremental recompose: only re-styles the old and new active blocks.

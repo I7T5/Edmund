@@ -83,7 +83,11 @@ extension EditorTextView {
         }
 
         if let tlm = textLayoutManager {
-            invalidateLayout(forBlocks: restyled, in: tlm)
+            for idx in restyled where idx < blocks.count {
+                if let range = blockTextRange(blocks[idx].range, tlm) {
+                    tlm.invalidateLayout(for: range)
+                }
+            }
         }
         isUpdating = false
 
@@ -203,10 +207,11 @@ extension EditorTextView {
             ts.endEditing()
         }
         if let tlm = textLayoutManager {
-            invalidateLayout(
-                forBlocks: IndexSet(unstyled),
-                in: tlm
-            )
+            for idx in unstyled where idx < blocks.count {
+                if let range = blockTextRange(blocks[idx].range, tlm) {
+                    tlm.invalidateLayout(for: range)
+                }
+            }
         }
         isUpdating = false
     }

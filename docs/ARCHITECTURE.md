@@ -18,7 +18,6 @@ rule applies to both.
 swift build                 # debug build of both targets
 swift test                  # full suite (≈750+ tests, ~10s)
 swift test --filter Callout # one suite
-./scripts/benchmark-open.sh report # release-mode open-document benchmark
 ./scripts/build-app.sh      # builds build/Edmund.app (release + bundles + icon + codesign)
 ```
 
@@ -537,14 +536,6 @@ only with reason):
    get renamed to `worktree-*`. `.worktrees/` is gitignored. Distinct from
    `.claude/worktrees/`, which Claude Code's own EnterWorktree tool manages
    automatically for agent isolation — don't hand-edit that one.
-7. **Performance changes start from the benchmark contract.** Normal
-   `swift test` pins the generated workloads, validation, statistics, and gate
-   behavior. Authoritative reports require a clean tree and clean release
-   build; each sample runs in a fresh process. The opt-in gate combines paired
-   scaling, dispersion, and same-machine baseline-regression checks. Wall-clock
-   gates do not run on shared CI hardware. Full method:
-   `docs/dev-guides/performance-benchmarks.md`.
-
 If you (the agent) improve this workflow or discover a better verification
 trick, update this section.
 
