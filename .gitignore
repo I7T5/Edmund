@@ -45,3 +45,4 @@ sparkle_private_key.txt
 
 # Payload build lives in I7T5/edmund-extensions; local copy kept for convenience.
 scripts/build-ratex-payload.sh
+scripts/build-mermaid-payload.sh
