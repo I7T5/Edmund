@@ -263,6 +263,7 @@ struct ExtensionsSettingsView: View {
         return ExtensionRow(
             name: ext.name,
             isEnabled: enabledIDs.contains(ext.id),
+            isInstalled: ext.isInstalled,
             isEmphasized: isEmphasized,
             dotInset: Self.dotInset,
             dotGutter: Self.dotGutter,
@@ -308,6 +309,7 @@ struct ExtensionsSettingsView: View {
 private struct ExtensionRow: View {
     let name: String
     let isEnabled: Bool
+    let isInstalled: Bool
     let isEmphasized: Bool
     let dotInset: CGFloat
     let dotGutter: CGFloat
@@ -317,10 +319,12 @@ private struct ExtensionRow: View {
     /// by hand here, so nothing else is going to adjust the label for it.
     /// A disabled extension is dimmed two steps down from an enabled one —
     /// tertiary, not secondary — so the difference is visible at a glance next to
-    /// an enabled row rather than only in comparison.
+    /// an enabled row rather than only in comparison. Dimming means *disabled*,
+    /// so it applies only under "Installed": a recommended row has nothing to
+    /// enable yet, and dimming it would read as a state it can't be in.
     private var labelColor: Color {
         if isEmphasized { return Color(nsColor: .selectedMenuItemTextColor) }
-        return Color(nsColor: isEnabled ? .labelColor : .tertiaryLabelColor)
+        return Color(nsColor: isEnabled || !isInstalled ? .labelColor : .tertiaryLabelColor)
     }
 
     /// Dimmer than the name it marks, so it reads as a quiet indicator rather
