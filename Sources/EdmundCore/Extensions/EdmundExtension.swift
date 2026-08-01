@@ -87,8 +87,12 @@ public protocol EdmundExtension: AnyObject {
     var repositoryURL: URL? { get }
     /// Human-readable installed footprint, e.g. "3.2 MB". `nil` if unknown.
     var installedSizeDescription: String? { get }
-    /// When this extension's payload was last published, for a relative
-    /// "X days/months/years ago" display. `nil` hides the row.
+    /// When this **extension** last shipped a new `version` — not when its
+    /// upstream payload was published. The pane shows it beside the
+    /// extension's own version, so a date from the payload's release schedule
+    /// would describe a different thing than the number above it. Bump it
+    /// whenever `version` changes. Relative display ("X months ago"); `nil`
+    /// hides the row.
     var lastUpdated: Date? { get }
     /// Download count, if there's a real source for it. `nil` hides the row
     /// — no extension here has a live analytics backend yet, so this should
@@ -158,11 +162,12 @@ public final class AdvancedMathExtension: EdmundExtension {
     public let repositoryURL: URL? = nil
     // Measured from the built payload: 2.6 MB wasm + 540 KB fonts + 8 KB glue.
     public let installedSizeDescription: String? = "3.2 MB"
-    // ratex-wasm@0.1.12's actual npm publish date (verified against the
-    // registry, not a guess) — not Edmund's own commit date.
+    // When v1.0.0 of *this extension* shipped (`fe4cf3b`), not when the RaTeX
+    // wasm it downloads was published — the row sits under the version above
+    // and has to describe the same thing.
     public let lastUpdated: Date? = {
         var c = DateComponents()
-        c.year = 2026; c.month = 6; c.day = 25
+        c.year = 2026; c.month = 7; c.day = 28
         return Calendar(identifier: .gregorian).date(from: c)
     }()
     // No real download-analytics source exists for this extension.

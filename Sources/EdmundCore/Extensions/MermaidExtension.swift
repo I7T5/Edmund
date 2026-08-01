@@ -39,11 +39,12 @@ public final class MermaidExtension: EdmundExtension {
     // Measured from the unpacked payload: a 1.49 MB bundled JS file plus three
     // license texts.
     public let installedSizeDescription: String? = "1.5 MB"
-    // beautiful-mermaid 1.1.3's actual npm publish date (read from the registry,
-    // not a guess) — not Edmund's own commit date.
+    // When v1.0.0 of *this extension* shipped, not when the beautiful-mermaid
+    // it downloads was published (2026-01-28) — the row sits under the version
+    // above and has to describe the same thing.
     public let lastUpdated: Date? = {
         var c = DateComponents()
-        c.year = 2026; c.month = 1; c.day = 28
+        c.year = 2026; c.month = 8; c.day = 1
         return Calendar(identifier: .gregorian).date(from: c)
     }()
     // No real download-analytics source exists for this extension.
