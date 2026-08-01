@@ -121,7 +121,7 @@ public enum ExtensionRegistry {
 
 /// "Advanced Math" — an opt-in, KaTeX-compatible math engine (RaTeX), run as
 /// sandboxed WebAssembly in JavaScriptCore rather than shipped in the binary.
-/// See `RaTeXRelease`/`RaTeXInstaller`/`WasmMathHost` for the download,
+/// See `RaTeXRelease`/`ExtensionPayloadInstaller`/`WasmMathHost` for the download,
 /// verify, and load machinery this wraps.
 @MainActor
 public final class AdvancedMathExtension: EdmundExtension {
@@ -172,7 +172,7 @@ public final class AdvancedMathExtension: EdmundExtension {
 
     /// The installer's current state, for Settings to surface a specific
     /// reason on failure (e.g. RaTeX not configured in this build yet).
-    public var installState: MathExtensionState {
+    public var installState: ExtensionInstallState {
         get async { await renderer.installState }
     }
 

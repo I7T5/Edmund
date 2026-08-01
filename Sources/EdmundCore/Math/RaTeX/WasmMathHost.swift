@@ -8,7 +8,7 @@ import JavaScriptCore
 /// (`TextEncoder`/`TextDecoder`) and is an ES module we flatten to plain
 /// globals so `initSync(bytes)` can byte-init it with no `fetch`.
 ///
-/// Install directory layout (produced by `RaTeXInstaller`):
+/// Install directory layout (produced by `ExtensionPayloadInstaller`):
 ///   `ratex_wasm_bg.wasm`, `ratex_wasm.js`, `fonts/KaTeX_*.ttf`
 ///
 /// Confined to the main actor: the only callers (`mathOverlay`,

@@ -5,7 +5,7 @@ import AppKit
 @testable import EdmundCore
 
 // `.serialized`: a couple of tests manipulate the shared real install
-// directory (`RaTeXInstaller.installDirectory`); running them in parallel
+// directory (`RaTeXRelease.payload.installDirectory`); running them in parallel
 // races (one removes the dir while another writes into it).
 @Suite("RaTeX — scaffold", .serialized)
 struct RaTeXScaffoldTests {
@@ -35,10 +35,10 @@ struct RaTeXScaffoldTests {
 
     @Test("Hash verify accepts a matching digest and rejects a mismatch")
     func hashVerification() async throws {
-        let installer = RaTeXInstaller()
+        let installer = ExtensionPayloadInstaller(payload: RaTeXRelease.payload)
         let data = Data("hello ratex".utf8)
 
-        await #expect(throws: RaTeXInstallError.hashMismatch) {
+        await #expect(throws: ExtensionInstallError.hashMismatch) {
             try await installer.verify(data, sha256: "0000000000000000000000000000000000000000000000000000000000000000")
         }
         try await installer.verify(data, sha256: sha256Hex(data))   // does not throw
@@ -63,7 +63,7 @@ struct RaTeXScaffoldTests {
         try tar.run(); tar.waitUntilExit()
         let archive = try Data(contentsOf: tarball)
 
-        let installer = RaTeXInstaller()
+        let installer = ExtensionPayloadInstaller(payload: RaTeXRelease.payload)
         let dir = fm.temporaryDirectory.appendingPathComponent("ratex-inst-\(UUID().uuidString)", isDirectory: true)
         defer { try? fm.removeItem(at: dir) }
 
@@ -78,8 +78,8 @@ struct RaTeXScaffoldTests {
 
     @Test("Uninstall removes the version directory and resets state")
     func uninstallRemovesInstallDirectory() async throws {
-        let installer = RaTeXInstaller()
-        let dir = RaTeXInstaller.installDirectory
+        let installer = ExtensionPayloadInstaller(payload: RaTeXRelease.payload)
+        let dir = RaTeXRelease.payload.installDirectory
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data("stale".utf8).write(to: dir.appendingPathComponent("ratex_wasm_bg.wasm"))
 
@@ -92,8 +92,8 @@ struct RaTeXScaffoldTests {
 
     @Test("Uninstall is safe to call when nothing was ever installed")
     func uninstallWithoutInstallDoesNotThrow() async {
-        let installer = RaTeXInstaller()
-        try? FileManager.default.removeItem(at: RaTeXInstaller.installDirectory)   // ensure absent
+        let installer = ExtensionPayloadInstaller(payload: RaTeXRelease.payload)
+        try? FileManager.default.removeItem(at: RaTeXRelease.payload.installDirectory)   // ensure absent
         await installer.uninstall()   // must not crash
         let state = await installer.state
         #expect(state == .notInstalled)

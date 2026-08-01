@@ -29,7 +29,7 @@ struct RaTeXWasmIntegrationTests {
         guard let archiveURL else { return }   // skipped without the local payload
         let data = try Data(contentsOf: archiveURL)
 
-        let installer = RaTeXInstaller()
+        let installer = ExtensionPayloadInstaller(payload: RaTeXRelease.payload)
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ratex-it-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: dir) }
