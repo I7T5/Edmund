@@ -283,7 +283,20 @@ struct HTMLRenderer: MarkupVisitor {
         // swift-markdown includes a trailing newline on the block's code.
         let code = raw.hasSuffix("\n") ? String(raw.dropLast()) : raw
         let pre = "<pre><code\(lang)>\(Self.highlightCode(code, language: codeBlock.language))</code></pre>"
-        return "<div class=\"code-block-wrap\">\(Self.copyButtonHTML(code: code))\(pre)</div>"
+        let block = "<div class=\"code-block-wrap\">\(Self.copyButtonHTML(code: code))\(pre)</div>"
+        guard MermaidSyntax.matches(language: codeBlock.language) else { return block }
+        // This visitor is pure and non-isolated, so it can't reach the
+        // @MainActor renderer; it emits a placeholder that `DocumentHTML`
+        // fills in a later pass. The diagram source rides along base64-encoded
+        // so no amount of markdown punctuation can break out of the attribute.
+        //
+        // The code block is WRAPPED rather than replaced: when the extension
+        // is off, not installed, or the diagram doesn't parse, the fill pass
+        // unwraps to exactly this markup — a normal code block, copy button
+        // and syntax coloring included — so the fallback needs no separate
+        // implementation and can't drift from the real thing.
+        let source = Data(code.utf8).base64EncodedString()
+        return "<div class=\"mermaid-diagram\" data-source=\"\(source)\">\(block)</div>"
     }
 
     /// A code block's copy button: a bare icon, hidden until the block is

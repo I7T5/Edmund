@@ -33,6 +33,17 @@ public final class ReadModeWebView: WKWebView {
         coordinator.owner = self
         navigationDelegate = coordinator
         if #available(macOS 13.3, *) { isInspectable = true }
+
+        // A rendering engine was enabled, installed, or removed (e.g. the
+        // Mermaid extension toggled in Settings). Re-render so diagrams appear
+        // or fall back to code blocks without the user leaving and re-entering
+        // Read mode. Same treatment as an appearance flip; the scroll position
+        // is preserved by `reloadHTML()`.
+        NotificationCenter.default.addObserver(
+            forName: .renderEngineChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadHTML() }
+        }
     }
 
     @available(*, unavailable)
