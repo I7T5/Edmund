@@ -325,11 +325,12 @@ enum AppSettings {
         applyExtensionStates()
     }
 
-    /// Wires enabled extensions into the app's live state: today, whether
-    /// "Advanced Math" is enabled decides `MathRendering.shared.alternate`
-    /// (RaTeX vs. falling back to SwiftMath), and on-screen equations
-    /// restyle via `engineDidChange()`. Called at launch and whenever an
-    /// extension is enabled/disabled in Settings.
+    /// Wires enabled extensions into the app's live state: whether "Advanced
+    /// Math" is enabled decides `MathRendering.shared.alternate` (RaTeX vs.
+    /// falling back to SwiftMath), and whether "Mermaid" is enabled decides
+    /// whether `MermaidRenderer.shared` will render diagrams at all. On-screen
+    /// content restyles via `.renderEngineChanged`. Called at launch and
+    /// whenever an extension is enabled/disabled in Settings.
     @MainActor static func applyExtensionStates() {
         let mathExt = AdvancedMathExtension.shared
         if isExtensionEnabled(mathExt.id) {
@@ -346,6 +347,19 @@ enum AppSettings {
         } else {
             MathRendering.shared.alternate = nil
         }
+
+        // Same shape for Mermaid, minus the fallback: there is no built-in
+        // diagram engine to degrade to, so "disabled" simply means the fenced
+        // block stays a code block.
+        let mermaidExt = MermaidExtension.shared
+        MermaidRenderer.shared.isEnabled = isExtensionEnabled(mermaidExt.id)
+        if MermaidRenderer.shared.isEnabled {
+            Task {
+                await mermaidExt.download()
+                NotificationCenter.default.post(name: .renderEngineChanged, object: nil)
+            }
+        }
+
         MathRendering.shared.engineDidChange()
     }
 

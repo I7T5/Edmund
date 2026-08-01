@@ -505,8 +505,8 @@ public class EditorTextView: NSTextView {
         // (which would reset every fragment to a height estimate).
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(mathEngineDidChange(_:)),
-            name: .mathEngineChanged,
+            selector: #selector(renderEngineDidChange(_:)),
+            name: .renderEngineChanged,
             object: nil
         )
     }
@@ -524,7 +524,7 @@ public class EditorTextView: NSTextView {
     }
     #endif
 
-    @objc private func mathEngineDidChange(_ note: Notification) {
+    @objc private func renderEngineDidChange(_ note: Notification) {
         guard !blocks.isEmpty else { return }
         recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
                       cursorInRaw: selectedRange().location)

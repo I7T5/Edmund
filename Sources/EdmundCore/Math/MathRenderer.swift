@@ -153,12 +153,16 @@ public final class MathRendering {
     /// Call after switching the active engine (or finishing an install) so
     /// on-screen equations re-render with the new engine.
     public func engineDidChange() {
-        NotificationCenter.default.post(name: .mathEngineChanged, object: nil)
+        NotificationCenter.default.post(name: .renderEngineChanged, object: nil)
     }
 }
 
 public extension Notification.Name {
-    /// Posted by `MathRendering.engineDidChange()`. Editors observe this and
-    /// recompose their math blocks (narrowest recompose that covers them).
-    static let mathEngineChanged = Notification.Name("EdmundCore.mathEngineChanged")
+    /// Posted when a rendering engine is switched, installed, or uninstalled —
+    /// by `MathRendering.engineDidChange()`, and by `AppSettings` when an
+    /// extension is enabled or disabled. Editors observe this and recompose
+    /// their blocks (narrowest recompose that covers them); Read mode
+    /// re-renders. Deliberately not math-specific: one signal for "what draws
+    /// this document changed" beats one per engine.
+    static let renderEngineChanged = Notification.Name("EdmundCore.renderEngineChanged")
 }

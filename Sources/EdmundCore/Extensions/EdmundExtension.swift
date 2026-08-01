@@ -103,11 +103,21 @@ public protocol EdmundExtension: AnyObject {
     /// `false` when there's no update-checking source — the "Update" button
     /// stays hidden rather than lying about freshness.
     var hasUpdate: Bool { get }
+    /// Whether this build has a verifiable payload pinned for the extension.
+    /// `false` means "not available in this build yet" — Settings says so
+    /// instead of offering a download that can never succeed. Defaults to
+    /// `true` for an extension with nothing to download.
+    var payloadIsConfigured: Bool { get }
+}
+
+public extension EdmundExtension {
+    var payloadIsConfigured: Bool { true }
 }
 
 /// Catalog of the app's built-in extensions. SwiftMath itself is not an
-/// extension — it's the always-on default — so today's only entry is the
-/// RaTeX-powered "Advanced Math" option layered over it.
+/// extension — it's the always-on default — so the RaTeX-powered "Advanced
+/// Math" option is layered over it, while "Mermaid" adds a capability the app
+/// has none of by default.
 ///
 /// This is a static array, not a fetched registry — there's no backend here.
 /// A real registry, if one gets built later, should follow the shape
@@ -116,7 +126,7 @@ public protocol EdmundExtension: AnyObject {
 /// noted for later, not built now.
 @MainActor
 public enum ExtensionRegistry {
-    public static let all: [EdmundExtension] = [AdvancedMathExtension.shared]
+    public static let all: [EdmundExtension] = [AdvancedMathExtension.shared, MermaidExtension.shared]
 }
 
 /// "Advanced Math" — an opt-in, KaTeX-compatible math engine (RaTeX), run as
@@ -163,6 +173,7 @@ public final class AdvancedMathExtension: EdmundExtension {
     // No update-checking source exists yet — same "scaffold now, wire later"
     // shape as the install flow itself.
     public let hasUpdate = false
+    public var payloadIsConfigured: Bool { RaTeXRelease.isConfigured }
 
     public let renderer: RaTeXRenderer
 
