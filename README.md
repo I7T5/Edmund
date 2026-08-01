@@ -96,7 +96,8 @@ The list is by no means exhaustive, and neither was it meant to be. I just wante
 - Apple, Iowan Old Style, [Tomorrow Light](https://github.com/chriskempson/tomorrow-theme) and [One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) for the aesthetics
 - [create-dmg](https://github.com/sindresorhus/create-dmg), [screenshot-studio](screenshot-studio.com), and [shields](shields.io) for the utilities
 - Claude, [caveman](https://github.com/JuliusBrussee/caveman), and [ponytail](https://github.com/DietrichGebert/ponytail) for the engineering. 
-<!-- - [RaTeX], [beautiful-mermaid], [Shiki] for extension functionalities -->
+- [RaTeX](https://ratex.lites.dev) and [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) for extension functionalities
+<!-- Shiki stays out until a Shiki/TextMate backend actually ships — see CodeSyntaxBackend.swift -->
 
 Most importantly, many thanks to our contributors: 
 

@@ -187,7 +187,8 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | List indent guides | Faint vertical hairlines on list items: one per *ancestor* level spanning the item, plus the item's own column beside its wrapped continuation lines. Offsets from `listGuideOffsets(depth:slotWidth:)` (`Rendering/EditorTextView+ListRendering.swift`), written to `.listGuides` **whether or not the setting is on** — the fragment gates the drawing, so toggling is a re-vend, never a restyle. `EditorTextView.showListIndentGuides`; Settings ▸ Edit. Geometry traps (container-relative offsets, `lineFragmentPadding`): [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Line numbers | `TextView/EditorTextView+LineNumbers.swift` — source line numbers (Settings ▸ Edit ▸ Lines, off by default), `EditorTextView.showLineNumbers`. **Two placements over one walk**, and the placement is **not** a setting: it follows whether the margin can hold them (beside the content by default, a `LineNumberRulerView` at the window edge otherwise). Also home to `line(forOffset:)`/`offset(forLine:)`, binary-searching the cached `lineStarts`. Editor-only; never printed. Placement rules, the macOS 14 SIGSEGV, draw rules and the tabular-figure face: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Focus mode | `TextView/EditorTextView+FocusMode.swift` — dims all but the lines the selection touches (Settings ▸ Edit ▸ Editor, View ▸ Focus Mode; off by default), `EditorTextView.focusMode`. **One transparency layer around `DecoratedTextLayoutFragment.draw`**, so text and its decorations fade as one composite; it cannot be a scrim (NSTextView composites fragments *after* `draw(_:)` returns). Editor-only. Why, and the measurements: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
-| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: math + local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
+| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: math + local images → data URIs, Mermaid diagrams → inline SVG), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
+| Extensions | `Extensions/` — `EdmundExtension` (protocol + metadata), `ExtensionRegistry.all` (a static array; there is no backend), `ExtensionPayloadInstaller` (download → SHA-256 verify → unpack → stamp → atomic move, shared by every payload). Two entries: **Advanced Math** (RaTeX WASM, `Math/RaTeX/`) and **Mermaid** (`beautiful-mermaid` JS, `Diagrams/`). Neither is bundled — each is a pinned, hash-verified payload fetched at runtime and hosted in JavaScriptCore, so the shipped binary stays 100% Swift and the default app size is unchanged. Enable state persists in `settings.extensions.enabledIDs`; `AppSettings.applyExtensionStates()` wires it to the live renderers and posts `.renderEngineChanged`. Settings ▸ Extensions. **Not** a third-party code-loading mechanism — see the header of `EdmundExtension.swift`. |
 | Icons | `Model/LucideIcons.swift` — vendored [Lucide](https://lucide.dev) SVGs (ISC, `LICENSES/lucide.txt`). Callout headers use them in **both** modes: Read inlines the SVG (CSS-tinted via `currentColor`); Edit rasterizes to a tinted `NSImage` overlay. SF Symbols can't ship in exported PDFs (license); app-chrome SF Symbols are fine (in-app UI). Edit-mode task checkboxes still use SF Symbols (on-screen only); Read-mode checkboxes are a composed Lucide SVG. |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift`, `+AutoPairs.swift`, `+ListRenumbering.swift` |
 | Hard wrap | `Editing/HardWrap.swift` (pure `wrap`/`unwrap`) + `Editing/EditorTextView+HardWrap.swift` (Edit ▸ Hard Wrap Paragraphs). Settings ▸ Edit ▸ Document, off by default; read at **load/save time in `Document`**, not pushed onto the editor. Treated as a property of the *file*: opening a wrapped file joins its paragraphs, save re-wraps, and **only files that arrived wrapped are wrapped** (`wasHardWrapped`). The column is **derived from the file's own existing breaks**, not guessed. Requires strict line breaks. Full rules, GFM constraints and perf numbers: [`architecture/hard-wrap.md`](architecture/hard-wrap.md). |
@@ -839,11 +840,20 @@ Gatekeeper on first launch; the README documents the
 ID + notarization (§8) would remove the prompt entirely.
 
 **Never release anything through this pipeline except the main app.** The
-tag flow builds and ships `Edmund.app` only. Extension payloads (e.g. the
-RaTeX WASM) have their own hosting/release path — never bundled into or
+tag flow builds and ships `Edmund.app` only. Extension payloads (the RaTeX
+WASM, the `beautiful-mermaid` JS bundle) have their own hosting/release path
+in `I7T5/edmund-extensions`, on non-`v*` tags — never bundled into or
 triggered by an Edmund version tag. (The RaTeX WASM asset was pulled from
 release pending `erweixin/RaTeX` inline-mode support and the Advanced Math
 extension's repo migration — see `misc/backlog.md`.)
+
+A payload's pinned SHA-256 is taken from the **hosted** asset, never the local
+build: the build scripts are byte-stable on one machine but not across
+`tar`/`gzip` implementations, so a local artifact is evidence about that
+machine, not about what users will fetch. Until an asset is published its hash
+stays empty, `isConfigured` is false, and Settings says the extension "isn't
+available in this build yet" rather than offering a download that cannot be
+verified.
 
 ---
 
@@ -859,6 +869,20 @@ Dependencies and prior art worth consulting before designing something new:
   signing/appcast quirks).
 - [Lucide](https://lucide.dev) — vendored icon SVGs (ISC),
   `Model/LucideIcons.swift`.
+- [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) — the
+  Mermaid extension's engine (MIT, by Craft Docs). Runtime-downloaded, not
+  bundled. Its `renderMermaidSVG` is synchronous, which is what lets it run
+  inside the synchronous `DocumentHTML.full` assembly instead of forcing the
+  whole export path async. The payload also carries
+  [elkjs](https://github.com/kieler/elkjs) (**EPL-2.0** — its license text
+  travels inside the payload archive, which is the distribution vehicle; no
+  elkjs code enters this repo or the app binary) and
+  [entities](https://github.com/fb55/entities) (BSD-2-Clause).
+  Read mode's Mermaid support adapts the render-pipeline shape from
+  [#235](https://github.com/I7T5/Edmund/pull/235) by
+  [@CaliLuke](https://github.com/CaliLuke) — fence recognition, the
+  placeholder/fill split, the SVG safety filter and the diagram CSS — with a
+  JavaScriptCore backend in place of that PR's Swift + ELK one.
 - [nodes-app/swift-markdown-engine](https://github.com/nodes-app/swift-markdown-engine)
   — an independent AppKit + TextKit 2 live-preview markdown engine (Apache
   2.0, macOS 14+). Solves the same problems with different trade-offs —

@@ -77,7 +77,7 @@ Funsies
 ## v2.x
 
 Official extensions
-- [ ] Mermaid diagrams (Read mode only)
+- [x] Mermaid diagrams (Read mode only)
 - [ ] Slides (read mode preview)
 - [ ] Typst: Import from / Export to Typst
 

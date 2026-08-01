@@ -4,6 +4,15 @@ All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+- **Mermaid extension**: renders ` ```mermaid ` code blocks as diagrams in Read mode, HTML export and PDF (vector). Supports flowcharts, state, sequence, class, ER, and XY charts, via [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid). Opt-in from Settings > Extensions; the engine is downloaded and hash-verified at runtime, so it adds nothing to the app's size until you enable it. Edit mode still shows the fence as a code block. Adapted in part from #235 (@CaliLuke)
+
+### Changed
+- Extension payloads (Advanced Math, Mermaid) now share one download/verify/install path
+
+
 ## [0.3.0] - 2026-07-27
 
 Settings stuff. 
