@@ -877,7 +877,10 @@ Dependencies and prior art worth consulting before designing something new:
   [elkjs](https://github.com/kieler/elkjs) (**EPL-2.0** — its license text
   travels inside the payload archive, which is the distribution vehicle; no
   elkjs code enters this repo or the app binary) and
-  [entities](https://github.com/fb55/entities) (BSD-2-Clause).
+  [entities](https://github.com/fb55/entities) (BSD-2-Clause). All three texts
+  are mirrored in `LICENSES/` — the code isn't vendored here, but the app does
+  hand it to users at runtime, so the terms should be findable without
+  unpacking a tarball.
   Read mode's Mermaid support adapts the render-pipeline shape from
   [#235](https://github.com/I7T5/Edmund/pull/235) by
   [@CaliLuke](https://github.com/CaliLuke) — fence recognition, the
