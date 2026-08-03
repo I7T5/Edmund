@@ -98,8 +98,13 @@ class Document: NSDocument, HeadingNavigable {
         // full window frame at the end of setup (below), once the toolbar is in
         // place — so the frame round-trips exactly and doesn't drift by the
         // title bar + toolbar height each time.
+        //
+        // Sized so the *window* lands on a canonical 800x600: the height is the
+        // content area, and the title bar + unified toolbar add 80pt on top.
+        // The width also leaves the reading column (12cm / 5in physical, ~605pt
+        // on a 14" display) balanced margins rather than being arbitrary.
         let windowWidth: CGFloat = 800
-        let windowHeight: CGFloat = 560
+        let windowHeight: CGFloat = 520
 
         let window = DocumentWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
