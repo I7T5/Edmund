@@ -75,6 +75,10 @@ extension EditorTextView {
         // Whether they actually fit — and so whether the gutter has them
         // instead — is decided inside.
         if showLineNumbers { drawLineNumbersBesideContent(in: rect) }
+        // The tables' `</>` raw-editing buttons ride the same margin pass, and
+        // step left of the numbers when both are in it. See
+        // EditorTextView+TableRawButton.
+        drawTableRawButtons(in: rect)
         guard findActive, !findMatches.isEmpty, let tlm = textLayoutManager else { return }
 
         let visible = viewportCharRange(tlm)

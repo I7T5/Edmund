@@ -642,6 +642,13 @@ public class EditorTextView: NSTextView {
                 return
             }
         }
+        // A table's `</>` button hangs in the margin outside the text column,
+        // where AppKit has nothing to select — so this takes the click whole and
+        // never reaches `super`. See EditorTextView+TableRawButton.
+        if let tableBlock = tableRawButtonHit(at: event) {
+            activateRawTableEditing(blockIndex: tableBlock)
+            return
+        }
         // A wrapped table cell is drawn from a detached layout, so AppKit's own
         // hit-testing can only ever land on the hidden characters underneath it
         // (all of which sit at one x). Resolve the click against the drawn text
