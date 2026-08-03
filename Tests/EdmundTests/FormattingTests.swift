@@ -556,3 +556,125 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource.contains("Line"))
     }
 }
+
+// MARK: - Subscript / superscript
+//
+// `sub` and `sup` are already in SyntaxHighlighter.htmlFormatTags, so the editor
+// renders them; these cover the commands that write them.
+
+@MainActor @Suite struct FormatSubSuperscriptTests {
+
+    @Test func subscriptWrapsSelection() {
+        let e = mk("H2O", NSRange(location: 1, length: 1))
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "H<sub>2</sub>O")
+        #expect(e.selectedRange() == NSRange(location: 6, length: 1))
+    }
+
+    @Test func subscriptIsInvertible() {
+        let e = mk("H2O", NSRange(location: 1, length: 1))
+        e.formatSubscript(nil)
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "H2O")
+        #expect(e.selectedRange() == NSRange(location: 1, length: 1))
+    }
+
+    @Test func superscriptWrapsWordAtCaret() {
+        let e = mk("x squared", NSRange(location: 4, length: 0))  // "x sq|uared"
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "x <sup>squared</sup>")
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "x squared")
+    }
+
+    @Test func superscriptIsIndependentOfSubscript() {
+        let e = mk("n", NSRange(location: 0, length: 1))
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "<sup>n</sup>")
+    }
+}
+
+// MARK: - Attach image
+
+@MainActor @Suite struct FormatAttachImageTests {
+
+    /// `imageDestination` reads the document's directory, so the editor needs a
+    /// document with a fileURL. `EditorTextView.document` is weak — the caller
+    /// must hold on to the returned document for the life of the test.
+    private func editorInDocument(at path: String, _ content: String = "",
+                                  _ sel: NSRange = NSRange(location: 0, length: 0))
+    -> (EditorTextView, NSDocument) {
+        let e = mk(content, sel)
+        let doc = NSDocument()
+        doc.fileURL = URL(fileURLWithPath: path)
+        e.document = doc
+        return (e, doc)
+    }
+
+    @Test func pathBelowDocumentIsRelative() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/notes/img/cat.png")) == "img/cat.png")
+        _ = doc
+    }
+
+    @Test func siblingFileIsRelative() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/notes/cat.png")) == "cat.png")
+        _ = doc
+    }
+
+    @Test func pathOutsideDocumentDirectoryStaysAbsolute() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/elsewhere/cat.png"))
+                == "/elsewhere/cat.png")
+        _ = doc
+    }
+
+    /// A sibling *directory* whose name merely starts with the document's
+    /// directory name must not be mistaken for a child ("/notes" vs "/notesx").
+    @Test func siblingDirectoryWithSharedPrefixStaysAbsolute() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/notesx/cat.png"))
+                == "/notesx/cat.png")
+        _ = doc
+    }
+
+    /// A raw space or `)` would truncate the `![](…)` destination.
+    @Test func spacesAndParensArePercentEncoded() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/notes/my cat (1).png"))
+                == "my%20cat%20%281%29.png")
+        _ = doc
+    }
+
+    /// Round-trips through the same decode Read mode uses to resolve the path.
+    @Test func encodedDestinationDecodesBackToTheFilename() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        let dest = e.imageDestination(for: URL(fileURLWithPath: "/notes/my cat (1).png"))
+        #expect(dest.removingPercentEncoding == "my cat (1).png")
+        _ = doc
+    }
+
+    @Test func insertsSyntaxWithCaretInAltSlot() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
+        #expect(e.rawSource == "![](cat.png)")
+        #expect(e.selectedRange() == NSRange(location: 2, length: 0))  // "![|](cat.png)"
+        _ = doc
+    }
+
+    @Test func insertsAtTheCaretWithinExistingText() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md", "see ", NSRange(location: 4, length: 0))
+        e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
+        #expect(e.rawSource == "see ![](cat.png)")
+        _ = doc
+    }
+
+    @Test func storageMatchesOracleAfterInsert() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md", "see ", NSRange(location: 4, length: 0))
+        e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
+        drainAllStyling(e)
+        assertMatchesFullRecomposeOracle(e)
+        _ = doc
+    }
+}

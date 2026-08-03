@@ -1,0 +1,215 @@
+import Testing
+import AppKit
+@testable import edmd
+@testable import EdmundCore
+
+// The toolbar's *composition*: that it offers the documented items in the
+// documented order, and that every command in its popups is one of the existing
+// Format commands rather than a second implementation. Interaction (clicking a
+// row, the Link item's secondary click) is not reachable headlessly — see the
+// live checks in the PR description.
+
+@MainActor private func toolbar() -> (FormatToolbar, Document) {
+    let doc = Document()
+    return (FormatToolbar(document: doc), doc)
+}
+
+/// Titles of a menu's real items, separators rendered as "-".
+@MainActor private func titles(_ menu: NSMenu) -> [String] {
+    menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
+}
+
+@MainActor @Suite struct FormatToolbarLayoutTests {
+
+    private let viewMode = NSToolbarItem.Identifier("viewMode")
+
+    @Test func defaultOrderMatchesTheSpec() {
+        let ids = FormatToolbar.defaultIdentifiers(viewMode: viewMode).map(\.rawValue)
+        #expect(ids == ["format", "checklist", "table", "image", "link",
+                        "NSToolbarFlexibleSpaceItem", "viewMode", "share"])
+    }
+
+    @Test func everyDefaultItemIsAlsoAllowed() {
+        let allowed = Set(FormatToolbar.allowedIdentifiers(viewMode: viewMode))
+        for id in FormatToolbar.defaultIdentifiers(viewMode: viewMode) {
+            #expect(allowed.contains(id), "\(id.rawValue) is a default but not allowed")
+        }
+    }
+
+    @Test func vendsEveryItemItDeclares() {
+        let (bar, doc) = toolbar()
+        for id in FormatToolbar.allowedIdentifiers(viewMode: viewMode)
+        where id != viewMode && id != .space && id != .flexibleSpace {
+            #expect(bar.makeItem(id) != nil, "no item vended for \(id.rawValue)")
+        }
+        _ = doc
+    }
+
+    /// The view-mode item stays with `Document`; FormatToolbar must decline it
+    /// rather than vend an empty replacement.
+    @Test func declinesTheViewModeItem() {
+        let (bar, doc) = toolbar()
+        #expect(bar.makeItem(viewMode) == nil)
+        _ = doc
+    }
+}
+
+@MainActor @Suite struct FormatPopupTests {
+
+    @Test func rowOrderMatchesTheSpec() {
+        let (bar, doc) = toolbar()
+        #expect(titles(bar.formatPopupMenu()) == [
+            "", "", "-",
+            "Heading", "Thematic Break", "Bulleted List", "Numbered List", "-",
+            "Code Block", "Math Block", "Block Quote", "Alert / Callout", "Footnote",
+        ])
+        _ = doc
+    }
+
+    /// Checklist and Table are top-level toolbar items, so listing them in the
+    /// popup too would be a second route to the same command.
+    @Test func popupOmitsChecklistAndTable() {
+        let (bar, doc) = toolbar()
+        let names = titles(bar.formatPopupMenu())
+        #expect(!names.contains("Checklist"))
+        #expect(!names.contains("Table"))
+        _ = doc
+    }
+
+    @Test func headingAndCalloutKeepTheirSubmenus() {
+        let (bar, doc) = toolbar()
+        let menu = bar.formatPopupMenu()
+        let heading = menu.items.first { $0.title == "Heading" }
+        let callout = menu.items.first { $0.title == "Alert / Callout" }
+        #expect(heading?.submenu?.items.count == 6)          // H1–H6
+        #expect((callout?.submenu?.items.count ?? 0) > 5)    // GFM alerts + Obsidian types
+        _ = doc
+    }
+
+    @Test func iconRowsCarryTheDocumentedCommands() {
+        let (bar, doc) = toolbar()
+        let rows = bar.formatPopupMenu().items.prefix(2).compactMap { $0.view as? NSStackView }
+        #expect(rows.count == 2)
+
+        // Every row button funnels through the same forwarding target…
+        let buttons = rows.map { $0.arrangedSubviews.compactMap { $0 as? NSButton } }
+        #expect(buttons.allSatisfy { $0.allSatisfy { NSStringFromSelector($0.action!) == "fire:" } })
+        // …so the real command lives on the target, not the button.
+        let targets = rows.map { row in
+            row.arrangedSubviews.compactMap { ($0 as? NSButton)?.target as? FormatIconTarget }
+                .map { NSStringFromSelector($0.action) }
+        }
+        #expect(targets[0] == ["formatBold:", "formatItalic:", "formatUnderline:",
+                               "formatStrikethrough:", "formatHighlight:"])
+        #expect(targets[1] == ["formatCode:", "formatInlineMath:",
+                               "formatSubscript:", "formatSuperscript:"])
+        _ = doc
+    }
+
+    /// Every command the popup offers must be a known formatting action —
+    /// the guard against the toolbar growing its own private commands.
+    @Test func everyPopupCommandIsAKnownFormattingAction() {
+        let (bar, doc) = toolbar()
+        func check(_ menu: NSMenu) {
+            for item in menu.items {
+                if let sub = item.submenu { check(sub); continue }
+                guard let action = item.action else { continue }
+                #expect(EditorTextView.formattingActions.contains(action),
+                        "\(item.title) uses unregistered action \(action)")
+            }
+        }
+        check(bar.formatPopupMenu())
+        _ = doc
+    }
+}
+
+// MARK: - View-mode glyph sizing
+//
+// `pencil` and `book` have different intrinsic boxes, so a shared point size
+// draws the book visibly larger and the toolbar button appears to resize when
+// the mode flips. Document compensates with a smaller point size for the book;
+// these lock the two constants to the property that actually matters — the
+// height of the *drawn* glyph, which is what the eye compares.
+
+/// Height in points of the ink in `image` (its drawn extent, not its layout box).
+@MainActor private func inkHeight(_ image: NSImage) -> Int {
+    let side = 64
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+                               bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                               isPlanar: false, colorSpaceName: .deviceRGB,
+                               bytesPerRow: 0, bitsPerPixel: 0)!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    let size = image.size
+    image.draw(in: NSRect(x: (CGFloat(side) - size.width) / 2,
+                          y: (CGFloat(side) - size.height) / 2,
+                          width: size.width, height: size.height))
+    NSGraphicsContext.restoreGraphicsState()
+
+    var top: Int?, bottom: Int?
+    for y in 0..<side {
+        var inked = false
+        for x in 0..<side where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.1 {
+            inked = true; break
+        }
+        if inked { if top == nil { top = y }; bottom = y }
+    }
+    guard let t = top, let b = bottom else { return 0 }
+    return b - t + 1
+}
+
+@MainActor @Suite struct ViewModeGlyphSizeTests {
+
+    private func symbol(_ name: String, _ pointSize: CGFloat) throws -> NSImage {
+        try #require(NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular)))
+    }
+
+    /// The pair Document actually uses. Tolerance of 1pt: they only have to look
+    /// the same, and SF Symbol outlines will never match to the pixel.
+    @Test func pencilAndBookDrawTheSameHeight() throws {
+        let pencil = inkHeight(try symbol("pencil", 15))
+        let book = inkHeight(try symbol("book", 12.9))
+        #expect(abs(pencil - book) <= 1, "pencil \(pencil)pt vs book \(book)pt")
+    }
+
+    /// The reason the compensation exists — guards against someone "simplifying"
+    /// the two constants back into one.
+    @Test func aSharedPointSizeWouldDrawTheBookLarger() throws {
+        let pencil = inkHeight(try symbol("pencil", 15))
+        let book = inkHeight(try symbol("book", 15))
+        #expect(book > pencil + 1, "book \(book)pt vs pencil \(pencil)pt")
+    }
+}
+
+@MainActor @Suite struct ImageAndLinkMenuTests {
+
+    @Test func imageMenuOffersEverySourceWithOnlyFileEnabled() {
+        let (bar, doc) = toolbar()
+        let menu = bar.imagePopupMenu()
+        #expect(titles(menu) == ["Attach File…", "Photos…", "-", "Take Photo", "Scan Documents"])
+
+        let attach = menu.items.first { $0.title == "Attach File…" }
+        #expect(attach?.action == #selector(EditorTextView.formatAttachImage(_:)))
+
+        // Placeholders must not dispatch even if AppKit enables them.
+        for item in menu.items where !item.isSeparatorItem && item.title != "Attach File…" {
+            #expect(item.action == nil, "\(item.title) is a placeholder but has an action")
+        }
+        _ = doc
+    }
+
+    @Test func onlyFileSourceIsAvailable() {
+        #expect(ImageSource.allCases.filter(\.isAvailable) == [.file])
+    }
+
+    /// The Link item's secondary-click menu — Image has its own toolbar item.
+    @Test func linkMenuIsLinkAndWikilink() {
+        let (bar, doc) = toolbar()
+        let menu = bar.linkMenu()
+        #expect(titles(menu) == ["Link", "Wikilink"])
+        #expect(menu.items[0].action == #selector(EditorTextView.formatLink(_:)))
+        #expect(menu.items[1].action == #selector(EditorTextView.formatWikilink(_:)))
+        _ = doc
+    }
+}

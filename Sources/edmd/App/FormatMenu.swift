@@ -91,7 +91,7 @@ enum FormatMenu {
 
     // MARK: - Groups
 
-    private static let listCommands: [MenuCommand] = [
+    static let listCommands: [MenuCommand] = [
         MenuCommand(id: "format.bulletedList", title: "Bulleted List",
                     action: #selector(EditorTextView.formatBulletedList(_:)), shortcut: .cmdOpt("b")),
         MenuCommand(id: "format.numberedList", title: "Numbered List",
@@ -100,7 +100,7 @@ enum FormatMenu {
                     action: #selector(EditorTextView.formatChecklist(_:)), shortcut: .cmd("l")),
     ]
 
-    private static let linkCommands: [MenuCommand] = [
+    static let linkCommands: [MenuCommand] = [
         MenuCommand(id: "format.link", title: "Link",
                     action: #selector(EditorTextView.formatLink(_:)), shortcut: .cmd("k")),
         MenuCommand(id: "format.wikilink", title: "Wikilink",
@@ -109,13 +109,13 @@ enum FormatMenu {
                     action: #selector(EditorTextView.formatImage(_:))),
     ]
 
-    private static let thematicBreakCommand = MenuCommand(id: "format.thematicBreak", title: "Thematic Break",
+    static let thematicBreakCommand = MenuCommand(id: "format.thematicBreak", title: "Thematic Break",
                     action: #selector(EditorTextView.formatThematicBreak(_:)))
 
-    private static let footnoteCommand = MenuCommand(id: "format.footnote", title: "Footnote",
+    static let footnoteCommand = MenuCommand(id: "format.footnote", title: "Footnote",
                     action: #selector(EditorTextView.formatFootnote(_:)))
 
-    private static let blockCommands: [MenuCommand] = [
+    static let blockCommands: [MenuCommand] = [
         MenuCommand(id: "format.table", title: "Table",
                     action: #selector(EditorTextView.formatTable(_:))),
         MenuCommand(id: "format.codeBlock", title: "Code Block",
@@ -126,7 +126,7 @@ enum FormatMenu {
                     action: #selector(EditorTextView.formatBlockQuote(_:)), shortcut: .cmdShift("b")),
     ]
 
-    private static let fontCommands: [MenuCommand] = [
+    static let fontCommands: [MenuCommand] = [
         MenuCommand(id: "format.bold", submenu: "Font", title: "Bold",
                     action: #selector(EditorTextView.formatBold(_:)), shortcut: .cmd("b")),
         MenuCommand(id: "format.italic", submenu: "Font", title: "Italic",
@@ -145,6 +145,10 @@ enum FormatMenu {
                     action: #selector(EditorTextView.formatKeyboard(_:))),
         MenuCommand(id: "format.comment", submenu: "Font", title: "Comments",
                     action: #selector(EditorTextView.formatComment(_:))),
+        MenuCommand(id: "format.subscript", submenu: "Font", title: "Subscript",
+                    action: #selector(EditorTextView.formatSubscript(_:))),
+        MenuCommand(id: "format.superscript", submenu: "Font", title: "Superscript",
+                    action: #selector(EditorTextView.formatSuperscript(_:))),
     ]
 
     /// GitHub alert types (uppercase in source: `> [!NOTE]`).
@@ -159,7 +163,7 @@ enum FormatMenu {
 
     // MARK: - Submenus
 
-    private static func headingSubmenuItem() -> NSMenuItem {
+    static func headingSubmenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Heading", action: nil, keyEquivalent: "")
         let menu = NSMenu(title: "Heading")
         for level in 1...6 {
@@ -172,7 +176,7 @@ enum FormatMenu {
         return item
     }
 
-    private static func calloutSubmenuItem() -> NSMenuItem {
+    static func calloutSubmenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Alert / Callout", action: nil, keyEquivalent: "")
         let menu = NSMenu(title: "Alert / Callout")
         for type in githubCalloutTypes {

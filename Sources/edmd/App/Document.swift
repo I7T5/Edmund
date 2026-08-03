@@ -14,6 +14,9 @@ class Document: NSDocument, HeadingNavigable {
     private var viewModeButton: NSButton?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
+    /// Builds and owns the formatting toolbar items (see `FormatToolbar`).
+    private var formatToolbar: FormatToolbar!
+
     /// Session-only zoom scale (View ▸ Actual Size/Zoom In/Zoom Out), applied on
     /// top of the persisted font size and content width. Not saved — each new
     /// window starts back at 100%.
@@ -157,22 +160,35 @@ class Document: NSDocument, HeadingNavigable {
             self?.readView?.setScrollPosition(line: line, fraction: 0)
         }
 
-        // Toolbar holds the right-aligned view-mode toggle (and gives the
-        // titlebar extra height for roomy traffic lights). Set it only after
-        // `editor` exists — assigning the toolbar synchronously vends its items.
-        let toolbar = NSToolbar(identifier: "MainToolbar")
+        // Toolbar holds the formatting items plus the right-aligned view-mode
+        // toggle (and gives the titlebar extra height for roomy traffic lights).
+        // Set it only after `editor` exists — assigning the toolbar synchronously
+        // vends its items.
+        //
+        // The identifier is versioned: `autosavesConfiguration` persists the item
+        // layout per identifier, so every window that ever ran the one-item
+        // toolbar has `[flexibleSpace, viewMode]` on disk, and that saved set
+        // wins over any new defaults. Bumping the identifier is what makes the
+        // format items appear for existing users; the only customization it
+        // discards is the ordering of a single item.
+        formatToolbar = FormatToolbar(document: self)
+        let toolbar = NSToolbar(identifier: "MainToolbar2")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
-        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar"
+        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar2"
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .line
 
-        // Wire the window's secondary-click interception now that the toolbar has
-        // synchronously vended the view-mode button (see DocumentWindow).
-        window.viewModeButton = viewModeButton
-        window.makeViewModeMenu = { [weak self] in self?.viewModeMenu() ?? NSMenu() }
+        // Wire the window's secondary-click interceptions now that the toolbar has
+        // synchronously vended its buttons (see DocumentWindow).
+        window.secondaryClickTargets = [
+            .init(viewModeButton) { [weak self] in self?.viewModeMenu() ?? NSMenu() },
+            .init(formatToolbar.linkButton) { [weak self] in
+                self?.formatToolbar.linkMenu() ?? NSMenu()
+            },
+        ]
 
         let statusBarHeight: CGFloat = 22
         let contentBounds = window.contentView!.bounds
@@ -472,8 +488,15 @@ class Document: NSDocument, HeadingNavigable {
     /// Shows the active mode's icon on the button and keeps the tooltip in sync.
     private func refreshViewModeButton() {
         guard let editor else { return }
+        // 15pt matches the formatting glyphs beside it (FormatToolbar.symbol).
+        // `book` is sized down from that: its intrinsic box is taller than
+        // `pencil`'s, so at a shared point size it draws visibly bigger (measured
+        // 17.5pt tall against the pencil's 15.0pt) and the button appears to
+        // change size when the mode flips. These two numbers are chosen so the
+        // *drawn* glyphs match, which is what the eye compares.
+        let pointSize: CGFloat = editor.viewMode == .reading ? 12.9 : 15
         viewModeButton?.image = icon(for: editor.viewMode)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+            .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))
         viewModeButton?.toolTip = "View mode: \(label(for: editor.viewMode))"
     }
 
@@ -847,17 +870,20 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.viewModeItemID]
+        FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID)
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .space, Self.viewModeItemID]
+        FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID)
     }
 
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard itemIdentifier == Self.viewModeItemID else { return nil }
+        // Everything but the view-mode toggle belongs to FormatToolbar.
+        guard itemIdentifier == Self.viewModeItemID else {
+            return formatToolbar.makeItem(itemIdentifier)
+        }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         item.label = "View Mode"
         item.visibilityPriority = .high
@@ -877,22 +903,40 @@ extension Document: NSToolbarDelegate {
     }
 }
 
-/// Document window that intercepts a secondary (right / control) click on the
-/// view-mode toolbar button and shows the mode menu itself. `sendEvent` is the
-/// single funnel all window events pass through *before* the toolbar/titlebar
-/// can turn the click into its own "Customize Toolbar…" context menu, so this is
-/// the one place the interception reliably wins.
+/// Document window that intercepts a secondary (right / control) click on a
+/// toolbar button and shows that button's own menu. `sendEvent` is the single
+/// funnel all window events pass through *before* the toolbar/titlebar can turn
+/// the click into its own "Customize Toolbar…" context menu, so this is the one
+/// place the interception reliably wins — the view's `menu`, a `rightMouseDown`
+/// override and a gesture recognizer all lose it.
+///
+/// Caveat: true full screen moves the toolbar into a separate window this
+/// main-window hook does not cover.
 final class DocumentWindow: NSWindow {
-    weak var viewModeButton: NSView?
-    var makeViewModeMenu: (() -> NSMenu)?
+    /// A button that claims its own secondary click, with the menu to show.
+    /// The view is weak: the toolbar owns it and may vend a replacement.
+    struct SecondaryClickTarget {
+        weak var view: NSView?
+        let makeMenu: () -> NSMenu
+
+        init(_ view: NSView?, makeMenu: @escaping () -> NSMenu) {
+            self.view = view
+            self.makeMenu = makeMenu
+        }
+    }
+
+    var secondaryClickTargets: [SecondaryClickTarget] = []
 
     override func sendEvent(_ event: NSEvent) {
-        if isSecondaryClick(event), let button = viewModeButton,
-           button.bounds.contains(button.convert(event.locationInWindow, from: nil)),
-           let menu = makeViewModeMenu?() {
-            menu.popUp(positioning: nil,
-                       at: NSPoint(x: 0, y: button.bounds.maxY + 4), in: button)
-            return
+        if isSecondaryClick(event) {
+            for target in secondaryClickTargets {
+                guard let button = target.view,
+                      button.bounds.contains(button.convert(event.locationInWindow, from: nil))
+                else { continue }
+                target.makeMenu().popUp(positioning: nil,
+                                        at: NSPoint(x: 0, y: button.bounds.maxY + 4), in: button)
+                return
+            }
         }
         super.sendEvent(event)
     }
