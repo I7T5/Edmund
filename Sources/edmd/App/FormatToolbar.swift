@@ -153,9 +153,14 @@ final class FormatToolbar: NSObject {
     // MARK: - Format popup
 
     /// Apple Notes-style: two rows of icon buttons, then the block commands as
-    /// ordinary menu rows (which get dividers, submenus, hover, keyboard nav and
-    /// live shortcut display for free — the reason this is an `NSMenu` and not a
+    /// ordinary menu rows (which get dividers, hover, keyboard nav and live
+    /// shortcut display for free — the reason this is an `NSMenu` and not a
     /// hand-built popover).
+    ///
+    /// Entirely flat: no submenus. Headings stop at 3 and callouts collapse to
+    /// the single `> [!NOTE]` form. The full range stays in the menu bar's
+    /// Format menu (H1–H6, 20 callout types) — this is the quick path, not a
+    /// mirror of it.
     ///
     /// Checklist and Table are absent on purpose: they are their own toolbar
     /// items.
@@ -165,19 +170,60 @@ final class FormatToolbar: NSObject {
         menu.addItem(iconRowItem(Self.inlineRow2))
         menu.addItem(.separator())
 
-        menu.addItem(FormatMenu.headingSubmenuItem())
+        for level in 1...3 { menu.addItem(headingRow(level)) }
         menu.addItem(FormatMenu.thematicBreakCommand.makeItem())
         for cmd in FormatMenu.listCommands where cmd.id != "format.checklist" {
-            menu.addItem(cmd.makeItem())
+            menu.addItem(marked(cmd.makeItem()))
         }
         menu.addItem(.separator())
 
         for cmd in FormatMenu.blockCommands where cmd.id != "format.table" {
-            menu.addItem(cmd.makeItem())
+            menu.addItem(marked(cmd.makeItem()))
         }
-        menu.addItem(FormatMenu.calloutSubmenuItem())
+        menu.addItem(calloutRow())
         menu.addItem(FormatMenu.footnoteCommand.makeItem())
         return menu
+    }
+
+    /// A heading row rendered at the weight it applies, the way Notes previews
+    /// Title / Heading / Subheading.
+    private func headingRow(_ level: Int) -> NSMenuItem {
+        let item = MenuCommand(id: "format.heading\(level)", submenu: "Heading",
+                               title: "Heading \(level)",
+                               action: #selector(EditorTextView.formatHeading(_:)),
+                               tag: level).makeItem()
+        // H1 18pt, H2 15.5pt, H3 13pt — a visible step down without overwhelming
+        // the plain rows beneath.
+        let size = [18.0, 15.5, 13.0][level - 1]
+        item.attributedTitle = NSAttributedString(
+            string: item.title,
+            attributes: [.font: NSFont.systemFont(ofSize: size, weight: .semibold)])
+        return item
+    }
+
+    /// The single callout row. The label is the syntax it writes, matching how
+    /// the list rows show their own markers.
+    private func calloutRow() -> NSMenuItem {
+        MenuCommand(id: "format.callout.NOTE", submenu: "Alert / Callout",
+                    title: "> [!NOTE]",
+                    action: #selector(EditorTextView.formatCallout(_:)),
+                    representedObject: "NOTE").makeItem()
+    }
+
+    /// Prefixes a row with the marker it inserts (`•`, `1.`, `▎`), so the menu
+    /// previews its own effect.
+    private func marked(_ item: NSMenuItem) -> NSMenuItem {
+        let marker: String
+        switch item.action {
+        case #selector(EditorTextView.formatBulletedList(_:)): marker = "•  "
+        case #selector(EditorTextView.formatNumberedList(_:)): marker = "1.  "
+        case #selector(EditorTextView.formatBlockQuote(_:)):   marker = "▎ "
+        default: return item
+        }
+        item.attributedTitle = NSAttributedString(
+            string: marker + item.title,
+            attributes: [.font: NSFont.menuFont(ofSize: 0)])
+        return item
     }
 
     /// (SF Symbol, command id) for the popup's first row.
@@ -199,6 +245,38 @@ final class FormatToolbar: NSObject {
         ("textformat.superscript", "format.superscript"),
     ]
 
+    /// Which inline style a row button reflects. Nil for commands that have no
+    /// detectable on/off state at the caret.
+    static func style(for commandID: String) -> ActiveInlineStyles? {
+        switch commandID {
+        case "format.bold":          return .bold
+        case "format.italic":        return .italic
+        case "format.underline":     return .underline
+        case "format.strikethrough": return .strikethrough
+        case "format.highlight":     return .highlight
+        case "format.code":          return .code
+        case "format.math":          return .math
+        case "format.subscript":     return .subscript
+        case "format.superscript":   return .superscript
+        default:                     return nil
+        }
+    }
+
+    /// The block style a popup row applies, so the row matching the caret's own
+    /// block can be checkmarked.
+    static func blockStyle(for item: NSMenuItem) -> ActiveBlockStyle? {
+        switch item.action {
+        case #selector(EditorTextView.formatHeading(_:)):     return .heading(level: item.tag)
+        case #selector(EditorTextView.formatBulletedList(_:)): return .bulletedList
+        case #selector(EditorTextView.formatNumberedList(_:)): return .numberedList
+        case #selector(EditorTextView.formatBlockQuote(_:)):   return .blockQuote
+        case #selector(EditorTextView.formatCodeBlock(_:)):    return .codeBlock
+        case #selector(EditorTextView.formatMathBlock(_:)):    return .mathBlock
+        case #selector(EditorTextView.formatCallout(_:)):      return .callout
+        default:                                               return nil
+        }
+    }
+
     private func iconRowItem(_ row: [(String, String)]) -> NSMenuItem {
         let stack = NSStackView()
         stack.orientation = .horizontal
@@ -207,18 +285,26 @@ final class FormatToolbar: NSObject {
 
         for (symbol, id) in row {
             guard let cmd = FormatMenu.fontCommands.first(where: { $0.id == id }) else { continue }
-            let target = FormatIconTarget(action: cmd.action)
+            let target = FormatIconTarget(action: cmd.action, styleID: id)
             iconTargets.append(target)
 
-            let button = NSButton(image: Self.rowSymbol(symbol) ?? NSImage(),
-                                  target: target, action: #selector(FormatIconTarget.fire(_:)))
-            button.bezelStyle = .accessoryBar
-            button.setButtonType(.momentaryPushIn)
+            let button = FormatIconButton(image: Self.rowSymbol(symbol) ?? NSImage(),
+                                          target: target, action: #selector(FormatIconTarget.fire(_:)))
+            button.isBordered = false          // our own hover/active background shows instead
+            button.setButtonType(.momentaryChange)
             button.imagePosition = .imageOnly
             button.toolTip = cmd.title
             button.setAccessibilityLabel(cmd.title)
             // The highlighter reads as its ink colour, matching the mark it makes.
             if id == "format.highlight" { button.contentTintColor = .systemYellow }
+            // Explicit metrics: an image-only borderless button has a slim
+            // intrinsic size, which leaves the row cramped and its hover targets
+            // overlapping. These give every icon the same square hit area.
+            button.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                button.widthAnchor.constraint(equalToConstant: 28),
+                button.heightAnchor.constraint(equalToConstant: 24),
+            ])
             stack.addArrangedSubview(button)
         }
 
@@ -264,18 +350,37 @@ extension FormatToolbar: NSMenuDelegate {
             menu.addItem(item)
         }
         refreshIconRows(in: menu)
+        refreshBlockRows(in: menu)
+    }
+
+    /// Checkmarks the row matching the caret's own block, the way Notes ticks the
+    /// current paragraph style.
+    private func refreshBlockRows(in menu: NSMenu) {
+        guard let editor = document?.editor else { return }
+        let active = editor.activeBlockStyle()
+        for item in menu.items {
+            guard let style = Self.blockStyle(for: item) else { continue }
+            item.state = style == active ? .on : .off
+        }
     }
 
     /// Icon-row buttons are not validated items, so they have to ask the focused
-    /// editor directly.
+    /// editor directly — for both their enabled state and whether the style they
+    /// apply is already in effect at the caret.
     private func refreshIconRows(in menu: NSMenu) {
         let editor = document?.editor
+        let active = editor?.activeInlineStyles() ?? []
         for item in menu.items {
             guard let stack = item.view as? NSStackView else { continue }
             for case let button as NSButton in stack.arrangedSubviews {
                 guard let target = button.target as? FormatIconTarget else { continue }
+                (button as? FormatIconButton)?.isActive =
+                    Self.style(for: target.styleID).map(active.contains) ?? false
                 button.isEnabled = editor?.isFormattingActionEnabled(
                     target.action, representedObject: nil) ?? false
+                // An explicit contentTintColor (the highlighter's yellow) defeats
+                // AppKit's automatic dimming, so fade the whole button instead.
+                button.alphaValue = button.isEnabled ? 1.0 : 0.35
             }
         }
     }
@@ -301,15 +406,57 @@ extension FormatToolbar: NSSharingServicePickerToolbarItemDelegate {
 @MainActor
 final class FormatIconTarget: NSObject {
     let action: Selector
+    /// The `MenuCommand` id, used to look up which inline style this button
+    /// reflects when the popup refreshes.
+    let styleID: String
 
-    init(action: Selector) {
+    init(action: Selector, styleID: String) {
         self.action = action
+        self.styleID = styleID
         super.init()
     }
 
     @objc func fire(_ sender: NSButton) {
         sender.enclosingMenuItem?.menu?.cancelTracking()
         NSApp.sendAction(action, to: nil, from: sender)
+    }
+}
+
+/// An icon-row button. A menu item's custom view gets none of a real row's
+/// behaviour, so hover highlighting is drawn here by hand; `isActive` is the
+/// same affordance for "this style is already on at the caret".
+final class FormatIconButton: NSButton {
+    var isActive = false { didSet { updateBackground() } }
+    private var isHovered = false { didSet { updateBackground() } }
+    private var tracking: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                  owner: self)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent)  { isHovered = false }
+
+    /// A disabled button must not look hoverable.
+    override var isEnabled: Bool {
+        didSet { if !isEnabled { isHovered = false } else { updateBackground() } }
+    }
+
+    private func updateBackground() {
+        wantsLayer = true
+        layer?.cornerRadius = 5
+        let color: NSColor? =
+            !isEnabled ? nil
+            : isActive ? .controlAccentColor.withAlphaComponent(isHovered ? 0.32 : 0.22)
+            : isHovered ? .labelColor.withAlphaComponent(0.10)
+            : nil
+        layer?.backgroundColor = color?.cgColor
     }
 }
 

@@ -60,8 +60,9 @@ import AppKit
         let (bar, doc) = toolbar()
         #expect(titles(bar.formatPopupMenu()) == [
             "", "", "-",
-            "Heading", "Thematic Break", "Bulleted List", "Numbered List", "-",
-            "Code Block", "Math Block", "Block Quote", "Alert / Callout", "Footnote",
+            "Heading 1", "Heading 2", "Heading 3", "Thematic Break",
+            "•  Bulleted List", "1.  Numbered List", "-",
+            "Code Block", "Math Block", "▎ Block Quote", "> [!NOTE]", "Footnote",
         ])
         _ = doc
     }
@@ -76,14 +77,42 @@ import AppKit
         _ = doc
     }
 
-    @Test func headingAndCalloutKeepTheirSubmenus() {
+    /// The popup is the quick path, not a mirror of the Format menu: flat, with
+    /// headings stopping at 3 and one callout form.
+    @Test func popupIsEntirelyFlat() {
         let (bar, doc) = toolbar()
-        let menu = bar.formatPopupMenu()
-        let heading = menu.items.first { $0.title == "Heading" }
-        let callout = menu.items.first { $0.title == "Alert / Callout" }
-        #expect(heading?.submenu?.items.count == 6)          // H1–H6
-        #expect((callout?.submenu?.items.count ?? 0) > 5)    // GFM alerts + Obsidian types
+        for item in bar.formatPopupMenu().items {
+            #expect(item.submenu == nil, "\(item.title) still has a submenu")
+        }
         _ = doc
+    }
+
+    @Test func headingRowsCarryTheirLevelAndStopAtThree() {
+        let (bar, doc) = toolbar()
+        let headings = bar.formatPopupMenu().items.filter {
+            $0.action == #selector(EditorTextView.formatHeading(_:))
+        }
+        #expect(headings.map(\.tag) == [1, 2, 3])
+        // formatHeading reads the level off the sender's tag, so it must survive
+        // the attributedTitle styling.
+        #expect(headings.allSatisfy { $0.attributedTitle != nil })
+        _ = doc
+    }
+
+    @Test func theSingleCalloutRowInsertsANote() {
+        let (bar, doc) = toolbar()
+        let callout = bar.formatPopupMenu().items.first {
+            $0.action == #selector(EditorTextView.formatCallout(_:))
+        }
+        #expect(callout?.representedObject as? String == "NOTE")
+        _ = doc
+    }
+
+    /// The full H1–H6 range and all 20 callout types stay reachable in the menu
+    /// bar — the popup trimming them must not have trimmed those too.
+    @Test func theMenuBarStillOffersTheFullRange() {
+        #expect(FormatMenu.headingSubmenuItem().submenu?.items.count == 6)
+        #expect((FormatMenu.calloutSubmenuItem().submenu?.items.count ?? 0) > 15)
     }
 
     @Test func iconRowsCarryTheDocumentedCommands() {
@@ -119,6 +148,40 @@ import AppKit
             }
         }
         check(bar.formatPopupMenu())
+        _ = doc
+    }
+}
+
+@MainActor @Suite struct ActiveStateWiringTests {
+
+    /// Every icon-row button must map to a detectable style, or it can never
+    /// light up and the affordance silently lies.
+    @Test func everyIconRowButtonMapsToAStyle() {
+        let (bar, doc) = toolbar()
+        let rows = bar.formatPopupMenu().items.prefix(2).compactMap { $0.view as? NSStackView }
+        for row in rows {
+            for case let button as NSButton in row.arrangedSubviews {
+                let target = button.target as? FormatIconTarget
+                #expect(target.flatMap { FormatToolbar.style(for: $0.styleID) } != nil,
+                        "\(target?.styleID ?? "?") has no ActiveInlineStyles mapping")
+            }
+        }
+        _ = doc
+    }
+
+    @Test func blockRowsMapToTheStyleTheyApply() {
+        let (bar, doc) = toolbar()
+        let menu = bar.formatPopupMenu()
+        func style(ofRowTitled title: String) -> ActiveBlockStyle? {
+            menu.items.first { $0.title == title }.flatMap(FormatToolbar.blockStyle(for:))
+        }
+        #expect(style(ofRowTitled: "Heading 2") == .heading(level: 2))
+        #expect(style(ofRowTitled: "•  Bulleted List") == .bulletedList)
+        #expect(style(ofRowTitled: "▎ Block Quote") == .blockQuote)
+        #expect(style(ofRowTitled: "> [!NOTE]") == .callout)
+        #expect(style(ofRowTitled: "Code Block") == .codeBlock)
+        // Footnote is not a block style — it must not claim a checkmark.
+        #expect(style(ofRowTitled: "Footnote") == nil)
         _ = doc
     }
 }
