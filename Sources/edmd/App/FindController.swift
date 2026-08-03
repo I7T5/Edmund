@@ -30,6 +30,17 @@ final class FindController: NSObject, EditorFindHandling {
 
         bar.isHidden = true
         bar.autoresizingMask = [.width, .minYMargin]   // pinned to the top edge
+        // Park it at the container's full width, not the default zero frame.
+        // A flexible-width autoresizing view only grows by the *delta* from the
+        // width it was added at, so a zero-width bar reaches the minimum width
+        // its own (required) constraints demand — the fields and buttons — only
+        // once the window is that much wider than it started. AppKit turns that
+        // into the window's contentMinSize, which both pins the minimum width to
+        // `initial width + bar minimum` and inflates the opening frame to match,
+        // leaving `window.minSize` moot. Sized here, the bar tracks the container
+        // and the window's own minSize governs again. `layoutBar` positions it
+        // (and sets the content inset) on every show.
+        bar.setFrameSize(NSSize(width: container.bounds.width, height: bar.preferredHeight))
         // Below the floating status bar so counts stay on top.
         container.addSubview(bar, positioned: .below, relativeTo: statusBar)
 

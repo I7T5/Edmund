@@ -98,7 +98,7 @@ class Document: NSDocument, HeadingNavigable {
         // full window frame at the end of setup (below), once the toolbar is in
         // place — so the frame round-trips exactly and doesn't drift by the
         // title bar + toolbar height each time.
-        let windowWidth: CGFloat = 200
+        let windowWidth: CGFloat = 800
         let windowHeight: CGFloat = 560
 
         let window = DocumentWindow(
@@ -118,7 +118,7 @@ class Document: NSDocument, HeadingNavigable {
         // this off before terminating when it is disabled, so nothing is archived
         // and the next launch starts fresh.
         window.isRestorable = true
-        window.minSize = NSSize(width: 200, height: 400)
+        window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 
         // Build the TextKit 2 text system chain (viewport-based layout).

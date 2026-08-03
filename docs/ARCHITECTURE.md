@@ -574,6 +574,20 @@ Notable subsystems:
   `window.setFrame(_:)` **after the toolbar is installed** (the frame is
   only final then), so frame-in == frame-out (`windowDidResize` ↔
   `makeWindowControllers` in `Document.swift`).
+- **A frame-managed subview parked at the zero frame sets the window's
+  minimum width.** The find bar resizes by `autoresizingMask`, but its
+  contents are Auto Layout, so its required constraints reach the window as
+  a `contentMinSize`. A flexible-width autoresizing view only grows by the
+  *delta* from the width it was added at — so a bar added at `.zero` first
+  reaches the width its fields and buttons need when the window is that much
+  wider than it opened. AppKit reads the minimum as `initial width + bar
+  minimum` and inflates the opening frame to satisfy it: the 800pt default
+  opened at 1014 and would not shrink below it, `window.minSize` was
+  inert (dropping it to 320 moved neither number), and the initial size and
+  the minimum moved together. Fix: size the bar to the container when
+  parking it (`FindController.init`). Note this is invisible to headless
+  tests — only the live window server applies `contentMinSize`, so verify by
+  launching and asking AX to resize the window smaller than it can go.
 - **`NSSearchField`'s magnifier glyph can't be repositioned — draw your
   own.** AppKit draws it ~3.75pt below the field's vertical centre (a 21×15
   image in a rect the field's full 22pt height). Every built-in hook is a
