@@ -200,6 +200,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
 | Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
+| Format bar | `edmd/Views/FormatBarView.swift` + `ChromeBarView.swift` (titlebar-material + hairline base shared with the find bar), `edmd/App/FormatMenu.swift` (the two pulldowns are the same `headingMenu()`/`calloutMenu()` factories as the Format menu — one menu definition, three homes), `Document.formatBar` (owned by the document; shown/hidden by View ▸ Show Format Bar, `settings.edit.showFormatBar`, off in Reading mode). Stacks **above** the find bar; `Document.layoutTopBars()` is the sole writer of `editor.additionalTopInset`, so the two bars share the inset budget and a resize recomputing overscroll can't drop either bar's share. Bar is horizontally centred by design (a narrow window clips the same reachable band on both sides) |
 | Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
@@ -243,9 +244,10 @@ Notable subsystems:
   rather than hand-rolling a clamp; `preservingViewportAnchor` is the
   exception and floors at 0 only, since it runs mid-re-tile when the clip
   view's idea of the document height is stale (clamping there yanked the
-  viewport ~770pt). The find bar adds its height through
-  `editor.additionalTopInset` rather than writing the inset itself, so a
-  resize recomputing the overscroll can't drop the bar's share.
+  viewport ~770pt). The find and format bars both add their heights through
+  `Document.layoutTopBars()`, the sole writer of
+  `editor.additionalTopInset`, rather than each bar writing the inset itself,
+  so a resize recomputing the overscroll can't drop a bar's share.
 - **Content width** (`+ContentWidth.swift`): an **absolute physical**
   max-column width — set in cm/in in Settings, stored as cm, converted to
   points via the display's real PPI (`NSScreen.physicalPPI`, from
@@ -699,6 +701,14 @@ Notable subsystems:
   background, and refresh its `cgColor` on
   `viewDidChangeEffectiveAppearance` — a colour snapshot won't follow the
   appearance by itself.
+- **An `NSPopUpButton`'s AX menu hides the currently-selected item.** AX
+  enumeration reorders the menu so the selected item comes first *with a blank
+  title*, and the trailing separator reads as a blank non-menu element — so a
+  hand-count of `AXMenuItem`s is always one short of the true menu. When
+  verifying the format bar's two pulldowns by AX, read the items by title
+  against `FormatMenu.headingMenu()`/`calloutMenu()` (the same factories the
+  Format menu uses — one definition, three homes) rather than trusting a
+  count.
 
 ### Deliberate omissions
 
@@ -721,6 +731,11 @@ Notable subsystems:
   the parser chokes past it until the next `{`). Use `/* */`. Cost a whole
   round of "why doesn't this CSS change do anything" — see
   `docs/investigations/math-ratex-weight-investigation.md` Round 1.
+- **The format bar has no alignment buttons** (left/center/right/justify),
+  despite being the natural home for them, per an explicit decision with the
+  maintainer: block-alignment has no Markdown representation, so the buttons
+  would silently no-op or rewrite text. Text alignment stays out of the bar;
+  anything that can't round-trip through `rawSource` does not get a button.
 
 ---
 

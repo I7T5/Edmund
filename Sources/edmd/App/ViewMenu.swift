@@ -20,6 +20,12 @@ enum ViewMenu {
         viewMenu.addItem(MenuCommand(id: "view.toggleToolbar", group: "View", title: "Hide Toolbar",
                                      action: #selector(Document.toggleToolbarShown(_:))).makeItem())
 
+        // The format bar across the top of the editor. Checkmark lives in
+        // Document.validateMenuItem; no default shortcut.
+        viewMenu.addItem(MenuCommand(id: "view.showFormatBar", group: "View",
+                                     title: "Show Format Bar",
+                                     action: #selector(Document.toggleFormatBar(_:))).makeItem())
+
         // Full-screen auto-hide. Lives here rather than in Settings, next to
         // the switch it qualifies.
         viewMenu.addItem(MenuCommand(id: "view.autoHideToolbar", group: "View",

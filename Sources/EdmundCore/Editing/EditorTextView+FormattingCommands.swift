@@ -67,6 +67,8 @@ extension EditorTextView {
     @objc public func formatCode(_ sender: Any?)          { toggleInlineWrap(open: "`", close: "`", expandToWord: true) }
     @objc public func formatInlineMath(_ sender: Any?)    { toggleInlineWrap(open: "$", close: "$", expandToWord: true) }
     @objc public func formatKeyboard(_ sender: Any?)      { toggleInlineWrap(open: "<kbd>", close: "</kbd>", expandToWord: true) }
+    @objc public func formatSubscript(_ sender: Any?)     { toggleInlineWrap(open: "<sub>", close: "</sub>", expandToWord: true) }
+    @objc public func formatSuperscript(_ sender: Any?)   { toggleInlineWrap(open: "<sup>", close: "</sup>", expandToWord: true) }
     @objc public func formatComment(_ sender: Any?)       { toggleInlineWrap(open: "<!-- ", close: " -->", expandToWord: true) }
 
     // MARK: - Inline links
@@ -90,7 +92,8 @@ extension EditorTextView {
     @objc public func formatMathBlock(_ sender: Any?)     { insertMathBlock() }
     @objc public func formatTable(_ sender: Any?)         { insertTable() }
 
-    /// Heading level read from the menu item's `tag` (1–6).
+    /// Heading level read from the menu item's `tag` (0 = Body, 1–6).
+    /// Level 0 strips any heading prefix (back to body text) without toggling.
     /// Heading H1–H6: strips any existing `#…` prefix and applies the new level.
     /// Re-applying the same level clears the heading. Applies per selected line.
     @objc public func formatHeading(_ sender: Any?) {
@@ -171,6 +174,7 @@ extension EditorTextView {
         #selector(formatBold(_:)), #selector(formatItalic(_:)), #selector(formatUnderline(_:)),
         #selector(formatStrikethrough(_:)), #selector(formatHighlight(_:)), #selector(formatCode(_:)),
         #selector(formatInlineMath(_:)), #selector(formatKeyboard(_:)), #selector(formatComment(_:)),
+        #selector(formatSubscript(_:)), #selector(formatSuperscript(_:)),
         #selector(formatWikilink(_:)), #selector(formatLink(_:)), #selector(formatImage(_:)),
         #selector(formatFootnote(_:)), #selector(formatBulletedList(_:)), #selector(formatNumberedList(_:)),
         #selector(formatChecklist(_:)), #selector(formatBlockQuote(_:)), #selector(formatThematicBreak(_:)),
@@ -181,6 +185,13 @@ extension EditorTextView {
     // MARK: - Heading
 
     func applyHeadingLevel(_ level: Int) {
+        // Level 0 (Body) strips the heading prefix unconditionally — never the
+        // same-level toggle-off, so a repeated Body pick is a no-op rather than
+        // re-applying `# `. Only reachable from the format bar / menu Body item.
+        guard level > 0 else {
+            transformSelectedLines { lines in lines.map { self.stripLeadingHashes($0) } }
+            return
+        }
         // All selected lines get the same heading level applied or cleared.
         // "Same level" is determined by majority: if every non-empty line already
         // has exactly `level` hashes, they are all cleared (toggle-off).
