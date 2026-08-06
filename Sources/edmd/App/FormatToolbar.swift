@@ -171,15 +171,21 @@ final class FormatToolbar: NSObject {
     /// common size renders `textformat` and `link.badge.plus` visibly larger than
     /// `checklist` and `tablecells`, which is what made the row read as ragged.
     ///
-    /// The target is a ~19pt drawn extent for every glyph — the size of the share
-    /// item AppKit builds itself, the one fixed reference in the row. These
-    /// numbers were derived by measuring each glyph's rendered extent and scaling
-    /// from it, then re-measured; do not collapse them back to a single constant.
+    /// The targets are Apple Notes', glyph for glyph. Both toolbars are 52pt tall,
+    /// so the point sizes compare directly; Notes' drawn extents, measured off
+    /// misc/frontend-refs/notes-toolbar-format-menu.png at 2x (traffic lights are
+    /// a fixed 12pt, which gives the scale), are Aa 20.0, checklist 18.5, table
+    /// 19.5, image 20.5, link 19.0. Each point size below is its target divided by
+    /// what that symbol drew here at the default 15 — which put the photo glyph at
+    /// 23.0pt, well over Notes'. Measure both sides the same way before touching
+    /// these: an offscreen `NSImage` draw has a different baseline than a
+    /// screenshot, so the two sets of numbers are not interchangeable.
     private static let symbolPointSizes: [String: CGFloat] = [
-        "textformat": 13,                 // "Aa" is wide and short — 15 read oversized
-        "checklist": 17,
-        "tablecells": 16,
-        "link.badge.plus": 13,
+        "textformat": 14,                 // "Aa" is wide and short — 15 read oversized
+        "checklist": 17.5,
+        "tablecells": 17,
+        "photo.on.rectangle": 13.5,
+        "link.badge.plus": 13.5,
     ]
 
     static func symbol(_ name: String) -> NSImage? {
@@ -549,7 +555,17 @@ final class FormatMenuToolbarItem: NSMenuToolbarItem {
 final class FormatButtonItem: NSToolbarItem {
     override func validate() {
         guard let action, let button = view as? NSButton else { return }
-        button.isEnabled = (NSApp.target(forAction: action) as? EditorTextView)?
+        // Only commands the editor runs are gated by the caret. The Format item
+        // opens a popover — it is not a formatting action, nothing in the
+        // responder chain answers it, and gating it here left it permanently
+        // disabled. The popover disables its own inapplicable rows.
+        guard EditorTextView.formattingActions.contains(action) else {
+            button.isEnabled = true
+            return
+        }
+        // `NSApp` is an implicitly-unwrapped optional and is genuinely nil in a
+        // test process, so chain it rather than trusting the declaration.
+        button.isEnabled = (NSApp?.target(forAction: action) as? EditorTextView)?
             .isFormattingActionEnabled(action, representedObject: nil) ?? false
     }
 }

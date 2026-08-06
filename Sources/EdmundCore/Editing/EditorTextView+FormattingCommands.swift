@@ -188,7 +188,10 @@ extension EditorTextView {
         }
     }
 
-    static let formattingActions: Set<Selector> = [
+    /// Public because the toolbar decides from it which of its buttons the caret
+    /// may disable — an item whose action is not in here (Format, which only
+    /// opens a popover) must never be gated.
+    public static let formattingActions: Set<Selector> = [
         #selector(formatBold(_:)), #selector(formatItalic(_:)), #selector(formatUnderline(_:)),
         #selector(formatStrikethrough(_:)), #selector(formatHighlight(_:)), #selector(formatCode(_:)),
         #selector(formatInlineMath(_:)), #selector(formatKeyboard(_:)), #selector(formatComment(_:)),

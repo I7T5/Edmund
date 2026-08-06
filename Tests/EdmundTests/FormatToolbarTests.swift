@@ -54,6 +54,31 @@ import AppKit
         _ = doc
     }
 
+    /// `validate()` gates formatting commands on the caret. The Format item's
+    /// action only opens a popover, so nothing in the responder chain answers it
+    /// — gating it there disabled the button permanently.
+    @Test func theFormatButtonIsNotGatedOnAFormattingAction() {
+        let (bar, doc) = toolbar()
+        let item = bar.makeItem(FormatToolbar.format) as? FormatButtonItem
+        let button = item?.view as? NSButton
+        button?.isEnabled = false
+        item?.validate()
+        #expect(button?.isEnabled == true)
+        _ = doc
+    }
+
+    /// The other custom-view item is a real command and must still be gated,
+    /// or the fix above would have blanket-enabled everything.
+    @Test func theLinkButtonIsStillGated() {
+        let (bar, doc) = toolbar()
+        let item = bar.makeItem(FormatToolbar.link) as? FormatButtonItem
+        let button = item?.view as? NSButton
+        button?.isEnabled = true
+        item?.validate()   // no editor is first responder here
+        #expect(button?.isEnabled == false)
+        _ = doc
+    }
+
     /// The view-mode item stays with `Document`; FormatToolbar must decline it
     /// rather than vend an empty replacement.
     @Test func declinesTheViewModeItem() {

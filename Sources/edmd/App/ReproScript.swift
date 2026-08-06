@@ -23,6 +23,11 @@ import WebKit
 ///   readscroll <y>    raw-scroll the Read-mode webview to y
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
+///   logtoolbar        log every toolbar item's identifier and enabled state
+///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
+///   clickrow <title>  press a format-popover row by its title
+///   clickicon <id>    press a format-popover icon button by its style id
+///   assertsource <s>  PASS iff <s> appears in the document
 @MainActor
 enum ReproScript {
 
@@ -30,6 +35,8 @@ enum ReproScript {
         guard let path = UserDefaults.standard.string(forKey: "debug.reproScript"),
               let script = try? String(contentsOfFile: path, encoding: .utf8) else { return }
         Log.info("repro script: \(path)", category: .app)
+        reportPath = path + ".log"
+        try? "".write(toFile: path + ".log", atomically: true, encoding: .utf8)
         var delay: TimeInterval = 1.5   // let the document finish opening
         for line in script.split(separator: "\n") {
             let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
@@ -173,10 +180,9 @@ enum ReproScript {
                 }
             case "logsel":
                 schedule(after: delay) { editor in
-                    Log.info("repro logsel sel=\(editor.selectedRange()) " +
-                             "rawLen=\((editor.rawSource as NSString).length) " +
-                             "docs=\(NSDocumentController.shared.documents.count)",
-                             category: .app)
+                    report("repro logsel sel=\(editor.selectedRange()) " +
+                           "rawLen=\((editor.rawSource as NSString).length) " +
+                           "docs=\(NSDocumentController.shared.documents.count)")
                 }
             case "scroll":
                 // Scrolls the clip view directly (bypassing the caret, so the
@@ -240,6 +246,80 @@ enum ReproScript {
                         NSLog("WEBSTATE \(v.map(String.init(describing:)) ?? "nil") err=\(e.map(String.init(describing:)) ?? "none")")
                     }
                 }
+            case "logtoolbar":
+                scheduleDoc(after: delay) { doc in
+                    let window = doc.windowControllers.first?.window
+                    let target = NSApp?.target(forAction: #selector(EditorTextView.formatChecklist(_:)))
+                    report("repro responders active=\(NSApp?.isActive ?? false) " +
+                           "keyIsDoc=\(NSApp?.keyWindow === window) " +
+                           "key=\(NSApp?.keyWindow.map { String(describing: type(of: $0)) } ?? "nil") " +
+                           "first=\(window?.firstResponder.map { String(describing: type(of: $0)) } ?? "nil") " +
+                           "target=\(target.map { String(describing: type(of: $0)) } ?? "nil")")
+                    for item in window?.toolbar?.items ?? [] {
+                        item.validate()
+                        // A custom-view item's own `isEnabled` is not what draws;
+                        // the button inside it is. Nil-target items validate off the
+                        // key window, which a script-launched app never has, so ask
+                        // this window's first responder instead.
+                        let on: Bool
+                        if let control = item.view as? NSControl {
+                            on = control.isEnabled
+                        } else if let validator = window?.firstResponder as? NSToolbarItemValidation {
+                            on = validator.validateToolbarItem(item)
+                        } else {
+                            on = item.isEnabled
+                        }
+                        report("repro toolbar \(item.itemIdentifier.rawValue) enabled=\(on)")
+                    }
+                }
+            case "clicktoolbar":
+                scheduleDoc(after: delay) { doc in
+                    guard let item = doc.windowControllers.first?.window?.toolbar?
+                        .items.first(where: { $0.itemIdentifier.rawValue == arg }) else {
+                        report("repro clicktoolbar: no item \(arg)"); return
+                    }
+                    item.validate()
+                    if let button = item.view as? NSButton {
+                        report("repro clicktoolbar \(arg) enabled=\(button.isEnabled)")
+                        button.performClick(nil)
+                    } else if let action = item.action {
+                        // A script-launched binary never becomes the active app, so
+                        // `NSApp.keyWindow` is nil and `sendAction` — which starts
+                        // from the key window — finds nobody. Walking this window's
+                        // own responder chain is what a real click would reach.
+                        // …and the chain starts at the first responder, not at the
+                        // window: `NSWindow.tryToPerform` walks its own nextResponder.
+                        let window = doc.windowControllers.first?.window
+                        let sent = window?.firstResponder?.tryToPerform(action, with: item) ?? false
+                        report("repro clicktoolbar \(arg) sent=\(sent)")
+                    } else {
+                        report("repro clicktoolbar \(arg) has no button and no action")
+                    }
+                }
+            case "clickrow":
+                scheduleDoc(after: delay) { _ in
+                    guard let row = findInPopover({ ($0 as? FormatPopoverRow)?.item.title == arg })
+                            as? FormatPopoverRow else {
+                        report("repro clickrow: no row titled \(arg)"); return
+                    }
+                    report("repro clickrow \(arg) enabled=\(row.isEnabled)")
+                    _ = row.accessibilityPerformPress()
+                }
+            case "clickicon":
+                scheduleDoc(after: delay) { _ in
+                    guard let button = findInPopover({
+                        (($0 as? FormatIconButton)?.target as? FormatIconTarget)?.styleID == arg
+                    }) as? FormatIconButton else {
+                        report("repro clickicon: no button for \(arg)"); return
+                    }
+                    report("repro clickicon \(arg) enabled=\(button.isEnabled)")
+                    button.performClick(nil)
+                }
+            case "assertsource":
+                schedule(after: delay) { editor in
+                    let ok = (editor.rawSource as NSString).range(of: arg).location != NSNotFound
+                    report("repro assertsource \(ok ? "PASS" : "FAIL") needle=\(arg)")
+                }
             default:
                 break
             }
@@ -247,12 +327,46 @@ enum ReproScript {
         }
     }
 
+    /// Where a run's results are written: `<script>.log`, next to the script.
+    private static var reportPath: String?
+
+    /// Results go to a file of their own. The daily log is shared with every
+    /// other running instance, and NSLog does not reach the redirected stderr of
+    /// a bundle-less binary — so neither can be relied on to read a run back.
+    private static func report(_ line: String) {
+        Log.info(line, category: .app)
+        guard let path = reportPath else { return }
+        let data = Data((line + "\n").utf8)
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        }
+    }
+
     private static func scheduleDoc(after: TimeInterval,
                                     _ body: @escaping @MainActor (Document) -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + after) {
-            guard let doc = NSDocumentController.shared.documents.first as? Document else { return }
+            guard let doc = NSDocumentController.shared.documents.first as? Document else {
+                report("repro: no document yet"); return
+            }
             body(doc)
         }
+    }
+
+    /// First view in any open popover satisfying `match`. The popover keeps its
+    /// own window, so it is reachable from `NSApp.windows` without the toolbar
+    /// having to hand out a reference to it.
+    private static func findInPopover(_ match: (NSView) -> Bool) -> NSView? {
+        func search(_ view: NSView) -> NSView? {
+            if match(view) { return view }
+            for sub in view.subviews { if let hit = search(sub) { return hit } }
+            return nil
+        }
+        for window in NSApp?.windows ?? [] {
+            if let content = window.contentView, let hit = search(content) { return hit }
+        }
+        return nil
     }
 
     private static func firstWebView(in view: NSView) -> WKWebView? {
