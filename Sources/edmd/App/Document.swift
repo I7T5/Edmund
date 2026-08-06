@@ -323,12 +323,16 @@ class Document: NSDocument, HeadingNavigable {
 
     @objc private func editorDidChange(_ notification: Notification) {
         updateStatusBar()
+        // An edit can add or remove the delimiters around the caret without
+        // moving the selection, so the bar's on-state has to follow edits too.
+        refreshFormatBarState()
         // Keep an open Read view in sync with edits (it renders a snapshot).
         refreshReadView()
     }
 
     @objc private func editorSelectionDidChange(_ notification: Notification) {
         updateStatusBar()
+        refreshFormatBarState()
     }
 
     private func updateStatusBar() {
@@ -784,7 +788,17 @@ class Document: NSDocument, HeadingNavigable {
     func refreshFormatBar() {
         formatBar.isHidden = !AppSettings.showFormatBar || editor.viewMode == .reading
         formatBar.refreshEnabledState(editor: editor)
+        refreshFormatBarState()
         layoutTopBars()
+    }
+
+    /// Just the lit/unlit state of the bar's buttons. Split out from
+    /// `refreshFormatBar` because this one runs on every caret move and every
+    /// keystroke, where re-deciding visibility and re-stacking the bars would be
+    /// wasted work.
+    private func refreshFormatBarState() {
+        guard let formatBar, !formatBar.isHidden, let editor else { return }
+        formatBar.refreshActiveState(editor: editor)
     }
 
     /// Stacks the visible top bars under the toolbar and hands the editor their

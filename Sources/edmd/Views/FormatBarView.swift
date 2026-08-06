@@ -24,12 +24,19 @@ final class FormatBarView: ChromeBarView {
     private static let controlWidth: CGFloat = 24
     private static let controlHeight: CGFloat = 20
 
-    /// Each control paired with a private, unregistered menu item carrying its
+    /// One bar control and everything needed to keep it in sync.
+    ///
+    /// `item` is a private, unregistered menu item carrying the control's
     /// selector — the input `EditorTextView.validateMenuItem` needs. Never
-    /// installed in a menu; exists only so a button's enabled state follows the
-    /// Format menu's own gate (Reading mode, Markdown-feature toggles) with no
-    /// new public API.
-    private var commandItems: [(button: NSButton, item: NSMenuItem)] = []
+    /// installed in a menu; it exists only so a button's *enabled* state follows
+    /// the Format menu's own gate (Reading mode, Markdown-feature toggles) with
+    /// no new public API.
+    private struct BarControl {
+        let button: NSButton
+        let chip: BarControlChip
+        let item: NSMenuItem
+    }
+    private var commandItems: [BarControl] = []
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -41,8 +48,21 @@ final class FormatBarView: ChromeBarView {
     /// only `viewMode` and `markdownFeatures`, so this is needed on show, on
     /// view-mode change and when settings change — never per keystroke.
     func refreshEnabledState(editor: EditorTextView) {
-        for (button, item) in commandItems {
-            button.isEnabled = editor.validateMenuItem(item)
+        for control in commandItems {
+            control.button.isEnabled = editor.validateMenuItem(control.item)
+        }
+    }
+
+    /// Lights the controls whose formatting is in effect where the caret or
+    /// selection currently sits. Runs on every selection change and every edit,
+    /// so it stays a delimiter scan of the selected lines and nothing more.
+    ///
+    /// The pulldowns and Thematic Break never light: their selectors are not
+    /// ones `activeFormattingActions()` reports, so this needs no special case.
+    func refreshActiveState(editor: EditorTextView) {
+        let active = editor.activeFormattingActions()
+        for control in commandItems {
+            control.chip.isActive = control.item.action.map(active.contains) ?? false
         }
     }
 
@@ -121,9 +141,9 @@ final class FormatBarView: ChromeBarView {
     }
 
     private func makeButton(symbol name: String, title: String,
-                            action: Selector, tint: NSColor? = nil) -> NSButton {
-        let button = NSButton(image: Self.symbol(name, desc: title) ?? NSImage(),
-                              target: nil, action: action)
+                            action: Selector, tint: NSColor? = nil) -> FormatBarButton {
+        let button = FormatBarButton(image: Self.symbol(name, desc: title) ?? NSImage(),
+                                     target: nil, action: action)
         button.bezelStyle = .accessoryBarAction
         button.isBordered = false
         button.imagePosition = .imageOnly
@@ -139,13 +159,13 @@ final class FormatBarView: ChromeBarView {
         button.setAccessibilityLabel(title)
         button.toolTip = title
         if let tint { button.contentTintColor = tint }
-        register(button, action: action, title: title)
+        register(button, chip: button.chip, action: action, title: title)
         return button
     }
 
     private func makePullDown(symbol name: String, title: String,
-                              menu: NSMenu, action: Selector) -> NSPopUpButton {
-        let pop = NSPopUpButton(frame: .zero, pullsDown: true)
+                              menu: NSMenu, action: Selector) -> FormatBarPopUpButton {
+        let pop = FormatBarPopUpButton(frame: .zero, pullsDown: true)
         pop.menu = menu
         pop.bezelStyle = .accessoryBarAction
         pop.isBordered = false
@@ -171,13 +191,17 @@ final class FormatBarView: ChromeBarView {
         // image, so pinning it to a plain button's width crushed the arrow into
         // the glyph; let the cell ask for the width it needs.
         pop.heightAnchor.constraint(equalToConstant: Self.controlHeight).isActive = true
-        register(pop, action: action, title: title)
+        register(pop, chip: pop.chip, action: action, title: title)
         return pop
     }
 
-    private func register(_ button: NSButton, action: Selector, title: String) {
-        commandItems.append((button: button,
-                             item: NSMenuItem(title: title, action: action, keyEquivalent: "")))
+    /// The chip is passed in rather than read off the control: the two control
+    /// kinds carry one each but share no type that exposes it.
+    private func register(_ button: NSButton, chip: BarControlChip,
+                          action: Selector, title: String) {
+        commandItems.append(BarControl(
+            button: button, chip: chip,
+            item: NSMenuItem(title: title, action: action, keyEquivalent: "")))
     }
 
     private static func symbol(_ name: String, desc: String) -> NSImage? {
