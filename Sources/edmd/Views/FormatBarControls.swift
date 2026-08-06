@@ -49,17 +49,37 @@ final class BarControlChip {
         host.layer?.insertSublayer(chip, at: 0)
     }
 
-    /// Called from the host's `layout()`. Centred on the control at the shared
-    /// size rather than filling it.
+    /// Called from the host's `layout()`. Centred on the *bar*, not on the
+    /// control.
+    ///
+    /// Centring on the control looked equivalent and was not: the controls do
+    /// not all share a height, and each one centred inside its own frame put
+    /// its chip a pixel or two off its neighbour's. Worse, they were off in the
+    /// same direction — 3.0pt of bar above the chip against 4.5pt below. Taking
+    /// the centre line from the bar means every chip on it resolves to one
+    /// vertical position, and the gap above equals the gap below by
+    /// construction.
     func layoutChip() {
         // No implicit fade as the control moves during a resize.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        chip.frame = NSRect(x: Self.insetX,
-                            y: ((host.bounds.height - Self.height) / 2).rounded(),
+        chip.frame = NSRect(x: Self.insetX, y: chipOriginY,
                             width: max(0, host.bounds.width - Self.insetX * 2),
                             height: Self.height)
         CATransaction.commit()
+    }
+
+    /// The chip's bottom edge in the host's coordinates, placed so the chip
+    /// straddles the bar's centre line. Falls back to centring on the control
+    /// before the view is in a bar.
+    private var chipOriginY: CGFloat {
+        var bar: NSView? = host.superview
+        while let candidate = bar, !(candidate is ChromeBarView) { bar = candidate.superview }
+        guard let chrome = bar as? ChromeBarView else {
+            return ((host.bounds.height - Self.height) / 2).rounded()
+        }
+        let centre = host.convert(NSPoint(x: 0, y: chrome.interior.midY), from: chrome)
+        return centre.y - Self.height / 2
     }
 
     /// Re-resolves the fill. Semantic colours are stored as `cgColor`, which is
