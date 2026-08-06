@@ -218,9 +218,13 @@ public class EditorTextView: NSTextView {
         }
     }
 
-    /// Extra space the app layer needs above the text — the find bar's height
-    /// while it is showing. Added to the overscroll the editor reserves for
-    /// itself; see `updateScrollOverscroll`.
+    /// Combined height of the chrome bars the app layer stacks over the top of
+    /// the scroll view (format bar, find bar). `Document.layoutTopBars` is the
+    /// only writer.
+    ///
+    /// Applied as the scroll view's `contentInsets.top`, *not* as overscroll:
+    /// the document is pushed down out from under the bars without gaining any
+    /// scrollable emptiness above its first line. See `updateScrollOverscroll`.
     public var additionalTopInset: CGFloat = 0 {
         didSet {
             guard abs(oldValue - additionalTopInset) > 0.5 else { return }

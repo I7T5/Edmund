@@ -33,12 +33,19 @@ extension EditorTextView {
     /// document view keeps every point of the window inside the text view,
     /// where a click in the blank band lands on the nearest character.
     ///
-    /// The find bar adds its height on top via `additionalTopInset`.
+    /// The top bars are the exception, and go through `contentInsets` — see
+    /// `applyTopBarInset`. That objection does not apply to them: the band they
+    /// cost is the band they cover, so the live area only loses what the reader
+    /// could not click anyway.
     public func updateScrollOverscroll() {
         guard let scrollView = enclosingScrollView else { return }
         let clipHeight = scrollView.contentView.bounds.height
         guard clipHeight > 0 else { return }
-        let top = (typewriterModeEnabled ? clipHeight / 2 : 0) + additionalTopInset
+        applyTopBarInset(additionalTopInset, in: scrollView)
+        // Half of what the reader can *see*, not half the clip: the bars cover
+        // the top `viewportTopInset` of it, and the scroll range already starts
+        // at -inset, which supplies that much of the run-up for free.
+        let top = typewriterModeEnabled ? visibleContentHeight / 2 : 0
         let bottom = clipHeight / 2
         guard abs(top - overscrollTopPad) > 0.5
                 || abs(bottom - overscrollBottomPad) > 0.5 else { return }
@@ -56,6 +63,51 @@ extension EditorTextView {
         // it so the reader keeps looking at the same line.
         let origin = scrollView.contentView.bounds.origin
         let y = clampedScrollY(origin.y + shift)
+        guard abs(y - origin.y) > 0.5 else { return }
+        scrollView.contentView.scroll(to: NSPoint(x: origin.x, y: y))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    /// The height of the chrome bars stacked over the top of the scroll view
+    /// (format bar, find bar), as a real `contentInsets.top`.
+    ///
+    /// AppKit does *not* shrink the clip view for a content inset — the clip
+    /// still spans the whole scroll view and the document scrolls under the
+    /// band. What the inset changes is the scroll range: its top end moves from
+    /// 0 to `-inset`, so the document can rest that far down with no extra
+    /// document height. Every conversion between clip coordinates and "the top
+    /// of what the reader can actually see" therefore has to add this.
+    var viewportTopInset: CGFloat { enclosingScrollView?.contentInsets.top ?? 0 }
+
+    /// The part of the clip view the bars leave visible.
+    var visibleContentHeight: CGFloat {
+        guard let clip = enclosingScrollView?.contentView else { return 0 }
+        return max(0, clip.bounds.height - viewportTopInset)
+    }
+
+    /// Mirrors `additionalTopInset` onto the scroll view and slides the document
+    /// down by the same amount.
+    ///
+    /// Both halves matter. The inset alone would only widen the scroll range —
+    /// the document would keep its old origin and the bar would simply cover the
+    /// top lines. Following it with the matching scroll is what makes a bar
+    /// appearing *push* the text down and a bar closing pull it back up, with
+    /// the reader's line held at the same place on screen throughout.
+    private func applyTopBarInset(_ inset: CGFloat, in scrollView: NSScrollView) {
+        let delta = inset - scrollView.contentInsets.top
+        guard abs(delta) > 0.5 else { return }
+        // Sampled *before* the inset changes. Shrinking the inset immediately
+        // re-clamps the clip view against the narrower range, so reading the
+        // origin afterwards returns a position that has already absorbed part
+        // of `delta` — subtracting it again scrolled the document down by the
+        // bar's height on the way out instead of back up.
+        let origin = scrollView.contentView.bounds.origin
+        // Otherwise AppKit recomputes the insets from the window's titlebar and
+        // stamps on ours.
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: inset, left: 0, bottom: 0, right: 0)
+        // Clamped after, though — the permitted range depends on the new inset.
+        let y = clampedScrollY(origin.y - delta)
         guard abs(y - origin.y) > 0.5 else { return }
         scrollView.contentView.scroll(to: NSPoint(x: origin.x, y: y))
         scrollView.reflectScrolledClipView(scrollView.contentView)
