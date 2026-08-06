@@ -20,12 +20,6 @@ enum ViewMenu {
         viewMenu.addItem(MenuCommand(id: "view.toggleToolbar", group: "View", title: "Hide Toolbar",
                                      action: #selector(Document.toggleToolbarShown(_:))).makeItem())
 
-        // The format bar across the top of the editor. Checkmark lives in
-        // Document.validateMenuItem; no default shortcut.
-        viewMenu.addItem(MenuCommand(id: "view.showFormatBar", group: "View",
-                                     title: "Show Format Bar",
-                                     action: #selector(Document.toggleFormatBar(_:))).makeItem())
-
         // Full-screen auto-hide. Lives here rather than in Settings, next to
         // the switch it qualifies.
         viewMenu.addItem(MenuCommand(id: "view.autoHideToolbar", group: "View",
@@ -39,6 +33,14 @@ enum ViewMenu {
         viewMenu.addItem(withTitle: "Customize Toolbar…",
                          action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
                          keyEquivalent: "")
+
+        // The format bar across the top of the editor, kept below the toolbar
+        // section with a divider on each side. Checkmark lives in
+        // Document.validateMenuItem; no default shortcut.
+        viewMenu.addItem(.separator())
+        viewMenu.addItem(MenuCommand(id: "view.showFormatBar", group: "View",
+                                     title: "Show Format Bar",
+                                     action: #selector(Document.toggleFormatBar(_:))).makeItem())
         viewMenu.addItem(.separator())
 
         let typewriterItem = MenuCommand(id: "view.typewriterScroll", group: "View",

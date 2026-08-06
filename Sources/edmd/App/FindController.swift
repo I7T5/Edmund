@@ -86,14 +86,20 @@ final class FindController: NSObject, EditorFindHandling {
         let firstShow = !isShowing
         if firstShow {
             isShowing = true
+            // Reveal *before* re-laying out the top bars: `Document.layoutTopBars()`
+            // stacks only visible bars, so a bar revealed after that call pops up
+            // at whatever stale frame it had — on the very first window, wherever
+            // the autoresizing mask left it, not under the format bar. (Layout-
+            // then-reveal worked pre-refactor only because the find bar used to
+            // position itself.)
+            bar.isHidden = false
         }
         bar.showsReplaceRow = replace
         layoutBar()
-        // Finish the bar's internal layout *before* revealing it, otherwise the
+        // Finish the bar's internal layout before the window draws, otherwise the
         // first painted frame is pre-layout and controls (the search field's
         // magnifier) visibly settle a pass later.
         bar.layoutSubtreeIfNeeded()
-        if firstShow { bar.isHidden = false }
 
         // Seed from the current selection when it's a single line of text.
         let sel = editor.selectedRange()

@@ -19,6 +19,11 @@ final class FormatBarView: ChromeBarView {
     static let barHeight: CGFloat = 32
     override var preferredHeight: CGFloat { Self.barHeight }
 
+    /// The borderless controls' footprint — the same size the `.accessoryBarAction`
+    /// bezel gave them, so dropping the border doesn't shrink the hit area.
+    private static let controlWidth: CGFloat = 24
+    private static let controlHeight: CGFloat = 20
+
     /// Each control paired with a private, unregistered menu item carrying its
     /// selector — the input `EditorTextView.validateMenuItem` needs. Never
     /// installed in a menu; exists only so a button's enabled state follows the
@@ -68,8 +73,7 @@ final class FormatBarView: ChromeBarView {
             ]),
             makeGroup([
                 makeButton(symbol: "highlighter", title: "Highlight",
-                           action: #selector(EditorTextView.formatHighlight(_:)),
-                           tint: .systemYellow),
+                           action: #selector(EditorTextView.formatHighlight(_:))),
             ]),
             makeGroup([
                 makeButton(symbol: "list.bullet", title: "Bulleted List",
@@ -120,7 +124,13 @@ final class FormatBarView: ChromeBarView {
         let button = NSButton(image: Self.symbol(name, desc: title) ?? NSImage(),
                               target: nil, action: action)
         button.bezelStyle = .accessoryBarAction
+        button.isBordered = false
         button.imagePosition = .imageOnly
+        // Borderless sheds the bezel's padding, collapsing the intrinsic size to
+        // the bare glyph; pin the footprint to match the old bordered buttons —
+        // same hit area, no border.
+        button.widthAnchor.constraint(equalToConstant: Self.controlWidth).isActive = true
+        button.heightAnchor.constraint(equalToConstant: Self.controlHeight).isActive = true
         // Out of the key-view loop entirely: `FindBarView` opts the whole
         // window out of autorecalculating its key-view loop, so a Tab chain
         // that included these buttons would fight that hand-managed chain.
@@ -137,18 +147,27 @@ final class FormatBarView: ChromeBarView {
         let pop = NSPopUpButton(frame: .zero, pullsDown: true)
         pop.menu = menu
         pop.bezelStyle = .accessoryBarAction
+        pop.isBordered = false
         pop.refusesFirstResponder = true
         pop.setAccessibilityLabel(title)
         pop.toolTip = title
-        // Show the symbol, not the selected item's title, and never mark a
-        // selection in the open menu: the bar tracks no state, so a checkmark
-        // on the last-picked item would misread as "this is the caret's level".
-        if let cell = pop.cell as? NSPopUpButtonCell { cell.usesItemFromMenu = false }
+        // Never mark a selection in the open menu: the bar tracks no state, so a
+        // checkmark on the last-picked item would misread as "this is the
+        // caret's level".
         for item in menu.items { item.onStateImage = nil }
         if let image = Self.symbol(name, desc: title) {
-            pop.image = image
-            pop.imagePosition = .imageOnly
+            // A pull-down's cell ignores the button's own `image` — only the
+            // arrow draws — so the icon rides on a hidden display item 0, which
+            // the button shows but the open menu skips. Item 0 stays put:
+            // pull-downs keep displaying it no matter what the user picks.
+            let display = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            display.image = image
+            display.isHidden = true
+            display.onStateImage = nil
+            menu.insertItem(display, at: 0)
         }
+        pop.widthAnchor.constraint(equalToConstant: Self.controlWidth).isActive = true
+        pop.heightAnchor.constraint(equalToConstant: Self.controlHeight).isActive = true
         register(pop, action: action, title: title)
         return pop
     }
