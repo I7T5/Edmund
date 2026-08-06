@@ -23,12 +23,15 @@ class ChromeBarView: NSVisualEffectView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         material = .titlebar
-        // `.withinWindow` would sample the editor content behind the bar
-        // (frosted-white over text), which reads as a floating panel instead
-        // of window chrome. `.behindWindow` samples the window backdrop the
-        // way the titlebar/toolbar does, so the bar matches them.
-        blendingMode = .behindWindow
-        state = .active
+        // `.withinWindow`, not `.behindWindow`: behind-window blending samples
+        // what is behind the *window* — the desktop — so the bar tracked the
+        // wallpaper instead of the chrome. It looked right only because this
+        // wallpaper happens to be near the light-mode chrome colour; in dark
+        // mode the bar measured 40 levels lighter than the toolbar above it.
+        blendingMode = .withinWindow
+        // Follows the window, so the bar dims with the toolbar when the window
+        // stops being key. `.active` pinned it bright on inactive windows.
+        state = .followsWindowActiveState
 
         bottomBorder.wantsLayer = true
         bottomBorder.layer?.backgroundColor = NSColor.separatorColor.cgColor

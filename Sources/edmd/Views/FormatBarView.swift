@@ -73,7 +73,8 @@ final class FormatBarView: ChromeBarView {
             ]),
             makeGroup([
                 makeButton(symbol: "highlighter", title: "Highlight",
-                           action: #selector(EditorTextView.formatHighlight(_:))),
+                           action: #selector(EditorTextView.formatHighlight(_:)),
+                           tint: .systemYellow),
             ]),
             makeGroup([
                 makeButton(symbol: "list.bullet", title: "Bulleted List",
@@ -166,7 +167,9 @@ final class FormatBarView: ChromeBarView {
             display.onStateImage = nil
             menu.insertItem(display, at: 0)
         }
-        pop.widthAnchor.constraint(equalToConstant: Self.controlWidth).isActive = true
+        // Height only. A pull-down draws its disclosure arrow *beside* the
+        // image, so pinning it to a plain button's width crushed the arrow into
+        // the glyph; let the cell ask for the width it needs.
         pop.heightAnchor.constraint(equalToConstant: Self.controlHeight).isActive = true
         register(pop, action: action, title: title)
         return pop
