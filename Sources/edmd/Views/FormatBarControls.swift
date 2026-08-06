@@ -26,7 +26,7 @@ final class BarControlChip {
     init(host: NSView) {
         self.host = host
         host.wantsLayer = true
-        chip.cornerRadius = 5
+        chip.cornerRadius = 4
         chip.cornerCurve = .continuous
         // Behind the control's own drawing, never over the glyph.
         host.layer?.insertSublayer(chip, at: 0)

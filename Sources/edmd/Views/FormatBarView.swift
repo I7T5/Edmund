@@ -16,13 +16,17 @@ final class FormatBarView: ChromeBarView {
 
     /// The bar's fixed height. The accessory-bar buttons sit smaller than the
     /// strip; `preferredHeight` drives the editor's top inset.
-    static let barHeight: CGFloat = 32
+    static let barHeight: CGFloat = 28
     override var preferredHeight: CGFloat { Self.barHeight }
 
-    /// The borderless controls' footprint — the same size the `.accessoryBarAction`
-    /// bezel gave them, so dropping the border doesn't shrink the hit area.
-    private static let controlWidth: CGFloat = 24
-    private static let controlHeight: CGFloat = 20
+    /// The borderless controls' footprint. Comfortably above the 20pt the HIG
+    /// asks for a pointer target even at this size.
+    private static let controlWidth: CGFloat = 22
+    private static let controlHeight: CGFloat = 18
+
+    /// Height of the hairline between two buttons of the same group — a little
+    /// shorter than the buttons, the way Mail draws it.
+    private static let dividerHeight: CGFloat = 13
 
     /// One bar control and everything needed to keep it in sync.
     ///
@@ -118,7 +122,7 @@ final class FormatBarView: ChromeBarView {
         stack.alignment = .centerY
         for (i, group) in groups.enumerated() {
             stack.addArrangedSubview(group)
-            if i < groups.count - 1 { stack.setCustomSpacing(16, after: group) }
+            if i < groups.count - 1 { stack.setCustomSpacing(14, after: group) }
         }
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -130,14 +134,37 @@ final class FormatBarView: ChromeBarView {
         ])
     }
 
-    /// One control group: a sub-stack with the tight within-group spacing. The
-    /// wider between-group spacing is set on the top-level stack instead.
+    /// One control group: the buttons run together with a hairline between each
+    /// adjacent pair, so the group reads as a single segmented unit. Group
+    /// boundaries get no divider — the wider spacing on the top-level stack is
+    /// what separates those, which is how Mail's bar is drawn.
     private func makeGroup(_ views: [NSView]) -> NSStackView {
-        let group = NSStackView(views: views)
+        var arranged: [NSView] = []
+        for (i, view) in views.enumerated() {
+            if i > 0 { arranged.append(Self.makeDivider()) }
+            arranged.append(view)
+        }
+        let group = NSStackView(views: arranged)
         group.orientation = .horizontal
-        group.spacing = 4
+        // Tight: the divider is the separation, so the buttons only need enough
+        // room that a hover chip doesn't crowd it.
+        group.spacing = 3
         group.alignment = .centerY
         return group
+    }
+
+    /// `NSBox` in separator mode rather than a layer-backed view: it is the
+    /// stock hairline and it tracks light/dark on its own, so there is no
+    /// `cgColor` snapshot to refresh on an appearance change.
+    private static func makeDivider() -> NSView {
+        let divider = NSBox()
+        divider.boxType = .separator
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            divider.widthAnchor.constraint(equalToConstant: 1),
+            divider.heightAnchor.constraint(equalToConstant: dividerHeight),
+        ])
+        return divider
     }
 
     private func makeButton(symbol name: String, title: String,
@@ -206,6 +233,6 @@ final class FormatBarView: ChromeBarView {
 
     private static func symbol(_ name: String, desc: String) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: desc)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .regular))
     }
 }
