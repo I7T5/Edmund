@@ -177,6 +177,10 @@ class Document: NSDocument, HeadingNavigable {
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar2"
+        // Flexible space alone does not centre the group: measured on a 1500pt
+        // window, the leading one absorbed all 1077pt of slack and the trailing
+        // one got nothing. This is the API that actually centres.
+        toolbar.centeredItemIdentifiers = FormatToolbar.centeredIdentifiers
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .line

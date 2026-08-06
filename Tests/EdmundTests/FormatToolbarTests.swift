@@ -29,6 +29,15 @@ import AppKit
                         "NSToolbarFlexibleSpaceItem", "viewMode", "share"])
     }
 
+    /// Centring is `centeredItemIdentifiers`, not flexible space — measured, a
+    /// leading flexible space swallowed all the slack and the group stayed right.
+    @Test func theFormattingGroupIsTheCentredSet() {
+        let ids = FormatToolbar.defaultIdentifiers(viewMode: viewMode)
+        #expect(FormatToolbar.centeredIdentifiers == Set(ids.prefix(5)))
+        #expect(!FormatToolbar.centeredIdentifiers.contains(viewMode))
+        #expect(!FormatToolbar.centeredIdentifiers.contains(FormatToolbar.share))
+    }
+
     @Test func everyDefaultItemIsAlsoAllowed() {
         let allowed = Set(FormatToolbar.allowedIdentifiers(viewMode: viewMode))
         for id in FormatToolbar.defaultIdentifiers(viewMode: viewMode) {
@@ -58,11 +67,11 @@ import AppKit
 
     @Test func rowOrderMatchesTheSpec() {
         let (bar, doc) = toolbar()
+        // Icon rows are views, not items — the popover stacks them above these.
         #expect(titles(bar.formatPopupMenu()) == [
-            "", "", "-",
             "Heading 1", "Heading 2", "Heading 3", "Thematic Break",
             "•  Bulleted List", "1.  Numbered List", "-",
-            "Code Block", "Math Block", "▎ Block Quote", "> [!NOTE]", "Footnote",
+            "Code Block", "Math Block", "▎ Block Quote", "Alert / Callout", "Footnote",
         ])
         _ = doc
     }
@@ -117,7 +126,7 @@ import AppKit
 
     @Test func iconRowsCarryTheDocumentedCommands() {
         let (bar, doc) = toolbar()
-        let rows = bar.formatPopupMenu().items.prefix(2).compactMap { $0.view as? NSStackView }
+        let rows = bar.iconRowViews()
         #expect(rows.count == 2)
 
         // Every row button funnels through the same forwarding target…
@@ -152,13 +161,109 @@ import AppKit
     }
 }
 
+@MainActor @Suite struct FormatPopoverTests {
+
+    /// The popover renders the same items the command table produces — the rows
+    /// are a view over them, not a second declaration.
+    @Test func buildsARowForEveryCommandItem() {
+        let (bar, doc) = toolbar()
+        let items = Array(bar.formatPopupMenu().items)
+        let controller = FormatPopoverController(items: items, editor: nil, popover: nil)
+        controller.loadView()
+
+        let rows = controller.commandRows
+        let expected = items.filter { !$0.isSeparatorItem }
+        #expect(rows.count == expected.count)
+        #expect(rows.map(\.item.title) == expected.map(\.title))
+        _ = doc
+    }
+
+    /// The icon rows are passed in as views. Routing them through
+    /// `NSMenuItem.view` instead left AppKit owning their layout and they
+    /// stacked at y=0 on top of the last command row.
+    @Test func iconRowsAreLaidOutAboveTheCommandRows() {
+        let (bar, doc) = toolbar()
+        let iconRows = bar.iconRowViews()
+        let controller = FormatPopoverController(iconRows: iconRows,
+                                                 items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+        controller.view.layoutSubtreeIfNeeded()
+
+        // Every row occupies its own vertical band — no two overlap.
+        let bands = (iconRows.map(\.self) as [NSView] + controller.commandRows)
+            .map { ($0.frame.minY, $0.frame.maxY) }
+            .sorted { $0.0 < $1.0 }
+        #expect(bands.allSatisfy { $0.1 > $0.0 }, "a row has zero height")
+        #expect(zip(bands, bands.dropFirst()).allSatisfy { $0.1 <= $1.0 },
+                "rows overlap: \(bands)")
+        _ = doc
+    }
+
+    /// `formatHeading` reads its level from `(sender as? NSMenuItem)?.tag` and
+    /// `formatCallout` its type from `representedObject`. Rows forward their
+    /// item as the sender precisely so those survive — a row sending itself
+    /// would silently apply Heading 1 and no callout at all.
+    @Test func rowsCarryTheMenuItemSoSenderStateSurvives() {
+        let (bar, doc) = toolbar()
+        let controller = FormatPopoverController(items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+
+        let heading2 = controller.commandRows.first { $0.item.title == "Heading 2" }
+        #expect(heading2?.item.tag == 2)
+
+        let callout = controller.commandRows.first { $0.item.title == "Alert / Callout" }
+        #expect(callout?.item.representedObject as? String == "NOTE")
+        _ = doc
+    }
+
+    @Test func rowsAreAccessibleAsButtons() {
+        let (bar, doc) = toolbar()
+        let controller = FormatPopoverController(items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+        for row in controller.commandRows {
+            #expect(row.accessibilityRole() == .button)
+            #expect(row.accessibilityLabel() == row.item.title)
+        }
+        _ = doc
+    }
+
+    @Test func theCalloutRowCarriesTheNoteIcon() {
+        let (bar, doc) = toolbar()
+        let callout = bar.formatPopupMenu().items.first {
+            $0.action == #selector(EditorTextView.formatCallout(_:))
+        }
+        #expect(callout?.image != nil)
+        _ = doc
+    }
+}
+
+@MainActor @Suite struct CalloutIconTests {
+
+    @Test func noteResolvesToAnIcon() {
+        #expect(Callout.icon(for: "note", color: .labelColor, pointSize: 14) != nil)
+    }
+
+    /// Case-insensitive, since the toolbar writes `[!NOTE]` uppercase.
+    @Test func lookupIsCaseInsensitive() {
+        #expect(Callout.icon(for: "NOTE", color: .labelColor, pointSize: 14) != nil)
+    }
+
+    @Test func unknownTypeHasNoIcon() {
+        #expect(Callout.icon(for: "not-a-callout", color: .labelColor, pointSize: 14) == nil)
+    }
+}
+
 @MainActor @Suite struct ActiveStateWiringTests {
 
     /// Every icon-row button must map to a detectable style, or it can never
     /// light up and the affordance silently lies.
     @Test func everyIconRowButtonMapsToAStyle() {
         let (bar, doc) = toolbar()
-        let rows = bar.formatPopupMenu().items.prefix(2).compactMap { $0.view as? NSStackView }
+        let rows = bar.iconRowViews()
+        #expect(rows.count == 2)
         for row in rows {
             for case let button as NSButton in row.arrangedSubviews {
                 let target = button.target as? FormatIconTarget
@@ -178,7 +283,7 @@ import AppKit
         #expect(style(ofRowTitled: "Heading 2") == .heading(level: 2))
         #expect(style(ofRowTitled: "•  Bulleted List") == .bulletedList)
         #expect(style(ofRowTitled: "▎ Block Quote") == .blockQuote)
-        #expect(style(ofRowTitled: "> [!NOTE]") == .callout)
+        #expect(style(ofRowTitled: "Alert / Callout") == .callout)
         #expect(style(ofRowTitled: "Code Block") == .codeBlock)
         // Footnote is not a block style — it must not claim a checkmark.
         #expect(style(ofRowTitled: "Footnote") == nil)

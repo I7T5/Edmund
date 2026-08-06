@@ -39,6 +39,11 @@ final class FormatToolbar: NSObject {
         super.init()
     }
 
+    /// The formatting group, centred in the window by `centeredItemIdentifiers`.
+    static let centeredIdentifiers: Set<NSToolbarItem.Identifier> =
+        [format, checklist, table, image, link]
+
+    /// The centred group, then flexible space pushing view-mode and share right.
     static func defaultIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
         [format, checklist, table, image, link, .flexibleSpace, viewMode, share]
     }
@@ -52,8 +57,16 @@ final class FormatToolbar: NSObject {
     func makeItem(_ id: NSToolbarItem.Identifier) -> NSToolbarItem? {
         switch id {
         case Self.format:
-            return menuItem(id, label: "Format", symbol: "textformat",
-                            menu: formatPopupMenu())
+            let item = FormatButtonItem(itemIdentifier: id)
+            item.label = "Format"
+            item.toolTip = "Format"
+            let button = NSButton(image: Self.symbol("textformat") ?? NSImage(),
+                                  target: self, action: #selector(showFormatPopover(_:)))
+            button.bezelStyle = .texturedRounded
+            button.imagePosition = .imageOnly
+            item.view = button
+            formatButton = button
+            return item
         case Self.image:
             return menuItem(id, label: "Image", symbol: "photo.on.rectangle",
                             menu: imagePopupMenu())
@@ -85,6 +98,28 @@ final class FormatToolbar: NSObject {
         default:
             return nil
         }
+    }
+
+    /// The Format item's button, so the popover has something to hang off.
+    private weak var formatButton: NSView?
+    private var formatPopover: NSPopover?
+
+    /// Opens (or closes) the format panel. Rebuilt each time so the rows reflect
+    /// the current caret and any shortcut changed in Settings ▸ Key Bindings.
+    @objc func showFormatPopover(_ sender: Any?) {
+        if let open = formatPopover, open.isShown { open.performClose(sender); return }
+        guard let anchor = formatButton else { return }
+
+        let popover = NSPopover()
+        popover.behavior = .transient        // Esc + click-outside dismissal, free
+        let controller = FormatPopoverController(iconRows: iconRowViews(),
+                                                 items: Array(formatPopupMenu().items),
+                                                 editor: document?.editor,
+                                                 popover: popover)
+        popover.contentViewController = controller
+        formatPopover = popover
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        controller.refresh()
     }
 
     /// The Link item's secondary-click menu: Link and Wikilink.
@@ -132,15 +167,25 @@ final class FormatToolbar: NSObject {
     /// Action targets for the icon-row buttons — `NSControl.target` is weak.
     private var iconTargets: [FormatIconTarget] = []
 
-    /// One point size for every toolbar glyph, chosen to match the item AppKit
-    /// builds itself (the share item). Both extremes were measured and are
-    /// wrong: at 13pt our glyphs sit visibly smaller than share, and at their
-    /// *natural* size `checklist` and `tablecells` overshoot it — SF Symbols
-    /// carry different intrinsic boxes, so only a common point size makes the
-    /// row read as one set.
+    /// Point size per symbol, because SF Symbols do not share a bounding box: one
+    /// common size renders `textformat` and `link.badge.plus` visibly larger than
+    /// `checklist` and `tablecells`, which is what made the row read as ragged.
+    ///
+    /// The target is a ~19pt drawn extent for every glyph — the size of the share
+    /// item AppKit builds itself, the one fixed reference in the row. These
+    /// numbers were derived by measuring each glyph's rendered extent and scaling
+    /// from it, then re-measured; do not collapse them back to a single constant.
+    private static let symbolPointSizes: [String: CGFloat] = [
+        "textformat": 13,                 // "Aa" is wide and short — 15 read oversized
+        "checklist": 17,
+        "tablecells": 16,
+        "link.badge.plus": 13,
+    ]
+
     static func symbol(_ name: String) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
+            .withSymbolConfiguration(.init(pointSize: symbolPointSizes[name] ?? 15,
+                                           weight: .regular))
     }
 
     /// The format popup's icon rows are ordinary buttons inside a menu, not
@@ -164,12 +209,17 @@ final class FormatToolbar: NSObject {
     ///
     /// Checklist and Table are absent on purpose: they are their own toolbar
     /// items.
+    /// The popover's two icon rows. Kept out of `formatPopupMenu()` on purpose:
+    /// wrapping them in `NSMenuItem.view` (which the menu version needed) leaves
+    /// AppKit owning the view, and re-parenting it into the popover's stack left
+    /// it unmanaged — laid out at the container origin, i.e. drawn over the last
+    /// row. They are plain views now.
+    func iconRowViews() -> [NSStackView] {
+        [iconRow(Self.inlineRow1), iconRow(Self.inlineRow2)]
+    }
+
     func formatPopupMenu() -> NSMenu {
         let menu = NSMenu(title: "Format")
-        menu.addItem(iconRowItem(Self.inlineRow1))
-        menu.addItem(iconRowItem(Self.inlineRow2))
-        menu.addItem(.separator())
-
         for level in 1...3 { menu.addItem(headingRow(level)) }
         menu.addItem(FormatMenu.thematicBreakCommand.makeItem())
         for cmd in FormatMenu.listCommands where cmd.id != "format.checklist" {
@@ -201,13 +251,16 @@ final class FormatToolbar: NSObject {
         return item
     }
 
-    /// The single callout row. The label is the syntax it writes, matching how
-    /// the list rows show their own markers.
+    /// The single callout row, carrying the same Lucide glyph the editor draws in
+    /// a NOTE callout's header — drawn monochrome so it sits with the other rows
+    /// rather than announcing itself in the callout's blue.
     private func calloutRow() -> NSMenuItem {
-        MenuCommand(id: "format.callout.NOTE", submenu: "Alert / Callout",
-                    title: "> [!NOTE]",
-                    action: #selector(EditorTextView.formatCallout(_:)),
-                    representedObject: "NOTE").makeItem()
+        let item = MenuCommand(id: "format.callout.NOTE", submenu: "Alert / Callout",
+                               title: "Alert / Callout",
+                               action: #selector(EditorTextView.formatCallout(_:)),
+                               representedObject: "NOTE").makeItem()
+        item.image = Callout.icon(for: "note", color: .labelColor, pointSize: 14)
+        return item
     }
 
     /// Prefixes a row with the marker it inserts (`•`, `1.`, `▎`), so the menu
@@ -277,11 +330,16 @@ final class FormatToolbar: NSObject {
         }
     }
 
-    private func iconRowItem(_ row: [(String, String)]) -> NSMenuItem {
+    private func iconRow(_ row: [(String, String)]) -> NSStackView {
         let stack = NSStackView()
         stack.orientation = .horizontal
         stack.spacing = 2
-        stack.edgeInsets = NSEdgeInsets(top: 4, left: 12, bottom: 4, right: 12)
+        stack.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+        // The popover lays its rows out with Auto Layout. Left on, the default
+        // autoresizing frame puts this row at the container's origin — the
+        // *bottom* in AppKit's unflipped coordinates — where it drew on top of
+        // the last row.
+        stack.translatesAutoresizingMaskIntoConstraints = false
 
         for (symbol, id) in row {
             guard let cmd = FormatMenu.fontCommands.first(where: { $0.id == id }) else { continue }
@@ -307,11 +365,7 @@ final class FormatToolbar: NSObject {
             ])
             stack.addArrangedSubview(button)
         }
-
-        let item = NSMenuItem()
-        item.title = ""   // NSMenuItem defaults to "NSMenuItem", which VoiceOver reads out
-        item.view = stack
-        return item
+        return stack
     }
 
     // MARK: - Image popup
@@ -410,6 +464,13 @@ final class FormatIconTarget: NSObject {
     /// reflects when the popup refreshes.
     let styleID: String
 
+    /// Where to send the command. Set by the popover, which cannot rely on the
+    /// responder chain: its content view can take first responder, unlike a
+    /// menu, so a nil target may never reach the editor.
+    weak var editor: EditorTextView?
+    /// How to close the container once the command has fired.
+    var dismiss: (() -> Void)?
+
     init(action: Selector, styleID: String) {
         self.action = action
         self.styleID = styleID
@@ -417,8 +478,8 @@ final class FormatIconTarget: NSObject {
     }
 
     @objc func fire(_ sender: NSButton) {
-        sender.enclosingMenuItem?.menu?.cancelTracking()
-        NSApp.sendAction(action, to: nil, from: sender)
+        dismiss?()
+        NSApp.sendAction(action, to: editor, from: sender)
     }
 }
 
@@ -448,15 +509,26 @@ final class FormatIconButton: NSButton {
         didSet { if !isEnabled { isHovered = false } else { updateBackground() } }
     }
 
+    /// Re-resolve the tint when the window flips between light and dark.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBackground()
+    }
+
     private func updateBackground() {
         wantsLayer = true
         layer?.cornerRadius = 5
-        let color: NSColor? =
-            !isEnabled ? nil
-            : isActive ? .controlAccentColor.withAlphaComponent(isHovered ? 0.32 : 0.22)
-            : isHovered ? .labelColor.withAlphaComponent(0.10)
-            : nil
-        layer?.backgroundColor = color?.cgColor
+        // See FormatPopoverRow: a dynamic colour resolves against the current
+        // appearance, not this view's, and it resolves at `withAlphaComponent`
+        // as well as at `.cgColor` — so the whole expression is pinned to ours.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let color: NSColor? =
+                !isEnabled ? nil
+                : isActive ? .controlAccentColor.withAlphaComponent(isHovered ? 0.32 : 0.22)
+                : isHovered ? .labelColor.withAlphaComponent(0.10)
+                : nil
+            layer?.backgroundColor = color?.cgColor
+        }
     }
 }
 
