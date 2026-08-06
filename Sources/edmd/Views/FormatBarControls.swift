@@ -30,10 +30,6 @@ final class BarControlChip {
     /// The formatting this control applies is in effect at the selection.
     var isActive = false { didSet { if isActive != oldValue { refresh() } } }
 
-    /// Whether anything is currently drawn behind the control. The group uses
-    /// this to drop the dividers touching it.
-    var isChipped: Bool { isActive || isHovered }
-
     /// Told to the owning group so it can re-run its divider rule.
     var onChange: (() -> Void)?
 
@@ -107,10 +103,14 @@ final class BarControlChip {
 /// each adjacent pair.
 ///
 /// The group owns the rule that a divider disappears while either of the two
-/// controls it separates is wearing a chip. That is how Mail draws it — look at
-/// its alignment group, where the divider beside the selected button is simply
-/// absent — and it is also what keeps a chip from ever sitting against a
-/// hairline, without having to shrink the chip to make room for one.
+/// controls it separates is *on*. That is how Mail draws it — look at its
+/// alignment group, where the divider beside the selected button is simply
+/// absent.
+///
+/// Hover deliberately does not do this. A divider vanishing under the pointer
+/// made the group twitch as it moved along the row, and the chip does not need
+/// the room: it is inset inside its control and the group's spacing keeps it
+/// clear of the hairlines on its own.
 final class FormatBarGroupView: NSStackView {
 
     /// Members and dividers in visual order: `dividers[i]` sits between
@@ -135,8 +135,8 @@ final class FormatBarGroupView: NSStackView {
         // than index past the end.
         guard chips.count == dividers.count + 1 else { return }
         for (i, divider) in dividers.enumerated() {
-            let touchesChip = chips[i].isChipped || chips[i + 1].isChipped
-            divider.alphaValue = touchesChip ? 0 : 1
+            let touchesOn = chips[i].isActive || chips[i + 1].isActive
+            divider.alphaValue = touchesOn ? 0 : 1
         }
     }
 }

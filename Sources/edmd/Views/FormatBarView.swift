@@ -106,8 +106,7 @@ final class FormatBarView: ChromeBarView {
             ]),
             makeGroup([
                 makeButton(symbol: "highlighter", title: "Highlight",
-                           action: #selector(EditorTextView.formatHighlight(_:)),
-                           tint: .systemYellow),
+                           action: #selector(EditorTextView.formatHighlight(_:))),
             ]),
             makeGroup([
                 makeButton(symbol: "list.bullet", title: "Bulleted List",
@@ -191,7 +190,7 @@ final class FormatBarView: ChromeBarView {
     }
 
     private func makeButton(symbol name: String, title: String,
-                            action: Selector, tint: NSColor? = nil) -> FormatBarButton {
+                            action: Selector) -> FormatBarButton {
         let button = FormatBarButton(image: Self.symbol(name, desc: title) ?? NSImage(),
                                      target: nil, action: action)
         button.bezelStyle = .accessoryBarAction
@@ -208,7 +207,6 @@ final class FormatBarView: ChromeBarView {
         button.refusesFirstResponder = true
         button.setAccessibilityLabel(title)
         button.toolTip = title
-        if let tint { button.contentTintColor = tint }
         register(button, chip: button.chip, action: action, title: title)
         return button
     }
