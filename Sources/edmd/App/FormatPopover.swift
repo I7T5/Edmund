@@ -47,13 +47,30 @@ final class FormatPopoverController: NSViewController {
     override func loadView() {
         let stack = NSStackView()
         stack.orientation = .vertical
-        stack.alignment = .leading
+        // Centred, so the icon grid — which keeps its own width — sits centred in
+        // the popover while the command rows still span it edge to edge.
+        stack.alignment = .centerX
         stack.spacing = 1
         stack.edgeInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        for row in iconRows { stack.addArrangedSubview(row) }
-        if !iconRows.isEmpty { stack.addArrangedSubview(Self.separator()) }
+        // One block, so the two icon rows share a left edge (centring them
+        // individually would indent the shorter one) while the block as a whole
+        // is centred in the popover by the outer stack's alignment.
+        var grid: NSView?
+        if !iconRows.isEmpty {
+            // Without this each row stretches to the block's width, and a row's
+            // trailing padding grows instead of the row keeping its own size.
+            for row in iconRows { row.setHuggingPriority(.required, for: .horizontal) }
+            let block = NSStackView(views: iconRows)
+            block.orientation = .vertical
+            block.alignment = .leading
+            block.spacing = 1
+            block.translatesAutoresizingMaskIntoConstraints = false
+            stack.addArrangedSubview(block)
+            stack.addArrangedSubview(Self.separator())
+            grid = block
+        }
 
         for item in items {
             if item.isSeparatorItem {
@@ -74,19 +91,33 @@ final class FormatPopoverController: NSViewController {
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
         ])
-        for row in stack.arrangedSubviews {
+        for row in stack.arrangedSubviews where row !== grid {
             row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         view = container
-        view.frame = NSRect(x: 0, y: 0, width: 240, height: stack.fittingSize.height + 12)
+        // Sized to the widest row — usually the icon grid — rather than a fixed
+        // width, so the popover fits its content snugly the way Notes' does.
+        view.frame = NSRect(x: 0, y: 0, width: ceil(stack.fittingSize.width),
+                            height: stack.fittingSize.height + 12)
     }
 
+    /// Notes insets its dividers from the popover's sides rather than letting them
+    /// run into the rounded corners — 13px each side on a 2x screenshot of
+    /// misc/frontend-refs/notes-toolbar-format-menu.png, so 6.5pt.
     private static func separator() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
         let box = NSBox()
         box.boxType = .separator
         box.translatesAutoresizingMaskIntoConstraints = false
-        box.heightAnchor.constraint(equalToConstant: 9).isActive = true
-        return box
+        container.addSubview(box)
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 9),
+            box.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6.5),
+            box.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6.5),
+            box.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+        return container
     }
 
     private func fire(_ item: NSMenuItem) {
@@ -135,6 +166,9 @@ final class FormatPopoverController: NSViewController {
 @MainActor
 final class FormatPopoverRow: NSView {
 
+    /// Uniform across every row. Exposed so the layout tests can assert it.
+    static let rowHeight: CGFloat = 29
+
     let item: NSMenuItem
 
     var isEnabled = true { didSet { updateAppearance() } }
@@ -174,11 +208,15 @@ final class FormatPopoverRow: NSView {
         stack.orientation = .horizontal
         stack.spacing = 5
         stack.alignment = .centerY
-        stack.edgeInsets = NSEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
         NSLayoutConstraint.activate([
+            // Every row is the same height whatever its font, so the heading
+            // previews do not tower over the plain rows. Notes' rows measure a
+            // uniform 58px on a 2x screenshot — 29pt — at the same 13pt menu font.
+            heightAnchor.constraint(equalToConstant: Self.rowHeight),
             // A fixed checkmark gutter keeps every title on the same left edge
             // whether or not its row is ticked.
             checkmark.widthAnchor.constraint(equalToConstant: 12),

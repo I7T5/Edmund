@@ -215,13 +215,65 @@ import AppKit
         controller.loadView()
         controller.view.layoutSubtreeIfNeeded()
 
-        // Every row occupies its own vertical band — no two overlap.
-        let bands = (iconRows.map(\.self) as [NSView] + controller.commandRows)
-            .map { ($0.frame.minY, $0.frame.maxY) }
+        // Every row occupies its own vertical band — no two overlap. The icon rows
+        // sit inside the grid block, so their frames need converting first.
+        let bands = ((iconRows.map(\.self) as [NSView]) + controller.commandRows)
+            .map { $0.convert($0.bounds, to: controller.view) }
+            .map { ($0.minY, $0.maxY) }
             .sorted { $0.0 < $1.0 }
         #expect(bands.allSatisfy { $0.1 > $0.0 }, "a row has zero height")
         #expect(zip(bands, bands.dropFirst()).allSatisfy { $0.1 <= $1.0 },
                 "rows overlap: \(bands)")
+        _ = doc
+    }
+
+    /// Notes gives every row the same height whatever type it previews; ours used
+    /// to size each row to its own font, so the heading rows towered over the rest.
+    @Test func everyCommandRowIsTheSameHeight() {
+        let (bar, doc) = toolbar()
+        let controller = FormatPopoverController(iconRows: bar.iconRowViews(),
+                                                 items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+        controller.view.layoutSubtreeIfNeeded()
+
+        let heights = Set(controller.commandRows.map(\.frame.height))
+        #expect(heights == [FormatPopoverRow.rowHeight], "ragged rows: \(heights.sorted())")
+        _ = doc
+    }
+
+    /// The popover is as wide as its widest band and no wider, the dividers stop
+    /// short of both sides, and the icon grid — which is that widest band — keeps
+    /// its two rows on a shared left edge.
+    @Test func thePopoverFitsItsContentAndInsetsItsDividers() {
+        let (bar, doc) = toolbar()
+        let iconRows = bar.iconRowViews()
+        let controller = FormatPopoverController(iconRows: iconRows,
+                                                 items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+        controller.view.layoutSubtreeIfNeeded()
+
+        let stack = controller.view.subviews.first as? NSStackView
+        let bands = stack?.arrangedSubviews ?? []
+        // Snug: no band is cut off, and none of the width is unclaimed either.
+        let widest = bands.map(\.fittingSize.width).max() ?? 0
+        #expect(controller.view.frame.width == ceil(widest),
+                "popover is \(controller.view.frame.width) for a \(widest) widest band")
+        #expect(widest >= (controller.commandRows.map(\.fittingSize.width).max() ?? 0))
+
+        // Separator containers span the popover; the hairline inside does not.
+        let separators = bands
+            .filter { $0.subviews.first is NSBox }
+        #expect(separators.count == 2)
+        for separator in separators {
+            let box = separator.subviews[0]
+            #expect(box.frame.minX > separator.frame.minX)
+            #expect(box.frame.maxX < separator.frame.maxX)
+        }
+
+        #expect(Set(iconRows.map(\.frame.minX)).count == 1,
+                "icon rows are not on a shared left edge")
         _ = doc
     }
 
