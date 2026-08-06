@@ -96,7 +96,8 @@ import AppKit
         #expect(titles(bar.formatPopupMenu()) == [
             "Heading 1", "Heading 2", "Heading 3", "Thematic Break",
             "•  Bulleted List", "1.  Numbered List", "-",
-            "Code Block", "Math Block", "▎ Block Quote", "Alert / Callout", "Footnote",
+            "```  Code Block", "$  Math Block", "▎ Block Quote",
+            "Alert / Callout", "Footnote",
         ])
         _ = doc
     }
@@ -277,6 +278,99 @@ import AppKit
         _ = doc
     }
 
+    /// The hover tint is the accent colour on an inset view, so it stops short of
+    /// the popover's rounded sides the way the dividers do.
+    @Test func theHoverHighlightIsInsetAndAccentTinted() {
+        let (bar, doc) = toolbar()
+        let controller = FormatPopoverController(items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+        controller.view.layoutSubtreeIfNeeded()
+
+        let row = try! #require(controller.commandRows.first)
+        #expect(row.highlight.layer?.backgroundColor == nil, "tinted before hover")
+
+        row.isHovered = true
+        controller.view.layoutSubtreeIfNeeded()
+        var accent: CGColor?
+        row.effectiveAppearance.performAsCurrentDrawingAppearance {
+            accent = NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
+        }
+        #expect(row.highlight.layer?.backgroundColor == accent)
+        #expect(row.highlight.frame.minX > row.frame.minX)
+        #expect(row.highlight.frame.maxX < row.frame.maxX)
+        _ = doc
+    }
+
+    /// Notes reserves the tick's gutter whether or not a row is ticked. Hiding the
+    /// checkmark instead dropped it out of the stack and the titles slid left.
+    @Test func everyTitleSitsOnTheSameLeftEdgeUnticked() {
+        let (bar, doc) = toolbar()
+        let controller = FormatPopoverController(items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+        controller.view.layoutSubtreeIfNeeded()
+
+        // The callout row carries an icon of its own, so it is legitimately inset
+        // further; every other title shares one edge.
+        let edges = Set(controller.commandRows
+            .filter { $0.item.image == nil }
+            .compactMap { row in
+                row.subviews.compactMap { $0 as? NSStackView }.first?
+                    .arrangedSubviews.compactMap { $0 as? NSTextField }.first?.frame.minX
+            })
+        #expect(edges.count == 1, "titles do not share a left edge: \(edges.sorted())")
+
+        // A wrapping label reports no intrinsic width; the marked rows laid out
+        // 4pt wide and drew nothing until the cell was forced back to one line.
+        for row in controller.commandRows {
+            let label = row.subviews.compactMap { $0 as? NSStackView }.first?
+                .arrangedSubviews.compactMap { $0 as? NSTextField }.first
+            #expect((label?.frame.width ?? 0) >= (label?.intrinsicContentSize.width ?? 0),
+                    "'\(row.item.title)' is squeezed below its intrinsic width")
+        }
+        _ = doc
+    }
+
+    /// Markers that are literal Markdown syntax are set in the mono font they will
+    /// be typed in; the block quote's bar is greyed so it reads as a rule.
+    @Test func syntaxMarkersAreMonoAndTheQuoteBarIsGrey() {
+        let (bar, doc) = toolbar()
+        let items = bar.formatPopupMenu().items
+
+        func marker(_ suffix: String) -> (NSFont?, NSColor?) {
+            let item = items.first { $0.title.hasSuffix(suffix) }
+            let title = item?.attributedTitle
+            let attributes = title?.attributes(at: 0, effectiveRange: nil)
+            return (attributes?[.font] as? NSFont, attributes?[.foregroundColor] as? NSColor)
+        }
+
+        #expect(items.first { $0.title.hasSuffix("Code Block") }?.title.hasPrefix("```") == true)
+        #expect(items.first { $0.title.hasSuffix("Math Block") }?.title.hasPrefix("$") == true)
+        #expect(marker("Code Block").0?.isFixedPitch == true)
+        #expect(marker("Math Block").0?.isFixedPitch == true)
+        #expect(marker("Block Quote").1 == .secondaryLabelColor)
+        // The title itself stays in the menu font whatever its marker is.
+        let code = items.first { $0.title.hasSuffix("Code Block") }?.attributedTitle
+        let tail = code?.attributes(at: (code?.length ?? 1) - 1, effectiveRange: nil)
+        #expect((tail?[.font] as? NSFont)?.isFixedPitch == false)
+        _ = doc
+    }
+
+    /// Mouse-first panel: no key view loop, no focus rings, and no button carries
+    /// a tint of its own (the highlighter used to be drawn in yellow).
+    @Test func theIconRowIsMouseOnlyAndUntinted() {
+        let (bar, doc) = toolbar()
+        for row in bar.iconRowViews() {
+            for case let button as NSButton in row.arrangedSubviews {
+                #expect(button.focusRingType == .none)
+                #expect(button.refusesFirstResponder)
+                #expect(button.contentTintColor == nil, "\(button.toolTip ?? "?") is tinted")
+            }
+        }
+        _ = doc
+    }
+
     /// `formatHeading` reads its level from `(sender as? NSMenuItem)?.tag` and
     /// `formatCallout` its type from `representedObject`. Rows forward their
     /// item as the sender precisely so those survive — a row sending itself
@@ -354,8 +448,10 @@ import AppKit
     @Test func blockRowsMapToTheStyleTheyApply() {
         let (bar, doc) = toolbar()
         let menu = bar.formatPopupMenu()
+        // Matched on the suffix: a marked row's `title` carries its marker, since
+        // AppKit syncs `title` from whatever `attributedTitle` is set to.
         func style(ofRowTitled title: String) -> ActiveBlockStyle? {
-            menu.items.first { $0.title == title }.flatMap(FormatToolbar.blockStyle(for:))
+            menu.items.first { $0.title.hasSuffix(title) }.flatMap(FormatToolbar.blockStyle(for:))
         }
         #expect(style(ofRowTitled: "Heading 2") == .heading(level: 2))
         #expect(style(ofRowTitled: "•  Bulleted List") == .bulletedList)

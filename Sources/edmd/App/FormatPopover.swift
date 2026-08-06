@@ -65,7 +65,7 @@ final class FormatPopoverController: NSViewController {
             let block = NSStackView(views: iconRows)
             block.orientation = .vertical
             block.alignment = .leading
-            block.spacing = 1
+            block.spacing = 4
             block.translatesAutoresizingMaskIntoConstraints = false
             stack.addArrangedSubview(block)
             stack.addArrangedSubview(Self.separator())
@@ -152,7 +152,6 @@ final class FormatPopoverController: NSViewController {
                 button.isActive = FormatToolbar.style(for: target.styleID).map(active.contains) ?? false
                 button.isEnabled = editor?.isFormattingActionEnabled(
                     target.action, representedObject: nil) ?? false
-                // An explicit contentTintColor defeats AppKit's disabled dimming.
                 button.alphaValue = button.isEnabled ? 1.0 : 0.35
             }
         }
@@ -172,9 +171,15 @@ final class FormatPopoverRow: NSView {
     let item: NSMenuItem
 
     var isEnabled = true { didSet { updateAppearance() } }
-    var isChecked = false { didSet { checkmark.isHidden = !isChecked } }
+    /// Faded rather than hidden: a hidden view drops out of the stack, and with it
+    /// the gutter that keeps every title on Notes' left edge, ticked or not.
+    var isChecked = false { didSet { checkmark.alphaValue = isChecked ? 1 : 0 } }
 
     private let onFire: (NSMenuItem) -> Void
+    /// The hover tint lives on its own inset view rather than on the row's layer,
+    /// so it stops short of the popover's rounded sides the way the dividers do.
+    /// Not private: the layout tests read its frame and tint.
+    let highlight = NSView()
     private let checkmark = NSImageView()
     private let iconView = NSImageView()
     private let label = NSTextField(labelWithString: "")
@@ -192,7 +197,7 @@ final class FormatPopoverRow: NSView {
         checkmark.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
         checkmark.contentTintColor = .labelColor
-        checkmark.isHidden = true
+        checkmark.alphaValue = 0
 
         iconView.image = item.image
         iconView.isHidden = item.image == nil
@@ -203,23 +208,40 @@ final class FormatPopoverRow: NSView {
             label.stringValue = item.title
             label.font = .menuFont(ofSize: 0)
         }
+        // Assigning an attributed string whose paragraph style is unset drops the
+        // cell back into wrapping mode, and a wrapping label has no intrinsic
+        // width to give the stack — every marked row laid out 4pt wide and drew
+        // nothing. Restore single line after the assignment, not before.
+        label.usesSingleLineMode = true
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        highlight.wantsLayer = true
+        highlight.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(highlight)          // behind the content
 
         let stack = NSStackView(views: [checkmark, iconView, label])
         stack.orientation = .horizontal
-        stack.spacing = 5
+        stack.spacing = 10
         stack.alignment = .centerY
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+        // Notes leaves the title 40pt clear of the popover's edge with the tick in
+        // the gutter before it: 16 + a 14pt checkmark + 10 lands on the same mark.
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
         NSLayoutConstraint.activate([
+            highlight.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6.5),
+            highlight.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6.5),
+            highlight.topAnchor.constraint(equalTo: topAnchor, constant: 1),
+            highlight.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1),
             // Every row is the same height whatever its font, so the heading
             // previews do not tower over the plain rows. Notes' rows measure a
             // uniform 58px on a 2x screenshot — 29pt — at the same 13pt menu font.
             heightAnchor.constraint(equalToConstant: Self.rowHeight),
             // A fixed checkmark gutter keeps every title on the same left edge
             // whether or not its row is ticked.
-            checkmark.widthAnchor.constraint(equalToConstant: 12),
+            checkmark.widthAnchor.constraint(equalToConstant: 14),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -266,16 +288,15 @@ final class FormatPopoverRow: NSView {
     }
 
     private func updateAppearance() {
-        wantsLayer = true
-        layer?.cornerRadius = 5
+        highlight.layer?.cornerRadius = 5
         let hovering = isHovered && isEnabled
         // A dynamic colour resolves against whatever appearance is current, not
         // this view's — and it resolves at `withAlphaComponent` too, not only at
         // `.cgColor`, so the whole expression has to sit inside the block or the
         // tint comes out inverted (measured: black on a dark popover).
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = hovering
-                ? NSColor.labelColor.withAlphaComponent(0.10).cgColor
+            highlight.layer?.backgroundColor = hovering
+                ? NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
                 : nil
         }
         alphaValue = isEnabled ? 1.0 : 0.35

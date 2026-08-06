@@ -269,19 +269,33 @@ final class FormatToolbar: NSObject {
         return item
     }
 
-    /// Prefixes a row with the marker it inserts (`•`, `1.`, `▎`), so the menu
-    /// previews its own effect.
+    /// Prefixes a row with the marker it inserts, so the menu previews its own
+    /// effect. Markers that are literal Markdown syntax are set in the mono font
+    /// they will be typed in; the block quote's bar is a rule rather than a
+    /// character, so it is greyed to keep it from reading as part of the title.
     private func marked(_ item: NSMenuItem) -> NSMenuItem {
+        let body = NSFont.menuFont(ofSize: 0)
+        let mono = NSFont.monospacedSystemFont(ofSize: body.pointSize - 1, weight: .regular)
+
         let marker: String
+        var attributes: [NSAttributedString.Key: Any] = [.font: body]
         switch item.action {
         case #selector(EditorTextView.formatBulletedList(_:)): marker = "•  "
         case #selector(EditorTextView.formatNumberedList(_:)): marker = "1.  "
-        case #selector(EditorTextView.formatBlockQuote(_:)):   marker = "▎ "
+        case #selector(EditorTextView.formatBlockQuote(_:)):
+            marker = "▎ "
+            attributes[.foregroundColor] = NSColor.secondaryLabelColor
+        case #selector(EditorTextView.formatCodeBlock(_:)):
+            marker = "```  "
+            attributes[.font] = mono
+        case #selector(EditorTextView.formatMathBlock(_:)):
+            marker = "$  "
+            attributes[.font] = mono
         default: return item
         }
-        item.attributedTitle = NSAttributedString(
-            string: marker + item.title,
-            attributes: [.font: NSFont.menuFont(ofSize: 0)])
+        let title = NSMutableAttributedString(string: marker, attributes: attributes)
+        title.append(NSAttributedString(string: item.title, attributes: [.font: body]))
+        item.attributedTitle = title
         return item
     }
 
@@ -340,7 +354,9 @@ final class FormatToolbar: NSObject {
         let stack = NSStackView()
         stack.orientation = .horizontal
         stack.spacing = 2
-        stack.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+        // No vertical inset: it sat between the last icon row and the divider
+        // below it, so the gap there read wider than every other section gap.
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
         // The popover lays its rows out with Auto Layout. Left on, the default
         // autoresizing frame puts this row at the container's origin — the
         // *bottom* in AppKit's unflipped coordinates — where it drew on top of
@@ -359,8 +375,10 @@ final class FormatToolbar: NSObject {
             button.imagePosition = .imageOnly
             button.toolTip = cmd.title
             button.setAccessibilityLabel(cmd.title)
-            // The highlighter reads as its ink colour, matching the mark it makes.
-            if id == "format.highlight" { button.contentTintColor = .systemYellow }
+            // A mouse-first panel: arrow-key navigation was explicitly not wanted,
+            // so nothing here joins the key view loop or draws a focus ring.
+            button.focusRingType = .none
+            button.refusesFirstResponder = true
             // Explicit metrics: an image-only borderless button has a slim
             // intrinsic size, which leaves the row cramped and its hover targets
             // overlapping. These give every icon the same square hit area.
@@ -438,8 +456,6 @@ extension FormatToolbar: NSMenuDelegate {
                     Self.style(for: target.styleID).map(active.contains) ?? false
                 button.isEnabled = editor?.isFormattingActionEnabled(
                     target.action, representedObject: nil) ?? false
-                // An explicit contentTintColor (the highlighter's yellow) defeats
-                // AppKit's automatic dimming, so fade the whole button instead.
                 button.alphaValue = button.isEnabled ? 1.0 : 0.35
             }
         }
@@ -530,8 +546,8 @@ final class FormatIconButton: NSButton {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let color: NSColor? =
                 !isEnabled ? nil
-                : isActive ? .controlAccentColor.withAlphaComponent(isHovered ? 0.32 : 0.22)
-                : isHovered ? .labelColor.withAlphaComponent(0.10)
+                : isActive ? .controlAccentColor.withAlphaComponent(isHovered ? 0.45 : 0.35)
+                : isHovered ? .controlAccentColor.withAlphaComponent(0.18)
                 : nil
             layer?.backgroundColor = color?.cgColor
         }
