@@ -64,6 +64,15 @@ final class FormatBarView: ChromeBarView {
     /// The pulldowns and Thematic Break never light: their selectors are not
     /// ones `activeFormattingActions()` reports, so this needs no special case.
     func refreshActiveState(editor: EditorTextView) {
+        #if DEBUG
+        // Chips can't be driven by a pointer from a headless harness, so this
+        // lights every one of them — the only way to check that they share a
+        // size without moving the maintainer's mouse.
+        if UserDefaults.standard.bool(forKey: "debug.formatBarAllActive") {
+            for control in commandItems { control.chip.isActive = true }
+            return
+        }
+        #endif
         let active = editor.activeFormattingActions()
         for control in commandItems {
             control.chip.isActive = control.item.action.map(active.contains) ?? false
@@ -140,17 +149,31 @@ final class FormatBarView: ChromeBarView {
     /// what separates those, which is how Mail's bar is drawn.
     private func makeGroup(_ views: [NSView]) -> NSStackView {
         var arranged: [NSView] = []
+        var dividers: [NSView] = []
         for (i, view) in views.enumerated() {
-            if i > 0 { arranged.append(Self.makeDivider()) }
+            if i > 0 {
+                let divider = Self.makeDivider()
+                dividers.append(divider)
+                arranged.append(divider)
+            }
             arranged.append(view)
         }
-        let group = NSStackView(views: arranged)
+        let group = FormatBarGroupView(views: arranged)
         group.orientation = .horizontal
         // Tight: the divider is the separation, so the buttons only need enough
-        // room that a hover chip doesn't crowd it.
-        group.spacing = 3
+        // room that a chip doesn't crowd it.
+        group.spacing = 4
         group.alignment = .centerY
+        // Same order as `views`, so the group can pair each divider with the two
+        // controls it sits between.
+        group.adopt(chips: views.compactMap(Self.chip(of:)), dividers: dividers)
         return group
+    }
+
+    /// The chip belonging to a bar control. The two control kinds carry one each
+    /// but share no type that exposes it.
+    private static func chip(of view: NSView) -> BarControlChip? {
+        (view as? FormatBarButton)?.chip ?? (view as? FormatBarPopUpButton)?.chip
     }
 
     /// `NSBox` in separator mode rather than a layer-backed view: it is the

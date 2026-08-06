@@ -14,11 +14,28 @@ import AppKit
 @MainActor
 final class BarControlChip {
 
+    /// One size for every chip on the bar, pulldowns included. Deliberately not
+    /// the control's own bounds: those follow each symbol's intrinsic size, and
+    /// letting the chip track them made the highlighter's 23.5pt tall and the
+    /// callout pulldown's 17pt — the same affordance in a dozen sizes.
+    static let height: CGFloat = 20
+
+    /// Horizontal breathing room inside the control, so a chip cannot reach the
+    /// group's dividers even before the adjacent one is hidden.
+    private static let insetX: CGFloat = 1
+
     /// Pointer is over the control.
     var isHovered = false { didSet { if isHovered != oldValue { refresh() } } }
 
     /// The formatting this control applies is in effect at the selection.
     var isActive = false { didSet { if isActive != oldValue { refresh() } } }
+
+    /// Whether anything is currently drawn behind the control. The group uses
+    /// this to drop the dividers touching it.
+    var isChipped: Bool { isActive || isHovered }
+
+    /// Told to the owning group so it can re-run its divider rule.
+    var onChange: (() -> Void)?
 
     private let chip = CALayer()
     private unowned let host: NSView
@@ -26,18 +43,22 @@ final class BarControlChip {
     init(host: NSView) {
         self.host = host
         host.wantsLayer = true
-        chip.cornerRadius = 4
+        chip.cornerRadius = 5
         chip.cornerCurve = .continuous
         // Behind the control's own drawing, never over the glyph.
         host.layer?.insertSublayer(chip, at: 0)
     }
 
-    /// Called from the host's `layout()`; the chip tracks the whole control.
+    /// Called from the host's `layout()`. Centred on the control at the shared
+    /// size rather than filling it.
     func layoutChip() {
         // No implicit fade as the control moves during a resize.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        chip.frame = host.bounds
+        chip.frame = NSRect(x: Self.insetX,
+                            y: ((host.bounds.height - Self.height) / 2).rounded(),
+                            width: max(0, host.bounds.width - Self.insetX * 2),
+                            height: Self.height)
         CATransaction.commit()
     }
 
@@ -48,6 +69,7 @@ final class BarControlChip {
         host.effectiveAppearance.performAsCurrentDrawingAppearance {
             chip.backgroundColor = fill?.cgColor
         }
+        onChange?()
     }
 
     /// Active wins over hover: the chip is the on-state indicator first, and a
@@ -56,6 +78,46 @@ final class BarControlChip {
         if isActive { return .unemphasizedSelectedContentBackgroundColor }
         if isHovered { return .quaternaryLabelColor }
         return nil
+    }
+}
+
+// MARK: - Group
+
+/// One group of bar controls: the buttons run together with a hairline between
+/// each adjacent pair.
+///
+/// The group owns the rule that a divider disappears while either of the two
+/// controls it separates is wearing a chip. That is how Mail draws it — look at
+/// its alignment group, where the divider beside the selected button is simply
+/// absent — and it is also what keeps a chip from ever sitting against a
+/// hairline, without having to shrink the chip to make room for one.
+final class FormatBarGroupView: NSStackView {
+
+    /// Members and dividers in visual order: `dividers[i]` sits between
+    /// `chips[i]` and `chips[i + 1]`.
+    private var chips: [BarControlChip] = []
+    private var dividers: [NSView] = []
+
+    func adopt(chips: [BarControlChip], dividers: [NSView]) {
+        self.chips = chips
+        self.dividers = dividers
+        for chip in chips { chip.onChange = { [weak self] in self?.updateDividers() } }
+        updateDividers()
+    }
+
+    /// A hidden arranged subview is removed from an `NSStackView`'s layout, so
+    /// the buttons would close up and shuffle sideways every time a chip
+    /// appeared. `alphaValue` keeps the divider in the layout and only stops it
+    /// drawing.
+    private func updateDividers() {
+        // Every divider sits between two controls, so anything else means the
+        // two arrays were built out of step — leave them all showing rather
+        // than index past the end.
+        guard chips.count == dividers.count + 1 else { return }
+        for (i, divider) in dividers.enumerated() {
+            let touchesChip = chips[i].isChipped || chips[i + 1].isChipped
+            divider.alphaValue = touchesChip ? 0 : 1
+        }
     }
 }
 
