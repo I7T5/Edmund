@@ -35,11 +35,12 @@ enum ViewMenu {
                          keyEquivalent: "")
 
         // The format bar across the top of the editor, kept below the toolbar
-        // section with a divider on each side. Checkmark lives in
-        // Document.validateMenuItem; no default shortcut.
+        // section with a divider on each side. Titled for the default state
+        // (the bar starts shown) the way Hide Toolbar above is —
+        // Document.validateMenuItem flips it; no default shortcut.
         viewMenu.addItem(.separator())
         viewMenu.addItem(MenuCommand(id: "view.showFormatBar", group: "View",
-                                     title: "Show Format Bar",
+                                     title: "Hide Format Bar",
                                      action: #selector(Document.toggleFormatBar(_:))).makeItem())
         viewMenu.addItem(.separator())
 

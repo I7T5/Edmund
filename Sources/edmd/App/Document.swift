@@ -826,7 +826,8 @@ class Document: NSDocument, HeadingNavigable {
             item.title = AppSettings.showToolbar ? "Hide Toolbar" : "Show Toolbar"
         }
         if item.action == #selector(toggleFormatBar(_:)) {
-            item.state = AppSettings.showFormatBar ? .on : .off
+            // Title, not a checkmark — the same idiom as Hide Toolbar above.
+            item.title = AppSettings.showFormatBar ? "Hide Format Bar" : "Show Format Bar"
         }
         if item.action == #selector(toggleAutoHideToolbar(_:)) {
             item.state = AppSettings.autoHideToolbar ? .on : .off
