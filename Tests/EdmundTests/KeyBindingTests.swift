@@ -16,6 +16,42 @@ struct KeyBindingTests {
         KeyBindingStore.defaults = defaults
     }
 
+    // MARK: - Renamed ids
+
+    /// An override is filed under the command's id, so a rename has to carry it
+    /// across — otherwise the shortcut silently stops applying, which does not
+    /// even look like data loss to the user.
+    @Test("A renamed command keeps the shortcut set under its old id")
+    func migrationCarriesOverridesAcross() {
+        useFreshDefaults()
+        KeyBindingStore.setOverride(.cmdShift("t"), id: "view.typewriterScroll", default: nil)
+        KeyBindingStore.migrateRenamedIDs()
+
+        #expect(KeyBindingStore.effective(id: "edit.typewriterScroll", default: nil)
+                == .cmdShift("t"))
+        #expect(!KeyBindingStore.hasOverride(id: "view.typewriterScroll"))
+    }
+
+    /// A binding already set under the new id was chosen more recently than one
+    /// stranded under the old one.
+    @Test("Migration does not clobber a binding already set under the new id")
+    func migrationPrefersTheNewID() {
+        useFreshDefaults()
+        KeyBindingStore.setOverride(.cmdShift("t"), id: "view.focusMode", default: nil)
+        KeyBindingStore.setOverride(.cmdOpt("f"), id: "edit.focusMode", default: nil)
+        KeyBindingStore.migrateRenamedIDs()
+
+        #expect(KeyBindingStore.effective(id: "edit.focusMode", default: nil) == .cmdOpt("f"))
+        #expect(!KeyBindingStore.hasOverride(id: "view.focusMode"))
+    }
+
+    @Test("Migration is a no-op when nothing was rebound")
+    func migrationLeavesAnUntouchedStoreAlone() {
+        useFreshDefaults()
+        KeyBindingStore.migrateRenamedIDs()
+        #expect(!KeyBindingStore.hasAnyOverride)
+    }
+
     // MARK: - Shortcut coding
 
     @Test("Storage string round-trips every modifier combination")
