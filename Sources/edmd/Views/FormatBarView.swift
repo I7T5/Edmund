@@ -42,6 +42,11 @@ final class FormatBarView: ChromeBarView {
     }
     private var commandItems: [BarControl] = []
 
+    /// Each pulldown's menu, by the action its items carry. The heading and
+    /// callout pulldowns apply one of a set of mutually exclusive things, so
+    /// their state is a checkmark on the member in effect rather than a chip.
+    private var pullDownMenus: [Selector: NSMenu] = [:]
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         buildUI()
@@ -76,6 +81,27 @@ final class FormatBarView: ChromeBarView {
         let active = editor.activeFormattingActions()
         for control in commandItems {
             control.chip.isActive = control.item.action.map(active.contains) ?? false
+        }
+        refreshPullDownState(editor: editor)
+    }
+
+    /// Ticks the heading level and callout type the caret is currently in.
+    ///
+    /// Items with no action are skipped: that is the hidden item 0 carrying the
+    /// button's icon, and its tag of 0 would otherwise read as "Body".
+    private func refreshPullDownState(editor: EditorTextView) {
+        if let menu = pullDownMenus[#selector(EditorTextView.formatHeading(_:))] {
+            let level = editor.activeHeadingLevel()
+            for item in menu.items where item.action != nil {
+                item.state = item.tag == level ? .on : .off
+            }
+        }
+        if let menu = pullDownMenus[#selector(EditorTextView.formatCallout(_:))] {
+            let type = editor.activeCalloutType()
+            for item in menu.items where item.action != nil {
+                let itemType = (item.representedObject as? String)?.lowercased()
+                item.state = itemType != nil && itemType == type ? .on : .off
+            }
         }
     }
 
@@ -220,10 +246,10 @@ final class FormatBarView: ChromeBarView {
         pop.refusesFirstResponder = true
         pop.setAccessibilityLabel(title)
         pop.toolTip = title
-        // Never mark a selection in the open menu: the bar tracks no state, so a
-        // checkmark on the last-picked item would misread as "this is the
-        // caret's level".
-        for item in menu.items { item.onStateImage = nil }
+        // Kept so `refreshPullDownState` can tick the member currently in
+        // effect. The checkmark reports the caret, never the last thing picked
+        // — nothing here records that.
+        pullDownMenus[action] = menu
         if let image = Self.symbol(name, desc: title) {
             // A pull-down's cell ignores the button's own `image` — only the
             // arrow draws — so the icon rides on a hidden display item 0, which

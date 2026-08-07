@@ -118,6 +118,43 @@ struct FormattingStateTests {
         #expect(!a.contains(bullet))
     }
 
+    // MARK: - Thematic break
+
+    @Test func thematicBreakLineReportsItself() {
+        let thematic = #selector(EditorTextView.formatThematicBreak(_:))
+        #expect(active("---", NSRange(location: 1, length: 0)).contains(thematic))
+        #expect(!active("- item", NSRange(location: 3, length: 0)).contains(thematic))
+        #expect(!active("--- trailing", NSRange(location: 1, length: 0)).contains(thematic))
+    }
+
+    // MARK: - Pulldown state
+
+    @Test func headingLevelReportsTheCaretsLine() {
+        #expect(mk("## Title", NSRange(location: 4, length: 0)).activeHeadingLevel() == 2)
+        #expect(mk("Body", NSRange(location: 2, length: 0)).activeHeadingLevel() == 0)
+        #expect(mk("###### Six", NSRange(location: 8, length: 0)).activeHeadingLevel() == 6)
+    }
+
+    /// Mixed levels have no single answer, so nothing is ticked — the same rule
+    /// `applyHeadingLevel` uses to decide a level is already applied.
+    @Test func mixedHeadingLevelsReportNothing() {
+        #expect(mk("# One\n## Two\n", NSRange(location: 0, length: 12)).activeHeadingLevel() == nil)
+    }
+
+    @Test func calloutTypeReportsTheHeaderLine() {
+        #expect(mk("> [!NOTE]", NSRange(location: 3, length: 0)).activeCalloutType() == "note")
+        #expect(mk("> [!tip]", NSRange(location: 3, length: 0)).activeCalloutType() == "tip")
+        #expect(mk("> plain quote", NSRange(location: 3, length: 0)).activeCalloutType() == nil)
+        #expect(mk("Body", NSRange(location: 2, length: 0)).activeCalloutType() == nil)
+    }
+
+    /// Obsidian's fold markers and a custom title still name the same type,
+    /// because parsing goes through the renderer's own matcher.
+    @Test func foldedAndTitledCalloutsStillReportTheirType() {
+        #expect(mk("> [!warning]-", NSRange(location: 3, length: 0)).activeCalloutType() == "warning")
+        #expect(mk("> [!info] Custom", NSRange(location: 3, length: 0)).activeCalloutType() == "info")
+    }
+
     // MARK: - Robustness
 
     @Test func emptyDocumentAndDocumentEndAreSafe() {

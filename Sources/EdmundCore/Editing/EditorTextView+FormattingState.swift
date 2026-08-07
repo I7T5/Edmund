@@ -134,15 +134,54 @@ extension EditorTextView {
         return insideInner || swallowsOuter
     }
 
+    // MARK: - Pulldown state
+    //
+    // The two pulldowns each apply one of a set of mutually exclusive things, so
+    // their state is the member currently in effect rather than a yes/no — a
+    // checkmark in the menu, not a chip on the button.
+
+    /// The heading level shared by every non-empty selected line: 0 for body
+    /// text, 1–6 for `#`…`######`. Nil when the lines disagree, matching
+    /// `applyHeadingLevel`, which only treats a level as already-applied when
+    /// all of them carry it.
+    public func activeHeadingLevel() -> Int? {
+        let lines = selectedLineContext().lines.filter { !$0.isEmpty }
+        guard let first = lines.first else { return nil }
+        let level = leadingHashCount(first)
+        return lines.allSatisfy { leadingHashCount($0) == level } ? level : nil
+    }
+
+    /// The callout type at the selection, lowercased, or nil when the first
+    /// selected line is not a callout header.
+    ///
+    /// The first line is what `applyCalloutType` reads to decide whether it is
+    /// toggling a callout off, so the checkmark and the command agree about
+    /// which callout they are looking at. Parsing goes through
+    /// `Callout.parseMarker`, the same matcher the renderer uses, so `[!NOTE]`,
+    /// `[!note]` and a folded `[!note]-` all resolve alike.
+    public func activeCalloutType() -> String? {
+        guard let first = selectedLineContext().lines.first else { return nil }
+        let trimmed = first.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix(">") else { return nil }
+        let afterQuote = trimmed.dropFirst().drop { $0 == " " }
+        return Callout.parseMarker(String(afterQuote))?.type
+    }
+
     // MARK: - Line prefixes
 
     /// List and quote state, which is a property of the whole line rather than
     /// of a span. Every non-empty selected line has to match, mirroring the
     /// toggles: they clear the prefix only when all of them carry it.
     private func linePrefixActions() -> Set<Selector> {
-        let lines = selectedLineContext().lines.filter { !$0.isEmpty }
-        guard !lines.isEmpty else { return [] }
+        let context = selectedLineContext()
         var active: Set<Selector> = []
+        // The same line `insertThematicBreak` recognises when it is removing
+        // one, so the button lights exactly when pressing it would undo it.
+        if context.lines == ["---"] {
+            active.insert(#selector(formatThematicBreak(_:)))
+        }
+        let lines = context.lines.filter { !$0.isEmpty }
+        guard !lines.isEmpty else { return active }
         if lines.allSatisfy({ isBulletLine($0) }) {
             active.insert(#selector(formatBulletedList(_:)))
         }
