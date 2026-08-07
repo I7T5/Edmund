@@ -97,8 +97,12 @@ final class FormatPopoverController: NSViewController {
         view = container
         // Sized to the widest row — usually the icon grid — rather than a fixed
         // width, so the popover fits its content snugly the way Notes' does.
+        // Exactly the fitting size: the stack's own edge insets are already in
+        // it, and any padding added on top is slack the stack stretches to fill,
+        // which the icon grid — the one band with no height of its own — absorbs
+        // whole. That is where the extra gap above the first divider came from.
         view.frame = NSRect(x: 0, y: 0, width: ceil(stack.fittingSize.width),
-                            height: stack.fittingSize.height + 12)
+                            height: stack.fittingSize.height)
     }
 
     /// Notes insets its dividers from the popover's sides rather than letting them
@@ -168,6 +172,14 @@ final class FormatPopoverRow: NSView {
     /// Uniform across every row. Exposed so the layout tests can assert it.
     static let rowHeight: CGFloat = 29
 
+    /// The three columns, as offsets from the row's leading edge. Notes puts its
+    /// checkmark at 17.5pt and its titles at 40pt, with nothing between; the
+    /// marker gutter is fitted into that same span rather than pushing the titles
+    /// right, by starting the checkmark closer in.
+    static let checkmarkX: CGFloat = 12
+    static let markerX: CGFloat = 25
+    static let titleX: CGFloat = 40
+
     let item: NSMenuItem
 
     var isEnabled = true { didSet { updateAppearance() } }
@@ -181,7 +193,10 @@ final class FormatPopoverRow: NSView {
     /// Not private: the layout tests read its frame and tint.
     let highlight = NSView()
     private let checkmark = NSImageView()
+    /// The callout row's glyph. Shares the marker gutter with `markerLabel` —
+    /// no row has both.
     private let iconView = NSImageView()
+    private let markerLabel = NSTextField(labelWithString: "")
     private let label = NSTextField(labelWithString: "")
     /// Not private so the offscreen render harness can exercise the hover look
     /// without synthesising mouse events.
@@ -196,39 +211,34 @@ final class FormatPopoverRow: NSView {
 
         checkmark.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
-        checkmark.contentTintColor = .labelColor
         checkmark.alphaValue = 0
 
         iconView.image = item.image
         iconView.isHidden = item.image == nil
 
-        if let attributed = item.attributedTitle {
-            label.attributedStringValue = attributed
-        } else {
-            label.stringValue = item.title
-            label.font = .menuFont(ofSize: 0)
+        let body = NSFont.menuFont(ofSize: 0)
+        if let marker = FormatToolbar.marker(for: item) {
+            markerLabel.stringValue = marker
+            // `$` is Markdown syntax, so it is shown in the face it is typed in.
+            markerLabel.font = marker == "$"
+                ? .monospacedSystemFont(ofSize: body.pointSize - 1, weight: .regular)
+                : body
         }
-        // Assigning an attributed string whose paragraph style is unset drops the
-        // cell back into wrapping mode, and a wrapping label has no intrinsic
-        // width to give the stack — every marked row laid out 4pt wide and drew
-        // nothing. Restore single line after the assignment, not before.
-        label.usesSingleLineMode = true
+        markerLabel.isHidden = markerLabel.stringValue.isEmpty
+        markerLabel.alignment = .left
+
+        label.stringValue = item.title
+        label.font = FormatToolbar.titleFont(for: item)
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         highlight.wantsLayer = true
         highlight.translatesAutoresizingMaskIntoConstraints = false
         addSubview(highlight)          // behind the content
-
-        let stack = NSStackView(views: [checkmark, iconView, label])
-        stack.orientation = .horizontal
-        stack.spacing = 10
-        stack.alignment = .centerY
-        // Notes leaves the title 40pt clear of the popover's edge with the tick in
-        // the gutter before it: 16 + a 14pt checkmark + 10 lands on the same mark.
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 10)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        for column in [checkmark, iconView, markerLabel, label] as [NSView] {
+            column.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(column)
+        }
 
         NSLayoutConstraint.activate([
             highlight.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6.5),
@@ -239,18 +249,37 @@ final class FormatPopoverRow: NSView {
             // previews do not tower over the plain rows. Notes' rows measure a
             // uniform 58px on a 2x screenshot — 29pt — at the same 13pt menu font.
             heightAnchor.constraint(equalToConstant: Self.rowHeight),
-            // A fixed checkmark gutter keeps every title on the same left edge
-            // whether or not its row is ticked.
-            checkmark.widthAnchor.constraint(equalToConstant: 14),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            // Fixed columns rather than a stack: a stack would let each row's own
+            // marker width decide where its title starts.
+            checkmark.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.checkmarkX),
+            checkmark.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.markerX),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            markerLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.markerX),
+            markerLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.titleX),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            // Plain centring is enough now that the title is a `font` + plain
+            // string: the previous rows set an `attributedTitle`, which dropped
+            // the cell into wrapping mode and gave the bigger heading previews
+            // different vertical metrics from the 13pt rows. Cap-band centring
+            // was tried on top and moved every label by under 0.5pt — below the
+            // half-point the layout quantises to, so it changed nothing.
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
 
         setAccessibilityRole(.button)
         setAccessibilityLabel(item.title)
         setAccessibilityElement(true)
+        updateAppearance()
+    }
+
+    /// The row is one button. A text field consumes the click that lands on it
+    /// and never passes it up, so the heading rows — whose labels are tall enough
+    /// to cover almost the whole row — could not be clicked at all.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let superview else { return nil }
+        return bounds.contains(convert(point, from: superview)) ? self : nil
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -295,9 +324,19 @@ final class FormatPopoverRow: NSView {
         // `.cgColor`, so the whole expression has to sit inside the block or the
         // tint comes out inverted (measured: black on a dark popover).
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            highlight.layer?.backgroundColor = hovering
-                ? NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
-                : nil
+            // The accent at full strength, as Notes fills a hovered row with its
+            // yellow — so the row's contents flip to the colour AppKit already
+            // defines for text on an accent-filled menu row, in both appearances.
+            highlight.layer?.backgroundColor = hovering ? NSColor.controlAccentColor.cgColor : nil
+            let foreground: NSColor = hovering ? .selectedMenuItemTextColor : .labelColor
+            label.textColor = foreground
+            checkmark.contentTintColor = foreground
+            iconView.contentTintColor = foreground
+            // The quote bar is a rule, not a character: greyed so it does not
+            // read as part of the title — except on the accent, where grey muddies.
+            markerLabel.textColor = !hovering && item.action == #selector(EditorTextView.formatBlockQuote(_:))
+                ? .secondaryLabelColor
+                : foreground
         }
         alphaValue = isEnabled ? 1.0 : 0.35
     }

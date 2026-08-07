@@ -24,6 +24,7 @@ import WebKit
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
 ///   logtoolbar        log every toolbar item's identifier and enabled state
+///   logwindows        log each visible window's id, for `screencapture -l`
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
@@ -244,6 +245,17 @@ enum ReproScript {
                     }
                     web?.evaluateJavaScript("document.scrollingElement.scrollTop + ',' + document.body.childElementCount") { v, e in
                         NSLog("WEBSTATE \(v.map(String.init(describing:)) ?? "nil") err=\(e.map(String.init(describing:)) ?? "none")")
+                    }
+                }
+            case "logwindows":
+                // `NSWindow.windowNumber` is the CGWindowID `screencapture -l`
+                // takes. Reporting it is the only way to grab a window from a
+                // script here: a freshly built tool has no Screen Recording grant
+                // of its own, so it cannot look the id up from outside.
+                schedule(after: delay) { _ in
+                    for window in NSApp?.windows ?? [] where window.isVisible {
+                        report("repro window \(window.windowNumber) " +
+                               "\(type(of: window)) frame=\(window.frame)")
                     }
                 }
             case "logtoolbar":

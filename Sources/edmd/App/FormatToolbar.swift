@@ -229,32 +229,25 @@ final class FormatToolbar: NSObject {
         for level in 1...3 { menu.addItem(headingRow(level)) }
         menu.addItem(FormatMenu.thematicBreakCommand.makeItem())
         for cmd in FormatMenu.listCommands where cmd.id != "format.checklist" {
-            menu.addItem(marked(cmd.makeItem()))
+            menu.addItem(cmd.makeItem())
         }
         menu.addItem(.separator())
 
         for cmd in FormatMenu.blockCommands where cmd.id != "format.table" {
-            menu.addItem(marked(cmd.makeItem()))
+            menu.addItem(cmd.makeItem())
         }
         menu.addItem(calloutRow())
         menu.addItem(FormatMenu.footnoteCommand.makeItem())
         return menu
     }
 
-    /// A heading row rendered at the weight it applies, the way Notes previews
-    /// Title / Heading / Subheading.
+    /// A heading row. It is drawn at the weight it applies — see `titleFont(for:)`
+    /// — the way Notes previews Title / Heading / Subheading.
     private func headingRow(_ level: Int) -> NSMenuItem {
-        let item = MenuCommand(id: "format.heading\(level)", submenu: "Heading",
-                               title: "Heading \(level)",
-                               action: #selector(EditorTextView.formatHeading(_:)),
-                               tag: level).makeItem()
-        // H1 18pt, H2 15.5pt, H3 13pt — a visible step down without overwhelming
-        // the plain rows beneath.
-        let size = [18.0, 15.5, 13.0][level - 1]
-        item.attributedTitle = NSAttributedString(
-            string: item.title,
-            attributes: [.font: NSFont.systemFont(ofSize: size, weight: .semibold)])
-        return item
+        MenuCommand(id: "format.heading\(level)", submenu: "Heading",
+                    title: "Heading \(level)",
+                    action: #selector(EditorTextView.formatHeading(_:)),
+                    tag: level).makeItem()
     }
 
     /// The single callout row, carrying the same Lucide glyph the editor draws in
@@ -265,38 +258,45 @@ final class FormatToolbar: NSObject {
                                title: "Alert / Callout",
                                action: #selector(EditorTextView.formatCallout(_:)),
                                representedObject: "NOTE").makeItem()
-        item.image = Callout.icon(for: "note", color: .labelColor, pointSize: 14)
+        // Template so the row can tint it white on the accent highlight, the way
+        // it tints the checkmark and the text markers.
+        let icon = Callout.icon(for: "note", color: .labelColor, pointSize: 13)
+        icon?.isTemplate = true
+        item.image = icon
         return item
     }
 
-    /// Prefixes a row with the marker it inserts, so the menu previews its own
-    /// effect. Markers that are literal Markdown syntax are set in the mono font
-    /// they will be typed in; the block quote's bar is a rule rather than a
-    /// character, so it is greyed to keep it from reading as part of the title.
-    private func marked(_ item: NSMenuItem) -> NSMenuItem {
-        let body = NSFont.menuFont(ofSize: 0)
-        let mono = NSFont.monospacedSystemFont(ofSize: body.pointSize - 1, weight: .regular)
-
-        let marker: String
-        var attributes: [NSAttributedString.Key: Any] = [.font: body]
+    /// The mini marker previewing what a row inserts. `FormatPopoverRow` draws it
+    /// in a gutter of its own so `•`, `1.`, `▎`, `$` and the callout glyph all
+    /// share a left edge however wide each one is — inline prefixes could not,
+    /// since each shifted its own title. Code Block has no marker: it previews
+    /// itself through the mono face of its title instead (see `titleFont`).
+    static func marker(for item: NSMenuItem) -> String? {
         switch item.action {
-        case #selector(EditorTextView.formatBulletedList(_:)): marker = "•  "
-        case #selector(EditorTextView.formatNumberedList(_:)): marker = "1.  "
-        case #selector(EditorTextView.formatBlockQuote(_:)):
-            marker = "▎ "
-            attributes[.foregroundColor] = NSColor.secondaryLabelColor
-        case #selector(EditorTextView.formatCodeBlock(_:)):
-            marker = "```  "
-            attributes[.font] = mono
-        case #selector(EditorTextView.formatMathBlock(_:)):
-            marker = "$  "
-            attributes[.font] = mono
-        default: return item
+        case #selector(EditorTextView.formatBulletedList(_:)): return "•"
+        case #selector(EditorTextView.formatNumberedList(_:)): return "1."
+        case #selector(EditorTextView.formatBlockQuote(_:)):   return "▎"
+        case #selector(EditorTextView.formatMathBlock(_:)):    return "$"
+        default:                                               return nil
         }
-        let title = NSMutableAttributedString(string: marker, attributes: attributes)
-        title.append(NSAttributedString(string: item.title, attributes: [.font: body]))
-        item.attributedTitle = title
-        return item
+    }
+
+    /// The face a row's title is drawn in. Headings step down in size the way
+    /// Notes previews Title / Heading / Subheading; Code Block is set in the mono
+    /// face its content is typed in, which is what it previews instead of a
+    /// marker.
+    static func titleFont(for item: NSMenuItem) -> NSFont {
+        let body = NSFont.menuFont(ofSize: 0)
+        switch item.action {
+        case #selector(EditorTextView.formatHeading(_:)):
+            let sizes = [18.0, 15.5, 13.0]
+            return .systemFont(ofSize: sizes[min(max(item.tag, 1), sizes.count) - 1],
+                               weight: .semibold)
+        case #selector(EditorTextView.formatCodeBlock(_:)):
+            return .monospacedSystemFont(ofSize: body.pointSize - 1, weight: .regular)
+        default:
+            return body
+        }
     }
 
     /// (SF Symbol, command id) for the popup's first row.
@@ -313,7 +313,9 @@ final class FormatToolbar: NSObject {
     /// faithfully, and Markdown has no alignment concept outside table columns.
     private static let inlineRow2: [(String, String)] = [
         ("chevron.left.forwardslash.chevron.right", "format.code"),
-        ("function", "format.math"),
+        // `pi` rather than `function`: ƒ(x) is far wider than every other glyph
+        // in the grid, so the row read ragged.
+        ("pi", "format.math"),
         ("textformat.subscript", "format.subscript"),
         ("textformat.superscript", "format.superscript"),
     ]
@@ -526,6 +528,14 @@ final class FormatIconButton: NSButton {
     override func mouseEntered(with event: NSEvent) { isHovered = true }
     override func mouseExited(with event: NSEvent)  { isHovered = false }
 
+    /// The frame is the hover chip and the hit area, so it has to be exactly what
+    /// the size constraints say. Left to AppKit a borderless image button insets
+    /// its alignment rect from its frame by a bezel it never draws, and by a
+    /// different amount per symbol: equal 24pt height constraints produced chips
+    /// from 26 to 31pt tall, and left the grid's wrapper 12pt taller than its
+    /// rows — which is where the extra gap above the first divider came from.
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsets() }
+
     /// A disabled button must not look hoverable.
     override var isEnabled: Bool {
         didSet { if !isEnabled { isHovered = false } else { updateBackground() } }
@@ -544,12 +554,16 @@ final class FormatIconButton: NSButton {
         // appearance, not this view's, and it resolves at `withAlphaComponent`
         // as well as at `.cgColor` — so the whole expression is pinned to ours.
         effectiveAppearance.performAsCurrentDrawingAppearance {
+            // On is the accent at full strength, the way Notes fills an active
+            // grid button with its yellow. Hover stays a wash: a hover that
+            // looked identical to on would say the style had been applied.
             let color: NSColor? =
                 !isEnabled ? nil
-                : isActive ? .controlAccentColor.withAlphaComponent(isHovered ? 0.45 : 0.35)
+                : isActive ? .controlAccentColor
                 : isHovered ? .controlAccentColor.withAlphaComponent(0.18)
                 : nil
             layer?.backgroundColor = color?.cgColor
+            contentTintColor = isActive && isEnabled ? .selectedMenuItemTextColor : .labelColor
         }
     }
 }

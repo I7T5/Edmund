@@ -95,8 +95,8 @@ import AppKit
         // Icon rows are views, not items — the popover stacks them above these.
         #expect(titles(bar.formatPopupMenu()) == [
             "Heading 1", "Heading 2", "Heading 3", "Thematic Break",
-            "•  Bulleted List", "1.  Numbered List", "-",
-            "```  Code Block", "$  Math Block", "▎ Block Quote",
+            "Bulleted List", "Numbered List", "-",
+            "Code Block", "Math Block", "Block Quote",
             "Alert / Callout", "Footnote",
         ])
         _ = doc
@@ -128,9 +128,12 @@ import AppKit
             $0.action == #selector(EditorTextView.formatHeading(_:))
         }
         #expect(headings.map(\.tag) == [1, 2, 3])
-        // formatHeading reads the level off the sender's tag, so it must survive
-        // the attributedTitle styling.
-        #expect(headings.allSatisfy { $0.attributedTitle != nil })
+        // The row's font previews the level, and it is read off that same tag —
+        // so a heading whose tag was lost would also lose its preview.
+        #expect(headings.map { FormatToolbar.titleFont(for: $0).pointSize } == [18, 15.5, 13])
+        // Plain titles: a marker or a weight baked into an `attributedTitle`
+        // becomes the item's `title`, and from there its VoiceOver label.
+        #expect(headings.allSatisfy { $0.attributedTitle == nil })
         _ = doc
     }
 
@@ -278,9 +281,10 @@ import AppKit
         _ = doc
     }
 
-    /// The hover tint is the accent colour on an inset view, so it stops short of
-    /// the popover's rounded sides the way the dividers do.
-    @Test func theHoverHighlightIsInsetAndAccentTinted() {
+    /// The hover tint is the accent colour at full strength on an inset view, so
+    /// it stops short of the popover's rounded sides the way the dividers do, and
+    /// the row's contents flip to the colour AppKit uses on an accent-filled row.
+    @Test func theHoverHighlightIsInsetAccentFilledAndFlipsTheText() {
         let (bar, doc) = toolbar()
         let controller = FormatPopoverController(items: Array(bar.formatPopupMenu().items),
                                                  editor: nil, popover: nil)
@@ -288,86 +292,161 @@ import AppKit
         controller.view.layoutSubtreeIfNeeded()
 
         let row = try! #require(controller.commandRows.first)
+        let label = try! #require(row.subviews.compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == row.item.title })
         #expect(row.highlight.layer?.backgroundColor == nil, "tinted before hover")
+        #expect(label.textColor == .labelColor)
 
         row.isHovered = true
         controller.view.layoutSubtreeIfNeeded()
         var accent: CGColor?
         row.effectiveAppearance.performAsCurrentDrawingAppearance {
-            accent = NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
+            accent = NSColor.controlAccentColor.cgColor
         }
         #expect(row.highlight.layer?.backgroundColor == accent)
+        #expect(label.textColor == .selectedMenuItemTextColor)
         #expect(row.highlight.frame.minX > row.frame.minX)
         #expect(row.highlight.frame.maxX < row.frame.maxX)
         _ = doc
     }
 
-    /// Notes reserves the tick's gutter whether or not a row is ticked. Hiding the
-    /// checkmark instead dropped it out of the stack and the titles slid left.
-    @Test func everyTitleSitsOnTheSameLeftEdgeUnticked() {
+    /// Three fixed columns — tick, marker, title — so a `1.` no more shifts its
+    /// own title than a bare row does, and the markers share an edge with each
+    /// other instead of each hanging off the front of its own text.
+    @Test func everyRowSharesTheSameThreeColumns() {
         let (bar, doc) = toolbar()
         let controller = FormatPopoverController(items: Array(bar.formatPopupMenu().items),
                                                  editor: nil, popover: nil)
         controller.loadView()
         controller.view.layoutSubtreeIfNeeded()
 
-        // The callout row carries an icon of its own, so it is legitimately inset
-        // further; every other title shares one edge.
-        let edges = Set(controller.commandRows
-            .filter { $0.item.image == nil }
-            .compactMap { row in
-                row.subviews.compactMap { $0 as? NSStackView }.first?
-                    .arrangedSubviews.compactMap { $0 as? NSTextField }.first?.frame.minX
-            })
-        #expect(edges.count == 1, "titles do not share a left edge: \(edges.sorted())")
-
-        // A wrapping label reports no intrinsic width; the marked rows laid out
-        // 4pt wide and drew nothing until the cell was forced back to one line.
+        var titleEdges: Set<CGFloat> = []
+        var markerEdges: Set<CGFloat> = []
         for row in controller.commandRows {
-            let label = row.subviews.compactMap { $0 as? NSStackView }.first?
-                .arrangedSubviews.compactMap { $0 as? NSTextField }.first
-            #expect((label?.frame.width ?? 0) >= (label?.intrinsicContentSize.width ?? 0),
+            let fields = row.subviews.compactMap { $0 as? NSTextField }
+            let title = try! #require(fields.first { $0.stringValue == row.item.title })
+            titleEdges.insert(title.alignmentRect(forFrame: title.frame).minX)
+            // A wrapping label reports no intrinsic width; the styled rows once
+            // laid out 4pt wide and drew nothing at all.
+            #expect(title.frame.width >= title.intrinsicContentSize.width,
                     "'\(row.item.title)' is squeezed below its intrinsic width")
+
+            for marker in fields where marker !== title && !marker.stringValue.isEmpty {
+                markerEdges.insert(marker.alignmentRect(forFrame: marker.frame).minX)
+            }
+            // The callout's glyph shares the marker gutter — no row has both.
+            if let icon = row.subviews.compactMap({ $0 as? NSImageView })
+                .first(where: { !$0.isHidden && $0.image === row.item.image }) {
+                markerEdges.insert(icon.frame.minX)
+            }
+        }
+        #expect(titleEdges == [FormatPopoverRow.titleX],
+                "titles do not share a left edge: \(titleEdges.sorted())")
+        #expect(markerEdges == [FormatPopoverRow.markerX],
+                "markers do not share a left edge: \(markerEdges.sorted())")
+        _ = doc
+    }
+
+    /// The row is one button. A text field consumes the click that lands on it,
+    /// and the heading previews are tall enough to cover almost their whole row —
+    /// so before the hit test was overridden those rows could not be clicked.
+    @Test func aClickOnATitleReachesTheRow() {
+        let (bar, doc) = toolbar()
+        let controller = FormatPopoverController(items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+        controller.view.layoutSubtreeIfNeeded()
+
+        for row in controller.commandRows {
+            for field in row.subviews.compactMap({ $0 as? NSTextField })
+            where !field.stringValue.isEmpty {
+                let point = row.convert(NSPoint(x: field.frame.midX, y: field.frame.midY),
+                                        to: row.superview)
+                #expect(row.hitTest(point) === row,
+                        "'\(row.item.title)' swallows the click on '\(field.stringValue)'")
+            }
         }
         _ = doc
     }
 
-    /// Markers that are literal Markdown syntax are set in the mono font they will
-    /// be typed in; the block quote's bar is greyed so it reads as a rule.
-    @Test func syntaxMarkersAreMonoAndTheQuoteBarIsGrey() {
+    /// `$` is Markdown syntax and is shown in the face it is typed in; Code Block
+    /// previews itself through its whole title instead of a ``` prefix.
+    @Test func syntaxIsPreviewedInTheMonoFace() {
         let (bar, doc) = toolbar()
         let items = bar.formatPopupMenu().items
 
-        func marker(_ suffix: String) -> (NSFont?, NSColor?) {
-            let item = items.first { $0.title.hasSuffix(suffix) }
-            let title = item?.attributedTitle
-            let attributes = title?.attributes(at: 0, effectiveRange: nil)
-            return (attributes?[.font] as? NSFont, attributes?[.foregroundColor] as? NSColor)
-        }
-
-        #expect(items.first { $0.title.hasSuffix("Code Block") }?.title.hasPrefix("```") == true)
-        #expect(items.first { $0.title.hasSuffix("Math Block") }?.title.hasPrefix("$") == true)
-        #expect(marker("Code Block").0?.isFixedPitch == true)
-        #expect(marker("Math Block").0?.isFixedPitch == true)
-        #expect(marker("Block Quote").1 == .secondaryLabelColor)
-        // The title itself stays in the menu font whatever its marker is.
-        let code = items.first { $0.title.hasSuffix("Code Block") }?.attributedTitle
-        let tail = code?.attributes(at: (code?.length ?? 1) - 1, effectiveRange: nil)
-        #expect((tail?[.font] as? NSFont)?.isFixedPitch == false)
+        func item(_ title: String) -> NSMenuItem { items.first { $0.title == title }! }
+        #expect(FormatToolbar.titleFont(for: item("Code Block")).isFixedPitch)
+        #expect(FormatToolbar.marker(for: item("Code Block")) == nil)
+        #expect(FormatToolbar.marker(for: item("Math Block")) == "$")
+        #expect(FormatToolbar.marker(for: item("Block Quote")) == "▎")
+        #expect(FormatToolbar.marker(for: item("Bulleted List")) == "•")
+        #expect(FormatToolbar.marker(for: item("Numbered List")) == "1.")
+        // Titles are plain, so nothing a row draws leaks into its VoiceOver label.
+        #expect(items.allSatisfy { $0.attributedTitle == nil })
         _ = doc
     }
 
-    /// Mouse-first panel: no key view loop, no focus rings, and no button carries
-    /// a tint of its own (the highlighter used to be drawn in yellow).
-    @Test func theIconRowIsMouseOnlyAndUntinted() {
+    /// The grid is one band among the others: its gap to the divider beneath has
+    /// to be the gap every other section has. It came out 12pt wider because the
+    /// popover was sized taller than its own content, and the grid — the one band
+    /// with no height of its own — absorbed all the slack.
+    @Test func theGridSitsAsCloseToItsDividerAsAnyRow() {
         let (bar, doc) = toolbar()
-        for row in bar.iconRowViews() {
-            for case let button as NSButton in row.arrangedSubviews {
+        let controller = FormatPopoverController(iconRows: bar.iconRowViews(),
+                                                 items: Array(bar.formatPopupMenu().items),
+                                                 editor: nil, popover: nil)
+        controller.loadView()
+        controller.view.layoutSubtreeIfNeeded()
+
+        let stack = try! #require(controller.view.subviews.first as? NSStackView)
+        #expect(controller.view.frame.height == stack.fittingSize.height,
+                "the popover is taller than its content, so a band is being stretched")
+
+        // Every band sitting above a divider must clear it by the same amount.
+        let bands = stack.arrangedSubviews
+        var gaps: Set<CGFloat> = []
+        for (band, next) in zip(bands, bands.dropFirst()) where next.subviews.first is NSBox {
+            gaps.insert(band.frame.minY - next.convert(next.subviews[0].frame, to: stack).maxY)
+        }
+        #expect(gaps.count == 1, "uneven gaps above the dividers: \(gaps.sorted())")
+        _ = doc
+    }
+
+    /// Mouse-first panel: no key view loop and no focus rings. Every button draws
+    /// in the label colour until it is on — the highlighter used to carry a
+    /// yellow of its own — and every hover chip is the size the constraints say,
+    /// which needs the bezel insets AppKit varies per symbol zeroed out.
+    @Test func theIconRowIsMouseOnlyUntintedAndEvenlySized() {
+        let (bar, doc) = toolbar()
+        let rows = bar.iconRowViews()
+        for row in rows {
+            for case let button as FormatIconButton in row.arrangedSubviews {
                 #expect(button.focusRingType == .none)
                 #expect(button.refusesFirstResponder)
-                #expect(button.contentTintColor == nil, "\(button.toolTip ?? "?") is tinted")
+                #expect(button.contentTintColor == .labelColor,
+                        "\(button.toolTip ?? "?") is tinted")
+                let insets = button.alignmentRectInsets
+                #expect(insets.top == 0 && insets.bottom == 0
+                        && insets.left == 0 && insets.right == 0)
             }
+            row.layoutSubtreeIfNeeded()
         }
+        let sizes = Set(rows.flatMap { $0.arrangedSubviews.map { NSStringFromSize($0.frame.size) } })
+        #expect(sizes.count == 1, "ragged buttons: \(sizes.sorted())")
+        _ = doc
+    }
+
+    /// `function` draws ƒ(x), far wider than anything else in the grid.
+    @Test func theMathButtonUsesTheNarrowPiGlyph() {
+        let (bar, doc) = toolbar()
+        let math = bar.iconRowViews()[1].arrangedSubviews
+            .compactMap { $0 as? NSButton }
+            .first { (($0.target as? FormatIconTarget)?.styleID) == "format.math" }
+        // A symbol image loses its name once configured, so it is identified by
+        // the extent it draws: `function` is the wide one this replaced.
+        #expect(math?.image?.size == FormatToolbar.rowSymbol("pi")?.size)
+        #expect(math?.image?.size != FormatToolbar.rowSymbol("function")?.size)
         _ = doc
     }
 
@@ -448,14 +527,12 @@ import AppKit
     @Test func blockRowsMapToTheStyleTheyApply() {
         let (bar, doc) = toolbar()
         let menu = bar.formatPopupMenu()
-        // Matched on the suffix: a marked row's `title` carries its marker, since
-        // AppKit syncs `title` from whatever `attributedTitle` is set to.
         func style(ofRowTitled title: String) -> ActiveBlockStyle? {
-            menu.items.first { $0.title.hasSuffix(title) }.flatMap(FormatToolbar.blockStyle(for:))
+            menu.items.first { $0.title == title }.flatMap(FormatToolbar.blockStyle(for:))
         }
         #expect(style(ofRowTitled: "Heading 2") == .heading(level: 2))
-        #expect(style(ofRowTitled: "•  Bulleted List") == .bulletedList)
-        #expect(style(ofRowTitled: "▎ Block Quote") == .blockQuote)
+        #expect(style(ofRowTitled: "Bulleted List") == .bulletedList)
+        #expect(style(ofRowTitled: "Block Quote") == .blockQuote)
         #expect(style(ofRowTitled: "Alert / Callout") == .callout)
         #expect(style(ofRowTitled: "Code Block") == .codeBlock)
         // Footnote is not a block style — it must not claim a checkmark.
