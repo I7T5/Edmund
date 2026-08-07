@@ -172,13 +172,14 @@ final class FormatPopoverRow: NSView {
     /// Uniform across every row. Exposed so the layout tests can assert it.
     static let rowHeight: CGFloat = 29
 
-    /// The three columns, as offsets from the row's leading edge. Notes puts its
-    /// checkmark at 17.5pt and its titles at 40pt, with nothing between; the
-    /// marker gutter is fitted into that same span rather than pushing the titles
-    /// right, by starting the checkmark closer in.
-    static let checkmarkX: CGFloat = 12
-    static let markerX: CGFloat = 25
-    static let titleX: CGFloat = 40
+    /// The three columns, as offsets from the row's leading edge. Measured off
+    /// Notes' own popup, whose checkmark ink starts at 19pt and whose markers sit
+    /// at 37.5pt — scaled in to our narrower popover. A row with no marker puts
+    /// its title on the marker edge, not the title edge: that is what Notes does,
+    /// so "Subheading" and "• Bulleted List" start their glyphs at one mark.
+    static let checkmarkX: CGFloat = 15
+    static let markerX: CGFloat = 30
+    static let titleX: CGFloat = 45
 
     let item: NSMenuItem
 
@@ -224,6 +225,11 @@ final class FormatPopoverRow: NSView {
                 ? .monospacedSystemFont(ofSize: body.pointSize - 1, weight: .regular)
                 : body
         }
+        // A row with no marker of its own starts its title on the marker edge
+        // rather than the title edge, so unmarked and marked rows share one
+        // leading glyph column the way Notes' do.
+        let titleX = FormatToolbar.marker(for: item) == nil && item.image == nil
+            ? Self.markerX : Self.titleX
         markerLabel.isHidden = markerLabel.stringValue.isEmpty
         markerLabel.alignment = .left
 
@@ -257,7 +263,7 @@ final class FormatPopoverRow: NSView {
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             markerLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.markerX),
             markerLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.titleX),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: titleX),
             label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
             // Plain centring is enough now that the title is a `font` + plain
             // string: the previous rows set an `attributedTitle`, which dropped
@@ -324,10 +330,12 @@ final class FormatPopoverRow: NSView {
         // `.cgColor`, so the whole expression has to sit inside the block or the
         // tint comes out inverted (measured: black on a dark popover).
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            // The accent at full strength, as Notes fills a hovered row with its
-            // yellow — so the row's contents flip to the colour AppKit already
-            // defines for text on an accent-filled menu row, in both appearances.
-            highlight.layer?.backgroundColor = hovering ? NSColor.controlAccentColor.cgColor : nil
+            // The system's own selection fill, not a hand-mixed accent: Notes
+            // draws a hovered row exactly as it draws a selected one, so the
+            // row's contents flip to the colour AppKit already defines for text
+            // on that fill, in both appearances.
+            highlight.layer?.backgroundColor = hovering
+                ? NSColor.selectedContentBackgroundColor.cgColor : nil
             let foreground: NSColor = hovering ? .selectedMenuItemTextColor : .labelColor
             label.textColor = foreground
             checkmark.contentTintColor = foreground

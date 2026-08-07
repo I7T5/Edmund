@@ -79,6 +79,17 @@ import AppKit
         _ = doc
     }
 
+    /// A plain image item draws bare and never highlights under the pointer
+    /// unless it is bordered, which left Checklist and Table looking dead beside
+    /// the custom-view items either side of them.
+    @Test func plainItemsAreBorderedSoTheyHighlightOnHover() {
+        let (bar, doc) = toolbar()
+        for id in [FormatToolbar.checklist, FormatToolbar.table] {
+            #expect(bar.makeItem(id)?.isBordered == true, "\(id.rawValue) will not highlight")
+        }
+        _ = doc
+    }
+
     /// The view-mode item stays with `Document`; FormatToolbar must decline it
     /// rather than vend an empty replacement.
     @Test func declinesTheViewModeItem() {
@@ -301,7 +312,7 @@ import AppKit
         controller.view.layoutSubtreeIfNeeded()
         var accent: CGColor?
         row.effectiveAppearance.performAsCurrentDrawingAppearance {
-            accent = NSColor.controlAccentColor.cgColor
+            accent = NSColor.selectedContentBackgroundColor.cgColor
         }
         #expect(row.highlight.layer?.backgroundColor == accent)
         #expect(label.textColor == .selectedMenuItemTextColor)
@@ -322,10 +333,13 @@ import AppKit
 
         var titleEdges: Set<CGFloat> = []
         var markerEdges: Set<CGFloat> = []
+        var unmarkedEdges: Set<CGFloat> = []
         for row in controller.commandRows {
             let fields = row.subviews.compactMap { $0 as? NSTextField }
             let title = try! #require(fields.first { $0.stringValue == row.item.title })
-            titleEdges.insert(title.alignmentRect(forFrame: title.frame).minX)
+            let hasMarker = FormatToolbar.marker(for: row.item) != nil || row.item.image != nil
+            let edge = title.alignmentRect(forFrame: title.frame).minX
+            if hasMarker { titleEdges.insert(edge) } else { unmarkedEdges.insert(edge) }
             // A wrapping label reports no intrinsic width; the styled rows once
             // laid out 4pt wide and drew nothing at all.
             #expect(title.frame.width >= title.intrinsicContentSize.width,
@@ -341,9 +355,13 @@ import AppKit
             }
         }
         #expect(titleEdges == [FormatPopoverRow.titleX],
-                "titles do not share a left edge: \(titleEdges.sorted())")
+                "marked titles do not share a left edge: \(titleEdges.sorted())")
         #expect(markerEdges == [FormatPopoverRow.markerX],
                 "markers do not share a left edge: \(markerEdges.sorted())")
+        // Notes starts an unmarked row's title on the marker edge, so the first
+        // glyph of every row — marker or letter — lands on one column.
+        #expect(unmarkedEdges == [FormatPopoverRow.markerX],
+                "unmarked titles are not on the marker edge: \(unmarkedEdges.sorted())")
         _ = doc
     }
 
@@ -382,6 +400,7 @@ import AppKit
         #expect(FormatToolbar.marker(for: item("Block Quote")) == "▎")
         #expect(FormatToolbar.marker(for: item("Bulleted List")) == "•")
         #expect(FormatToolbar.marker(for: item("Numbered List")) == "1.")
+        #expect(FormatToolbar.marker(for: item("Footnote")) == "†")
         // Titles are plain, so nothing a row draws leaks into its VoiceOver label.
         #expect(items.allSatisfy { $0.attributedTitle == nil })
         _ = doc

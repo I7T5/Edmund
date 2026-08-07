@@ -144,6 +144,10 @@ final class FormatToolbar: NSObject {
         item.image = Self.symbol(symbol)
         item.target = nil
         item.action = action
+        // Without this a plain image item draws bare and never highlights under
+        // the pointer, unlike the custom-view items either side of it — which is
+        // what made Checklist and Table look dead next to Format and Link.
+        item.isBordered = true
         return item
     }
 
@@ -259,8 +263,10 @@ final class FormatToolbar: NSObject {
                                action: #selector(EditorTextView.formatCallout(_:)),
                                representedObject: "NOTE").makeItem()
         // Template so the row can tint it white on the accent highlight, the way
-        // it tints the checkmark and the text markers.
-        let icon = Callout.icon(for: "note", color: .labelColor, pointSize: 13)
+        // it tints the checkmark and the text markers. 10pt because a Lucide
+        // glyph fills its box: it draws 10pt of ink against the 9.2pt cap height
+        // of the text markers beside it, where 13pt towered over them.
+        let icon = Callout.icon(for: "note", color: .labelColor, pointSize: 10)
         icon?.isTemplate = true
         item.image = icon
         return item
@@ -277,6 +283,10 @@ final class FormatToolbar: NSObject {
         case #selector(EditorTextView.formatNumberedList(_:)): return "1."
         case #selector(EditorTextView.formatBlockQuote(_:)):   return "▎"
         case #selector(EditorTextView.formatMathBlock(_:)):    return "$"
+        // The printer's footnote mark rather than the `[^1]` it inserts: that
+        // preview measures 15pt against 7–9pt for every other marker, which is
+        // both lopsided in a shared gutter and wide enough to reach the titles.
+        case #selector(EditorTextView.formatFootnote(_:)):     return "†"
         default:                                               return nil
         }
     }
