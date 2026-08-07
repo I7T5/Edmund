@@ -19,6 +19,8 @@ final class FontSettings: NSObject, ObservableObject {
     @Published var monospaceLigatures: Bool { didSet { applyLigatures() } }
     /// A single editor-wide antialias setting (both font toggles share it).
     @Published var antialias: Bool { didSet { applyAntialias() } }
+    /// Per-script font overrides for the Fonts pane (script → family name).
+    @Published var cascadeFonts: [FontCascadeScript: String]
 
     private var theme: EditorTheme
     private enum Target { case standard, monospace }
@@ -32,6 +34,7 @@ final class FontSettings: NSObject, ObservableObject {
         standardLigatures = theme.standardLigatures
         monospaceLigatures = theme.monospaceLigatures
         antialias = theme.antialias
+        cascadeFonts = theme.fontCascade
         let size = theme.bodyFont.pointSize
         lineHeight = size > 0 ? max(1, min(3, (size + theme.lineSpacing) / size)) : 1
         super.init()
@@ -120,6 +123,38 @@ final class FontSettings: NSObject, ObservableObject {
             // Reflect the theme change live in an open Read view too.
             document.refreshReadView()
         }
+    }
+
+    // MARK: - Font cascade (per-script fonts, Fonts pane)
+
+    /// Every installed font family, for the per-script pickers. The codebase's
+    /// only system-font enumeration; sorted for a stable menu order.
+    var availableFontFamilies: [String] {
+        NSFontManager.shared.availableFontFamilies.sorted()
+    }
+
+    /// Sets (or clears, with nil/empty) the user's font for one script and
+    /// broadcasts the change live to every open document and Read view.
+    func setCascadeFont(_ script: FontCascadeScript, family: String?) {
+        var updated = theme
+        if let family, !family.isEmpty {
+            updated.fontCascade[script] = family
+        } else {
+            updated.fontCascade.removeValue(forKey: script)
+        }
+        cascadeFonts = updated.fontCascade
+        theme = updated
+        updated.save()
+        applyToDocuments(updated)
+    }
+
+    /// The preview font for a script row: the user's choice at the preview
+    /// size, or nil when unset (the row then draws in the default UI font,
+    /// which itself falls back per-script — a reasonable "system fallback"
+    /// preview).
+    func previewFont(for script: FontCascadeScript) -> NSFont? {
+        guard let family = cascadeFonts[script] else { return nil }
+        return NSFont(name: family, size: 16)
     }
 
     private static func summary(_ font: NSFont) -> String {

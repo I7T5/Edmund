@@ -23,6 +23,7 @@ struct SettingsPaneWidthTests {
         let general = fittingWidth(GeneralSettingsView())
         #expect(general == 600)
         #expect(fittingWidth(AppearanceSettingsView(fonts: FontSettings())) == general)
+        #expect(fittingWidth(FontCascadeSettingsView(fonts: FontSettings())) == general)
         #expect(fittingWidth(EditSettingsView()) == general)
         #expect(fittingWidth(SyntaxSettingsView()) == general)
         #expect(fittingWidth(KeyBindingsSettingsView()) == general)

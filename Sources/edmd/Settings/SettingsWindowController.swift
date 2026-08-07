@@ -37,6 +37,7 @@ final class SettingsTabViewController: NSTabViewController {
 
         addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
         addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
+        addPane(FontCascadeSettingsView(fonts: fonts), label: "Fonts", symbol: "textformat")
         addPane(EditSettingsView(), label: "Edit", symbol: "square.and.pencil")
         addPane(SyntaxSettingsView(), label: "Syntax", symbol: "chevron.left.forwardslash.chevron.right")
         addPane(KeyBindingsSettingsView(), label: "Key Bindings", symbol: "keyboard")
