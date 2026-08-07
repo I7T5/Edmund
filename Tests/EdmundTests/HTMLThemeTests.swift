@@ -32,6 +32,32 @@ struct HTMLThemeTests {
         #expect(out.contains("\"Iowan Old Style\""))
     }
 
+    @Test("Cascade scripts emit @font-face local() blocks and lead the body stack")
+    func cascadeBlocks() {
+        var theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
+                                linkBlueHex: "#3366E6", codeHex: "#8A2425",
+                                lineSpacing: 4, paragraphSpacingBefore: 2)
+        theme.fontCascade = [.han: "Songti SC", .emoji: "Apple Color Emoji"]
+        let out = HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: false)
+        #expect(out.contains(
+            "@font-face { font-family: \"edmund-cascade-han\"; src: local(\"Songti SC\");"))
+        #expect(out.contains(
+            "@font-face { font-family: \"edmund-cascade-emoji\"; src: local(\"Apple Color Emoji\");"))
+        // The cascade families lead the body stack, ahead of the body family.
+        #expect(out.contains(
+            "--body-font: \"edmund-cascade-emoji\", \"edmund-cascade-han\", \"Iowan Old Style\", -apple-system, serif;"))
+        // The Han block carries the script's unicode-range fence.
+        #expect(out.contains("unicode-range: U+3005, U+3400-4DBF, U+4E00-9FFF"))
+    }
+
+    @Test("No cascade emits no @font-face blocks and the stack is unchanged")
+    func noCascadeNoBlocks() {
+        let out = css(dark: false)
+        #expect(!out.contains("@font-face"))
+        #expect(!out.contains("edmund-cascade"))
+        #expect(out.contains("--body-font: \"Iowan Old Style\", -apple-system, serif;"))
+    }
+
     /// Read mode and Edit mode must paint text — and the math bitmaps that flow
     /// with it — in the identical ink. They used to disagree in light mode (Read
     /// mode hard-coded #1a1a1a against the editor's `textColor`), which made the
