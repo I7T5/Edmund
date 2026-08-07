@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// The fixed, curated set of scripts the user can assign a dedicated font to.
@@ -127,5 +128,65 @@ public enum FontCascadeScript: String, CaseIterable, Codable, Sendable {
         case .nonspacingMark, .spacingMark, .enclosingMark: return true
         default: return false
         }
+    }
+}
+
+/// Resolves the user's per-script font choices to cached NSFonts at the run's
+/// point size and traits. EditorTextStorage holds one (nil when the theme has
+/// no cascade entries), so the font-substitution pass can consult the user's
+/// explicit choice before CoreText's own fallback.
+///
+/// Deliberately NOT @MainActor: NSTextStorage.fixAttributes is a nonisolated
+/// override, and the storage class carries no actor. All real use is
+/// main-thread (AppKit text system), so the unsynchronized cache is fine.
+public final class FontCascadeResolver {
+
+    /// script → macOS font family name, as persisted in the theme.
+    public let families: [FontCascadeScript: String]
+
+    /// (script, point size, bold, italic) → resolved font. One instance per theme
+    /// application, reused across all blocks — the same attribute-interner
+    /// discipline as EditorTextView's cached body/mono fonts.
+    private var cache: [CacheKey: NSFont] = [:]
+
+    private struct CacheKey: Hashable {
+        let script: FontCascadeScript
+        let size: CGFloat
+        let bold: Bool
+        let italic: Bool
+    }
+
+    /// nil when the cascade is empty — callers keep a nil resolver in that
+    /// case, and the substitution pass is byte-identical to pre-cascade.
+    public init?(cascade: [FontCascadeScript: String]) {
+        guard !cascade.isEmpty else { return nil }
+        families = cascade
+    }
+
+    /// The user's font for `script` at `base`'s size, or nil when the script
+    /// has no entry or its family is not installed — nil means the caller
+    /// falls back to the regular CoreText substitution (`CTFontCreateForString`).
+    /// The persisted entry is kept either way: the font may be reinstalled.
+    public func font(for script: FontCascadeScript, like base: NSFont) -> NSFont? {
+        guard let family = families[script] else { return nil }
+        let baseTraits = base.fontDescriptor.symbolicTraits
+        let bold = baseTraits.contains(.bold)
+        let italic = baseTraits.contains(.italic)
+        let key = CacheKey(script: script, size: base.pointSize, bold: bold, italic: italic)
+        if let cached = cache[key] { return cached }
+
+        guard var resolved = NSFont(name: family, size: base.pointSize) else { return nil }
+        // KNOWN LIMITATION: families without a bold/italic member render
+        // unstyled (NSFont has no synthetic bolding like CoreText's fallback
+        // chain does). The user's chosen family still wins over CoreText's
+        // fallback family — a bold 漢 in Songti stays Songti, just not bold.
+        if bold {
+            resolved = NSFontManager.shared.convert(resolved, toHaveTrait: .boldFontMask)
+        }
+        if italic {
+            resolved = NSFontManager.shared.convert(resolved, toHaveTrait: .italicFontMask)
+        }
+        cache[key] = resolved
+        return resolved
     }
 }

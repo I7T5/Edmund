@@ -21,6 +21,13 @@ public class EditorTextStorage: NSTextStorage {
     }
     public private(set) var pendingEdit: PendingEdit?
 
+    /// The user's per-script font choices, pushed from the editor's theme.
+    /// nil when the theme has no cascade entries — the substitution pass is
+    /// then byte-identical to its pre-cascade behavior. Read from the
+    /// nonisolated fixAttributes; only ever written on the main thread
+    /// (theme application), same as every other storage-adjacent knob.
+    public var cascadeResolver: FontCascadeResolver?
+
     /// Returns and clears the accumulated edit.
     public func consumePendingEdit() -> PendingEdit? {
         defer { pendingEdit = nil }
@@ -109,6 +116,35 @@ public class EditorTextStorage: NSTextStorage {
             // and are plain ASCII delimiters the base font already covers.
             guard let font = value as? NSFont, font.pointSize > 1.0 else { return }
 
+            // With a cascade configured, check for user-assigned scripts
+            // BEFORE the coverage fast path: an explicit per-script choice
+            // must win even when the body font happens to cover the script
+            // (e.g. a CJK-capable serif as body). The pre-scan skips all of
+            // this for runs that can't contain a cascade script — pure
+            // Latin/digit/punct runs cost one integer pass, no clustering.
+            if let resolver = cascadeResolver, runMayContainCascadeScript(ns, in: runRange) {
+                var i = runRange.location
+                let end = runRange.upperBound
+                var cascadeFixes: [(NSRange, NSFont)] = []
+                while i < end {
+                    let seq = ns.rangeOfComposedCharacterSequence(at: i)
+                    let seqRange = NSRange(location: seq.location,
+                                           length: min(seq.length, end - seq.location))
+                    if let script = FontCascadeScript.classify(ns.substring(with: seqRange)),
+                       let cascadeFont = resolver.font(for: script, like: font),
+                       cascadeFont.fontName != font.fontName {
+                        cascadeFixes.append((seqRange, cascadeFont))
+                    }
+                    i = seqRange.upperBound
+                }
+                if !cascadeFixes.isEmpty {
+                    fixes.append(contentsOf: cascadeFixes)
+                    // Cascade substitutions overwrite whatever the generic
+                    // pass would compute below, so they are applied AFTER it
+                    // (fixes are applied in order at the end).
+                }
+            }
+
             // Fast path: does the font cover the whole run?
             let runChars = Array(ns.substring(with: runRange).utf16)
             var runGlyphs = [CGGlyph](repeating: 0, count: runChars.count)
@@ -142,5 +178,21 @@ public class EditorTextStorage: NSTextStorage {
         for (r, f) in fixes {
             backing.addAttribute(.font, value: f, range: r)
         }
+    }
+
+    /// Cheap UTF-16 pre-scan: can any scalar in this run belong to a cascade
+    /// script? All cascade scripts live at U+0300 or above (or in
+    /// supplementary planes, reachable only via surrogate pairs), so a run
+    /// entirely below that — Latin, digits, whitespace, ASCII/common
+    /// punctuation — can skip per-cluster classification entirely.
+    private func runMayContainCascadeScript(_ ns: NSString, in range: NSRange) -> Bool {
+        var i = range.location
+        let end = range.upperBound
+        while i < end {
+            let unit = ns.character(at: i)
+            if unit >= 0x0300 || (unit >= 0xD800 && unit <= 0xDBFF) { return true }
+            i += 1
+        }
+        return false
     }
 }
