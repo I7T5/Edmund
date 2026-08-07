@@ -24,6 +24,12 @@ public struct EditorTheme: Equatable, Sendable {
     /// Whether editor text is antialiased (a single editor-wide setting).
     public var antialias: Bool
 
+    /// Per-script font overrides: script → macOS font family name. Empty means
+    /// no cascade — the editor and Read mode behave exactly as before (system
+    /// fallback picks covering fonts). Cascade fonts carry no size; they are
+    /// always resolved at the run's point size, so zoom scales them for free.
+    public var fontCascade: [FontCascadeScript: String]
+
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
     public var linkBlueHex: String
@@ -43,7 +49,7 @@ public struct EditorTheme: Equatable, Sendable {
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
                 standardLigatures: Bool = true, monospaceLigatures: Bool = false,
-                antialias: Bool = true) {
+                antialias: Bool = true, fontCascade: [FontCascadeScript: String] = [:]) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.linkBlueHex = linkBlueHex
@@ -57,6 +63,7 @@ public struct EditorTheme: Equatable, Sendable {
         self.standardLigatures = standardLigatures
         self.monospaceLigatures = monospaceLigatures
         self.antialias = antialias
+        self.fontCascade = fontCascade
     }
 
     // MARK: - Defaults
@@ -187,6 +194,7 @@ public struct EditorTheme: Equatable, Sendable {
         static let mathNumberHex = "EditorMathNumberHex"
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
+        static let fontCascade = "EditorFontCascade"
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {
@@ -219,6 +227,20 @@ public struct EditorTheme: Equatable, Sendable {
         let paragraphSpacingBefore: CGFloat = d.object(forKey: Keys.paragraphSpacingBefore) != nil
             ? CGFloat(d.float(forKey: Keys.paragraphSpacingBefore))
             : def.paragraphSpacingBefore
+        // Unknown script keys are dropped so a cascade written by a newer (or
+        // older) build with a different curated list still loads cleanly.
+        let fontCascade: [FontCascadeScript: String] = {
+            guard let raw = d.dictionary(forKey: Keys.fontCascade) as? [String: String] else {
+                return [:]
+            }
+            var cascade: [FontCascadeScript: String] = [:]
+            for (key, family) in raw {
+                if let script = FontCascadeScript(rawValue: key), !family.isEmpty {
+                    cascade[script] = family
+                }
+            }
+            return cascade
+        }()
 
         return EditorTheme(
             fontName: fontName,
@@ -233,7 +255,8 @@ public struct EditorTheme: Equatable, Sendable {
             monospaceFontSize: monospaceFontSize,
             standardLigatures: standardLigatures,
             monospaceLigatures: monospaceLigatures,
-            antialias: antialias
+            antialias: antialias,
+            fontCascade: fontCascade
         )
     }
 
@@ -252,6 +275,8 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(mathNumberHex, forKey: Keys.mathNumberHex)
         d.set(Float(lineSpacing), forKey: Keys.lineSpacing)
         d.set(Float(paragraphSpacingBefore), forKey: Keys.paragraphSpacingBefore)
+        d.set(Dictionary(uniqueKeysWithValues: fontCascade.map { ($0.key.rawValue, $0.value) }),
+              forKey: Keys.fontCascade)
     }
 }
 

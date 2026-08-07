@@ -2,6 +2,14 @@ import Testing
 import AppKit
 @testable import EdmundCore
 
+/// Isolated UserDefaults for persistence round-trips (the repo's pattern).
+private func isolatedDefaults() -> UserDefaults {
+    let suite = "EdmundTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defaults.removePersistentDomain(forName: suite)
+    return defaults
+}
+
 /// Pure classification tests for the per-script font cascade: which grapheme
 /// cluster maps to which user-assignable script (or keeps the body font).
 @Suite("Font cascade — script classification")
@@ -93,5 +101,51 @@ struct FontCascadeClassificationTests {
         #expect(FontCascadeScript.classify("ß") == nil)
         #expect(FontCascadeScript.classify("—") == nil)        // em dash
         #expect(FontCascadeScript.classify(" ") == nil)
+    }
+}
+
+/// Cascade persistence on EditorTheme: UserDefaults round-trip, unknown-key
+/// tolerance, and the empty-default contract (empty map = legacy behavior).
+@Suite("Font cascade — persistence")
+struct FontCascadePersistenceTests {
+
+    @Test("Default theme has an empty cascade")
+    func defaultIsEmpty() {
+        #expect(EditorTheme.default.fontCascade.isEmpty)
+        #expect(EditorTheme.quickLook.fontCascade.isEmpty)
+    }
+
+    @Test("Absent key loads as an empty cascade")
+    func absentKey() {
+        let theme = EditorTheme.load(from: isolatedDefaults())
+        #expect(theme.fontCascade.isEmpty)
+    }
+
+    @Test("Cascade survives a save/load round-trip")
+    func roundTrip() {
+        let defaults = isolatedDefaults()
+        var theme = EditorTheme.default
+        theme.fontCascade = [.han: "Songti SC", .emoji: "Apple Color Emoji"]
+        theme.save(to: defaults)
+        let loaded = EditorTheme.load(from: defaults)
+        #expect(loaded.fontCascade == [.han: "Songti SC", .emoji: "Apple Color Emoji"])
+        #expect(loaded == theme)
+    }
+
+    @Test("Unknown script keys are dropped on load")
+    func unknownKeysDropped() {
+        let defaults = isolatedDefaults()
+        defaults.set(["han": "Songti SC", "klingon": "Klingon pIqaD"],
+                     forKey: "EditorFontCascade")
+        let loaded = EditorTheme.load(from: defaults)
+        #expect(loaded.fontCascade == [.han: "Songti SC"])
+    }
+
+    @Test("Empty family names are dropped on load")
+    func emptyFamilyDropped() {
+        let defaults = isolatedDefaults()
+        defaults.set(["han": ""], forKey: "EditorFontCascade")
+        let loaded = EditorTheme.load(from: defaults)
+        #expect(loaded.fontCascade.isEmpty)
     }
 }
