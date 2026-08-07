@@ -141,6 +141,14 @@ struct FormattingStateTests {
         #expect(mk("# One\n## Two\n", NSRange(location: 0, length: 12)).activeHeadingLevel() == nil)
     }
 
+    /// A callout is a block quote underneath, but only the callout should
+    /// report it — otherwise the bar claims the selection is two things.
+    @Test func calloutDoesNotAlsoLightBlockQuote() {
+        let a = active("> [!NOTE]", NSRange(location: 3, length: 0))
+        #expect(!a.contains(quote))
+        #expect(active("> plain quote", NSRange(location: 3, length: 0)).contains(quote))
+    }
+
     @Test func calloutTypeReportsTheHeaderLine() {
         #expect(mk("> [!NOTE]", NSRange(location: 3, length: 0)).activeCalloutType() == "note")
         #expect(mk("> [!tip]", NSRange(location: 3, length: 0)).activeCalloutType() == "tip")

@@ -191,7 +191,11 @@ extension EditorTextView {
         if lines.allSatisfy({ leadingListNumber($0) != nil }) {
             active.insert(#selector(formatNumberedList(_:)))
         }
-        if lines.allSatisfy({ $0.drop(while: { $0 == " " }).hasPrefix(">") }) {
+        // A callout is a block quote underneath, so this would light too. The
+        // callout pulldown already reports it, and showing both said the
+        // selection was two things at once.
+        if lines.allSatisfy({ $0.drop(while: { $0 == " " }).hasPrefix(">") }),
+           activeCalloutType() == nil {
             active.insert(#selector(formatBlockQuote(_:)))
         }
         return active
