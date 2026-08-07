@@ -450,10 +450,11 @@ enum AppSettings {
     }
 
     /// Whether document windows show the format bar across the top of the
-    /// editor. Defaults on — the feature is the point. Mirrored by the View
-    /// menu's Show Format Bar item.
+    /// editor. Defaults off: it costs a strip of the window and every command
+    /// on it is already on the Format menu, so it is opt-in. Mirrored by the
+    /// View menu's Show Format Bar item.
     static var showFormatBar: Bool {
-        get { boolDefaultTrue(Key.showFormatBar) }
+        get { UserDefaults.standard.bool(forKey: Key.showFormatBar) }
         set { UserDefaults.standard.set(newValue, forKey: Key.showFormatBar) }
     }
 

@@ -315,6 +315,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                          action: #selector(NSText.selectAll(_:)),
                          keyEquivalent: "a")
 
+        // Typing behaviour rather than window furniture, so they sit here with
+        // Hard Wrap Paragraphs instead of in View. The ids keep their `view.`
+        // prefix — they are what a user's rebinding is stored under, and
+        // renaming them would silently drop any existing override.
+        let typewriterItem = MenuCommand(id: "view.typewriterScroll", group: "Edit",
+                                         title: "Typewriter Scroll",
+                                         action: #selector(AppDelegate.toggleTypewriterMode(_:))).makeItem()
+        typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+        editMenu.addItem(typewriterItem)
+
+        // Dims everything but the lines the selection touches. Same setting as
+        // Settings ▸ Edit ▸ Editor, so the two always agree.
+        let focusItem = MenuCommand(id: "view.focusMode", group: "Edit", title: "Focus Mode",
+                                    action: #selector(AppDelegate.toggleFocusMode(_:))).makeItem()
+        focusItem.state = AppSettings.focusMode ? .on : .off
+        editMenu.addItem(focusItem)
+
         editMenu.addItem(NSMenuItem.separator())
 
         // Reflows the selected paragraphs, or the whole document when nothing
