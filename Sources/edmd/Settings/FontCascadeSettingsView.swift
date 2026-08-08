@@ -41,7 +41,7 @@ struct FontCascadeSettingsView: View {
                             Text("Default (system fallback)").tag("")
                             Divider()
                             ForEach(fonts.availableFontFamilies, id: \.self) { family in
-                                Text(displayName(for: family)).tag(family)
+                                Text(fonts.displayName(for: family)).tag(family)
                             }
                         }
                         .labelsHidden()
@@ -59,11 +59,5 @@ struct FontCascadeSettingsView: View {
             get: { fonts.cascadeFonts[script] ?? "" },
             set: { fonts.setCascadeFont(script, family: $0.isEmpty ? nil : $0) }
         )
-    }
-
-    /// Family names are postscript-ish ("Hiragino Sans" is fine, but some
-    /// families report better display names via an instantiated font).
-    private func displayName(for family: String) -> String {
-        NSFont(name: family, size: 12)?.displayName ?? family
     }
 }

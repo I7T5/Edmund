@@ -129,8 +129,24 @@ final class FontSettings: NSObject, ObservableObject {
 
     /// Every installed font family, for the per-script pickers. The codebase's
     /// only system-font enumeration; sorted for a stable menu order.
-    var availableFontFamilies: [String] {
-        NSFontManager.shared.availableFontFamilies.sorted()
+    ///
+    /// Cached once per FontSettings (created once per Settings window): the
+    /// menu re-enumerates it on every render, and instantiating an NSFont per
+    /// family per row on a stock Mac is thousands of allocations per pane
+    /// render — a visible hitch in the settings window.
+    let availableFontFamilies: [String] = NSFontManager.shared.availableFontFamilies.sorted()
+
+    /// Family → display name, computed on first use. Some families report a
+    /// friendlier display name via an instantiated font than their raw name;
+    /// that instantiation is once per family, not once per row per render.
+    private var familyDisplayNames: [String: String] = [:]
+
+    /// The display name for a family, cached after the first lookup.
+    func displayName(for family: String) -> String {
+        if let cached = familyDisplayNames[family] { return cached }
+        let name = NSFont(name: family, size: 12)?.displayName ?? family
+        familyDisplayNames[family] = name
+        return name
     }
 
     /// Sets (or clears, with nil/empty) the user's font for one script and
