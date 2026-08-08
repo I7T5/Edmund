@@ -12,7 +12,19 @@ import AppKit
 // `HTMLRenderer.filterRawHTML` (tagfilter + hardening); the page also carries a
 // `script-src 'none'` CSP meta as defense-in-depth (§G, ARCHITECTURE §10).
 @MainActor
-enum DocumentHTML {
+public enum DocumentHTML {
+
+    #if DEBUG
+    /// DEBUG-only door for the app's `-debug.renderPng` snapshot tool
+    /// (`edmd/App/RenderPng.swift`), which lives outside this module: dump the
+    /// exact HTML a Read-mode render would load.
+    public static func debugFull(markdown: String, theme: EditorTheme,
+                                 callouts: [String: CalloutStyle],
+                                 baseURL: URL? = nil) -> String {
+        full(markdown: markdown, theme: theme, callouts: callouts,
+             dark: false, baseURL: baseURL)
+    }
+    #endif
 
     /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
     /// the document's directory, used to resolve relative image paths for inlining.

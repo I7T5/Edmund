@@ -21,9 +21,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // `-debug.disableUpdater YES` skips the start entirely: on dev builds the
     // failed check throws a *modal* "updater failed" alert at launch that
     // blocks the whole app (no document window until dismissed), which breaks
-    // scripted/automated runs.
+    // scripted/automated runs. `-debug.renderPng` implies the same: its whole
+    // point is an unattended capture, and the alert modal-blocks that too.
+    private static var updaterEnabled: Bool {
+        if UserDefaults.standard.bool(forKey: "debug.disableUpdater") { return false }
+        #if DEBUG
+        if RenderPng.isRequested { return false }
+        #endif
+        return true
+    }
     let updaterController = SPUStandardUpdaterController(
-        startingUpdater: !UserDefaults.standard.bool(forKey: "debug.disableUpdater"),
+        startingUpdater: AppDelegate.updaterEnabled,
         updaterDelegate: nil, userDriverDelegate: nil)
 
     // MARK: - Typewriter Mode (persisted)
@@ -60,22 +68,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Open file from command-line argument. When a file is given,
         // `applicationShouldOpenUntitledFile` suppresses the otherwise-automatic
         // blank document, so we don't end up with two windows.
+        //
+        // `-debug.renderPng <outDir> <file.md>` shifts the operands: args[1]
+        // is the output directory, the file sits at args[3].
         let args = CommandLine.arguments
+        var fileArg: String?
+        #if DEBUG
+        if RenderPng.isRequested {
+            fileArg = RenderPng.request?.file
+        } else if args.count > 1 {
+            fileArg = args[1]
+        }
+        #else
         if args.count > 1 {
-            let url = URL(fileURLWithPath: args[1])
+            fileArg = args[1]
+        }
+        #endif
+        if let fileArg {
+            let url = URL(fileURLWithPath: fileArg)
             Log.info("Opening file from launch argument: \(url.path)", category: .document)
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
 
         #if DEBUG
         ReproScript.runIfRequested()
+        RenderPng.runIfRequested()
         #endif
     }
 
     // Auto-open a blank document on launch only when no file was passed on the
     // command line (otherwise the file arg + the blank doc make two windows).
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        CommandLine.arguments.count <= 1 && AppSettings.startupAction == .createNewDocument
+        #if DEBUG
+        if RenderPng.isRequested { return false }  // the render run opens its fixture only
+        #endif
+        return CommandLine.arguments.count <= 1 && AppSettings.startupAction == .createNewDocument
     }
 
     // Declares that our restorable state is archived with secure coding — not a
@@ -120,6 +147,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// on init, and a failed check puts up a *modal* alert that would sit on the
     /// main thread forever in a test run.
     static func shouldHandleReopen(hasVisibleWindows flag: Bool) -> Bool {
+        #if DEBUG
+        // A render run opens its fixture only; a stray blank document would
+        // leave the app alive after the captures exit.
+        if RenderPng.isRequested { return false }
+        #endif
         guard !flag else { return true }
         if AppSettings.startupAction == .createNewDocument {
             NSDocumentController.shared.newDocument(nil)
