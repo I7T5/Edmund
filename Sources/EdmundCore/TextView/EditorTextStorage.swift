@@ -122,10 +122,10 @@ public class EditorTextStorage: NSTextStorage {
             // (e.g. a CJK-capable serif as body). The pre-scan skips all of
             // this for runs that can't contain a cascade script — pure
             // Latin/digit/punct runs cost one integer pass, no clustering.
+            var cascadeFixes: [(NSRange, NSFont)] = []
             if let resolver = cascadeResolver, runMayContainCascadeScript(ns, in: runRange) {
                 var i = runRange.location
                 let end = runRange.upperBound
-                var cascadeFixes: [(NSRange, NSFont)] = []
                 while i < end {
                     let seq = ns.rangeOfComposedCharacterSequence(at: i)
                     let seqRange = NSRange(location: seq.location,
@@ -140,12 +140,15 @@ public class EditorTextStorage: NSTextStorage {
                 if !cascadeFixes.isEmpty {
                     fixes.append(contentsOf: cascadeFixes)
                     // Cascade substitutions overwrite whatever the generic
-                    // pass would compute below, so they are applied AFTER it
-                    // (fixes are applied in order at the end).
+                    // pass would compute below — the generic pass skips
+                    // these sequences outright (see below).
                 }
             }
 
-            // Fast path: does the font cover the whole run?
+            // Fast path: does the font cover the whole run? When a cascade
+            // pass ran above, the run's stored font may already be a cascade
+            // font from an earlier fix; coverage is measured against it all
+            // the same, so the fast path stays valid.
             let runChars = Array(ns.substring(with: runRange).utf16)
             var runGlyphs = [CGGlyph](repeating: 0, count: runChars.count)
             if CTFontGetGlyphsForCharacters(font as CTFont, runChars, &runGlyphs, runChars.count) {
@@ -154,12 +157,20 @@ public class EditorTextStorage: NSTextStorage {
 
             // Substitute per composed-character sequence so we never split a
             // grapheme (emoji ZWJ sequences, skin-tone modifiers, é, …).
+            // A sequence the cascade pass already assigned is skipped: the
+            // user's explicit choice outranks the generic CoreText fallback,
+            // which would otherwise re-cover the same range and (applied
+            // later, in the same fix list) silently overwrite the cascade.
             var i = runRange.location
             let end = runRange.upperBound
             while i < end {
                 let seq = ns.rangeOfComposedCharacterSequence(at: i)
                 let seqRange = NSRange(location: seq.location,
                                        length: min(seq.length, end - seq.location))
+                if cascadeFixes.contains(where: { $0.0.location == seqRange.location }) {
+                    i = seqRange.upperBound
+                    continue
+                }
                 let seqStr = ns.substring(with: seqRange)
                 let seqChars = Array(seqStr.utf16)
                 var seqGlyphs = [CGGlyph](repeating: 0, count: seqChars.count)
