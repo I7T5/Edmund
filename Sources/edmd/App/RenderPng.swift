@@ -46,11 +46,45 @@ enum RenderPng {
 
     /// Parsed from the argument domain. Returns nil unless `-debug.renderPng`
     /// was passed (with its <outDir> <file.md> operands).
+    ///
+    /// The operands need not sit immediately after the flag: other `-debug.*`
+    /// flags may appear between `-debug.renderPng` and the file. A bare
+    /// `hasPrefix("-")` skip is not enough — flags that take a value
+    /// (e.g. `-debug.cascadeFonts '<json>'`) consume their next argument,
+    /// which must be skipped too or the JSON gets misread as the file (the
+    /// run then dies with "document never appeared"). The old fixed-offset
+    /// parse had the same failure with any interleaved flag.
     static var request: (outDir: String, file: String)? {
         let args = CommandLine.arguments
-        guard let i = args.firstIndex(of: "-debug.renderPng"), i + 2 < args.count else { return nil }
-        return (args[i + 1], args[i + 2])
+        guard let i = args.firstIndex(of: "-debug.renderPng") else { return nil }
+        var operands: [String] = []
+        var j = i + 1
+        while j < args.count, operands.count < 2 {
+            let arg = args[j]
+            if valueTakingDebugFlags.contains(arg) {
+                j += 2  // skip the flag and its value
+                continue
+            }
+            if arg.hasPrefix("-") {
+                j += 1  // bare flag (e.g. -debug.renderPng restores)
+                continue
+            }
+            operands.append(arg)
+            j += 1
+        }
+        guard operands.count == 2 else { return nil }
+        return (operands[0], operands[1])
     }
+
+    /// Debug flags that consume the next argument as their value. `-debug.*`
+    /// flags read via UserDefaults (reproScript, disableUpdater) take one too,
+    /// but only the ones parsed from argv need listing here — the others are
+    /// never interleaved with a render run.
+    private static let valueTakingDebugFlags: Set<String> = [
+        "-debug.cascadeFonts",
+        "-debug.reproScript",
+        "-debug.disableUpdater",
+    ]
 
     /// The optional cascade override: -debug.cascadeFonts '<json>'.
     static var cascadeOverride: [FontCascadeScript: String]? {
@@ -129,9 +163,7 @@ enum RenderPng {
         // Sampling fonts via -attributes(at:effectiveRange:) can itself
         // trip a re-fix (documented Cocoa gotcha), but the sample is for
         // diagnostics only — the snapshot is the assertion.
-        let hanLoc = (editor.textStorage!.string as NSString).range(of: "漢").location
-        let hanBefore = editor.textStorage!.attributes(at: hanLoc, effectiveRange: nil)[.font] as? NSFont
-        trace("漢 font BEFORE cascade: \(hanBefore?.fontName ?? "nil")")
+        trace("漢 font BEFORE cascade: \(sampleHanFont(in: editor)?.fontName ?? "nil (no 漢 in fixture)")")
 
         write(snapshot(editor), to: "\(request.outDir)/editor-no-cascade.png")
 
@@ -163,9 +195,7 @@ enum RenderPng {
             // Sampling fonts via -attributes(at:effectiveRange:) can itself
             // trip a re-fix (documented Cocoa gotcha), but the sample is for
             // diagnostics only — the snapshot is the assertion.
-            let hanLoc = (editor.textStorage!.string as NSString).range(of: "漢").location
-            let hanFont = editor.textStorage!.attributes(at: hanLoc, effectiveRange: nil)[.font] as? NSFont
-            trace("漢 font after cascade: \(hanFont?.fontName ?? "nil")")
+            trace("漢 font after cascade: \(sampleHanFont(in: editor)?.fontName ?? "nil (no 漢 in fixture)")")
             write(snapshot(editor), to: "\(request.outDir)/editor-cascade.png")
 
             // The exact HTML the read view will load — dumped so a failing
@@ -214,6 +244,18 @@ enum RenderPng {
         trace("no cascade override; terminating after editor shots")
         NSApp.terminate(nil)
         Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in exit(0) }
+    }
+
+    /// The font drawn for the first 漢 in the editor's text storage, or nil
+    /// when the fixture contains no 漢. `range(of:).location` is NSNotFound
+    /// (Int.max) in that case and must never reach `attributes(at:)`, which
+    /// raises NSRangeException out of bounds.
+    @MainActor
+    private static func sampleHanFont(in editor: EditorTextView) -> NSFont? {
+        guard let ts = editor.textStorage else { return nil }
+        let loc = (ts.string as NSString).range(of: "漢").location
+        guard loc != NSNotFound else { return nil }
+        return ts.attributes(at: loc, effectiveRange: nil)[.font] as? NSFont
     }
 
     @MainActor
