@@ -51,6 +51,7 @@ Swift name) is what you pass as a launch arg.
 | `sentCrashReports` | `settings.advanced.sentCrashReports` | Dedup set of already-uploaded `.ips` filenames |
 | `lastWindowHeight` | `settings.window.lastHeight` | Persisted window sizing (see the frame-not-content trap) |
 | `automaticallyChecksForUpdates` | `SUAutomaticallyChecksForUpdates` | Sparkle's own key (not namespaced) |
+| `EditorTheme.Keys.fontCascade` | `EditorFontCascade` | Per-script font cascade: `[script: family]` dict (Settings ▸ Fonts). Scripts: han, kana, hangul, cyrillic, greek, arabic, hebrew, thai, emoji; absent/uninstalled ⇒ system fallback. Lives in `EditorTheme.swift`, **not** `AppSettings` |
 
 **Content width (the physical-column design):** persisted as **centimetres**
 (`maxContentWidthCm`); `contentWidthUnit` is a display unit only. The column is
@@ -95,11 +96,16 @@ build/EdmundDbg.app/Contents/MacOS/edmd FILE.md \
 | `-settings.general.diagnosticLogging YES` | Turn on file logging for this run |
 | `-settings.advanced.verboseEditorDiagnostics YES` | Emit the verbose editor trace (sel/active/marked/up/…) |
 | `-debug.reproScript <path>` | **DEBUG builds only** — replay a keystroke script (`ReproScript.swift`) |
+| `-debug.renderPng <outDir> <file.md>` | **DEBUG builds only** — offscreen-snapshot harness (`RenderPng.swift`): editor PNGs, Read-mode HTML + WebKit snapshot, Settings panes. Takes the operand position of the file-open and disables the Sparkle updater (its failed-check modal blocks the main runloop) |
+| `-debug.cascadeFonts '<json>'` | With `-debug.renderPng`: force a font cascade for the render, e.g. `'{"han":"Kaiti SC","emoji":"Apple Color Emoji"}'` |
+| `-debug.disableUpdater YES` | Don't start the Sparkle updater this run (its failed-check modal `NSAlert` blocks the main runloop — timers, asyncAfter, Task.sleep all stall) |
 | `-ApplePersistenceIgnoreState YES` | Apple's flag — stop state restoration reopening mutated docs |
 
-`-debug.reproScript` is the only Edmund-specific *debug* key; it does not have
-an `AppSettings` accessor — it is read directly in `ReproScript.swift`. It is
-compiled out of release builds.
+`-debug.reproScript` / `-debug.renderPng` / `-debug.cascadeFonts` are the
+Edmund-specific *debug* keys; they have no `AppSettings` accessor — read
+directly in `ReproScript.swift` / `RenderPng.swift` — and are compiled out of
+release builds. `-debug.disableUpdater` is read in `main.swift` and works in
+release builds too.
 
 ---
 
@@ -207,8 +213,12 @@ grep -nE 'static let [a-zA-Z]+ = "[a-zA-Z0-9._]+"' Sources/edmd/Settings/AppSett
 # §1 crash toggle still commented out / endpoint still placeholder:
 grep -n 'Crash reports:' Sources/edmd/Settings/AdvancedSettingsView.swift
 grep -n 'reportingEndpoint' Sources/EdmundCore/Diagnostics/CrashReporter.swift
-# §2 repro flag key:
+# §1 cascade key (lives in EditorTheme, not AppSettings):
+grep -n 'EditorFontCascade' Sources/EdmundCore/Model/EditorTheme.swift
+# §2 debug keys:
 grep -n 'debug.reproScript' Sources/edmd/App/ReproScript.swift
+grep -n 'debug.renderPng\|debug.cascadeFonts' Sources/edmd/App/RenderPng.swift
+grep -n 'debug.disableUpdater' Sources/edmd/App/main.swift
 # §3 tripwire + constant:
 grep -n 'willSwitchToNSLayoutManager' Sources/EdmundCore/TextView/EditorTextView.swift
 grep -n 'fullLayoutMaxLength' Sources/EdmundCore/TextView/EditorTextView.swift
