@@ -109,7 +109,10 @@ public class EditorTextStorage: NSTextStorage {
     private func fixFontSubstitution(in range: NSRange) {
         guard range.length > 0, range.upperBound <= backing.length else { return }
         let ns = backing.string as NSString
-        var fixes: [(NSRange, NSFont)] = []
+        // (range, attribute key, value) — most fixes are `.font`; synthesized
+        // bold adds a `.strokeWidth` on the same range for families with no
+        // bold member (see the resolver).
+        var fixes: [(NSRange, NSAttributedString.Key, Any)] = []
 
         backing.enumerateAttribute(.font, in: range, options: []) { value, runRange, _ in
             // Skip the tiny hidden-delimiter font — those chars are invisible
@@ -122,8 +125,20 @@ public class EditorTextStorage: NSTextStorage {
             // (e.g. a CJK-capable serif as body). The pre-scan skips all of
             // this for runs that can't contain a cascade script — pure
             // Latin/digit/punct runs cost one integer pass, no clustering.
+            //
+            // Monospace runs are excluded: a 漢 inside code must keep the
+            // monospace columnar look (falling back to a system CJK face), not
+            // be dragged into the user's script cascade (a serif Han would
+            // break the code font's rhythm). Read mode's --mono-font stack has
+            // no cascade either, so excluding them keeps Edit and Read in step.
             var cascadeFixes: [(NSRange, NSFont)] = []
-            if let resolver = cascadeResolver, runMayContainCascadeScript(ns, in: runRange) {
+            // The ranges a cascade fix covers, so the generic pass below can
+            // skip them in O(1) instead of re-scanning cascadeFixes per
+            // sequence (which was O(N²) on a long Han run).
+            var cascadeSkip = IndexSet()
+            if let resolver = cascadeResolver,
+               !font.fontDescriptor.symbolicTraits.contains(.monoSpace),
+               runMayContainCascadeScript(ns, in: runRange) {
                 var i = runRange.location
                 let end = runRange.upperBound
                 while i < end {
@@ -131,14 +146,24 @@ public class EditorTextStorage: NSTextStorage {
                     let seqRange = NSRange(location: seq.location,
                                            length: min(seq.length, end - seq.location))
                     if let script = FontCascadeScript.classify(ns.substring(with: seqRange)),
-                       let cascadeFont = resolver.font(for: script, like: font),
+                       let (cascadeFont, synthesizedBold) = resolver.font(for: script, like: font),
                        cascadeFont.fontName != font.fontName {
                         cascadeFixes.append((seqRange, cascadeFont))
+                        cascadeSkip.insert(seqRange.location)
+                        // A family with no bold member (e.g. STSong) returns
+                        // the plain face from every macOS mechanism; the
+                        // stroke makes the bold read as bold — what Read mode's
+                        // WebKit synthesizes for the same @font-face.
+                        if synthesizedBold {
+                            fixes.append((seqRange, .strokeWidth, NSNumber(value: -3.0)))
+                        }
                     }
                     i = seqRange.upperBound
                 }
                 if !cascadeFixes.isEmpty {
-                    fixes.append(contentsOf: cascadeFixes)
+                    for (r, f) in cascadeFixes {
+                        fixes.append((r, .font, f))
+                    }
                     // Cascade substitutions overwrite whatever the generic
                     // pass would compute below — the generic pass skips
                     // these sequences outright (see below).
@@ -167,7 +192,7 @@ public class EditorTextStorage: NSTextStorage {
                 let seq = ns.rangeOfComposedCharacterSequence(at: i)
                 let seqRange = NSRange(location: seq.location,
                                        length: min(seq.length, end - seq.location))
-                if cascadeFixes.contains(where: { $0.0.location == seqRange.location }) {
+                if cascadeSkip.contains(seqRange.location) {
                     i = seqRange.upperBound
                     continue
                 }
@@ -180,14 +205,14 @@ public class EditorTextStorage: NSTextStorage {
                     let substitute = CTFontCreateForString(
                         font as CTFont, seqStr as CFString,
                         CFRange(location: 0, length: seqChars.count)) as NSFont
-                    fixes.append((seqRange, substitute))
+                    fixes.append((seqRange, .font, substitute))
                 }
                 i = seqRange.upperBound
             }
         }
 
-        for (r, f) in fixes {
-            backing.addAttribute(.font, value: f, range: r)
+        for (r, key, value) in fixes {
+            backing.addAttribute(key, value: value, range: r)
         }
     }
 

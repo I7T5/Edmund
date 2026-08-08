@@ -77,6 +77,70 @@ struct FontCascadeClassificationTests {
         #expect(FontCascadeScript.classify("☀️") == .emoji)     // dingbat + VS16
     }
 
+    @Test("Keycap emoji classify as emoji (U+20E3 no longer dead code)")
+    func keycapEmoji() {
+        // 1️⃣ = U+0031 U+FE0F U+20E3: the base loop stops at the ASCII base,
+        // so the enclosure must be detected in a separate full-cluster pass —
+        // this used to fall through to nil (keycaps silently bypassed the
+        // user's Emoji font).
+        #expect(FontCascadeScript.classify("1️⃣") == .emoji)
+        #expect(FontCascadeScript.classify("#️⃣") == .emoji)
+        #expect(FontCascadeScript.classify("*️⃣") == .emoji)
+        // A bare ASCII digit with no enclosure stays neutral.
+        #expect(FontCascadeScript.classify("1") == nil)
+    }
+
+    @Test("Every emoji-classified scalar is covered by the CSS range")
+    func emojiCssRangeCoversClassifier() {
+        // The @font-face unicode-range is derived from the same isEmoji
+        // predicate classify uses, so the two can never drift: any scalar the
+        // classifier routes to .emoji must be inside the CSS range (Edit and
+        // Read must paint the same font). Parse the CSS into concrete ranges
+        // and check numeric membership — no substring false-positives.
+        func scalarInRange(_ value: UInt32, _ css: String) -> Bool {
+            css.split(separator: ",").contains { token in
+                let parts = token.trimmingCharacters(in: .whitespaces)
+                    .dropFirst(2)  // strip "U+"
+                    .split(separator: "-")
+                guard let first = parts.first, let lo = UInt32(first, radix: 16) else {
+                    return false
+                }
+                let hi = parts.count > 1 ? (UInt32(parts[1], radix: 16) ?? lo) : lo
+                return value >= lo && value <= hi
+            }
+        }
+
+        let range = FontCascadeScript.emoji.cssUnicodeRange
+        // These were isEmoji == true but ABSENT from the old hand-written list.
+        #expect(scalarInRange(0xA9, range), "© must be in the emoji range")
+        #expect(scalarInRange(0x2122, range), "™ must be in the emoji range")
+        #expect(scalarInRange(0x2139, range), "ℹ must be in the emoji range")
+        #expect(scalarInRange(0x3030, range), "〰 must be in the emoji range")
+        // These were listed but isEmoji == false — they must NOT be re-faced.
+        #expect(!scalarInRange(0x2192, range), "→ is not emoji and must stay out")
+        #expect(!scalarInRange(0x2460, range), "① is not emoji and must stay out")
+        #expect(!scalarInRange(0x25A0, range), "■ is not emoji and must stay out")
+        // And the classifier agrees with the range for the same scalars.
+        #expect(FontCascadeScript.classify("©") == .emoji)
+        #expect(FontCascadeScript.classify("™") == .emoji)
+        #expect(FontCascadeScript.classify("→") == nil)
+        #expect(FontCascadeScript.classify("①") == nil)
+        #expect(FontCascadeScript.classify("■") == nil)
+    }
+
+    @Test("Emoji CSS range is non-empty and parseable")
+    func emojiCssRangeShape() {
+        let range = FontCascadeScript.emoji.cssUnicodeRange
+        #expect(!range.isEmpty)
+        // Every token is a "U+XXXX[-U+YYYY]" range — cheap shape check that
+        // the derivation didn't produce garbage.
+        let tokens = range.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        #expect(!tokens.isEmpty)
+        for token in tokens {
+            #expect(token.hasPrefix("U+"))
+        }
+    }
+
     @Test("Shared CJK punctuation keeps the body font")
     func cjkPunctuationIsNeutral() {
         // 、。「」 live in U+3000–303F, shared between Chinese and Japanese —
@@ -172,6 +236,29 @@ struct FontCascadeEditorTests {
         let installed = ["Songti SC", "Hiragino Sans", "PingFang SC", "STSong", "STHeiti"]
             .filter { families.contains($0) }
         return installed.count >= 2 ? (installed[0], installed[1]) : nil
+    }
+
+    /// An installed Han-capable family with NO bold member (so the synthetic
+    /// stroke path is exercised), or nil when the image lacks one (CI images
+    /// vary — STSong is the classic case on stock macOS).
+    private func installedBoldlessHanFamily() -> String? {
+        let families = NSFontManager.shared.availableFontFamilies
+        return ["STSong", "PingFang SC", "STHeiti", "Hiragino Sans"]
+            .filter { families.contains($0) }
+            .first { family in
+                guard let base = NSFont(name: family, size: 16) else { return false }
+                let bold = NSFontManager.shared.convert(base, toHaveTrait: .boldFontMask)
+                return !bold.fontDescriptor.symbolicTraits.contains(.bold)
+            }
+    }
+
+    /// An installed family WITH a bold member, or nil.
+    private func installedBoldMemberFamily() -> String? {
+        NSFontManager.shared.availableFontFamilies.first { family in
+            guard let base = NSFont(name: family, size: 16) else { return false }
+            let bold = NSFontManager.shared.convert(base, toHaveTrait: .boldFontMask)
+            return bold.fontDescriptor.symbolicTraits.contains(.bold)
+        }
     }
 
     private func renderedFont(for needle: String, in editor: EditorTextView) -> NSFont? {
@@ -286,10 +373,53 @@ struct FontCascadeEditorTests {
         #expect(star.pointSize < 1.0)
 
         let han = try #require(font(at: base + 2, in: editor))
-        // Family is always asserted; the bold trait survives only when the
-        // family ships a bold member (documented resolver limitation).
         #expect(han.familyName == family)
         #expect(han.pointSize == editor.bodyFont.pointSize)
+    }
+
+    @Test("Bold Han in a family without a bold member gets a synthetic stroke")
+    func boldHanSynthesizedStroke() throws {
+        // The regression: a family with no bold member (STSong on stock macOS)
+        // returns the plain face from every macOS mechanism, so pre-cascade a
+        // bold 漢 drew bold (CoreText picked a bold CJK fallback member) but
+        // the cascade drew it regular — and Read mode synthesizes bold for the
+        // same @font-face. The resolver now flags this so the storage adds a
+        // negative strokeWidth (thin glyph outline = synthetic bold).
+        let family = try #require(installedBoldlessHanFamily(),
+                                  "no bold-less Han-capable family installed (need STSong)")
+        let editor = editorWithCascade([.han: family], source: "**漢**\nother")
+        activateBlock(1, in: editor)
+
+        let base = editor.blocks[0].range.location
+        let han = try #require(font(at: base + 2, in: editor))
+        #expect(han.familyName == family)
+        // Regular face (the family has no bold member to convert to)...
+        #expect(!han.fontDescriptor.symbolicTraits.contains(.bold))
+        // ...but the synthetic stroke is applied so the bold still reads bold.
+        let stroke = try #require(attrs(at: base + 2, in: editor)[.strokeWidth] as? NSNumber)
+        #expect(stroke.doubleValue < 0)
+
+        // Non-bold Han in the same family must NOT carry a stroke.
+        let editor2 = editorWithCascade([.han: family], source: "漢")
+        let plainHan = try #require(renderedFont(for: "漢", in: editor2))
+        let plainStroke = attrs(at: 0, in: editor2)[.strokeWidth] as? NSNumber
+        #expect(plainStroke == nil)
+        #expect(plainHan.familyName == family)
+    }
+
+    @Test("Bold Han in a family WITH a bold member is not stroked")
+    func boldHanRealBoldMember() throws {
+        // A family that ships a real bold member resolves to it and leaves
+        // strokeWidth alone (no synthesis needed).
+        let family = try #require(installedBoldMemberFamily(),
+                                  "no installed family with a bold member")
+        let editor = editorWithCascade([.han: family], source: "**漢**\nother")
+        activateBlock(1, in: editor)
+        let base = editor.blocks[0].range.location
+        let han = try #require(font(at: base + 2, in: editor))
+        #expect(han.fontDescriptor.symbolicTraits.contains(.bold))
+        let stroke = attrs(at: base + 2, in: editor)[.strokeWidth] as? NSNumber
+        #expect(stroke == nil)
     }
 
     @Test("Cascade wins over a body font that already covers Han")
@@ -308,5 +438,30 @@ struct FontCascadeEditorTests {
         editor.recompose(cursorInRaw: 0)
         let font = try #require(renderedFont(for: "漢", in: editor))
         #expect(font.familyName == cascade)
+    }
+
+    @Test("Han inside a code span keeps the mono font — no cascade")
+    func hanInCodeSpanSkipsCascade() throws {
+        // Edit and Read must agree: code blocks use the user's mono face, and
+        // a Han char in code falls back to a system CJK face — NOT the user's
+        // Han cascade (a serif would break the monospace look). The storage
+        // excludes mono runs from the cascade pass.
+        let (body, cascade) = try #require(twoHanFamilies())
+        let editor = editorWithCascade([.han: cascade], source: "`漢` 漢 hello")
+        // The prose 漢 (offset 4) IS re-faced to the cascade family...
+        let proseHan = try #require(font(at: 4, in: editor))
+        #expect(proseHan.familyName == cascade)
+        // ...but the 漢 inside the backticks (offset 1) is NOT — it keeps the
+        // mono-run fallback (a system CJK face drawn at the mono size), not
+        // the user's serif choice.
+        let inlineHan = try #require(font(at: 1, in: editor))
+        #expect(inlineHan.familyName != cascade)
+        #expect(inlineHan.familyName != body)
+
+        // The same exclusion holds in a fenced block.
+        let editor2 = editorWithCascade([.han: cascade], source: "```\n漢\n```")
+        let blockHan = try #require(font(at: editor2.blocks[0].range.location + 4, in: editor2))
+        #expect(blockHan.familyName != cascade)
+        #expect(blockHan.familyName != body)
     }
 }

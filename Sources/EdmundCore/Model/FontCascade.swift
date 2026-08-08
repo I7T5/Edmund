@@ -60,11 +60,43 @@ public enum FontCascadeScript: String, CaseIterable, Codable, Sendable {
             return "U+0E00-0E7F"
         case .emoji:
             // Emoji defy a tidy range table (base blocks + presentation
-            // selectors + keycap/reserved). List the base emoji blocks; the
-            // @font-face only needs to win on the cluster's base scalar.
-            return "U+2190-21FF, U+2300-23FF, U+2460-24FF, U+25A0-25FF, U+2600-27BF, U+2B00-2BFF, U+1F000-1FAFF"
+            // selectors + keycap/reserved). DERIVED from the same `isEmoji`
+            // predicate `classify` uses — a hand-written block list drifted
+            // from the classifier (U+2192 → isEmoji == false but was listed;
+            // U+2122 ™ is isEmoji but wasn't), so Edit and Read painted
+            // different fonts for the same character. The @font-face only
+            // needs to win on the cluster's base scalar; this is the exact
+            // set of scalars the classifier routes to `.emoji`.
+            return Self.emojiUnicodeRange
         }
     }
+
+    /// The union of `isEmoji` scalar ranges (U+0080 and up — the classifier
+    /// routes only non-ASCII to `.emoji`), formatted as a CSS `unicode-range`
+    /// list. Computed once from the same predicate `classify(_:)` uses so the
+    /// Read-mode @font-face can never diverge from the editor's classifier.
+    private static let emojiUnicodeRange: String = {
+        var ranges: [(start: UInt32, end: UInt32)] = []
+        var inRange = false
+        var start: UInt32 = 0, end: UInt32 = 0
+        for value in 0x80...0x10FFFF {
+            // Skip surrogates — not scalar values; Unicode.Scalar(init:) traps on them.
+            if (0xD800...0xDFFF).contains(UInt32(value)) { continue }
+            let isEmoji = Unicode.Scalar(UInt32(value))!.properties.isEmoji
+            if isEmoji && !inRange { inRange = true; start = UInt32(value) }
+            if isEmoji { end = UInt32(value) }
+            if !isEmoji && inRange {
+                ranges.append((start, end))
+                inRange = false
+            }
+        }
+        if inRange { ranges.append((start, end)) }
+        return ranges.map { range in
+            range.start == range.end
+                ? "U+\(String(format: "%X", range.start))"
+                : "U+\(String(format: "%X", range.start))-U+\(String(format: "%X", range.end))"
+        }.joined(separator: ", ")
+    }()
 
     /// Classifies one composed-character sequence (grapheme cluster) to a
     /// cascade script, or nil when the sequence should keep the body font
@@ -75,18 +107,22 @@ public enum FontCascadeScript: String, CaseIterable, Codable, Sendable {
         // First base scalar: skip combining/modifier machinery (variation
         // selectors, ZWJ, emoji skin tones, combining marks) so sequences like
         // ☀️ or é classify by their base character.
+        //
+        // The keycap enclosure (U+20E3) is scanned in a separate full pass: a
+        // keycap cluster is ASCII + U+FE0F + U+20E3, and the base loop breaks
+        // on the ASCII base before it would ever reach the enclosure. Detecting
+        // it in that loop left `hasKeycap` permanently false and "1️⃣" silently
+        // falling through to nil instead of the user's Emoji font.
         var base: Unicode.Scalar?
-        var hasKeycap = false
         for scalar in cluster.unicodeScalars {
-            if scalar.value == 0x20E3 { hasKeycap = true; continue }  // keycap enclosure
             if isModifier(scalar) { continue }
             base = scalar
             break
         }
-        guard let b = base else { return hasKeycap ? .emoji : nil }
+        guard let b = base else { return nil }
 
         // A keycap cluster's base is ASCII (1/#/*) — the enclosure makes it emoji.
-        if hasKeycap { return .emoji }
+        if cluster.unicodeScalars.contains(where: { $0.value == 0x20E3 }) { return .emoji }
 
         // Emoji first: ASCII 0-9, #, * all have isEmoji == true, so require a
         // non-ASCII scalar. Dingbats (U+2600–27BF etc.) with emoji presentation
@@ -144,10 +180,11 @@ public final class FontCascadeResolver {
     /// script → macOS font family name, as persisted in the theme.
     public let families: [FontCascadeScript: String]
 
-    /// (script, point size, bold, italic) → resolved font. One instance per theme
-    /// application, reused across all blocks — the same attribute-interner
-    /// discipline as EditorTextView's cached body/mono fonts.
-    private var cache: [CacheKey: NSFont] = [:]
+    /// (script, point size, bold, italic) → resolved font (+ whether its bold
+    /// had to be stroke-synthesized). One instance per theme application,
+    /// reused across all blocks — the same attribute-interner discipline as
+    /// EditorTextView's cached body/mono fonts.
+    private var cache: [CacheKey: (font: NSFont, synthesizedBold: Bool)] = [:]
 
     private struct CacheKey: Hashable {
         let script: FontCascadeScript
@@ -167,7 +204,17 @@ public final class FontCascadeResolver {
     /// has no entry or its family is not installed — nil means the caller
     /// falls back to the regular CoreText substitution (`CTFontCreateForString`).
     /// The persisted entry is kept either way: the font may be reinstalled.
-    public func font(for script: FontCascadeScript, like base: NSFont) -> NSFont? {
+    ///
+    /// `synthesizedBold` is true when the family has no bold member and the
+    /// font is plain — the caller is expected to add a `.strokeWidth` attribute
+    /// so the bold reads as bold despite the missing face (what Read mode's
+    /// WebKit synthesizes for the same @font-face). Pre-cascade, CoreText
+    /// resolved a bold CJK fallback member for a bold base font; for a
+    /// bold-less family like STSong every macOS mechanism (NSFontManager,
+    /// CTFontCreateCopyWithSymbolicTraits, descriptor traits) returns the plain
+    /// face, so without the stroke the cascade would render script bold as
+    /// regular — a regression against both pre-cascade behavior and Read mode.
+    public func font(for script: FontCascadeScript, like base: NSFont) -> (font: NSFont, synthesizedBold: Bool)? {
         guard let family = families[script] else { return nil }
         let baseTraits = base.fontDescriptor.symbolicTraits
         let bold = baseTraits.contains(.bold)
@@ -176,17 +223,19 @@ public final class FontCascadeResolver {
         if let cached = cache[key] { return cached }
 
         guard var resolved = NSFont(name: family, size: base.pointSize) else { return nil }
-        // KNOWN LIMITATION: families without a bold/italic member render
-        // unstyled (NSFont has no synthetic bolding like CoreText's fallback
-        // chain does). The user's chosen family still wins over CoreText's
-        // fallback family — a bold 漢 in Songti stays Songti, just not bold.
         if bold {
             resolved = NSFontManager.shared.convert(resolved, toHaveTrait: .boldFontMask)
         }
         if italic {
             resolved = NSFontManager.shared.convert(resolved, toHaveTrait: .italicFontMask)
         }
-        cache[key] = resolved
-        return resolved
+        // The conversion asks for the closest matching face; a family with no
+        // bold member returns the plain face (verified: STSong, the only
+        // common bold-less CJK cascade choice). Signal that so the caller can
+        // stroke-synthesize rather than render regular.
+        let synthesizedBold = bold && !resolved.fontDescriptor.symbolicTraits.contains(.bold)
+        let result = (resolved, synthesizedBold)
+        cache[key] = result
+        return result
     }
 }
