@@ -141,6 +141,15 @@ struct FontCascadeClassificationTests {
         }
     }
 
+    @Test("Baked-in emoji CSS range still matches the live scan")
+    func emojiCssRangeMatchesDerivation() {
+        // `emojiUnicodeRange` is a compile-time constant (it used to be derived
+        // at startup, ~130ms of main-thread work on first Read render). The
+        // derivation is kept for this test so the constant can't silently drift
+        // from the classifier.
+        #expect(FontCascadeScript.emoji.cssUnicodeRange == FontCascadeScript.derivedEmojiUnicodeRange())
+    }
+
     @Test("Shared CJK punctuation keeps the body font")
     func cjkPunctuationIsNeutral() {
         // 、。「」 live in U+3000–303F, shared between Chinese and Japanese —
