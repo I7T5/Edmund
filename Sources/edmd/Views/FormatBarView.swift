@@ -191,7 +191,7 @@ final class FormatBarView: ChromeBarView {
         group.alignment = .centerY
         // Same order as `views`, so the group can pair each divider with the two
         // controls it sits between.
-        group.adopt(chips: views.compactMap(Self.chip(of:)), dividers: dividers)
+        group.adopt(chips: views.compactMap { Self.chip(of: $0) }, dividers: dividers)
         return group
     }
 

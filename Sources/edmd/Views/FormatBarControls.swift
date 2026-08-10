@@ -158,7 +158,10 @@ final class FormatBarButton: NSButton {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
+        // Spelled out rather than `forEach(removeTrackingArea)`: an unapplied
+        // method reference is inferred as throwing under Swift 6.0 (Xcode 16.2,
+        // what CI builds with), which rejects it inside a non-throwing override.
+        trackingAreas.forEach { removeTrackingArea($0) }
         // `.inVisibleRect` keeps the area correct as the bar resizes without
         // recomputing the rect here.
         addTrackingArea(NSTrackingArea(rect: .zero,
@@ -195,7 +198,7 @@ final class FormatBarPopUpButton: NSPopUpButton {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
+        trackingAreas.forEach { removeTrackingArea($0) }
         addTrackingArea(NSTrackingArea(rect: .zero,
                                        options: [.mouseEnteredAndExited, .activeInKeyWindow,
                                                  .inVisibleRect],
