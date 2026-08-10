@@ -23,17 +23,42 @@ import AppKit
 
     private let viewMode = NSToolbarItem.Identifier("viewMode")
 
+    /// The default bar is the one that shipped: view-mode alone, on the right.
     @Test func defaultOrderMatchesTheSpec() {
         let ids = FormatToolbar.defaultIdentifiers(viewMode: viewMode).map(\.rawValue)
-        #expect(ids == ["format", "checklist", "table", "image", "link",
-                        "NSToolbarFlexibleSpaceItem", "viewMode", "share"])
+        #expect(ids == ["NSToolbarFlexibleSpaceItem", "viewMode"])
+    }
+
+    /// The point sizes are per symbol precisely so the drawn glyphs match; a
+    /// single shared size is what left checklist and tablecells 3–5pt bigger than
+    /// the rest. `textformat` is exempt: "Aa" is wide and short, and matching its
+    /// width to the others made it read oversized.
+    @Test func everyToolbarSymbolDrawsTheSameSize() throws {
+        let extents = try ["checklist", "tablecells", "photo.on.rectangle",
+                           "link.badge.plus"].map {
+            ($0, inkExtent(try #require(FormatToolbar.symbol($0))))
+        }
+        let sizes = extents.map(\.1)
+        #expect(sizes.max()! - sizes.min()! <= 2,
+                "uneven row: \(extents.map { "\($0.0) \($0.1)pt" }.joined(separator: ", "))")
+    }
+
+    /// Off the default bar but still draggable in from Customize Toolbar.
+    @Test func theFormattingItemsStayAvailable() {
+        let allowed = Set(FormatToolbar.allowedIdentifiers(viewMode: viewMode))
+        for id in [FormatToolbar.format, FormatToolbar.checklist, FormatToolbar.table,
+                   FormatToolbar.image, FormatToolbar.link, FormatToolbar.share] {
+            #expect(allowed.contains(id), "\(id.rawValue) is not offered any more")
+        }
     }
 
     /// Centring is `centeredItemIdentifiers`, not flexible space — measured, a
     /// leading flexible space swallowed all the slack and the group stayed right.
+    /// It applies to whatever the user drags in, so it outlives the default bar.
     @Test func theFormattingGroupIsTheCentredSet() {
-        let ids = FormatToolbar.defaultIdentifiers(viewMode: viewMode)
-        #expect(FormatToolbar.centeredIdentifiers == Set(ids.prefix(5)))
+        #expect(FormatToolbar.centeredIdentifiers ==
+                [FormatToolbar.format, FormatToolbar.checklist, FormatToolbar.table,
+                 FormatToolbar.image, FormatToolbar.link])
         #expect(!FormatToolbar.centeredIdentifiers.contains(viewMode))
         #expect(!FormatToolbar.centeredIdentifiers.contains(FormatToolbar.share))
     }
@@ -593,6 +618,33 @@ import AppKit
     }
     guard let t = top, let b = bottom else { return 0 }
     return b - t + 1
+}
+
+/// The longer side of the ink in `image` — what the eye compares across a row of
+/// symbols whose bounding boxes differ (`tablecells` is wide, `checklist` tall).
+@MainActor private func inkExtent(_ image: NSImage) -> Int {
+    let side = 64
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+                               bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                               isPlanar: false, colorSpaceName: .deviceRGB,
+                               bytesPerRow: 0, bitsPerPixel: 0)!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    let size = image.size
+    image.draw(in: NSRect(x: (CGFloat(side) - size.width) / 2,
+                          y: (CGFloat(side) - size.height) / 2,
+                          width: size.width, height: size.height))
+    NSGraphicsContext.restoreGraphicsState()
+
+    var minX = side, maxX = -1, minY = side, maxY = -1
+    for y in 0..<side {
+        for x in 0..<side where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.1 {
+            minX = min(minX, x); maxX = max(maxX, x)
+            minY = min(minY, y); maxY = max(maxY, y)
+        }
+    }
+    guard maxX >= 0 else { return 0 }
+    return max(maxX - minX, maxY - minY) + 1
 }
 
 @MainActor @Suite struct ViewModeGlyphSizeTests {

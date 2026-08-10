@@ -43,9 +43,11 @@ final class FormatToolbar: NSObject {
     static let centeredIdentifiers: Set<NSToolbarItem.Identifier> =
         [format, checklist, table, image, link]
 
-    /// The centred group, then flexible space pushing view-mode and share right.
+    /// Just the view-mode button, right-aligned — the toolbar as it shipped. The
+    /// formatting group stays *allowed*, so it can be dragged in from Customize
+    /// Toolbar, but the default bar is bare.
     static func defaultIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
-        [format, checklist, table, image, link, .flexibleSpace, viewMode, share]
+        [.flexibleSpace, viewMode]
     }
 
     static func allowedIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
@@ -186,8 +188,12 @@ final class FormatToolbar: NSObject {
     /// screenshot, so the two sets of numbers are not interchangeable.
     private static let symbolPointSizes: [String: CGFloat] = [
         "textformat": 14,                 // "Aa" is wide and short — 15 read oversized
-        "checklist": 17.5,
-        "tablecells": 17,
+        // Notes' own extents put these two at 18.5 and 19.5, but its toolbar
+        // draws them against a taller bar; here they came out at 19.2 and 20.0
+        // against 15.0–16.5 for everything else and read plainly oversized, so
+        // they are matched to the rest of the row rather than to Notes.
+        "checklist": 14,
+        "tablecells": 14,
         "photo.on.rectangle": 13.5,
         "link.badge.plus": 13.5,
     ]
