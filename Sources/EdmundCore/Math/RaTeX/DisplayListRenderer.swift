@@ -25,13 +25,56 @@ struct RaTeXDisplayList: Decodable {
 
     struct RGBA: Decodable { let r, g, b, a: Double }
 
+    /// One segment of a `Path` item. Coordinates are offsets (em) from the
+    /// item's own origin, in the same top-down space as everything else.
+    enum PathCommand: Decodable {
+        case move(x: Double, y: Double)
+        case line(x: Double, y: Double)
+        case cubic(x1: Double, y1: Double, x2: Double, y2: Double, x: Double, y: Double)
+        case quad(x1: Double, y1: Double, x: Double, y: Double)
+        case close
+        case unknown
+
+        private enum Keys: String, CodingKey { case type, x, y, x1, y1, x2, y2 }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: Keys.self)
+            switch try c.decode(String.self, forKey: .type) {
+            case "MoveTo":
+                self = .move(x: try c.decode(Double.self, forKey: .x),
+                             y: try c.decode(Double.self, forKey: .y))
+            case "LineTo":
+                self = .line(x: try c.decode(Double.self, forKey: .x),
+                             y: try c.decode(Double.self, forKey: .y))
+            case "CubicTo":
+                self = .cubic(x1: try c.decode(Double.self, forKey: .x1),
+                              y1: try c.decode(Double.self, forKey: .y1),
+                              x2: try c.decode(Double.self, forKey: .x2),
+                              y2: try c.decode(Double.self, forKey: .y2),
+                              x: try c.decode(Double.self, forKey: .x),
+                              y: try c.decode(Double.self, forKey: .y))
+            case "QuadTo":
+                self = .quad(x1: try c.decode(Double.self, forKey: .x1),
+                             y1: try c.decode(Double.self, forKey: .y1),
+                             x: try c.decode(Double.self, forKey: .x),
+                             y: try c.decode(Double.self, forKey: .y))
+            case "Close":
+                self = .close
+            default:
+                self = .unknown
+            }
+        }
+    }
+
     enum Item: Decodable {
         case glyph(font: String, charCode: Int, x: Double, y: Double, scale: Double, color: RGBA)
         case line(x: Double, y: Double, width: Double, thickness: Double, color: RGBA)
+        case rect(x: Double, y: Double, width: Double, height: Double, color: RGBA)
+        case path(x: Double, y: Double, commands: [PathCommand], fill: Bool, color: RGBA)
         case unknown
 
         private enum Keys: String, CodingKey {
-            case type, font, char_code, x, y, scale, color, width, thickness
+            case type, font, char_code, x, y, scale, color, width, thickness, height, commands, fill
         }
 
         init(from decoder: Decoder) throws {
@@ -49,6 +92,18 @@ struct RaTeXDisplayList: Decodable {
                              y: try c.decode(Double.self, forKey: .y),
                              width: try c.decode(Double.self, forKey: .width),
                              thickness: try c.decode(Double.self, forKey: .thickness),
+                             color: try c.decode(RGBA.self, forKey: .color))
+            case "Rect":
+                self = .rect(x: try c.decode(Double.self, forKey: .x),
+                             y: try c.decode(Double.self, forKey: .y),
+                             width: try c.decode(Double.self, forKey: .width),
+                             height: try c.decode(Double.self, forKey: .height),
+                             color: try c.decode(RGBA.self, forKey: .color))
+            case "Path":
+                self = .path(x: try c.decode(Double.self, forKey: .x),
+                             y: try c.decode(Double.self, forKey: .y),
+                             commands: try c.decode([PathCommand].self, forKey: .commands),
+                             fill: try c.decodeIfPresent(Bool.self, forKey: .fill) ?? true,
                              color: try c.decode(RGBA.self, forKey: .color))
             default:
                 self = .unknown
@@ -131,6 +186,15 @@ final class RaTeXDisplayListRenderer {
                 ctx.fill(CGRect(x: CGFloat(x) * fs, y: boxH - CGFloat(y) * fs - th / 2,
                                 width: CGFloat(width) * fs, height: th))
 
+            case let .rect(x, y, width, height, _):
+                ctx.setFillColor(fill)
+                ctx.fill(CGRect(x: CGFloat(x) * fs, y: boxH - CGFloat(y + height) * fs,
+                                width: CGFloat(width) * fs, height: CGFloat(height) * fs))
+
+            case let .path(x, y, commands, filled, _):
+                drawPath(commands, originX: CGFloat(x) * fs, originY: CGFloat(y) * fs,
+                         filled: filled, fs: fs, boxH: boxH, color: fill, in: ctx)
+
             case .unknown:
                 continue
             }
@@ -150,5 +214,70 @@ final class RaTeXDisplayListRenderer {
         return RenderedMath(image: image,
                             ascent: CGFloat(dl.height) * fs + insetPad,
                             descent: CGFloat(dl.depth) * fs + insetPad)
+    }
+
+    /// Draws a `Path` item — the vector half of the display list, and the only
+    /// thing that draws a *stretchy* delimiter's connecting stem (a tall
+    /// `\begin{Bmatrix}` brace is Size4 glyph pieces bridged by path bars, and
+    /// a tall `\left(` is path outline only, no glyph at all). Command
+    /// coordinates are em offsets from the item's origin in the same top-down
+    /// space as everything else, so each point flips into the y-up context the
+    /// way a glyph baseline does.
+    ///
+    /// Each subpath (a run starting at a `MoveTo`) is filled on its own, with
+    /// the even-odd rule. Both quirks are copied from RaTeX's own reference
+    /// renderer, and both have a reason there: KaTeX assembles stretchy arrows
+    /// from components whose winding directions oppose, so one combined nonzero
+    /// fill cancels the shaft away, and a tall delimiter's stem is a second
+    /// subpath that nonzero would double-fill.
+    private func drawPath(_ commands: [RaTeXDisplayList.PathCommand],
+                          originX: CGFloat, originY: CGFloat,
+                          filled: Bool, fs: CGFloat, boxH: CGFloat,
+                          color: CGColor, in ctx: CGContext) {
+        func pt(_ x: Double, _ y: Double) -> CGPoint {
+            CGPoint(x: originX + CGFloat(x) * fs, y: boxH - originY - CGFloat(y) * fs)
+        }
+
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.setFillColor(color)
+        ctx.setStrokeColor(color)
+        // RaTeX's renderers stroke with a device-pixel constant (1.5px); 0.04em
+        // is KaTeX's default rule thickness, so an unfilled path keeps the
+        // weight of `\frac`'s bar at every point size instead of thinning out.
+        ctx.setLineWidth(0.04 * fs)
+
+        var segment = CGMutablePath()
+        func flush() {
+            guard !segment.isEmpty else { return }
+            ctx.addPath(segment)
+            if filled { ctx.fillPath(using: .evenOdd) } else { ctx.strokePath() }
+            segment = CGMutablePath()
+        }
+
+        for cmd in commands {
+            switch cmd {
+            case let .move(x, y):
+                flush()
+                segment.move(to: pt(x, y))
+            // A subpath that never opened with a MoveTo has no current point;
+            // CoreGraphics treats that as a programming error, so skip it.
+            case let .line(x, y):
+                guard !segment.isEmpty else { continue }
+                segment.addLine(to: pt(x, y))
+            case let .cubic(x1, y1, x2, y2, x, y):
+                guard !segment.isEmpty else { continue }
+                segment.addCurve(to: pt(x, y), control1: pt(x1, y1), control2: pt(x2, y2))
+            case let .quad(x1, y1, x, y):
+                guard !segment.isEmpty else { continue }
+                segment.addQuadCurve(to: pt(x, y), control: pt(x1, y1))
+            case .close:
+                guard !segment.isEmpty else { continue }
+                segment.closeSubpath()
+            case .unknown:
+                continue
+            }
+        }
+        flush()
     }
 }

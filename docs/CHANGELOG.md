@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ### Fixed
 - Typewriter Scroll now centers the caret on every line, including the first and last ones and in documents shorter than the window — it reserves half a viewport of space at each end while the mode is on.
+- Advanced Math: tall brackets, braces and stretchy arrows now draw. A stretchy delimiter is part vector artwork, and the Advanced Math renderer was skipping that part — so a multi-row `\begin{Bmatrix}` came out as disconnected brace fragments, a tall `\left(` had no parentheses at all, and `\xrightarrow` lost its arrow (#265).
 
 ## [0.4.1] - 2026-08-01
 
