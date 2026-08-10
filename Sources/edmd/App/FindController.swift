@@ -15,6 +15,15 @@ final class FindController: NSObject, EditorFindHandling {
     private weak var container: NSView?
     private let bar = FindBarView()
 
+    /// Notifies the owner that the bar's size or visibility changed and the top
+    /// bars need re-laying-out. The owner (`Document`) is the sole writer of
+    /// `editor.additionalTopInset` now — the find bar used to write it directly,
+    /// but a second writer (the format bar) would clobber whichever ran last.
+    var onLayoutNeeded: (() -> Void)?
+
+    /// The bar view, exposed for `Document.layoutTopBars()`.
+    var barView: FindBarView { bar }
+
     /// The scroll view's top content inset before we pushed content down for the
     /// bar (usually the toolbar overlap). Restored on hide.
     private var isShowing = false
@@ -77,14 +86,20 @@ final class FindController: NSObject, EditorFindHandling {
         let firstShow = !isShowing
         if firstShow {
             isShowing = true
+            // Reveal *before* re-laying out the top bars: `Document.layoutTopBars()`
+            // stacks only visible bars, so a bar revealed after that call pops up
+            // at whatever stale frame it had — on the very first window, wherever
+            // the autoresizing mask left it, not under the format bar. (Layout-
+            // then-reveal worked pre-refactor only because the find bar used to
+            // position itself.)
+            bar.isHidden = false
         }
         bar.showsReplaceRow = replace
         layoutBar()
-        // Finish the bar's internal layout *before* revealing it, otherwise the
+        // Finish the bar's internal layout before the window draws, otherwise the
         // first painted frame is pre-layout and controls (the search field's
         // magnifier) visibly settle a pass later.
         bar.layoutSubtreeIfNeeded()
-        if firstShow { bar.isHidden = false }
 
         // Seed from the current selection when it's a single line of text.
         let sel = editor.selectedRange()
@@ -101,7 +116,7 @@ final class FindController: NSObject, EditorFindHandling {
         isShowing = false
         bar.isHidden = true
         editor?.clearFindMatches()
-        editor?.additionalTopInset = 0
+        onLayoutNeeded?()
         editor?.window?.makeFirstResponder(editor)
     }
 
@@ -115,18 +130,11 @@ final class FindController: NSObject, EditorFindHandling {
 
     // MARK: - Layout
 
-    /// Positions the bar under the toolbar and pushes the document content down
-    /// by the bar's height (varies with the replace row).
+    /// Delegates the whole job to the owner: `Document` stacks the format bar
+    /// above the find bar and writes the combined height as the editor's top
+    /// inset. It must stay the single writer of `additionalTopInset`.
     private func layoutBar() {
-        guard let container, let scrollView else { return }
-        let h = bar.preferredHeight
-        // The editor owns contentInsets (it reserves overscroll there); hand it
-        // the bar's height rather than writing the inset directly, so a resize
-        // recomputing the overscroll doesn't drop the bar's share.
-        bar.frame = NSRect(x: 0,
-                           y: container.bounds.height - h,
-                           width: container.bounds.width, height: h)
-        editor?.additionalTopInset = h
+        onLayoutNeeded?()
     }
 
     // MARK: - Search

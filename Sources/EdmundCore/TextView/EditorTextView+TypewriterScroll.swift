@@ -62,7 +62,12 @@ extension EditorTextView {
         // from settle-loop rounding) picks the fragment *above* — walking the
         // anchor up a line on every Edit→Read round trip. Sampling just inside
         // the viewport keeps the round trip fixed-point.
-        let topPoint = CGPoint(x: 0, y: visible.minY + 1 - textContainerOrigin.y)
+        // `+ viewportTopInset`: the clip view extends up behind the top bars, so
+        // its own minY names a line the reader cannot see. Anchor on the first
+        // line below the bars instead, or a round trip walks the viewport up by
+        // the bars' height every time.
+        let topPoint = CGPoint(x: 0,
+                               y: visible.minY + viewportTopInset + 1 - textContainerOrigin.y)
         guard let frag = tlm.textLayoutFragment(for: topPoint) else { return nil }
         return tlm.offset(from: tlm.documentRange.location, to: frag.rangeInElement.location)
     }
@@ -104,8 +109,12 @@ extension EditorTextView {
         guard let lineRect = caretLineRect() else { return }
         let cursorY = lineRect.midY + textContainerOrigin.y
 
-        let visibleHeight = scrollView.contentView.bounds.height
-        let clampedY = clampedScrollY(cursorY - visibleHeight / 2)
+        // Centre of the band the reader can see, not of the whole clip: the top
+        // bars cover `viewportTopInset` of it, and centring against the full
+        // height parked the caret that much too high — behind the bar outright
+        // once the format and find bars were both up.
+        let centerOffset = viewportTopInset + visibleContentHeight / 2
+        let clampedY = clampedScrollY(cursorY - centerOffset)
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -119,7 +128,7 @@ extension EditorTextView {
         for _ in 0..<3 {
             tlm.textViewportLayoutController.layoutViewport()
             guard let settled = caretLineRect() else { return }
-            let settledY = clampedScrollY(settled.midY + textContainerOrigin.y - visibleHeight / 2)
+            let settledY = clampedScrollY(settled.midY + textContainerOrigin.y - centerOffset)
             guard abs(settledY - scrollView.contentView.bounds.origin.y) > 1 else { return }
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: settledY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -151,7 +160,9 @@ extension EditorTextView {
             scrollRangeToVisible(NSRange(location: offset, length: 0)); return
         }
         guard let rect = lineRect(forCharacterAt: offset) else { return }
-        let clampedY = clampedScrollY(rect.minY + textContainerOrigin.y)
+        // Top of the *visible* area: without the inset the anchored line lands
+        // at the top of the clip, which is behind the bars.
+        let clampedY = clampedScrollY(rect.minY + textContainerOrigin.y - viewportTopInset)
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -160,7 +171,7 @@ extension EditorTextView {
         for _ in 0..<6 {
             tlm.textViewportLayoutController.layoutViewport()
             guard let settled = lineRect(forCharacterAt: offset) else { return }
-            let settledY = clampedScrollY(settled.minY + textContainerOrigin.y)
+            let settledY = clampedScrollY(settled.minY + textContainerOrigin.y - viewportTopInset)
             guard abs(settledY - scrollView.contentView.bounds.origin.y) > 1 else { return }
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: settledY))
             scrollView.reflectScrolledClipView(scrollView.contentView)

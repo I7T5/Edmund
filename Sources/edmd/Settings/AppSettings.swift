@@ -118,6 +118,7 @@ enum AppSettings {
         static let defaultCodeSyntax = "settings.syntax.defaultCodeSyntax"
         // Edit ▸ Display.
         static let showToolbar         = "settings.edit.showToolbar"
+        static let showFormatBar       = "settings.edit.showFormatBar"
         static let autoHideToolbar     = "settings.edit.autoHideToolbar"
         static let showInvisibles      = "settings.edit.showInvisibles"
         // Parked with the rest of the Always mode (see `showInvisibles` below):
@@ -448,6 +449,15 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.autoHideToolbar) }
     }
 
+    /// Whether document windows show the format bar across the top of the
+    /// editor. Defaults off: it costs a strip of the window and every command
+    /// on it is already on the Format menu, so it is opt-in. Mirrored by the
+    /// View menu's Show Format Bar item.
+    static var showFormatBar: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.showFormatBar) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.showFormatBar) }
+    }
+
     static var indentStyle: IndentStyle {
         get {
             guard let raw = UserDefaults.standard.string(forKey: Key.indentStyle),
@@ -594,6 +604,7 @@ enum AppSettings {
         for case let document as Document in NSDocumentController.shared.documents {
             if let editor = document.editor { applyEditSettings(to: editor) }
             document.applyToolbarVisibility()
+            document.refreshFormatBar()
         }
     }
 
