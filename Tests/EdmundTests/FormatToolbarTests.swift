@@ -92,6 +92,15 @@ import AppKit
         _ = doc
     }
 
+    /// A tooltip names the command, never the secondary-click menu behind it —
+    /// AppKit does not advertise those, and the hint only shows once you are
+    /// already hovering the item you would have had to know about.
+    @Test func tooltipsDoNotAdvertiseTheSecondaryClickMenu() {
+        let (bar, doc) = toolbar()
+        #expect(bar.makeItem(FormatToolbar.link)?.toolTip == "Link")
+        _ = doc
+    }
+
     /// The other custom-view item is a real command and must still be gated,
     /// or the fix above would have blanket-enabled everything.
     @Test func theLinkButtonIsStillGated() {

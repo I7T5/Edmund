@@ -81,7 +81,12 @@ final class FormatToolbar: NSObject {
         case Self.link:
             let item = FormatButtonItem(itemIdentifier: id)
             item.label = "Link"
-            item.toolTip = "Link (right-click for Wikilink)"
+            // No "right-click for Wikilink" hint: AppKit never advertises a
+            // secondary-click menu in a tooltip (Safari's back button holds a
+            // history menu and says only "Show the previous page"), and a tooltip
+            // is seen only after hovering the thing whose menu you didn't know
+            // about. Wikilink stays discoverable through the Format menu.
+            item.toolTip = "Link"
             let button = NSButton(image: Self.symbol("link.badge.plus") ?? NSImage(),
                                   target: nil, action: #selector(EditorTextView.formatLink(_:)))
             button.bezelStyle = .texturedRounded

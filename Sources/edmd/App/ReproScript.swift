@@ -281,7 +281,11 @@ enum ReproScript {
                         } else {
                             on = item.isEnabled
                         }
-                        report("repro toolbar \(item.itemIdentifier.rawValue) enabled=\(on)")
+                        // The tooltip too: hovering an item to read one cannot be
+                        // driven from here, so this is the only way to check it.
+                        let tip = (item.view as? NSView)?.toolTip ?? item.toolTip
+                        report("repro toolbar \(item.itemIdentifier.rawValue) " +
+                               "enabled=\(on) tip=\(tip ?? "nil")")
                     }
                 }
             case "clicktoolbar":

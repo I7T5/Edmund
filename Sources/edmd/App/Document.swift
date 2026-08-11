@@ -501,7 +501,10 @@ class Document: NSDocument, HeadingNavigable {
         let pointSize: CGFloat = editor.viewMode == .reading ? 12.9 : 15
         viewModeButton?.image = icon(for: editor.viewMode)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))
-        viewModeButton?.toolTip = "View mode: \(label(for: editor.viewMode))"
+        // Names what the click does, not what the mode is: the icon already shows
+        // the current mode, and AppKit's own toolbars read "Hide Sidebar" /
+        // "Show Sidebar" rather than stating the state back.
+        viewModeButton?.toolTip = "Switch to \(label(for: toggledViewMode)) View"
     }
 
     private func setViewMode(_ mode: EditorTextView.ViewMode) {
@@ -795,7 +798,13 @@ class Document: NSDocument, HeadingNavigable {
     /// button). With source mode on the editing view is Source, so this flips
     /// Source ↔ Read; otherwise Edit ↔ Read.
     @objc func toggleViewMode(_ sender: Any?) {
-        setViewMode(editor.viewMode == .reading ? editingMode : .reading)
+        setViewMode(toggledViewMode)
+    }
+
+    /// Where `toggleViewMode` would land — also what the button's tooltip names,
+    /// so the two can't say different things.
+    private var toggledViewMode: EditorTextView.ViewMode {
+        editor?.viewMode == .reading ? editingMode : .reading
     }
 
     /// "Inspect Reader" (⌥⌘I) — a semi-toggle, so one shortcut always gets you
