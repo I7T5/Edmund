@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.command // empty' | { read -r cmd; if echo \"$cmd\" | grep -Eq '(^|&&|;|\\|)[[:space:]]*git[[:space:]]+(checkout[[:space:]]+-b|switch[[:space:]]+-c)\\b' || echo \"$cmd\" | grep -Eq '(^|&&|;|\\|)[[:space:]]*git[[:space:]]+branch[[:space:]]+[^-[:space:]][^[:space:]]*([[:space:]]|$)'; then printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Edmund prefers git worktrees over branch-switching for concurrent local work: git worktree add .worktrees/<branch> <branch> (branch keeps its normal type/slug name). See CLAUDE.md Git practices / docs/ARCHITECTURE.md \\u00a712.\"}}'; else echo '{}'; fi; }"
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-branch-create.sh\""
           }
         ]
       },
@@ -37,6 +37,19 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-maintainer-prose.sh\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/sync-opencode.sh\"",
+            "timeout": 15,
+            "statusMessage": "Syncing OpenCode config…"
           }
         ]
       }

@@ -134,8 +134,12 @@ final class FormatPopoverController: NSViewController {
     /// block the caret is in, and what is runnable at all. Mirrors what
     /// `menuNeedsUpdate` did for the menu version.
     func refresh() {
-        let active = editor?.activeInlineStyles() ?? []
-        let block = editor?.activeBlockStyle()
+        // One scan for the whole popover, not one per row: this is the same
+        // delimiter pass the format bar lights its chips from, and it runs over
+        // the selected lines every time either surface is refreshed.
+        let active = editor?.activeFormattingActions() ?? []
+        let headingLevel = editor?.activeHeadingLevel()
+        let calloutType = editor?.activeCalloutType()
 
         for row in rows {
             let enabled = editor.map {
@@ -143,7 +147,9 @@ final class FormatPopoverController: NSViewController {
                                              representedObject: row.item.representedObject)
             } ?? false
             row.isEnabled = enabled
-            row.isChecked = FormatToolbar.blockStyle(for: row.item).map { $0 == block } ?? false
+            row.isChecked = FormatToolbar.isBlockActive(row.item, actions: active,
+                                                        headingLevel: headingLevel,
+                                                        calloutType: calloutType)
         }
 
         for stack in iconRows {
@@ -153,7 +159,7 @@ final class FormatPopoverController: NSViewController {
                 // not reliable once the popover's view can take first responder.
                 target.editor = editor
                 target.dismiss = { [weak self] in self?.popover?.performClose(nil) }
-                button.isActive = FormatToolbar.style(for: target.styleID).map(active.contains) ?? false
+                button.isActive = FormatToolbar.action(for: target.styleID).map(active.contains) ?? false
                 button.isEnabled = editor?.isFormattingActionEnabled(
                     target.action, representedObject: nil) ?? false
                 button.alphaValue = button.isEnabled ? 1.0 : 0.35

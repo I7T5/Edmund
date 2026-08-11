@@ -5,6 +5,8 @@
 AGENTS.md
 .agents/
 .codex/
+.opencode/
+opencode.json
 
 # local tooling
 .worktrees/

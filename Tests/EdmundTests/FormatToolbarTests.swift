@@ -192,9 +192,12 @@ import AppKit
     }
 
     /// The full H1–H6 range and all 20 callout types stay reachable in the menu
-    /// bar — the popup trimming them must not have trimmed those too.
+    /// bar — the popup trimming them must not have trimmed those too. Eight
+    /// items, not six: the format bar's pulldown shares this menu and added Body
+    /// and a separator above the levels.
     @Test func theMenuBarStillOffersTheFullRange() {
-        #expect(FormatMenu.headingSubmenuItem().submenu?.items.count == 6)
+        let headings = FormatMenu.headingSubmenuItem().submenu?.items ?? []
+        #expect(headings.filter { $0.action != nil && $0.tag > 0 }.count == 6)
         #expect((FormatMenu.calloutSubmenuItem().submenu?.items.count ?? 0) > 15)
     }
 
@@ -561,35 +564,48 @@ import AppKit
 
 @MainActor @Suite struct ActiveStateWiringTests {
 
-    /// Every icon-row button must map to a detectable style, or it can never
-    /// light up and the affordance silently lies.
-    @Test func everyIconRowButtonMapsToAStyle() {
+    /// Every icon-row button must map to a command the state scan reports, or it
+    /// can never light up and the affordance silently lies.
+    @Test func everyIconRowButtonMapsToACommand() {
         let (bar, doc) = toolbar()
         let rows = bar.iconRowViews()
         #expect(rows.count == 2)
         for row in rows {
             for case let button as NSButton in row.arrangedSubviews {
                 let target = button.target as? FormatIconTarget
-                #expect(target.flatMap { FormatToolbar.style(for: $0.styleID) } != nil,
-                        "\(target?.styleID ?? "?") has no ActiveInlineStyles mapping")
+                #expect(target.flatMap { FormatToolbar.action(for: $0.styleID) } != nil,
+                        "\(target?.styleID ?? "?") maps to no Format command")
             }
         }
         _ = doc
     }
 
-    @Test func blockRowsMapToTheStyleTheyApply() {
+    /// The checkmark is driven by the same `activeFormattingActions()` set the
+    /// format bar lights its chips from, so the two surfaces cannot disagree
+    /// about what the caret is sitting in.
+    @Test func blockRowsCheckAgainstTheActiveState() {
         let (bar, doc) = toolbar()
         let menu = bar.formatPopupMenu()
-        func style(ofRowTitled title: String) -> ActiveBlockStyle? {
-            menu.items.first { $0.title == title }.flatMap(FormatToolbar.blockStyle(for:))
+        func row(_ title: String) -> NSMenuItem { menu.items.first { $0.title == title }! }
+        func checked(_ title: String, actions: Set<Selector> = [],
+                     heading: Int? = nil, callout: String? = nil) -> Bool {
+            FormatToolbar.isBlockActive(row(title), actions: actions,
+                                        headingLevel: heading, calloutType: callout)
         }
-        #expect(style(ofRowTitled: "Heading 2") == .heading(level: 2))
-        #expect(style(ofRowTitled: "Bulleted List") == .bulletedList)
-        #expect(style(ofRowTitled: "Block Quote") == .blockQuote)
-        #expect(style(ofRowTitled: "Alert / Callout") == .callout)
-        #expect(style(ofRowTitled: "Code Block") == .codeBlock)
+        #expect(checked("Heading 2", heading: 2))
+        #expect(!checked("Heading 2", heading: 3))
+        // Body (level 0) has no row, and disagreeing lines report nil — neither
+        // may tick a heading row.
+        #expect(!checked("Heading 2", heading: 0))
+        #expect(!checked("Heading 2", heading: nil))
+        #expect(checked("Bulleted List",
+                        actions: [#selector(EditorTextView.formatBulletedList(_:))]))
+        #expect(checked("Code Block",
+                        actions: [#selector(EditorTextView.formatCodeBlock(_:))]))
+        #expect(checked("Alert / Callout", callout: "note"))
+        #expect(!checked("Alert / Callout"))
         // Footnote is not a block style — it must not claim a checkmark.
-        #expect(style(ofRowTitled: "Footnote") == nil)
+        #expect(!checked("Footnote"))
         _ = doc
     }
 }

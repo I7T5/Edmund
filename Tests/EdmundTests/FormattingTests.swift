@@ -14,6 +14,35 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
     return e
 }
 
+// MARK: - Format-bar routing
+
+/// The format bar's buttons and pulldowns carry their own selectors with a nil
+/// target, exactly like the Format-menu items, so selection routes through the
+/// responder chain to the focused editor — the same mechanism the whole Format
+/// menu relies on in the live app. That nil-target path needs a *key* window,
+/// which the headless test runner can't provide (`makeKeyAndOrderFront` yields a
+/// window that reports `isKeyWindow == false`), so it is pinned below at the
+/// explicit-target level: `formatHeading(_:)` reads `tag`, `formatCallout(_:)`
+/// reads `representedObject`. Live selection is verified by click-testing the
+/// bar against the running app.
+@MainActor @Suite struct FormatBarRoutingTests {
+
+    @Test func headingTagAndCalloutRepresentedObjectDriveActions() {
+        let e = mk("Body line one", NSRange(location: 0, length: 0))
+        let item = NSMenuItem(title: "Heading 2", action: #selector(EditorTextView.formatHeading(_:)),
+                              keyEquivalent: "")
+        item.tag = 2
+        _ = e.perform(item.action!, with: item)
+        #expect(e.rawSource.hasPrefix("## "))
+
+        let callout = NSMenuItem(title: "Note", action: #selector(EditorTextView.formatCallout(_:)),
+                                 keyEquivalent: "")
+        callout.representedObject = "NOTE"
+        _ = e.perform(callout.action!, with: callout)
+        #expect(e.rawSource.contains("[!NOTE]"))
+    }
+}
+
 // MARK: - Inline font styles
 
 @MainActor @Suite struct FormatInlineWrapTests {
@@ -91,6 +120,35 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         e.formatMathBlock(nil)
         #expect(e.rawSource == "$$\nE=mc^2\n$$")
         #expect(e.selectedRange() == NSRange(location: 3, length: 0))  // caret on content line
+    }
+}
+
+// MARK: - Subscript / superscript
+
+@MainActor @Suite struct FormatSubSupTests {
+
+    @Test func subscriptWrapsSelectionAndInverts() {
+        let e = mk("2", NSRange(location: 0, length: 1))
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "<sub>2</sub>")
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "2")
+    }
+
+    @Test func superscriptWrapsSelectionAndInverts() {
+        let e = mk("2", NSRange(location: 0, length: 1))
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "<sup>2</sup>")
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "2")
+    }
+
+    @Test func subAndSuperscriptExpandToWordAtCaret() {
+        let e = mk("H2O", NSRange(location: 2, length: 0))  // caret inside "H2O"
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "<sub>H2O</sub>")
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "<sub><sup>H2O</sup></sub>")
     }
 }
 
@@ -212,6 +270,18 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource == "### Title")
         e.applyHeadingLevel(3)            // same level clears
         #expect(e.rawSource == "Title")
+    }
+
+    @Test func headingLevelZeroStripsPrefixToBody() {
+        let e = mk("### Title", NSRange(location: 0, length: 0))
+        e.applyHeadingLevel(0)
+        #expect(e.rawSource == "Title")
+    }
+
+    @Test func headingLevelZeroLeavesBodyLineUntouched() {
+        let e = mk("Plain", NSRange(location: 0, length: 0))
+        e.applyHeadingLevel(0)
+        #expect(e.rawSource == "Plain")
     }
 
     @Test func checklistAddsThenTogglesMark() {

@@ -44,4 +44,20 @@ if grep -q 'System Events' <<<"$cmd" &&
 See Sources/edmd/App/ReproScript.swift for the command list and the live-repro skill for the escalation ladder. If a real CGEvent path is genuinely required, ask the user first — they may be at the keyboard.'
 fi
 
+# The same steal, one level down. `ui-harness.sh raise` (and open-find /
+# replace / shot, which all call cmd_raise) runs `set frontmost` *inside the
+# script*, so the check above only ever sees the word "ui-harness.sh" and waves
+# it through. This gap let an agent foreground the app repeatedly while the
+# maintainer was working, which is the exact thing this file exists to stop.
+# Match the subcommand, not the osascript it hides.
+if grep -Eq 'ui-harness\.sh[[:space:]]+(raise|open-find|replace|shot)\b' <<<"$cmd"; then
+  deny 'ui-harness.sh raise / open-find / replace / shot all activate Edmund and pull the maintainer out of what they were doing — the osascript is inside the script, which is why the System Events rule above does not catch it.
+Capture instead, which works on a background window and steals nothing:
+  ui-harness.sh capture out.png          # or capture-window.sh <title> out.png
+To reach a bar or a control without focus, relaunch with the state you need and drive the app in-process:
+  open -g -n build/EdmundDbg.app --args file.md -settings.edit.showFormatBar NO
+  edmd file.md -debug.reproScript script.txt
+`open -g` starts the app in the background; launching the bare binary foregrounds it. If you truly need the app frontmost, ask the maintainer first — they may be at the keyboard.'
+fi
+
 echo '{}'

@@ -35,37 +35,51 @@ struct BottomOverscrollTests {
         return (editor, scroll)
     }
 
-    /// The clip view must accept a scroll position half a viewport past where
-    /// the last line alone would allow.
+    /// Scrolled all the way down, half a viewport of blank space must sit below
+    /// the last line — that's the room the line being written needs.
     @Test("Scrolls half a viewport past the last line")
     @MainActor func overscrollsPastEnd() {
         let (editor, scroll) = makeWindowed(typewriter: false)
         let clipHeight = scroll.contentView.bounds.height
-        let withoutOverscroll = max(0, editor.frame.height - clipHeight)
-        let maxY = editor.clampedScrollY(99_999)
-        #expect(maxY >= withoutOverscroll + clipHeight / 2 - 1,
-                "scroll stops at \(maxY), document alone allows \(withoutOverscroll)")
+        let lastLine = editor.lineRect(forCharacterAt: (editor.rawSource as NSString).length - 1)
+        guard let lastLine else { Issue.record("no last line rect"); return }
+        let documentBottom = lastLine.maxY + editor.textContainerOrigin.y
+        let blankBelow = editor.clampedScrollY(99_999) + clipHeight - documentBottom
+        #expect(blankBelow >= clipHeight / 2 - 1,
+                "only \(blankBelow)pt below the last line, wanted \(clipHeight / 2)")
     }
 
-    /// Re-running the pass must not accumulate — it sets an absolute inset
+    /// Re-running the pass must not accumulate — it sets an absolute padding
     /// rather than adding to the current one.
     @Test("Re-running the overscroll pass doesn't compound it")
     @MainActor func idempotent() {
-        let (editor, scroll) = makeWindowed(typewriter: false)
-        let first = scroll.contentInsets.bottom
+        let (editor, _) = makeWindowed(typewriter: false)
+        let first = editor.textContainerInset.height
         editor.updateScrollOverscroll()
         editor.updateScrollOverscroll()
-        #expect(abs(scroll.contentInsets.bottom - first) < 1,
-                "bottom inset grew from \(first) to \(scroll.contentInsets.bottom)")
+        #expect(abs(editor.textContainerInset.height - first) < 1,
+                "vertical inset grew from \(first) to \(editor.textContainerInset.height)")
     }
 
     /// The bottom room is wanted in both modes — typewriter scroll needs it to
     /// center the last line, plain scrolling to write past the end.
     @Test("Bottom room is reserved in typewriter mode too")
     @MainActor func alsoInTypewriterMode() {
-        let (_, scroll) = makeWindowed(typewriter: true)
+        let (editor, scroll) = makeWindowed(typewriter: true)
         let clipHeight = scroll.contentView.bounds.height
-        #expect(scroll.contentInsets.bottom >= clipHeight / 2 - 1,
-                "bottom overscroll missing in typewriter mode: \(scroll.contentInsets.bottom)")
+        #expect(editor.overscrollBottomPad >= clipHeight / 2 - 1,
+                "bottom overscroll missing in typewriter mode: \(editor.overscrollBottomPad)")
+    }
+
+    /// The blank band below the last line is part of the text view, so clicking
+    /// it puts the caret on the nearest character instead of doing nothing.
+    @Test("Clicks in the blank band below the text reach the editor")
+    @MainActor func bandBelowTextIsClickable() {
+        let (editor, scroll) = makeWindowed(typewriter: false)
+        editor.loadContent("Only line.\n")
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+        let hit = scroll.hitTest(NSPoint(x: scroll.bounds.midX, y: 5))
+        #expect(hit === editor,
+                "click below the text landed on \(hit.map { "\(type(of: $0))" } ?? "nothing")")
     }
 }

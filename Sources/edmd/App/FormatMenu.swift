@@ -135,6 +135,10 @@ enum FormatMenu {
                     action: #selector(EditorTextView.formatUnderline(_:)), shortcut: .cmd("u")),
         MenuCommand(id: "format.strikethrough", submenu: "Font", title: "Strikethrough",
                     action: #selector(EditorTextView.formatStrikethrough(_:))),
+        MenuCommand(id: "format.subscript", submenu: "Font", title: "Subscript",
+                    action: #selector(EditorTextView.formatSubscript(_:))),
+        MenuCommand(id: "format.superscript", submenu: "Font", title: "Superscript",
+                    action: #selector(EditorTextView.formatSuperscript(_:))),
         MenuCommand(id: "format.highlight", submenu: "Font", title: "Highlight",
                     action: #selector(EditorTextView.formatHighlight(_:))),
         MenuCommand(id: "format.code", submenu: "Font", title: "Code",
@@ -165,19 +169,40 @@ enum FormatMenu {
 
     static func headingSubmenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Heading", action: nil, keyEquivalent: "")
+        item.submenu = headingMenu()
+        return item
+    }
+
+    /// A fresh Heading submenu: Body (level 0, strips the `#` prefix), a
+    /// separator, then Heading 1–6. Shared by the menu bar and the format bar's
+    /// heading pulldown. Like `fontMenu()`, each call re-registers the ids in
+    /// `KeyBindingCatalog` — already the behaviour for the context Font menu.
+    static func headingMenu() -> NSMenu {
         let menu = NSMenu(title: "Heading")
+        menu.addItem(MenuCommand(id: "format.heading0", submenu: "Heading",
+                                 title: "Body",
+                                 action: #selector(EditorTextView.formatHeading(_:)),
+                                 tag: 0).makeItem())
+        menu.addItem(.separator())
         for level in 1...6 {
             menu.addItem(MenuCommand(id: "format.heading\(level)", submenu: "Heading",
                                      title: "Heading \(level)",
                                      action: #selector(EditorTextView.formatHeading(_:)),
                                      tag: level).makeItem())
         }
-        item.submenu = menu
-        return item
+        return menu
     }
 
     static func calloutSubmenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Alert / Callout", action: nil, keyEquivalent: "")
+        item.submenu = calloutMenu()
+        return item
+    }
+
+    /// A fresh Alert / Callout submenu: the five GitHub alerts, a separator,
+    /// then the Obsidian-only types. Shared by the menu bar and the format bar's
+    /// callout pulldown.
+    static func calloutMenu() -> NSMenu {
         let menu = NSMenu(title: "Alert / Callout")
         for type in githubCalloutTypes {
             menu.addItem(MenuCommand(id: "format.callout.\(type)", submenu: "Alert / Callout",
@@ -192,8 +217,7 @@ enum FormatMenu {
                                      action: #selector(EditorTextView.formatCallout(_:)),
                                      representedObject: type).makeItem())
         }
-        item.submenu = menu
-        return item
+        return menu
     }
 
     private static func fontSubmenuItem() -> NSMenuItem {

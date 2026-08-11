@@ -2,108 +2,213 @@ import Testing
 import AppKit
 @testable import EdmundCore
 
-// What the format popup reads to decide which rows show as already-applied.
+/// What the format bar's chips and the format popover's checkmarks both light up
+/// from: which formatting is in effect where the caret or selection sits.
+@MainActor @Suite("Active styles")
+struct ActiveStylesTests {
 
-@MainActor
-private func mk(_ content: String, _ caret: Int) -> EditorTextView {
-    let e = makeEditor()
-    e.loadContent(content)
-    e.setSelectedRange(NSRange(location: caret, length: 0))
-    return e
-}
-
-@MainActor @Suite struct ActiveInlineStyleTests {
-
-    @Test func detectsBoldInsideDelimiters() {
-        #expect(mk("a **word** b", 6).activeInlineStyles().contains(.bold))
+    private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
+        let e = makeEditor()
+        e.loadContent(content)
+        e.setSelectedRange(sel)
+        return e
     }
 
-    @Test func plainTextHasNoStyles() {
-        #expect(mk("a word b", 3).activeInlineStyles().isEmpty)
+    private func active(_ content: String, _ sel: NSRange) -> Set<Selector> {
+        mk(content, sel).activeFormattingActions()
     }
 
-    /// Typing at either edge of a run continues it, so the button must agree.
-    @Test func detectsBoldAtBothEdgesOfTheContent() {
-        #expect(mk("a **word** b", 4).activeInlineStyles().contains(.bold))   // before "w"
-        #expect(mk("a **word** b", 8).activeInlineStyles().contains(.bold))   // after "d"
+    private let bold = #selector(EditorTextView.formatBold(_:))
+    private let italic = #selector(EditorTextView.formatItalic(_:))
+    private let strike = #selector(EditorTextView.formatStrikethrough(_:))
+    private let highlight = #selector(EditorTextView.formatHighlight(_:))
+    private let sub = #selector(EditorTextView.formatSubscript(_:))
+    private let bullet = #selector(EditorTextView.formatBulletedList(_:))
+    private let checklist = #selector(EditorTextView.formatChecklist(_:))
+    private let numbered = #selector(EditorTextView.formatNumberedList(_:))
+    private let quote = #selector(EditorTextView.formatBlockQuote(_:))
+    private let codeBlock = #selector(EditorTextView.formatCodeBlock(_:))
+    private let mathBlock = #selector(EditorTextView.formatMathBlock(_:))
+    private let inlineMath = #selector(EditorTextView.formatInlineMath(_:))
+
+    // MARK: - Caret inside
+
+    @Test func caretInsideBoldIsBold() {
+        let a = active("a **word** b", NSRange(location: 5, length: 0))
+        #expect(a.contains(bold))
+        #expect(!a.contains(italic))
     }
 
-    @Test func doesNotLeakOutsideTheRun() {
-        #expect(!mk("a **word** b", 0).activeInlineStyles().contains(.bold))
-        #expect(!mk("a **word** b", 12).activeInlineStyles().contains(.bold))
+    @Test func caretInsideItalicIsItalic() {
+        let a = active("a *word* b", NSRange(location: 4, length: 0))
+        #expect(a.contains(italic))
+        #expect(!a.contains(bold))
     }
 
-    @Test func boldItalicReportsBoth() {
-        let s = mk("***word***", 5).activeInlineStyles()
-        #expect(s.contains(.bold))
-        #expect(s.contains(.italic))
+    /// `***x***` is both, and the run length is the only thing that says so —
+    /// a plain search for `*` would find the inner star of the `**`.
+    @Test func tripleStarIsBoldAndItalic() {
+        let a = active("a ***word*** b", NSRange(location: 6, length: 0))
+        #expect(a.contains(bold))
+        #expect(a.contains(italic))
     }
 
-    @Test func detectsItalicStrikethroughHighlightAndCode() {
-        #expect(mk("*w* x", 1).activeInlineStyles().contains(.italic))
-        #expect(mk("~~w~~ x", 2).activeInlineStyles().contains(.strikethrough))
-        #expect(mk("==w== x", 2).activeInlineStyles().contains(.highlight))
-        #expect(mk("`w` x", 1).activeInlineStyles().contains(.code))
+    @Test func caretOutsideSpanIsNotActive() {
+        let a = active("a **word** b", NSRange(location: 0, length: 0))
+        #expect(!a.contains(bold))
     }
 
-    @Test func detectsInlineMathButNotDisplayMath() {
-        #expect(mk("$x^2$ t", 1).activeInlineStyles().contains(.math))
-        #expect(!mk("$$\nx^2\n$$", 3).activeInlineStyles().contains(.math))
+    /// The star pairing must not read `a **b** c **d** e` as one long span, or
+    /// the gap between the two bold words would report as bold.
+    @Test func caretBetweenTwoSpansIsNotActive() {
+        let a = active("**b** X **d**", NSRange(location: 6, length: 0))
+        #expect(!a.contains(bold))
     }
 
-    @Test func detectsHTMLFormatTags() {
-        #expect(mk("<u>w</u>", 4).activeInlineStyles().contains(.underline))
-        #expect(mk("H<sub>2</sub>O", 6).activeInlineStyles().contains(.subscript))
-        #expect(mk("x<sup>2</sup>", 6).activeInlineStyles().contains(.superscript))
+    // MARK: - Selection
+
+    @Test func selectionInsideSpanIsActive() {
+        let a = active("a **word** b", NSRange(location: 4, length: 4))
+        #expect(a.contains(bold))
     }
 
-    /// The popup's own commands must round-trip: apply, then detect.
-    @Test func detectsWhatTheCommandsJustInserted() {
-        let e = mk("word", 0)
-        e.setSelectedRange(NSRange(location: 0, length: 4))
-        e.formatBold(nil)
-        e.setSelectedRange(NSRange(location: 3, length: 0))   // inside "**wo|rd**"
-        #expect(e.activeInlineStyles().contains(.bold))
+    /// Selecting the delimiters too still counts — pressing the button in that
+    /// state is what unwraps it.
+    @Test func selectionSwallowingTheWholeSpanIsActive() {
+        let a = active("a **word** b", NSRange(location: 2, length: 8))
+        #expect(a.contains(bold))
     }
 
-    @Test func detectsStylesOnLaterBlocks() {
-        // Offsets are block-relative internally; a second block must still work.
-        #expect(mk("first\n\nsecond **bold** here", 17).activeInlineStyles().contains(.bold))
-    }
-}
-
-@MainActor @Suite struct ActiveBlockStyleTests {
-
-    @Test func plainParagraphIsBody() {
-        #expect(mk("just text", 4).activeBlockStyle() == .body)
+    @Test func selectionSpillingPastTheSpanIsNotActive() {
+        let a = active("a **word** b", NSRange(location: 5, length: 6))
+        #expect(!a.contains(bold))
     }
 
-    @Test func detectsHeadingLevels() {
-        #expect(mk("# One", 3).activeBlockStyle() == .heading(level: 1))
-        #expect(mk("## Two", 4).activeBlockStyle() == .heading(level: 2))
-        #expect(mk("### Three", 5).activeBlockStyle() == .heading(level: 3))
+    // MARK: - Other inline delimiters
+
+    @Test func strikeHighlightAndSubscriptEachReportThemselves() {
+        #expect(active("a ~~x~~ b", NSRange(location: 5, length: 0)).contains(strike))
+        #expect(active("a ==x== b", NSRange(location: 5, length: 0)).contains(highlight))
+        #expect(active("a <sub>x</sub> b", NSRange(location: 8, length: 0)).contains(sub))
     }
 
-    @Test func distinguishesTheThreeListFlavours() {
-        #expect(mk("- item", 3).activeBlockStyle() == .bulletedList)
-        #expect(mk("1. item", 4).activeBlockStyle() == .numberedList)
-        #expect(mk("- [ ] task", 8).activeBlockStyle() == .checklist)
+    @Test func highlightDoesNotLeakIntoStrikethrough() {
+        let a = active("a ==x== b", NSRange(location: 5, length: 0))
+        #expect(!a.contains(strike))
+        #expect(!a.contains(bold))
     }
 
-    @Test func distinguishesQuoteFromCallout() {
-        #expect(mk("> quoted", 4).activeBlockStyle() == .blockQuote)
-        #expect(mk("> [!NOTE]\n> body", 13).activeBlockStyle() == .callout)
+    // MARK: - Line prefixes
+
+    @Test func listAndQuoteLinesReportTheirType() {
+        #expect(active("- item", NSRange(location: 3, length: 0)).contains(bullet))
+        #expect(active("1. item", NSRange(location: 4, length: 0)).contains(numbered))
+        #expect(active("- [ ] task", NSRange(location: 8, length: 0)).contains(checklist))
+        #expect(active("> quoted", NSRange(location: 4, length: 0)).contains(quote))
     }
 
-    @Test func detectsCodeAndMathBlocks() {
-        #expect(mk("```\ncode\n```", 5).activeBlockStyle() == .codeBlock)
-        #expect(mk("$$\nx^2\n$$", 4).activeBlockStyle() == .mathBlock)
+    /// A checklist is not a plain bullet — the two buttons must not both light.
+    @Test func checklistIsNotABullet() {
+        let a = active("- [ ] task", NSRange(location: 8, length: 0))
+        #expect(a.contains(checklist))
+        #expect(!a.contains(bullet))
     }
 
-    /// A block may mix list markers line by line, so the caret's own line wins.
-    @Test func usesTheCaretsOwnLineInAMixedList() {
-        let content = "- bullet\n- [ ] task"
-        #expect(mk(content, 4).activeBlockStyle() == .bulletedList)
-        #expect(mk(content, 16).activeBlockStyle() == .checklist)
+    /// The toggles only clear a prefix when every selected line carries it, so
+    /// the on-state has to agree.
+    @Test func mixedSelectionIsNotActive() {
+        let a = active("- one\nplain\n", NSRange(location: 0, length: 11))
+        #expect(!a.contains(bullet))
+    }
+
+    // MARK: - Thematic break
+
+    @Test func thematicBreakLineReportsItself() {
+        let thematic = #selector(EditorTextView.formatThematicBreak(_:))
+        #expect(active("---", NSRange(location: 1, length: 0)).contains(thematic))
+        #expect(!active("- item", NSRange(location: 3, length: 0)).contains(thematic))
+        #expect(!active("--- trailing", NSRange(location: 1, length: 0)).contains(thematic))
+    }
+
+    // MARK: - Pulldown state
+
+    @Test func headingLevelReportsTheCaretsLine() {
+        #expect(mk("## Title", NSRange(location: 4, length: 0)).activeHeadingLevel() == 2)
+        #expect(mk("Body", NSRange(location: 2, length: 0)).activeHeadingLevel() == 0)
+        #expect(mk("###### Six", NSRange(location: 8, length: 0)).activeHeadingLevel() == 6)
+    }
+
+    /// Mixed levels have no single answer, so nothing is ticked — the same rule
+    /// `applyHeadingLevel` uses to decide a level is already applied.
+    @Test func mixedHeadingLevelsReportNothing() {
+        #expect(mk("# One\n## Two\n", NSRange(location: 0, length: 12)).activeHeadingLevel() == nil)
+    }
+
+    /// A callout is a block quote underneath, but only the callout should
+    /// report it — otherwise the bar claims the selection is two things.
+    @Test func calloutDoesNotAlsoLightBlockQuote() {
+        let a = active("> [!NOTE]", NSRange(location: 3, length: 0))
+        #expect(!a.contains(quote))
+        #expect(active("> plain quote", NSRange(location: 3, length: 0)).contains(quote))
+    }
+
+    @Test func calloutTypeReportsTheHeaderLine() {
+        #expect(mk("> [!NOTE]", NSRange(location: 3, length: 0)).activeCalloutType() == "note")
+        #expect(mk("> [!tip]", NSRange(location: 3, length: 0)).activeCalloutType() == "tip")
+        #expect(mk("> plain quote", NSRange(location: 3, length: 0)).activeCalloutType() == nil)
+        #expect(mk("Body", NSRange(location: 2, length: 0)).activeCalloutType() == nil)
+    }
+
+    /// Obsidian's fold markers and a custom title still name the same type,
+    /// because parsing goes through the renderer's own matcher.
+    @Test func foldedAndTitledCalloutsStillReportTheirType() {
+        #expect(mk("> [!warning]-", NSRange(location: 3, length: 0)).activeCalloutType() == "warning")
+        #expect(mk("> [!info] Custom", NSRange(location: 3, length: 0)).activeCalloutType() == "info")
+    }
+
+    // MARK: - Robustness
+
+    @Test func emptyDocumentAndDocumentEndAreSafe() {
+        #expect(active("", NSRange(location: 0, length: 0)).isEmpty)
+        #expect(!active("abc", NSRange(location: 3, length: 0)).contains(bold))
+    }
+
+    /// Emphasis does not carry across a blank line, and the scan is bounded by
+    /// the paragraph so a stray delimiter elsewhere cannot light the button.
+    @Test func unclosedDelimiterOnAnotherLineDoesNotLeak() {
+        let a = active("**open\n\nplain line", NSRange(location: 12, length: 0))
+        #expect(!a.contains(bold))
+    }
+
+    // MARK: - Fenced blocks
+    //
+    // The one thing the line scan cannot see: a caret in the middle of a fenced
+    // block has no delimiter on its own line, so these read the parsed block
+    // list instead. The format popover checkmarks Code Block / Math Block from
+    // them.
+
+    @Test func caretInsideAFenceReportsCodeBlock() {
+        let a = active("```swift\nlet x = 1\n```\n", NSRange(location: 12, length: 0))
+        #expect(a.contains(codeBlock))
+        #expect(!a.contains(mathBlock))
+    }
+
+    @Test func caretInsideDisplayMathReportsMathBlock() {
+        let a = active("$$\nx^2\n$$\n", NSRange(location: 4, length: 0))
+        #expect(a.contains(mathBlock))
+        #expect(!a.contains(codeBlock))
+    }
+
+    /// Inline `$…$` is a span, not a block — it lights Math, not Math Block.
+    @Test func inlineMathIsNotAMathBlock() {
+        let a = active("cost $x^2$ here", NSRange(location: 8, length: 0))
+        #expect(a.contains(inlineMath))
+        #expect(!a.contains(mathBlock))
+    }
+
+    @Test func plainParagraphIsNeitherFencedBlock() {
+        let a = active("just a line\n", NSRange(location: 4, length: 0))
+        #expect(!a.contains(codeBlock))
+        #expect(!a.contains(mathBlock))
     }
 }

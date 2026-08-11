@@ -1,5 +1,5 @@
 # Roadmap
-Last updated: 2026-07-09
+Last updated: 2026-08-04
 
 ## v1.0.0
 
@@ -15,7 +15,7 @@ Basic editing experience
 Advanced editing features
 - [ ] File outline
 - [ ] Find and replace within file
-- [ ] Format bar
+- [x] Format bar
 - [ ] Advanced Code official extension
 - [ ] Advanced Math official extension
 

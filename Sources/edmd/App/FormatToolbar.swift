@@ -13,9 +13,8 @@ import EdmundCore
 // Default order (misc/plans/prompts/format-bar.md):
 //   Format ▾ · Checklist · Table · Image ▾ · Link · (spacer) · View mode · Share
 //
-// `FormatToolbar` is an object rather than an enum because it has to *own*
-// things AppKit only holds weakly: the menu delegates that rebuild the popups on
-// open, and the icon-row buttons' action targets.
+// `FormatToolbar` is an object rather than an enum because it has to *own* the
+// icon-row buttons' action targets, which `NSControl.target` only holds weakly.
 
 @MainActor
 final class FormatToolbar: NSObject {
@@ -165,15 +164,9 @@ final class FormatToolbar: NSObject {
         item.toolTip = label
         item.image = Self.symbol(symbol)
         item.showsIndicator = true
-        menu.delegate = self
         item.menu = menu
-        menus.append(menu)
         return item
     }
-
-    /// Menus we own. `NSMenu.delegate` is weak and `NSMenuToolbarItem` does not
-    /// keep the delegate alive, so the popups would stop rebuilding without this.
-    private var menus: [NSMenu] = []
 
     /// Action targets for the icon-row buttons — `NSControl.target` is weak.
     private var iconTargets: [FormatIconTarget] = []
@@ -341,35 +334,31 @@ final class FormatToolbar: NSObject {
         ("textformat.superscript", "format.superscript"),
     ]
 
-    /// Which inline style a row button reflects. Nil for commands that have no
-    /// detectable on/off state at the caret.
-    static func style(for commandID: String) -> ActiveInlineStyles? {
-        switch commandID {
-        case "format.bold":          return .bold
-        case "format.italic":        return .italic
-        case "format.underline":     return .underline
-        case "format.strikethrough": return .strikethrough
-        case "format.highlight":     return .highlight
-        case "format.code":          return .code
-        case "format.math":          return .math
-        case "format.subscript":     return .subscript
-        case "format.superscript":   return .superscript
-        default:                     return nil
-        }
+    /// The command a row button runs, looked up in the same tables the menu bar
+    /// builds from — an icon whose id is not one of them has no state to show.
+    static func action(for commandID: String) -> Selector? {
+        FormatMenu.fontCommands.first { $0.id == commandID }?.action
     }
 
-    /// The block style a popup row applies, so the row matching the caret's own
-    /// block can be checkmarked.
-    static func blockStyle(for item: NSMenuItem) -> ActiveBlockStyle? {
+    /// Whether a popover row's own style is the one at the caret, so it can be
+    /// checkmarked. Heading and callout are a which-one rather than a yes/no, so
+    /// they come from their own accessors; everything else is a membership test
+    /// in the set the format bar lights its chips from.
+    static func isBlockActive(_ item: NSMenuItem,
+                              actions: Set<Selector>,
+                              headingLevel: Int?,
+                              calloutType: String?) -> Bool {
         switch item.action {
-        case #selector(EditorTextView.formatHeading(_:)):     return .heading(level: item.tag)
-        case #selector(EditorTextView.formatBulletedList(_:)): return .bulletedList
-        case #selector(EditorTextView.formatNumberedList(_:)): return .numberedList
-        case #selector(EditorTextView.formatBlockQuote(_:)):   return .blockQuote
-        case #selector(EditorTextView.formatCodeBlock(_:)):    return .codeBlock
-        case #selector(EditorTextView.formatMathBlock(_:)):    return .mathBlock
-        case #selector(EditorTextView.formatCallout(_:)):      return .callout
-        default:                                               return nil
+        case #selector(EditorTextView.formatHeading(_:)):
+            // Level 0 is Body, which the popover has no row for; a nil level
+            // means the selected lines disagree, so nothing is ticked.
+            return headingLevel != nil && headingLevel == item.tag
+        case #selector(EditorTextView.formatCallout(_:)):
+            return calloutType != nil
+        case .some(let action):
+            return actions.contains(action)
+        case nil:
+            return false
         }
     }
 
@@ -433,55 +422,6 @@ final class FormatToolbar: NSObject {
             menu.addItem(item)
         }
         return menu
-    }
-}
-
-// MARK: - Menu delegate
-
-extension FormatToolbar: NSMenuDelegate {
-    /// Rebuild the format popup on every open so a shortcut changed in Settings ▸
-    /// Key Bindings shows through, and so the icon rows re-evaluate enablement.
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        guard menu.title == "Format" else { return }
-        menu.removeAllItems()
-        iconTargets.removeAll()
-        let fresh = formatPopupMenu()
-        for item in fresh.items {
-            fresh.removeItem(item)
-            menu.addItem(item)
-        }
-        refreshIconRows(in: menu)
-        refreshBlockRows(in: menu)
-    }
-
-    /// Checkmarks the row matching the caret's own block, the way Notes ticks the
-    /// current paragraph style.
-    private func refreshBlockRows(in menu: NSMenu) {
-        guard let editor = document?.editor else { return }
-        let active = editor.activeBlockStyle()
-        for item in menu.items {
-            guard let style = Self.blockStyle(for: item) else { continue }
-            item.state = style == active ? .on : .off
-        }
-    }
-
-    /// Icon-row buttons are not validated items, so they have to ask the focused
-    /// editor directly — for both their enabled state and whether the style they
-    /// apply is already in effect at the caret.
-    private func refreshIconRows(in menu: NSMenu) {
-        let editor = document?.editor
-        let active = editor?.activeInlineStyles() ?? []
-        for item in menu.items {
-            guard let stack = item.view as? NSStackView else { continue }
-            for case let button as NSButton in stack.arrangedSubviews {
-                guard let target = button.target as? FormatIconTarget else { continue }
-                (button as? FormatIconButton)?.isActive =
-                    Self.style(for: target.styleID).map(active.contains) ?? false
-                button.isEnabled = editor?.isFormattingActionEnabled(
-                    target.action, representedObject: nil) ?? false
-                button.alphaValue = button.isEnabled ? 1.0 : 0.35
-            }
-        }
     }
 }
 

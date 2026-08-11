@@ -132,12 +132,11 @@ struct TypewriterCenteringTests {
         #expect(delta < 4, "short-document line off-center by \(delta)pt")
     }
 
-    /// Centering can only reach the first line if the clip view will scroll
-    /// above the document's start. That room comes from `contentInsets.top`,
-    /// which `constrainBoundsRect` honors directly — unlike container geometry,
-    /// whose frame-vs-container split differs by OS.
-    @Test("Viewport can scroll above the first line")
-    @MainActor func scrollRangeReachesAboveStart() {
+    /// Centering can only reach the first line if there is blank space above
+    /// the document's start. It is reserved inside the text view's own frame
+    /// (`textContainerOrigin`), so the first line begins half a viewport down.
+    @Test("Blank space is reserved above the first line")
+    @MainActor func spaceReservedAboveStart() {
         let (editor, scroll) = makeWindowed()
         var doc = ""
         for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
@@ -145,9 +144,10 @@ struct TypewriterCenteringTests {
         ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
 
         let clipH = scroll.contentView.bounds.height
-        let minY = editor.clampedScrollY(-99_999)
-        #expect(minY <= -clipH / 2 + 1,
-                "scroll stops at \(minY), wanted \(-clipH / 2) (top inset \(scroll.contentInsets.top))")
+        #expect(editor.clampedScrollY(-99_999) >= -0.5,
+                "the padding belongs inside the frame; the scroll range must still start at 0")
+        #expect(editor.textContainerOrigin.y >= clipH / 2 - 1,
+                "first line starts \(editor.textContainerOrigin.y)pt down, wanted >= \(clipH / 2)")
     }
 
     /// The space above the first line is typewriter-only — with the mode off
@@ -157,13 +157,37 @@ struct TypewriterCenteringTests {
         let (editor, scroll) = makeWindowed()
         editor.loadContent("Body text.\n")
         editor.updateScrollOverscroll()
-        #expect(scroll.contentInsets.top > 100,
-                "typewriter top overscroll missing: \(scroll.contentInsets.top)")
+        let clipH = scroll.contentView.bounds.height
+        #expect(editor.overscrollTopPad >= clipH / 2 - 1,
+                "typewriter top overscroll missing: \(editor.overscrollTopPad)")
 
         editor.typewriterModeEnabled = false
-        #expect(scroll.contentInsets.top < 0.5,
-                "top overscroll leaked into normal mode: \(scroll.contentInsets.top)")
-        #expect(scroll.contentInsets.bottom > 100,
-                "bottom overscroll should stay in both modes: \(scroll.contentInsets.bottom)")
+        #expect(editor.overscrollTopPad < 0.5,
+                "top overscroll leaked into normal mode: \(editor.overscrollTopPad)")
+        #expect(editor.textContainerOrigin.y <= EditorTextView.contentBaseVerticalInset + 0.5,
+                "text still starts \(editor.textContainerOrigin.y)pt down with the mode off")
+        #expect(editor.overscrollBottomPad >= clipH / 2 - 1,
+                "bottom overscroll should stay in both modes: \(editor.overscrollBottomPad)")
+    }
+
+    /// The regression that shipped in #260: the overscroll used to live in
+    /// `NSScrollView.contentInsets`, and AppKit restricts hit-testing to the
+    /// scroll view's frame *minus* its insets. Half a viewport at each end left
+    /// a zero-height live area, so no click anywhere in the window reached the
+    /// text — the caret stopped following clicks entirely.
+    @Test("Every point of the window still routes clicks to the editor")
+    @MainActor func windowStaysClickable() {
+        let (editor, scroll) = makeWindowed()
+        var doc = ""
+        for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
+        editor.loadContent(doc)
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        let h = scroll.bounds.height
+        for y in [h - 5, h * 0.75, h / 2, h * 0.25, 5] {
+            let hit = scroll.hitTest(NSPoint(x: scroll.bounds.midX, y: y))
+            #expect(hit === editor,
+                    "click at y=\(y) landed on \(hit.map { "\(type(of: $0))" } ?? "nothing"), not the editor")
+        }
     }
 }

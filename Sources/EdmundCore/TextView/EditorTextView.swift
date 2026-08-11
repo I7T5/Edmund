@@ -218,9 +218,13 @@ public class EditorTextView: NSTextView {
         }
     }
 
-    /// Extra space the app layer needs above the text — the find bar's height
-    /// while it is showing. Added to the overscroll the editor reserves for
-    /// itself; see `updateScrollOverscroll`.
+    /// Combined height of the chrome bars the app layer stacks over the top of
+    /// the scroll view (format bar, find bar). `Document.layoutTopBars` is the
+    /// only writer.
+    ///
+    /// Applied as the scroll view's `contentInsets.top`, *not* as overscroll:
+    /// the document is pushed down out from under the bars without gaining any
+    /// scrollable emptiness above its first line. See `updateScrollOverscroll`.
     public var additionalTopInset: CGFloat = 0 {
         didSet {
             guard abs(oldValue - additionalTopInset) > 0.5 else { return }
@@ -230,6 +234,26 @@ public class EditorTextView: NSTextView {
 
     /// Dedupe flag for `scheduleOverscrollUpdate`.
     var overscrollUpdateScheduled = false
+
+    /// Blank space reserved above the first line by typewriter mode (half the
+    /// viewport) and below the last line (half the viewport, always). Applied
+    /// through `textContainerInset` + `textContainerOrigin` — see
+    /// `updateScrollOverscroll` for why not `NSScrollView.contentInsets`.
+    var overscrollTopPad: CGFloat = 0
+    var overscrollBottomPad: CGFloat = 0
+
+    /// Places the text container within the frame ourselves. AppKit's default
+    /// splits the frame-vs-container leftover evenly, which (a) can't express
+    /// the asymmetric reserve below — `textContainerInset` is symmetric, so the
+    /// room it buys arrives half at each end — and (b) is not the inset it was
+    /// given, nor the same on every OS (macOS 15 returned inset 160 as origin
+    /// 160; macos-14 returned 135). Owning the value makes the padding exact
+    /// and identical everywhere; TextKit 2 lays fragments out against it.
+    public override var textContainerOrigin: NSPoint {
+        let pad = overscrollTopPad + overscrollBottomPad
+        let base = textContainerInset.height - pad / 2
+        return NSPoint(x: super.textContainerOrigin.x, y: base + overscrollTopPad)
+    }
 
     /// Set to true for the duration of a mouse-down event so that the
     /// resulting selection change does not trigger typewriter centering.

@@ -152,6 +152,31 @@ enum KeyBindingStore {
     static func removeAllOverrides() {
         overrides = [:]
     }
+
+    /// Commands whose `id` has changed, old to new.
+    ///
+    /// An override is filed under the command's id, so renaming one strands the
+    /// user's shortcut under a key nothing reads again — it does not revert to
+    /// the default, it silently stops applying. Anything renamed belongs here.
+    private static let renamedIDs = [
+        "view.typewriterScroll": "edit.typewriterScroll",
+        "view.focusMode": "edit.focusMode",
+    ]
+
+    /// Re-files overrides left under an old id. Runs once, before the menus are
+    /// built, so `effective(id:default:)` finds them under the new name.
+    static func migrateRenamedIDs() {
+        var dict = overrides
+        var changed = false
+        for (old, new) in renamedIDs {
+            guard let shortcut = dict.removeValue(forKey: old) else { continue }
+            changed = true
+            // A binding already set under the new id was chosen more recently
+            // than one stranded under the old one; leave it alone.
+            if dict[new] == nil { dict[new] = shortcut }
+        }
+        if changed { overrides = dict }
+    }
 }
 
 // MARK: - Catalog

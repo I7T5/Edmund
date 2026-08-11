@@ -205,6 +205,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     ]
 
     @MainActor private func setupMenuBar() {
+        // Before any `makeItem()`, which resolves each command's override by id.
+        KeyBindingStore.migrateRenamedIDs()
+
         let mainMenu = NSMenu()
 
         // App menu (required for Cmd+Q)
@@ -314,6 +317,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenu.addItem(withTitle: "Select All",
                          action: #selector(NSText.selectAll(_:)),
                          keyEquivalent: "a")
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        // Typing behaviour rather than window furniture, so they sit here with
+        // Hard Wrap Paragraphs instead of in View. Renamed off the `view.`
+        // prefix to match; `KeyBindingStore.migrateRenamedIDs` carries any
+        // shortcut the user had set across to the new ids.
+        let typewriterItem = MenuCommand(id: "edit.typewriterScroll", group: "Edit",
+                                         title: "Typewriter Scroll",
+                                         action: #selector(AppDelegate.toggleTypewriterMode(_:))).makeItem()
+        typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+        editMenu.addItem(typewriterItem)
+
+        // Dims everything but the lines the selection touches. Same setting as
+        // Settings ▸ Edit ▸ Editor, so the two always agree.
+        let focusItem = MenuCommand(id: "edit.focusMode", group: "Edit", title: "Focus Mode",
+                                    action: #selector(AppDelegate.toggleFocusMode(_:))).makeItem()
+        focusItem.state = AppSettings.focusMode ? .on : .off
+        editMenu.addItem(focusItem)
 
         editMenu.addItem(NSMenuItem.separator())
 

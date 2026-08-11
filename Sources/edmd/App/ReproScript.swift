@@ -20,6 +20,8 @@ import WebKit
 ///                     recentering, so a block can be driven off-screen)
 ///   logsel            log the current selection
 ///   viewmode          toggle Edit ↔ Read via the same action as ⌘E
+///   find on|off|replace  open/close the find bar (⌘F's own handler) without
+///                     activating the app the way an AX-driven ⌘F would
 ///   readscroll <y>    raw-scroll the Read-mode webview to y
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
@@ -206,6 +208,23 @@ enum ReproScript {
                 scheduleDoc(after: delay) { doc in
                     doc.toggleViewMode(nil)
                     Log.info("repro viewmode toggled", category: .app)
+                }
+            case "find":
+                // Opens/closes the find bar through the same handler ⌘F fires.
+                // `find on|off|replace`. The AX route (ui-harness.sh open-find)
+                // activates the app, which takes the machine away from whoever
+                // is using it — guard-focus-steal.sh denies it, so this is how a
+                // harness gets the find bar up.
+                scheduleDoc(after: delay) { doc in
+                    guard let handler = doc.editor?.findHandler else {
+                        Log.info("repro find: no find handler", category: .app); return
+                    }
+                    switch arg {
+                    case "off":     handler.editorHideFind()
+                    case "replace": handler.editorToggleFind(replace: true)
+                    default:        handler.editorToggleFind(replace: false)
+                    }
+                    Log.info("repro find \(arg)", category: .app)
                 }
             case "readscroll":
                 // Raw-scrolls the Read-mode webview to y (simulates the user

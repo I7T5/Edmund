@@ -45,6 +45,7 @@ Swift name) is what you pass as a launch arg.
 | `contentWidthUnit` | `settings.appearance.contentWidthUnit` | Display unit only (cm/in); the stored value is always cm |
 | `renderBlankLinesAsBreaks` | `settings.reading.renderBlankLinesAsBreaks` | Read-mode blank-line handling |
 | `sourceMode` | `settings.view.sourceMode` | When on, **Source replaces Edit** in the ⌘E toggle; honored on open |
+| `showFormatBar` | `settings.edit.showFormatBar` | **Show the format bar** (View ▸ Show Format Bar, no shortcut; default on, off in Reading mode) |
 | `verboseEditorDiagnostics` | `settings.advanced.verboseEditorDiagnostics` | **Verbose editor trace** (see §4; pairs with diagnosticLogging) |
 | `sendCrashLogs` | `settings.advanced.sendCrashLogs` | Opt-in crash upload — **currently INERT** (see note) |
 | `sentCrashReports` | `settings.advanced.sentCrashReports` | Dedup set of already-uploaded `.ips` filenames |

@@ -29,6 +29,7 @@ class Document: NSDocument, HeadingNavigable {
     private var scrollView: NSScrollView!
     private var containerView: NSView!
     private var findController: FindController!
+    private var formatBar: FormatBarView!
     private var readView: ReadModeWebView?
 
     /// Editor character offset captured when entering Read mode (the topmost
@@ -226,6 +227,20 @@ class Document: NSDocument, HeadingNavigable {
 
         findController = FindController(editor: editor, scrollView: scrollView,
                                        container: containerView, statusBar: statusBar)
+        findController.onLayoutNeeded = { [weak self] in self?.layoutTopBars() }
+
+        // The format bar: a chrome strip across the top of the editor, above
+        // the find bar. Parked exactly like the find bar — sized to the
+        // container *before* `addSubview`, because a flexible-width autoresizing
+        // view only grows by the delta from the width it was added at, and a
+        // zero-width bar would inflate the window's opening frame (the
+        // contentMinSize scar documented at FindController.init).
+        formatBar = FormatBarView(frame: .zero)
+        formatBar.isHidden = true
+        formatBar.autoresizingMask = [.width, .minYMargin]   // pinned to the top edge
+        formatBar.setFrameSize(NSSize(width: containerView.bounds.width, height: formatBar.preferredHeight))
+        // Below the floating status bar so counts stay on top.
+        containerView.addSubview(formatBar, positioned: .below, relativeTo: statusBar)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(editorDidChange(_:)),
@@ -273,6 +288,7 @@ class Document: NSDocument, HeadingNavigable {
         window.delegate = wc
         window.makeFirstResponder(editor)
         applyToolbarVisibility()
+        refreshFormatBar()
         // Before the source-mode switch below, which reads the editor's text.
         adoptPendingContent()
         // Honor the persisted source-mode preference for the editing view.
@@ -327,12 +343,16 @@ class Document: NSDocument, HeadingNavigable {
 
     @objc private func editorDidChange(_ notification: Notification) {
         updateStatusBar()
+        // An edit can add or remove the delimiters around the caret without
+        // moving the selection, so the bar's on-state has to follow edits too.
+        refreshFormatBarState()
         // Keep an open Read view in sync with edits (it renders a snapshot).
         refreshReadView()
     }
 
     @objc private func editorSelectionDidChange(_ notification: Notification) {
         updateStatusBar()
+        refreshFormatBarState()
     }
 
     private func updateStatusBar() {
@@ -639,6 +659,9 @@ class Document: NSDocument, HeadingNavigable {
                 swapToEditor()
             }
         }
+        // The bar hides in Reading mode (a read-only editor has no formatting
+        // commands) and returns on the way back — refresh on every mode change.
+        refreshFormatBar()
     }
 
     /// Reveals the editor's scroll view (hiding any read view) and repairs
@@ -781,6 +804,52 @@ class Document: NSDocument, HeadingNavigable {
         window.toolbar?.isVisible = AppSettings.showToolbar && !AppSettings.autoHideToolbar
     }
 
+    // MARK: - Format bar (top of the editor, above the find bar)
+
+    /// View ▸ Show Format Bar. Goes through the setting rather than a direct
+    /// `isHidden` flip so the menu item and any future Settings ▸ Edit checkbox
+    /// can't drift apart — the same idiom as `toggleToolbarShown`.
+    @objc func toggleFormatBar(_ sender: Any?) {
+        AppSettings.showFormatBar.toggle()
+        AppSettings.applyEditSettingsToOpenDocuments()
+    }
+
+    /// Applies the format bar's visibility rule (hidden in Reading mode or when
+    /// the Show Format Bar setting is off — the latter also removes any chance
+    /// of a click reaching a read-only editor), refreshes its controls' enabled
+    /// state, and re-stacks the top bars. Called on show, on view-mode change
+    /// and from `AppSettings.applyEditSettingsToOpenDocuments()`.
+    func refreshFormatBar() {
+        formatBar.isHidden = !AppSettings.showFormatBar || editor.viewMode == .reading
+        formatBar.refreshEnabledState(editor: editor)
+        refreshFormatBarState()
+        layoutTopBars()
+    }
+
+    /// Just the lit/unlit state of the bar's buttons. Split out from
+    /// `refreshFormatBar` because this one runs on every caret move and every
+    /// keystroke, where re-deciding visibility and re-stacking the bars would be
+    /// wasted work.
+    private func refreshFormatBarState() {
+        guard let formatBar, !formatBar.isHidden, let editor else { return }
+        formatBar.refreshActiveState(editor: editor)
+    }
+
+    /// Stacks the visible top bars under the toolbar and hands the editor their
+    /// combined height. The sole writer of `additionalTopInset` — the find bar
+    /// used to write it directly, and a second writer (this bar) would clobber
+    /// whichever ran last. Order in the array is the on-screen order (top
+    /// first): format bar above find bar.
+    func layoutTopBars() {
+        var y = containerView.bounds.height
+        for bar in [formatBar!, findController.barView] where !bar.isHidden {
+            let h = bar.preferredHeight
+            y -= h
+            bar.frame = NSRect(x: 0, y: y, width: containerView.bounds.width, height: h)
+        }
+        editor.additionalTopInset = containerView.bounds.height - y
+    }
+
     /// Keeps the View-menu "Show Source in Editor" checkmark and the
     /// Show/Hide Toolbar title in sync with the settings.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -789,6 +858,10 @@ class Document: NSDocument, HeadingNavigable {
         }
         if item.action == #selector(toggleToolbarShown(_:)) {
             item.title = AppSettings.showToolbar ? "Hide Toolbar" : "Show Toolbar"
+        }
+        if item.action == #selector(toggleFormatBar(_:)) {
+            // Title, not a checkmark — the same idiom as Hide Toolbar above.
+            item.title = AppSettings.showFormatBar ? "Hide Format Bar" : "Show Format Bar"
         }
         if item.action == #selector(toggleAutoHideToolbar(_:)) {
             item.state = AppSettings.autoHideToolbar ? .on : .off

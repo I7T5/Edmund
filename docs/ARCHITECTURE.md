@@ -186,7 +186,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: no characters inserted, TextKit 2 only. `EditorTextView.invisibles` ← `AppSettings.invisiblesConfig`; Settings ▸ Edit. Mechanism: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | List indent guides | Faint vertical hairlines on list items: one per *ancestor* level spanning the item, plus the item's own column beside its wrapped continuation lines. Offsets from `listGuideOffsets(depth:slotWidth:)` (`Rendering/EditorTextView+ListRendering.swift`), written to `.listGuides` **whether or not the setting is on** — the fragment gates the drawing, so toggling is a re-vend, never a restyle. `EditorTextView.showListIndentGuides`; Settings ▸ Edit. Geometry traps (container-relative offsets, `lineFragmentPadding`): [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Line numbers | `TextView/EditorTextView+LineNumbers.swift` — source line numbers (Settings ▸ Edit ▸ Lines, off by default), `EditorTextView.showLineNumbers`. **Two placements over one walk**, and the placement is **not** a setting: it follows whether the margin can hold them (beside the content by default, a `LineNumberRulerView` at the window edge otherwise). Also home to `line(forOffset:)`/`offset(forLine:)`, binary-searching the cached `lineStarts`. Editor-only; never printed. Placement rules, the macOS 14 SIGSEGV, draw rules and the tabular-figure face: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
-| Focus mode | `TextView/EditorTextView+FocusMode.swift` — dims all but the lines the selection touches (Settings ▸ Edit ▸ Editor, View ▸ Focus Mode; off by default), `EditorTextView.focusMode`. **One transparency layer around `DecoratedTextLayoutFragment.draw`**, so text and its decorations fade as one composite; it cannot be a scrim (NSTextView composites fragments *after* `draw(_:)` returns). Editor-only. Why, and the measurements: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
+| Focus mode | `TextView/EditorTextView+FocusMode.swift` — dims all but the lines the selection touches (Settings ▸ Edit ▸ Editor, Edit ▸ Focus Mode; off by default), `EditorTextView.focusMode`. **One transparency layer around `DecoratedTextLayoutFragment.draw`**, so text and its decorations fade as one composite; it cannot be a scrim (NSTextView composites fragments *after* `draw(_:)` returns). Editor-only. Why, and the measurements: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: math + local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
 | Icons | `Model/LucideIcons.swift` — vendored [Lucide](https://lucide.dev) SVGs (ISC, `LICENSES/lucide.txt`). Callout headers use them in **both** modes: Read inlines the SVG (CSS-tinted via `currentColor`); Edit rasterizes to a tinted `NSImage` overlay. SF Symbols can't ship in exported PDFs (license); app-chrome SF Symbols are fine (in-app UI). Edit-mode task checkboxes still use SF Symbols (on-screen only); Read-mode checkboxes are a composed Lucide SVG. |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift`, `+AutoPairs.swift`, `+ListRenumbering.swift` |
@@ -196,10 +196,12 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | App shell | `edmd/App/{main,Document,DocumentController}.swift`; menu bar in `main.swift` `setupMenuBar()` + `FormatMenu.swift`; Sparkle `SPUStandardUpdaterController` in `AppDelegate` |
 | macOS integrations | Services menu (`edmd/App/ServicesProvider.swift` + `NSServices` in `Info.plist`), App Intents (`edmd/App/Intents.swift`), Quick Look preview (`EdmundQuickLook` target, hosts `ReadModeWebView`), AppleScript code-fence syntax (`EdmundCore/Resources/Syntaxes/applescript.json`). **Two shipped-but-not-live-verifiable limitations** (App Intents metadata needs an Xcode-project build; the Quick Look appex won't launch under ad-hoc signing): [`architecture/macos-integrations.md`](architecture/macos-integrations.md). |
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
-| Key bindings | `edmd/Settings/KeyBindingStore.swift` + `KeyBindingsSettingsView.swift`. Every rebindable command is a `MenuCommand` (`App/FormatMenu.swift`) with a stable `id`, a `group` (the menu it lives under) and a default `Shortcut`; `makeItem()` resolves the user's override from `KeyBindingStore` and registers the built `NSMenuItem` in `KeyBindingCatalog`, so the pane retunes shortcuts live without rebuilding the menu bar. Overrides live in one UserDefaults dict (`settings.keyBindings`, `id → "shift+cmd+e"`); an empty string means "user removed this shortcut", a missing key means "use the default". Conflicts are checked against the **live `NSApp.mainMenu`**, not the catalog, so system items (⌘S, ⌘C) count too; a chord without ⌘ or ⌃ is refused outright (it would fire while typing). Only Edmund's own commands are listed — the OS-standard items stay fixed. |
+| Key bindings | `edmd/Settings/KeyBindingStore.swift` + `KeyBindingsSettingsView.swift`. Every rebindable command is a `MenuCommand` (`App/FormatMenu.swift`) with a stable `id`, a `group` (the menu it lives under) and a default `Shortcut`; `makeItem()` resolves the user's override from `KeyBindingStore` and registers the built `NSMenuItem` in `KeyBindingCatalog`, so the pane retunes shortcuts live without rebuilding the menu bar. Overrides live in one UserDefaults dict (`settings.keyBindings`, `id → "shift+cmd+e"`); an empty string means "user removed this shortcut", a missing key means "use the default". **Moving a command between menus means renaming its id, and a rename must come with a migration** — an override is filed under the id, so renaming it alone strands the user's shortcut under a key nothing reads. That doesn't fall back to the default, it silently stops firing. `KeyBindingStore.migrateRenamedIDs` (called first thing in `setupMenuBar()`) re-files them, leaving alone any binding already set under the new id; add a pair to its `renamedIDs` table whenever you move one. Conflicts are checked against the **live `NSApp.mainMenu`**, not the catalog, so system items (⌘S, ⌘C) count too; a chord without ⌘ or ⌃ is refused outright (it would fire while typing). Only Edmund's own commands are listed — the OS-standard items stay fixed. |
 | Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
 | Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
+| Format bar | `edmd/Views/FormatBarView.swift` (layout + state refresh) and `FormatBarControls.swift` (the controls), on `ChromeBarView.swift` (titlebar-material + hairline base shared with the find bar), `edmd/App/FormatMenu.swift` (the two pulldowns are the same `headingMenu()`/`calloutMenu()` factories as the Format menu — one menu definition, three homes), `Document.formatBar` (owned by the document; **off by default**, toggled by View ▸ Show/Hide Format Bar, `settings.edit.showFormatBar`, force-hidden in Reading mode). Stacks **above** the find bar, both through `layoutTopBars()` (§6 top-bar insets). Bar is horizontally centred by design (a narrow window clips the same reachable band on both sides) |
+| Format-bar on-state | `EdmundCore/Editing/EditorTextView+FormattingState.swift` — the read-only counterpart to the toggles: `activeFormattingActions()`, `activeHeadingLevel()`, `activeCalloutType()`, refreshed from `editorDidChange` / `editorSelectionDidChange`. It scans **source delimiters, not rendered attributes**, because the attributes are lossy for this: a heading is also bold, and `==mark==` and a code span are both a background fill. Star *run length* is what separates `*x*` / `**x**` / `***x***`. A callout deliberately does not also light Block Quote (it is one underneath, but the callout pulldown gives the more specific answer). Hover/on chips live on `BarControlChip`; a chip is a fixed-height box centred on the bar's `interior`, **not** on the control's own bounds — sizing it per control made every symbol a different chip height. |
 | Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
 | Status bar | `edmd/Views/StatusBarView.swift` |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
@@ -221,23 +223,52 @@ Notable subsystems:
   re-centers only on *typing* — a mouse-down sets
   `suppressTypewriterCentering` so click-placing the caret doesn't yank the
   viewport. Centering scrolls, so the mode also needs somewhere to scroll
-  *to*: `updateScrollOverscroll` reserves half a clip height of
-  `NSScrollView.contentInsets.top` while it is on. Without that slack the
-  first screenful, the last screenful and any document shorter than the window
-  can never reach center, which is what made the feature read as "doesn't
-  center at all".
+  *to*: `updateScrollOverscroll` reserves half a clip height of blank space
+  above the first line while it is on. Without that slack the first screenful,
+  the last screenful and any document shorter than the window can never reach
+  center, which is what made the feature read as "doesn't center at all".
 - **Overscroll past the ends** (`updateScrollOverscroll`): half a clip height
-  of `contentInsets.bottom` in both modes (so the line being written is never
-  pinned to the window's bottom edge, and typewriter scroll can center the
-  last line), plus the `contentInsets.top` above. The scroll code must ask the
-  clip view for its limits — `clampedScrollY` wraps `constrainBoundsRect` —
-  because a hand-rolled `[0, frame.height - clipHeight]` clamp ignores the
-  insets and pins the caret at the document's edges. Two exceptions to that
-  rule: `preservingViewportAnchor` floors at `-contentInsets.top` only, since
-  it runs mid-re-tile when the clip view's idea of the document height is
-  stale (clamping there yanked the viewport ~770pt), and the find bar adds its
-  height through `editor.additionalTopInset` rather than writing the inset
-  itself, so a resize recomputing the overscroll can't drop the bar's share.
+  below the last line in both modes (so the line being written is never pinned
+  to the window's bottom edge, and typewriter scroll can center the last
+  line), plus the typewriter-only room above. The space is bought **inside the
+  document view** — `textContainerInset.height` grows the frame by twice its
+  height and the overridden `textContainerOrigin` decides how that splits
+  between the ends (`overscrollTopPad` / `overscrollBottomPad`), followed by an
+  explicit `sizeToFit()`, since the frame doesn't track the inset otherwise.
+  Not `NSScrollView.contentInsets`: AppKit restricts hit-testing to the scroll
+  view's frame *minus* its insets, so half a viewport at each end left a
+  zero-height live area and no click anywhere in the window moved the caret
+  (§8). `setFrameSize` also floors the view at the clip height, so a document
+  shorter than the window still covers it — the area below a short text view
+  belongs to the clip view, which swallows clicks. The scroll code still asks
+  the clip view for its limits (`clampedScrollY` wraps `constrainBoundsRect`)
+  rather than hand-rolling a clamp; `preservingViewportAnchor` is the
+  exception and floors at 0 only, since it runs mid-re-tile when the clip
+  view's idea of the document height is stale (clamping there yanked the
+  viewport ~770pt).
+- **Top chrome bars are the one thing that *does* use `contentInsets`**
+  (`applyTopBarInset`, `+ContentWidth.swift`). The find and format bars stack
+  under the toolbar and hand their combined height to `editor.additionalTopInset`
+  via `Document.layoutTopBars()` — the sole writer, so a resize recomputing the
+  overscroll can't drop a bar's share. The hit-testing objection above does not
+  apply here: the band a top bar costs is the band it covers, so the live area
+  only loses what the reader could not click anyway.
+  - The inset does **not** shrink the clip view. The clip still spans the whole
+    scroll view and the document scrolls *under* the bar; what moves is the
+    scroll range's top end, from 0 to `-inset`. So the bars add no document
+    height — no overscroll, unlike the ends above.
+  - Every conversion between clip coordinates and "the top of what the reader
+    can see" must therefore add `viewportTopInset`, and use
+    `visibleContentHeight` (clip height *minus* the bars) where it used to use
+    the clip height. Typewriter centering, `scrollCharacterToTop` and
+    `topmostVisibleCharacterOffset` all do.
+  - **Sample the scroll origin *before* assigning the inset.** Shrinking it
+    re-clamps the clip view immediately, so an origin read afterwards has
+    already absorbed part of the delta — subtracting it again scrolled the
+    document *down* by a bar's height when a bar closed. Covered by
+    `TopBarInsetTests`.
+  - Set `automaticallyAdjustsContentInsets = false` first, or AppKit recomputes
+    the insets from the titlebar and stamps on the bars' value.
 - **Content width** (`+ContentWidth.swift`): an **absolute physical**
   max-column width — set in cm/in in Settings, stored as cm, converted to
   points via the display's real PPI (`NSScreen.physicalPPI`, from
@@ -361,6 +392,26 @@ Notable subsystems:
 - **Window size** persists as the last window's full **frame** size
   (`settings.window.lastWidth`/`lastHeight`) — §8 on why frame, not content
   size.
+- **"Reopen windows from last session" (`reopenWindows`) has to be enforced in
+  two places**, because AppKit brings work back by two independent routes:
+  1. *Window restoration.* Document windows are `isRestorable = true` for the
+     whole session so a crash can hand back unsaved work;
+     `AppDelegate.applicationShouldTerminate` clears the flag on a **clean**
+     quit when the preference is off, so nothing is archived.
+  2. *Drafts.* With autosave-in-place on (`Document.autosavesInPlace` =
+     `autoSaveWithVersions`, default on), every unsaved **untitled** document is
+     kept by AppKit as a draft in `~/Library/Autosave Information/Unsaved edmd
+     Document N.md` (`edmd` = the executable name) and reopened at the next
+     launch through
+     `NSDocumentController.reopenDocument(for:withContentsOf:display:)`. That
+     route ignores `isRestorable` entirely, so route 1 never reached it: stale
+     drafts came back at *every* launch and stacked up as "Untitled",
+     "Untitled 2", … on top of the blank launch document.
+     `DocumentController.reopenDocument` overrides it and skips drafts
+     (`urlOrNil == nil`) when the preference is off. It only skips the reopen —
+     the draft files are never deleted. Once skipped, AppKit drops the draft
+     from its restore record, so turning the preference back on later does not
+     resurrect old drafts; the file is still on disk.
 - **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to
@@ -387,17 +438,27 @@ Notable subsystems:
 
 ### Build, signing & packaging
 
-- **A green local `swift test` does not mean CI compiles.** The local CLI runs
-  a swift.org toolchain (`TOOLCHAINS` in `~/.zshrc` — 6.3.3); CI is macos-14 +
-  `latest-stable` Xcode (6.0.3). Concurrency *inference* differs between them:
-  SwiftUI's `View` is `@MainActor @preconcurrency`, so on 6.0.3 a `static func`
-  on a `View` is inferred main-actor-isolated and a synchronous test suite
-  cannot call it — an error 6.3.3 never emits (cost PR #249 a red `test` run).
-  Mark such helpers `nonisolated`. Before pushing anything that touches
-  isolation or a SwiftUI type's members, check parity:
-  `env -u TOOLCHAINS xcrun swift test --build-path .build-xcode`
-  (separate build path so it can't poison the normal `.build`; delete it after —
-  it is not gitignored).
+- **Build with the compiler CI builds with.** CI is macos-14 + `latest-stable`
+  Xcode, which is **Swift 6.0.3** (Xcode 16.2). Since 2026-08-10 the local CLI
+  matches it: the `TOOLCHAINS` export in `~/.zshrc` is commented out, so
+  `swift --version` reports 6.0.3 and a green local `swift test` means what it
+  says. The swift.org 6.3.3 toolchain is still installed for one-offs
+  (`TOOLCHAINS=org.swift.633202606251a swift build`) — but it is **newer than
+  CI**, and newer accepts what CI rejects. Two ways that has already cost a red
+  `test` run:
+  - SwiftUI's `View` is `@MainActor @preconcurrency`, so on 6.0.3 a `static
+    func` on a `View` is inferred main-actor-isolated and a synchronous test
+    suite cannot call it (PR #249). Mark such helpers `nonisolated`.
+  - An **unapplied method reference** is inferred on 6.0.3 as throwing *and* as
+    losing its actor isolation, so `forEach(removeTrackingArea)` and
+    `compactMap(Self.chip(of:))` failed to compile there and nowhere here
+    (PR #270). Spell the argument out: `forEach { removeTrackingArea($0) }`.
+  If you do run 6.3.3 for something, check parity before pushing with the
+  toolchain named explicitly, into a scratch path so it can't poison `.build`:
+  `TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault swift test --scratch-path /tmp/ci-build`.
+  (Naming the toolchain beats `env -u TOOLCHAINS`: an agent in a worktree
+  session has its `env` wrappers refused, since the harness can't see what they
+  do to the command inside.)
 - **SwiftMath fonts**: `build-app.sh` must copy `*.bundle` into the `.app`
   root (it does). Without it the app **crashes the instant it renders any
   LaTeX**.
@@ -459,6 +520,33 @@ Notable subsystems:
   windows, state restoration) —
   `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
   and relaunch.
+- **Counting an app's windows is the flakiest measurement in this repo — don't
+  trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
+  `winid.swift` uses) lists windows the app has already *closed*, so a stale
+  entry reads as a window that is still open — enough to invent a bug that
+  isn't there. `.optionOnScreenOnly` fixes that but lists nothing for an app
+  launched with `open -g` (backgrounded), and System Events' `name of every
+  window` is intermittently empty for a process that was never activated or was
+  started by exec'ing the binary. Cross-check at least two, and when the answer
+  actually matters, ask the app: a temporary probe that appends to a file from
+  `Document.makeWindowControllers` counts documents exactly, needs no focus, and
+  works before `Log.configure` has run (the logger silently drops everything
+  emitted earlier in launch, including from `applicationShouldOpenUntitledFile`).
+  `Thread.callStackSymbols` in that probe is what names the *creator* of a
+  surprise window — the AppKit frames say whether it came from restoration,
+  draft reopening, or the delegate.
+- **State restoration needs a signed bundle.** An unsigned debug build never
+  restores anything, so restoration bugs are invisible in the usual
+  `build/EdmundDbg.app` loop. Reproduce with a *signed* release clone under its
+  own bundle id (`scripts/build-app.sh`, then `PlistBuddy` the
+  `CFBundleIdentifier` to e.g. `com.i7t5.edmundrepro` and `codesign -s -`) so
+  the run has its own defaults and its own saved state and can never disturb the
+  maintainer's installed Edmund. `codesign --deep` fails with "unsealed contents
+  present in the bundle root" until the SwiftPM `*.bundle` resources at the
+  `.app` root are moved aside and put back after signing. Note the isolated
+  clone still shares `~/Library/Autosave Information` and the "Unsaved edmd
+  Document" namespace with the real app — a draft it reopens may be the
+  maintainer's.
 - **Visual work is measured, not eyeballed — and the measuring rig is
   reusable.** Aligning chrome takes a dozen launch/state/capture/measure cycles;
   `.claude/skills/edmund-live-repro-and-diagnostics/scripts/ui-harness.sh` and
@@ -484,18 +572,31 @@ Notable subsystems:
   anything that bakes the content width (e.g. callout header images)
   renders at a fallback width until a width-settled re-render. Prefer real
   wrapping text over width-baked images.
-- **`textContainerOrigin.y` is not the inset you set, and the difference is
+- **`NSScrollView.contentInsets` kill hit-testing.** AppKit restricts the
+  scroll view's content area — and with it every click — to the frame *minus*
+  its insets. Reserving half a viewport at each end for typewriter scroll left
+  a zero-height live area: the caret stopped following clicks anywhere in the
+  window, with nothing wrong in the mouse or selection code. Reserve blank
+  space **inside the document view** instead, so every point of the window is
+  still over the text view and a click in a blank band lands on the nearest
+  character. The exception is a band that is *covered by chrome* — the top
+  bars (§6) do use `contentInsets`, because the clicks that inset costs are
+  clicks the bar was going to eat regardless. The test is not "is it an inset"
+  but "would the reader have been able to click there".
+- **`textContainerOrigin.y` is not the inset you set, and the default is
   OS-dependent.** AppKit splits the leftover space between the view's frame
   and the text container's own height, so the origin comes back as
-  `(frameHeight - containerHeight)/2` — the inset cancels out, which means you
-  cannot buy vertical slack by growing `textContainerInset.height`. macOS 15
+  `(frameHeight - containerHeight)/2` — the inset cancels out. macOS 15
   returned 160 for an inset of 160; macos-14 CI returned 135 and clamped
   typewriter scroll's first line 14pt low (green locally, red on CI, twice).
-  Reserve space with `NSScrollView.contentInsets` instead: the clip view's
-  `constrainBoundsRect` honors those directly and the resulting range is
-  `-top ... documentHeight + bottom - clipHeight`. **Measure inset behavior on
-  a flipped document view** — probing with a plain `NSView` inverts which end
-  each inset extends and produced exactly the wrong conclusion here.
+  `textContainerOrigin` is a documented override point, so Edmund owns the
+  value (`EditorTextView.swift`): the pad is exact, identical on every OS, and
+  can be asymmetric — which the symmetric `textContainerInset` alone can't
+  express. TextKit 2 lays fragments out against the override. Note the frame
+  follows an inset change only after an explicit `sizeToFit()`;
+  `layoutIfNeeded` leaves it stale. **Measure inset behavior on a flipped
+  document view** — probing with a plain `NSView` inverts which end each inset
+  extends and produced exactly the wrong conclusion here.
 - **Attribute-only changes don't re-measure geometry in TK2**: after
   restyling a block whose height/indent changed, `invalidateLayout(for:)`
   its range or the fragment keeps a stale frame (empty bands / clipped
@@ -613,7 +714,7 @@ Notable subsystems:
   only final then), so frame-in == frame-out (`windowDidResize` ↔
   `makeWindowControllers` in `Document.swift`).
 - **A frame-managed subview parked at the zero frame sets the window's
-  minimum width.** The find bar resizes by `autoresizingMask`, but its
+  minimum width.** A top chrome bar resizes by `autoresizingMask`, but its
   contents are Auto Layout, so its required constraints reach the window as
   a `contentMinSize`. A flexible-width autoresizing view only grows by the
   *delta* from the width it was added at — so a bar added at `.zero` first
@@ -623,7 +724,9 @@ Notable subsystems:
   opened at 1014 and would not shrink below it, `window.minSize` was
   inert (dropping it to 320 moved neither number), and the initial size and
   the minimum moved together. Fix: size the bar to the container when
-  parking it (`FindController.init`). Note this is invisible to headless
+  parking it — `FindController.init` for the find bar, and the `setFrameSize`
+  before `addSubview` in `Document.makeWindowControllers()` for the format bar,
+  which inherits the whole scar. Note this is invisible to headless
   tests — only the live window server applies `contentMinSize`, so verify by
   launching and asking AX to resize the window smaller than it can go.
 - **`NSSearchField`'s magnifier glyph can't be repositioned — draw your
@@ -681,6 +784,14 @@ Notable subsystems:
   background, and refresh its `cgColor` on
   `viewDidChangeEffectiveAppearance` — a colour snapshot won't follow the
   appearance by itself.
+- **An `NSPopUpButton`'s AX menu hides the currently-selected item.** AX
+  enumeration reorders the menu so the selected item comes first *with a blank
+  title*, and the trailing separator reads as a blank non-menu element — so a
+  hand-count of `AXMenuItem`s is always one short of the true menu. When
+  verifying the format bar's two pulldowns by AX, read the items by title
+  against `FormatMenu.headingMenu()`/`calloutMenu()` (the same factories the
+  Format menu uses — one definition, three homes) rather than trusting a
+  count.
 
 ### Deliberate omissions
 
@@ -703,6 +814,11 @@ Notable subsystems:
   the parser chokes past it until the next `{`). Use `/* */`. Cost a whole
   round of "why doesn't this CSS change do anything" — see
   `docs/investigations/math-ratex-weight-investigation.md` Round 1.
+- **The format bar has no alignment buttons** (left/center/right/justify),
+  despite being the natural home for them, per an explicit decision with the
+  maintainer: block-alignment has no Markdown representation, so the buttons
+  would silently no-op or rewrite text. Text alignment stays out of the bar;
+  anything that can't round-trip through `rawSource` does not get a button.
 
 ---
 
@@ -738,6 +854,21 @@ Notable subsystems:
   exactly as edit mode reads by range. The `?? Self.plainText(of:)` fallback
   on that line is the mangled path — anything that makes `sourceText` return
   nil reintroduces the collapse.
+- **A callout that is the first block of a document is ~3.5pt short on top.**
+  Measured on a fresh open, caret moved off the block: 14.5pt above the title
+  vs 18.0pt for an identical callout mid-document (bands 80.0 / 83.0pt). Repro:
+  first line `> [!NOTE]`, a second callout further down, compare. (While the
+  caret is *inside* it the callout renders as raw source with no background —
+  that is live preview working, not the bug.) The top breathing room is not
+  paragraph spacing: it is reserved as *text* space by raising the header
+  line's `minimumLineHeight` in `calloutParagraphStyle`
+  (`+CalloutRendering.swift`), then painted by `decorationDrawHeight` /
+  `layoutFragmentFrame` (`+TextKit2.swift`). Check first whether the
+  *mid-document* callout is absorbing the blank line above it into its
+  fragment — `layoutFragmentFrame` already special-cases the trailing-empty-line
+  mirror of that — in which case 18.0pt is the inflated figure and the fix
+  belongs at the other end. Also reported and **not** reproduced: pushing such a
+  callout down with newlines loses its background entirely.
 - *(Add new ones here as you find them — with a one-line repro and a
   pointer to any deeper write-up in `docs/`.)*
 
@@ -841,7 +972,13 @@ only with reason):
    for `fix/foo`), so branches keep the normal `type/slug` naming and never
    get renamed to `worktree-*`. `.worktrees/` is gitignored. Distinct from
    `.claude/worktrees/`, which Claude Code's own EnterWorktree tool manages
-   automatically for agent isolation — don't hand-edit that one.
+   automatically for agent isolation — don't hand-edit that one. That tool
+   *does* name its branch `worktree-<name>`; rename it (`git branch -m
+   type/slug`) before committing, since the naming rule applies to what lands
+   in the history either way. An agent already pinned to one worktree cannot
+   `git -C` into another, and `guard-branch-create.sh` blocks `checkout -b` —
+   so the route to a second branch mid-session is ExitWorktree then
+   EnterWorktree, not a branch switch.
 7. **Reviewing someone else's PR uses `/edmund-pr-review <number>`**
    (`.claude/skills/edmund-pr-review/`). It gathers the PR, checks it against
    the invariants and the TextKit 2 estimate rule, verifies the claim the merge

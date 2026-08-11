@@ -22,20 +22,14 @@ stopping and reporting if any step fails:
    derived from the description). If already on a non-main branch, reuse it.
 
 4. **Commit.** Stage only the files that belong to this change (surgical — no
-   unrelated files). Write a commit message: a concise imperative subject line,
-   a body explaining the *why*, and the trailer:
-   ```
-   Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
-   ```
+   unrelated files). Write a commit message: a concise imperative subject line
+   and a body explaining the *why*. No attribution trailer.
    Keep it one logical change per commit.
 
 5. **Push.** `git push -u origin <branch>`.
 
 6. **Open the PR.** `gh pr create` with a title matching the subject and a body
-   that explains what and why, ending with:
-   ```
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
-   ```
+   that explains what and why. No generated-by / attribution footer.
 
 7. **Auto-merge.** `gh pr merge <#> --auto --merge --delete-branch`. Branch
    protection requires the `test` check, so this queues the PR to merge itself
