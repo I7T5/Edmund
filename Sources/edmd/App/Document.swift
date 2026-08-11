@@ -503,8 +503,12 @@ class Document: NSDocument, HeadingNavigable {
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))
         // Names what the click does, not what the mode is: the icon already shows
         // the current mode, and AppKit's own toolbars read "Hide Sidebar" /
-        // "Show Sidebar" rather than stating the state back.
-        viewModeButton?.toolTip = "Switch to \(label(for: toggledViewMode)) View"
+        // "Show Sidebar" rather than stating the state back. Source is a display
+        // option *of* the editing view, not a third destination, so the toggle
+        // only ever has these two halves to name — even when `toggledViewMode`
+        // lands in `.source`.
+        viewModeButton?.toolTip = editor.viewMode == .reading
+            ? "Switch to Edit View" : "Switch to Read View"
     }
 
     private func setViewMode(_ mode: EditorTextView.ViewMode) {
