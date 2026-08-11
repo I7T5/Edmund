@@ -3,14 +3,22 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.2] - 2026-08-11
+
+Thanks to @jdobbs for their first contribution (#266)
 
 ### Added
-- The editor scrolls half a screen past the last line, so the line you are writing is never stuck at the bottom edge of the window (with Typewriter Scroll on, its own centering space covers this).
+- Format bar in Apple Mail style
+- Toolbar items from Apple Notes: format, table, images, links, share
+- Overscroll: Allow overscroll up to half the viewport height at the bottom of the window by default. Top and bottom with typewriter scroll on
+
+### Changed
+- Moved typewriter scroll and focus mode from View to Edit menu
 
 ### Fixed
-- Typewriter Scroll now centers the caret on every line, including the first and last ones and in documents shorter than the window — it reserves half a viewport of space at each end while the mode is on.
-- Advanced Math: tall brackets, braces and stretchy arrows now draw. A stretchy delimiter is part vector artwork, and the Advanced Math renderer was skipping that part — so a multi-row `\begin{Bmatrix}` came out as disconnected brace fragments, a tall `\left(` had no parentheses at all, and `\xrightarrow` lost its arrow (#265).
+- RaTeX path rendering (#265)
+- QuickLook infinite load for macOS 26 (#266 @jdobbs)
+- Open two Untitled windows instead of one at launch without restore window
 
 ## [0.4.1] - 2026-08-01
 
