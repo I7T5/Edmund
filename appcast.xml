@@ -255,5 +255,35 @@
                        length="14003030"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.4.2</title>
+            <pubDate>Tue, 11 Aug 2026 04:37:12 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Thanks to @jdobbs for their first contribution (#266)</p>
+<h3>Added</h3>
+<ul>
+<li>Format bar in Apple Mail style</li>
+<li>Toolbar items from Apple Notes: format, table, images, links, share</li>
+<li>Overscroll: Allow overscroll up to half the viewport height at the bottom of the window by default. Top and bottom with typewriter scroll on</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Moved typewriter scroll and focus mode from View to Edit menu</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>RaTeX path rendering (#265)</li>
+<li>QuickLook infinite load for macOS 26 (#266 @jdobbs)</li>
+<li>Open two Untitled windows instead of one at launch without restore window</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.4.2/Edmund-0.4.2.dmg"
+                       sparkle:version="11"
+                       sparkle:shortVersionString="0.4.2"
+                       sparkle:edSignature="+m0BcGHjheVscyLBBcCkOzFilRUGdt3kCKnf83t7GFVibiRKQvj6sHhGmHFN0JtAOOB+3RBAvc8yJjtwsXf6BQ=="
+                       length="14127906"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
