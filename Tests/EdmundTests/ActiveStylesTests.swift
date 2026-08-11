@@ -2,10 +2,10 @@ import Testing
 import AppKit
 @testable import EdmundCore
 
-/// What the format bar lights up from: which formatting is in effect where the
-/// caret or selection currently sits.
-@MainActor @Suite("Formatting state")
-struct FormattingStateTests {
+/// What the format bar's chips and the format popover's checkmarks both light up
+/// from: which formatting is in effect where the caret or selection sits.
+@MainActor @Suite("Active styles")
+struct ActiveStylesTests {
 
     private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         let e = makeEditor()
@@ -27,6 +27,9 @@ struct FormattingStateTests {
     private let checklist = #selector(EditorTextView.formatChecklist(_:))
     private let numbered = #selector(EditorTextView.formatNumberedList(_:))
     private let quote = #selector(EditorTextView.formatBlockQuote(_:))
+    private let codeBlock = #selector(EditorTextView.formatCodeBlock(_:))
+    private let mathBlock = #selector(EditorTextView.formatMathBlock(_:))
+    private let inlineMath = #selector(EditorTextView.formatInlineMath(_:))
 
     // MARK: - Caret inside
 
@@ -175,5 +178,37 @@ struct FormattingStateTests {
     @Test func unclosedDelimiterOnAnotherLineDoesNotLeak() {
         let a = active("**open\n\nplain line", NSRange(location: 12, length: 0))
         #expect(!a.contains(bold))
+    }
+
+    // MARK: - Fenced blocks
+    //
+    // The one thing the line scan cannot see: a caret in the middle of a fenced
+    // block has no delimiter on its own line, so these read the parsed block
+    // list instead. The format popover checkmarks Code Block / Math Block from
+    // them.
+
+    @Test func caretInsideAFenceReportsCodeBlock() {
+        let a = active("```swift\nlet x = 1\n```\n", NSRange(location: 12, length: 0))
+        #expect(a.contains(codeBlock))
+        #expect(!a.contains(mathBlock))
+    }
+
+    @Test func caretInsideDisplayMathReportsMathBlock() {
+        let a = active("$$\nx^2\n$$\n", NSRange(location: 4, length: 0))
+        #expect(a.contains(mathBlock))
+        #expect(!a.contains(codeBlock))
+    }
+
+    /// Inline `$…$` is a span, not a block — it lights Math, not Math Block.
+    @Test func inlineMathIsNotAMathBlock() {
+        let a = active("cost $x^2$ here", NSRange(location: 8, length: 0))
+        #expect(a.contains(inlineMath))
+        #expect(!a.contains(mathBlock))
+    }
+
+    @Test func plainParagraphIsNeitherFencedBlock() {
+        let a = active("just a line\n", NSRange(location: 4, length: 0))
+        #expect(!a.contains(codeBlock))
+        #expect(!a.contains(mathBlock))
     }
 }

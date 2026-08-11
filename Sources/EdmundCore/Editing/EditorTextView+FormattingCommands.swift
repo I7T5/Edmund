@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - Format-menu actions
 //
@@ -43,6 +44,16 @@ import AppKit
 // the delimiters: selecting " word " and pressing Cmd+B gives " **word** ", not
 // "** word **". Toggle-off detection also operates on the trimmed range, so
 // selecting " **word** " and pressing Cmd+B correctly unwraps.
+
+/// Toolbar items validate through `NSToolbarItemValidation`, not
+/// `validateMenuItem` — without this the format items would stay enabled in
+/// Read mode and for switched-off Markdown features.
+extension EditorTextView: NSToolbarItemValidation {
+    public func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        guard let action = item.action, Self.formattingActions.contains(action) else { return true }
+        return isFormattingActionEnabled(action, representedObject: nil)
+    }
+}
 
 extension EditorTextView {
 
@@ -135,18 +146,26 @@ extension EditorTextView {
 
     public override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if let action = menuItem.action, Self.formattingActions.contains(action) {
-            if viewMode == .reading { return false }
-            // Gray out a command whose Markdown syntax is turned off in Settings
-            // (e.g. Highlight when highlights are disabled) so it can't insert
-            // markup the editor would render as plain text.
-            if let feature = Self.requiredFeature(forAction: action,
-                                                  representedObject: menuItem.representedObject),
-               !markdownFeatures.contains(feature) {
-                return false
-            }
-            return true
+            return isFormattingActionEnabled(action, representedObject: menuItem.representedObject)
         }
         return super.validateMenuItem(menuItem)
+    }
+
+    /// Whether a formatting command can run right now. The single predicate
+    /// behind menu validation, toolbar validation, and the format popup's icon
+    /// rows (whose buttons are not validated items at all and must ask directly).
+    /// One predicate, three callers — the enable rules must not drift apart.
+    public func isFormattingActionEnabled(_ action: Selector, representedObject: Any?) -> Bool {
+        if viewMode == .reading { return false }
+        // Gray out a command whose Markdown syntax is turned off in Settings
+        // (e.g. Highlight when highlights are disabled) so it can't insert
+        // markup the editor would render as plain text.
+        if let feature = Self.requiredFeature(forAction: action,
+                                              representedObject: representedObject),
+           !markdownFeatures.contains(feature) {
+            return false
+        }
+        return true
     }
 
     /// The Markdown feature a formatting command needs, or nil if it inserts
@@ -170,7 +189,10 @@ extension EditorTextView {
         }
     }
 
-    static let formattingActions: Set<Selector> = [
+    /// Public because the toolbar decides from it which of its buttons the caret
+    /// may disable — an item whose action is not in here (Format, which only
+    /// opens a popover) must never be gated.
+    public static let formattingActions: Set<Selector> = [
         #selector(formatBold(_:)), #selector(formatItalic(_:)), #selector(formatUnderline(_:)),
         #selector(formatStrikethrough(_:)), #selector(formatHighlight(_:)), #selector(formatCode(_:)),
         #selector(formatInlineMath(_:)), #selector(formatKeyboard(_:)), #selector(formatComment(_:)),
@@ -180,6 +202,7 @@ extension EditorTextView {
         #selector(formatChecklist(_:)), #selector(formatBlockQuote(_:)), #selector(formatThematicBreak(_:)),
         #selector(formatCodeBlock(_:)), #selector(formatMathBlock(_:)), #selector(formatTable(_:)),
         #selector(formatHeading(_:)), #selector(formatCallout(_:)),
+        #selector(formatAttachImage(_:)),
     ]
 
     // MARK: - Heading
@@ -377,6 +400,47 @@ extension EditorTextView {
         applyFormattingEdit(rawRange: NSRange(location: sel.location, length: 0),
                             replacement: "![]()",
                             select: NSRange(location: sel.location + 4, length: 0))
+    }
+
+    /// Image ▸ Attach File…: pick an image on disk and insert `![](path)` for it.
+    /// Unlike `formatImage`, which only lays down empty syntax, this one knows the
+    /// destination — so the caret lands in the *alt-text* slot, the part still
+    /// missing.
+    @objc public func formatAttachImage(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "Attach"
+        panel.message = "Choose an image to insert."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        insertImage(at: url)
+    }
+
+    /// Inserts `![](destination)` for `url` at the caret. Split from the panel
+    /// above so the path logic is testable without UI.
+    public func insertImage(at url: URL) {
+        let sel = selectedRange()
+        applyFormattingEdit(rawRange: sel,
+                            replacement: "![](" + imageDestination(for: url) + ")",
+                            select: NSRange(location: sel.location + 2, length: 0))
+    }
+
+    /// The destination to write into `![](…)`: relative to the document's own
+    /// directory when `url` sits at or below it (so the file stays portable
+    /// alongside its assets), absolute otherwise. Percent-encoded, since a raw
+    /// space or `)` in a filename would truncate the destination — which
+    /// `DocumentHTML.resolveLocalImage` decodes symmetrically on the way back.
+    func imageDestination(for url: URL) -> String {
+        let file = url.standardizedFileURL
+        var path = file.path
+        if let dir = document?.fileURL?.standardizedFileURL.deletingLastPathComponent() {
+            let prefix = dir.path.hasSuffix("/") ? dir.path : dir.path + "/"
+            if path.hasPrefix(prefix) { path = String(path.dropFirst(prefix.count)) }
+        }
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "()")
+        return path.addingPercentEncoding(withAllowedCharacters: allowed) ?? path
     }
 
     /// Footnote (NOT invertible): inserts `[^n]` after the selection / end of

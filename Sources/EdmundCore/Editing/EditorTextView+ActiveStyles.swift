@@ -53,7 +53,22 @@ extension EditorTextView {
             }
         }
         active.formUnion(linePrefixActions())
+        active.formUnion(fencedBlockActions())
         return active
+    }
+
+    /// Code and math blocks, which a line scan cannot see: their fences open a
+    /// region that runs past the selected lines, so a caret in the middle of one
+    /// has no delimiter on its own line to find. The parsed block list already
+    /// knows which region the caret is in, so this reads that instead.
+    private func fencedBlockActions() -> Set<Selector> {
+        guard let index = blockIndexForRawOffset(selectedRange().location),
+              index < blocks.count else { return [] }
+        switch blocks[index].kind {
+        case .fence, .indentedCode: return [#selector(formatCodeBlock(_:))]
+        case .mathDisplay:          return [#selector(formatMathBlock(_:))]
+        default:                    return []
+        }
     }
 
     // MARK: - Inline spans
