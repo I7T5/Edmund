@@ -204,9 +204,35 @@ final class FormatToolbar: NSObject {
 
     /// The format popup's icon rows are ordinary buttons inside a menu, not
     /// toolbar items, so they do need an explicit size.
+    ///
+    /// `pi` is drawn rather than looked up: the SF Symbol of that name is only in
+    /// SF Symbols 6, so on macOS 14 — which this app still supports — the lookup
+    /// returns nil and the Math button draws blank. Rendering the glyph from the
+    /// system font is one image on every supported version, and the only one that
+    /// can be checked from here.
     static func rowSymbol(_ name: String) -> NSImage? {
-        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+        if name == "pi" { return mathGlyph() }
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
+    }
+
+    /// "π" as a template image, sized so its ink matches the SF Symbols beside it.
+    private static func mathGlyph() -> NSImage {
+        let text = "π" as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 15, weight: .regular),
+            .foregroundColor: NSColor.black,
+        ]
+        let size = text.size(withAttributes: attributes)
+        let image = NSImage(size: NSSize(width: ceil(size.width), height: ceil(size.height)),
+                            flipped: false) { rect in
+            text.draw(in: rect, withAttributes: attributes)
+            return true
+        }
+        // Template so the row tints it like every other glyph — including white
+        // on the accent fill when the style is active.
+        image.isTemplate = true
+        return image
     }
 
     // MARK: - Format popup

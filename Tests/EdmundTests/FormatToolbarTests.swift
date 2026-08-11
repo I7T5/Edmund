@@ -493,6 +493,30 @@ import AppKit
         _ = doc
     }
 
+    /// Every glyph the toolbar and the icon rows ask for has to exist on the
+    /// oldest macOS this app supports, or the control draws blank there. Nothing
+    /// local catches that — the dev machine has the newer symbol set — so this
+    /// runs the lookup for all of them and CI, which is macos-14, is the check.
+    @Test func everyGlyphResolvesOnTheOldestSupportedOS() {
+        let (bar, doc) = toolbar()
+        let viewMode = NSToolbarItem.Identifier("viewMode")
+        // Share draws AppKit's own icon and view-mode belongs to `Document`, so
+        // neither has a glyph of ours to check.
+        for id in FormatToolbar.allowedIdentifiers(viewMode: viewMode)
+        where id != .space && id != .flexibleSpace && id != FormatToolbar.share && id != viewMode {
+            let item = bar.makeItem(id)
+            let image = item?.image ?? (item?.view as? NSButton)?.image
+            #expect((image?.size.width ?? 0) > 0, "\(id.rawValue) has no glyph")
+        }
+        for row in bar.iconRowViews() {
+            for case let button as NSButton in row.arrangedSubviews {
+                let label = button.toolTip ?? "?"
+                #expect((button.image?.size.width ?? 0) > 0, "\(label) has no glyph")
+            }
+        }
+        _ = doc
+    }
+
     /// `function` draws ƒ(x), far wider than anything else in the grid.
     @Test func theMathButtonUsesTheNarrowPiGlyph() {
         let (bar, doc) = toolbar()
@@ -503,6 +527,12 @@ import AppKit
         // the extent it draws: `function` is the wide one this replaced.
         #expect(math?.image?.size == FormatToolbar.rowSymbol("pi")?.size)
         #expect(math?.image?.size != FormatToolbar.rowSymbol("function")?.size)
+        // The bug this guards: `pi` is an SF Symbols 6 name, so on macOS 14 the
+        // lookup returns nil and the button draws an empty image. It is now a
+        // drawn glyph, which every supported version has.
+        #expect((math?.image?.size.width ?? 0) > 0)
+        #expect((math?.image?.size.height ?? 0) > 0)
+        #expect(math?.image?.isTemplate == true, "would not tint on the accent fill")
         _ = doc
     }
 
