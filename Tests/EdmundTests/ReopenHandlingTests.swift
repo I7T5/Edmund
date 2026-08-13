@@ -42,6 +42,29 @@ struct ReopenHandlingTests {
         #expect(shouldHandleReopen(hasVisibleWindows: false) == false)
     }
 
+    /// The other way a second blank document appeared: after an *unclean* exit
+    /// (crash, force quit) `applicationShouldTerminate` never runs, so the blank
+    /// startup window stays archived and AppKit restores it at the next launch —
+    /// through `NSDocumentController`'s restoration path, which neither
+    /// `reopenDocument` nor `applicationShouldOpenUntitledFile` gates. An
+    /// untitled document with nothing typed into it now isn't archived at all.
+    @Test("A blank untitled window is archived only once it has been edited")
+    func untitledWindowEarnsRestorability() {
+        let document = Document()
+        document.makeWindowControllers()
+        let window = document.windowControllers.first?.window
+
+        #expect(window?.isRestorable == false)
+
+        // Crash recovery still applies the moment there is unsaved work.
+        document.updateChangeCount(.changeDone)
+        #expect(window?.isRestorable == true)
+
+        // …and stops applying if that work is undone away again.
+        document.updateChangeCount(.changeUndone)
+        #expect(window?.isRestorable == false)
+    }
+
     /// A miniaturized window still counts as visible, so this is the branch for
     /// windows that are merely hidden behind others — AppKit brings them
     /// forward, which is exactly the default handling we want to keep.

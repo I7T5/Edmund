@@ -397,7 +397,16 @@ Notable subsystems:
   1. *Window restoration.* Document windows are `isRestorable = true` for the
      whole session so a crash can hand back unsaved work;
      `AppDelegate.applicationShouldTerminate` clears the flag on a **clean**
-     quit when the preference is off, so nothing is archived.
+     quit when the preference is off, so nothing is archived. A blank untitled
+     document is the exception: it holds nothing a crash could hand back, so
+     `Document` leaves its window unarchived and gives it the flag on the first
+     edit (`updateChangeCount`) instead. An *unclean* exit never runs
+     `applicationShouldTerminate`, and what AppKit restores from that archive
+     arrives through `NSDocumentController`'s own restoration path
+     (`_restorePersistentDocumentWithState:` → `_openUntitledDocumentOfType:`),
+     which neither route-2's `reopenDocument` nor
+     `applicationShouldOpenUntitledFile` sees — so a blank window that *is*
+     archived cannot be stopped downstream.
   2. *Drafts.* With autosave-in-place on (`Document.autosavesInPlace` =
      `autoSaveWithVersions`, default on), every unsaved **untitled** document is
      kept by AppKit as a draft in `~/Library/Autosave Information/Unsaved edmd
