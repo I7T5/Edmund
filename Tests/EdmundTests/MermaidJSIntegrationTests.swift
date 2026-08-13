@@ -139,4 +139,29 @@ struct MermaidJSIntegrationTests {
         #expect(darkSVG.contains("--bg:#292929"))
         #expect(darkSVG != first)
     }
+
+    // Exercises the pinned coordinates themselves — downloads
+    // `MermaidRelease.archiveURL`, checks it against `archiveSHA256`, installs,
+    // and renders. This is the only test that can catch a payload that was
+    // never uploaded, a moved/renamed release asset, or a hash pinned from a
+    // local build that doesn't match the hosted file. Opt-in via `MERMAID_LIVE`
+    // because it needs the network and writes to the real Application Support
+    // install directory, so it must not run in CI or on an offline machine.
+    // Mirrors `RaTeXWasmIntegrationTests.pinnedReleaseInstalls`.
+    @Test("Pinned release URL and SHA-256 install and render for real")
+    @MainActor func pinnedReleaseInstalls() async throws {
+        guard ProcessInfo.processInfo.environment["MERMAID_LIVE"] != nil else { return }
+
+        let renderer = MermaidRenderer()
+        renderer.isEnabled = true
+        await renderer.install()
+        #expect(renderer.isReady, "install failed — check the pinned URL and SHA-256")
+
+        let svg = try #require(renderer.svg(source: "graph TD\n  A[One] --> B[Two]", style: style))
+        #expect(svg.hasPrefix("<svg"))
+        // The labels prove the JS actually laid the diagram out, rather than a
+        // stub or an error string that happens to start with "<svg".
+        #expect(svg.contains("One"))
+        #expect(svg.contains("Two"))
+    }
 }
