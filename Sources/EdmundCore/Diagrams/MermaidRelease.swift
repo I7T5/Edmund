@@ -33,10 +33,11 @@ public enum MermaidRelease {
     /// `tar`/`gzip` implementations, so the local artifact is evidence about
     /// this machine, not about what users will actually fetch.
     ///
-    /// Empty until the asset is published, which leaves `isConfigured` false —
-    /// the extension then shows in Settings but reports the payload as
-    /// unavailable rather than attempting a download that cannot be verified.
-    public static let archiveSHA256 = ""
+    /// Empty leaves `isConfigured` false — the extension then shows in Settings
+    /// but reports the payload as unavailable rather than attempting a download
+    /// that cannot be verified. That was the state until the asset went up.
+    public static let archiveSHA256 =
+        "6c7dfaeff7fbf7ef9c88eb9531ab332b929db819d75200d333e483001eef1ab7"
 
     /// Whether a real artifact hash has been pinned.
     public static var isConfigured: Bool { payload.isConfigured }
