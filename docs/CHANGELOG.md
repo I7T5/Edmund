@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ### Fixed
 - ⌘W now closes the window — the File menu was missing its Close item, so the shortcut did nothing. ⌥⌘W closes all windows, as elsewhere on macOS.
+- Opening the app again after closing every window no longer creates two blank documents (#278)
 
 ## [0.4.2] - 2026-08-11
 
