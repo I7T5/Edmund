@@ -261,6 +261,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         fileMenu.addItem(NSMenuItem.separator())
 
+        fileMenu.addItem(withTitle: "Close",
+                         action: #selector(NSWindow.performClose(_:)),
+                         keyEquivalent: "w")
+
         fileMenu.addItem(withTitle: "Save",
                          action: #selector(NSDocument.save(_:)),
                          keyEquivalent: "s")
