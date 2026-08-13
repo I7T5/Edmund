@@ -119,6 +119,35 @@ struct TypewriterCenteringTests {
         }
     }
 
+    /// #277: typing on the *last* line kept the caret pinned where it was and
+    /// the text ran off the bottom of the window. The caret sits at
+    /// `documentRange.endLocation` there, where TextKit 2 reports no layout
+    /// fragment — so `lineRect` returned nil, centering bailed out silently, and
+    /// each new line pushed the caret further below the viewport.
+    @Test("Caret keeps centering while typing at the document end")
+    @MainActor func centersWhileTypingAtEnd() {
+        let (editor, scroll) = makeWindowed()
+        var doc = ""
+        for i in 1...100 { doc += "Line \(i) content here for the document body.\n" }
+        editor.loadContent(doc)
+        ensureFullLayout(editor); editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        editor.setSelectedRange(NSRange(location: (editor.rawSource as NSString).length, length: 0))
+        editor.scrollCursorToCenter()
+        for i in 1...6 {
+            editor.insertText("new line \(i)", replacementRange: editor.selectedRange())
+            editor.insertNewline(nil)
+            editor.layoutSubtreeIfNeeded()
+            let off = editor.selectedRange().location
+            guard let lr = editor.lineRect(forCharacterAt: off) else {
+                Issue.record("no line rect for the caret at the document end (line \(i))"); return
+            }
+            let screenMid = lr.midY + editor.textContainerOrigin.y - scroll.contentView.bounds.origin.y
+            let delta = abs(screenMid - scroll.contentView.bounds.height / 2)
+            #expect(delta < 4, "after typing line \(i) the caret is \(delta)pt off center")
+        }
+    }
+
     /// A document shorter than the window: with no padding the clamp range is
     /// [0, 0] and centering could not move the viewport at all.
     @Test("Caret centers in a document shorter than the viewport")

@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [Unreleased]
 
 ### Fixed
+- Typewriter scroll kept centering while typing on the last line of the document, instead of letting the text run off the bottom of the window (#277 @lluminate). The caret autoscroll had the same blind spot with typewriter scroll off.
 - ⌘W now closes the window — the File menu was missing its Close item, so the shortcut did nothing. ⌥⌘W closes all windows, as elsewhere on macOS.
 
 ## [0.4.2] - 2026-08-11
