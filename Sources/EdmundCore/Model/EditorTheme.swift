@@ -26,9 +26,14 @@ public struct EditorTheme: Equatable, Sendable {
 
     /// Per-script font overrides: script → macOS font family name. Empty means
     /// no cascade — the editor and Read mode behave exactly as before (system
-    /// fallback picks covering fonts). Cascade fonts carry no size; they are
-    /// always resolved at the run's point size, so zoom scales them for free.
+    /// fallback picks covering fonts).
     public var fontCascade: [FontCascadeScript: String]
+
+    /// Per-script size overrides: script → multiplier of the run's point size
+    /// (absent = 1.0). Ratios, not points, so zoom and body-size changes scale
+    /// the cascade for free; Read mode carries the same ratio via the
+    /// @font-face `size-adjust` descriptor, keeping Edit and Read in step.
+    public var fontCascadeSizeRatios: [FontCascadeScript: Double]
 
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
@@ -49,7 +54,8 @@ public struct EditorTheme: Equatable, Sendable {
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
                 standardLigatures: Bool = true, monospaceLigatures: Bool = false,
-                antialias: Bool = true, fontCascade: [FontCascadeScript: String] = [:]) {
+                antialias: Bool = true, fontCascade: [FontCascadeScript: String] = [:],
+                fontCascadeSizeRatios: [FontCascadeScript: Double] = [:]) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.linkBlueHex = linkBlueHex
@@ -64,6 +70,7 @@ public struct EditorTheme: Equatable, Sendable {
         self.monospaceLigatures = monospaceLigatures
         self.antialias = antialias
         self.fontCascade = fontCascade
+        self.fontCascadeSizeRatios = fontCascadeSizeRatios
     }
 
     // MARK: - Defaults
@@ -195,6 +202,7 @@ public struct EditorTheme: Equatable, Sendable {
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
         static let fontCascade = "EditorFontCascade"
+        static let fontCascadeSizeRatios = "EditorFontCascadeSizeRatios"
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {
@@ -241,6 +249,22 @@ public struct EditorTheme: Equatable, Sendable {
             }
             return cascade
         }()
+        // Same discipline as the families: unknown scripts dropped, ratios
+        // clamped to the stepper's range, and 1.0 treated as unset (the
+        // settings UI removes the entry instead of storing it).
+        let fontCascadeSizeRatios: [FontCascadeScript: Double] = {
+            guard let raw = d.dictionary(forKey: Keys.fontCascadeSizeRatios) else {
+                return [:]
+            }
+            var ratios: [FontCascadeScript: Double] = [:]
+            for (key, value) in raw {
+                guard let script = FontCascadeScript(rawValue: key),
+                      let number = value as? NSNumber else { continue }
+                let ratio = min(2.0, max(0.5, number.doubleValue))
+                if abs(ratio - 1.0) >= 0.001 { ratios[script] = ratio }
+            }
+            return ratios
+        }()
 
         return EditorTheme(
             fontName: fontName,
@@ -256,7 +280,8 @@ public struct EditorTheme: Equatable, Sendable {
             standardLigatures: standardLigatures,
             monospaceLigatures: monospaceLigatures,
             antialias: antialias,
-            fontCascade: fontCascade
+            fontCascade: fontCascade,
+            fontCascadeSizeRatios: fontCascadeSizeRatios
         )
     }
 
@@ -277,6 +302,8 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(Float(paragraphSpacingBefore), forKey: Keys.paragraphSpacingBefore)
         d.set(Dictionary(uniqueKeysWithValues: fontCascade.map { ($0.key.rawValue, $0.value) }),
               forKey: Keys.fontCascade)
+        d.set(Dictionary(uniqueKeysWithValues: fontCascadeSizeRatios.map { ($0.key.rawValue, $0.value) }),
+              forKey: Keys.fontCascadeSizeRatios)
     }
 }
 

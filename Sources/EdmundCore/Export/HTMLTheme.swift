@@ -429,9 +429,16 @@ enum HTMLTheme {
         theme.fontCascade
             .sorted { $0.key.rawValue < $1.key.rawValue }   // deterministic CSS
             .map { script, family in
-                """
-                @font-face { font-family: "\(cascadeFamilyName(script))"; src: local("\(family)"); \
-                unicode-range: \(script.cssUnicodeRange); }
+                // size-adjust carries the script's size ratio (× the run's
+                // size in the editor) so a per-script size reads identically
+                // in both modes and scales with --body-size for free.
+                // Omitted at 1.0, keeping the no-override CSS byte-identical.
+                let ratio = theme.fontCascadeSizeRatios[script] ?? 1.0
+                let sizeAdjust = abs(ratio - 1.0) < 0.001
+                    ? "" : " size-adjust: \(trim(CGFloat(ratio * 100)))%;"
+                return """
+                @font-face { font-family: "\(cascadeFamilyName(script))"; src: local("\(family)");\
+                \(sizeAdjust) unicode-range: \(script.cssUnicodeRange); }
                 """
             }
             .joined(separator: "\n")

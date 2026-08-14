@@ -212,6 +212,27 @@ struct FontCascadePersistenceTests {
         let loaded = EditorTheme.load(from: defaults)
         #expect(loaded.fontCascade.isEmpty)
     }
+
+    @Test("Size ratios survive a save/load round-trip")
+    func sizeRatioRoundTrip() {
+        let defaults = isolatedDefaults()
+        var theme = EditorTheme.default
+        theme.fontCascade = [.han: "Songti SC"]
+        theme.fontCascadeSizeRatios = [.han: 1.2, .emoji: 0.9]
+        theme.save(to: defaults)
+        let loaded = EditorTheme.load(from: defaults)
+        #expect(loaded.fontCascadeSizeRatios == [.han: 1.2, .emoji: 0.9])
+        #expect(loaded == theme)
+    }
+
+    @Test("Size-ratio load drops unknown scripts, clamps the range, and treats 1.0 as unset")
+    func sizeRatioLoadSanitizes() {
+        let defaults = isolatedDefaults()
+        defaults.set(["han": 1.5, "klingon": 1.5, "emoji": 1.0, "thai": 99.0],
+                     forKey: "EditorFontCascadeSizeRatios")
+        let loaded = EditorTheme.load(from: defaults)
+        #expect(loaded.fontCascadeSizeRatios == [.han: 1.5, .thai: 2.0])
+    }
 }
 
 /// Editor behavior: the cascade reaches the text storage and steers font
@@ -345,7 +366,20 @@ struct FontCascadeEditorTests {
         let font = try #require(renderedFont(for: "😀", in: editor))
         // System fallback (Apple Color Emoji on stock macOS), not the Han font.
         #expect(font.familyName != family)
-        #expect(font.fontName != editor.bodyFont.fontName)
+        #expect(font.familyName != editor.bodyFont.fontName)
+    }
+
+    @Test("A script's size ratio scales the resolved font")
+    func sizeRatioScalesResolvedFont() throws {
+        let family = try #require(installedHanFamily(), "no Han-capable family installed")
+        let editor = editorWithCascade([.han: family], source: "漢字")
+        var theme = editor.theme
+        theme.fontCascadeSizeRatios = [.han: 1.5]
+        editor.applyTheme(theme, persist: false)
+        editor.recompose(cursorInRaw: 0)
+        let font = try #require(renderedFont(for: "漢", in: editor))
+        #expect(font.familyName == family)
+        #expect(abs(font.pointSize - editor.bodyFont.pointSize * 1.5) < 0.01)
     }
 
     @Test("© in a low-codepoint run still gets the Emoji cascade font")

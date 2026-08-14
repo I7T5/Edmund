@@ -12,6 +12,13 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
     @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
+    @AppStorage(AppSettings.Key.fontsByScriptExpanded) private var fontsByScriptExpanded = false
+
+    /// Every label in the pane gets this fixed width, so the "Fonts by script"
+    /// rows can appear/disappear without re-sizing the Grid's label column
+    /// (which would slide every row sideways as the section opens). Sized to
+    /// fit the pane's widest label ("Max content width:").
+    static let labelColumnWidth: CGFloat = 130
 
     // MARK: - Unit helpers
 
@@ -53,7 +60,7 @@ struct AppearanceSettingsView: View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
             GridRow {
                 Text("Appearance:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 Picker("", selection: $appearanceMode) {
                     ForEach(AppSettings.AppearanceMode.displayOrder) { Text($0.label).tag($0) }
                 }
@@ -65,7 +72,7 @@ struct AppearanceSettingsView: View {
 
             GridRow {
                 Text("Max content width:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 HStack(spacing: 8) {
                     ContentWidthSlider(
                         cmValue: $maxContentWidthCm,
@@ -100,7 +107,7 @@ struct AppearanceSettingsView: View {
 
             GridRow {
                 Text("Standard font:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.standardSummary,
                             font: fonts.standardFont,
@@ -117,7 +124,7 @@ struct AppearanceSettingsView: View {
 
             GridRow {
                 Text("Monospaced font:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.monospaceSummary,
                             font: fonts.monospaceFont,
@@ -134,7 +141,7 @@ struct AppearanceSettingsView: View {
 
             GridRow {
                 Text("Line height:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 HStack(spacing: 6) {
                     let lineHeight = Binding(get: { Double(fonts.lineHeight) },
                                              set: { fonts.setLineHeight(CGFloat($0)) })
@@ -146,6 +153,12 @@ struct AppearanceSettingsView: View {
                     Text("times")
                 }
             }
+
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+
+            fontCascadeSection
         }
         .settingsPanePadding()
     }
@@ -233,5 +246,75 @@ private struct ContentWidthSlider: NSViewRepresentable {
             if snapped != sender.doubleValue { sender.doubleValue = snapped }
             parent.cmValue = parent.displayToCm(snapped)
         }
+    }
+}
+
+// MARK: - Fonts by script (per-script cascade)
+
+extension AppearanceSettingsView {
+
+    /// The collapsed-by-default "Fonts by script" section: one row per script
+    /// with a preview field, a size-ratio stepper, and a Select… button (the
+    /// same row shape as Standard/Monospaced above).
+    ///
+    /// The rows live in the pane's OWN Grid — hosting the section inside a
+    /// `gridCellColumns(2)` cell feeds the section's width back into the
+    /// columns it spans and slides every row in the pane sideways as the
+    /// section opens. As plain GridRows with fixed-width labels, expanding
+    /// the section only grows the pane vertically.
+    @ViewBuilder
+    var fontCascadeSection: some View {
+        GridRow {
+            Text("Fonts by script:")
+                .frame(width: Self.labelColumnWidth, alignment: .trailing)
+            Button(action: { fontsByScriptExpanded.toggle() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: fontsByScriptExpanded
+                          ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                    Text("A dedicated font per writing system")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.static)
+            .help("A dedicated font per writing system. Unset scripts use the system fallback.")
+        }
+
+        if fontsByScriptExpanded {
+            ForEach(FontCascadeScript.allCases, id: \.self) { script in
+                GridRow {
+                    Text("\(script.label):")
+                        .frame(width: Self.labelColumnWidth, alignment: .trailing)
+                    HStack(spacing: 8) {
+                        // Preview mirrors the font rows above (same 240pt
+                        // bezeled field); the stepper edits the script's size
+                        // RATIO to the body size, shown as a percent.
+                        AntialiasingText(script.sample)
+                            .antialiasDisabled(!fonts.antialias)
+                            .font(nsFont: fonts.previewFont(for: script))
+                            .frame(width: 240)
+                        TextField("", value: cascadePercentBinding(for: script),
+                                  format: .number.precision(.fractionLength(0)))
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 36)
+                        Stepper("", value: cascadePercentBinding(for: script),
+                                in: 50...200, step: 5)
+                            .labelsHidden()
+                        Text("%")
+                        Button("Select…") { fonts.selectCascadeFont(script) }
+                            .fixedSize()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Two-way binding between the stored ratio (0.5…2.0, 1.0 = unset) and
+    /// the row's percent controls (50…200).
+    private func cascadePercentBinding(for script: FontCascadeScript) -> Binding<Double> {
+        Binding(
+            get: { (fonts.cascadeSizeRatio(for: script) * 100).rounded() },
+            set: { fonts.setCascadeSizeRatio(script, ratio: $0 / 100) }
+        )
     }
 }

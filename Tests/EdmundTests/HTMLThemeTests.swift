@@ -50,6 +50,20 @@ struct HTMLThemeTests {
         #expect(out.contains("unicode-range: U+3005, U+3400-4DBF, U+4E00-9FFF"))
     }
 
+    @Test("A script size ratio becomes a size-adjust descriptor; 1.0 is omitted")
+    func cascadeSizeAdjust() {
+        var theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
+                                linkBlueHex: "#3366E6", codeHex: "#8A2425",
+                                lineSpacing: 4, paragraphSpacingBefore: 2)
+        theme.fontCascade = [.han: "Songti SC", .emoji: "Apple Color Emoji"]
+        theme.fontCascadeSizeRatios = [.han: 1.2]   // emoji stays at 1.0
+        let out = HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: false)
+        #expect(out.contains(
+            "font-family: \"edmund-cascade-han\"; src: local(\"Songti SC\"); size-adjust: 120%;"))
+        #expect(!out.contains(
+            "font-family: \"edmund-cascade-emoji\"; src: local(\"Apple Color Emoji\"); size-adjust:"))
+    }
+
     @Test("No cascade emits no @font-face blocks and the stack is unchanged")
     func noCascadeNoBlocks() {
         let out = css(dark: false)

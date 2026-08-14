@@ -19,11 +19,15 @@ final class FontSettings: NSObject, ObservableObject {
     @Published var monospaceLigatures: Bool { didSet { applyLigatures() } }
     /// A single editor-wide antialias setting (both font toggles share it).
     @Published var antialias: Bool { didSet { applyAntialias() } }
-    /// Per-script font overrides for the Fonts pane (script → family name).
+    /// Per-script font overrides for the Appearance pane's "Fonts by script"
+    /// section (script → family name).
     @Published var cascadeFonts: [FontCascadeScript: String]
+    /// Per-script size ratios (script → multiplier of the run's size;
+    /// absent = 1.0). Persisted with the theme; see EditorTheme.
+    @Published var cascadeSizeRatios: [FontCascadeScript: Double]
 
     private var theme: EditorTheme
-    private enum Target { case standard, monospace }
+    private enum Target { case standard, monospace, cascade(FontCascadeScript) }
     private var target: Target = .standard
 
     override init() {
@@ -35,6 +39,7 @@ final class FontSettings: NSObject, ObservableObject {
         monospaceLigatures = theme.monospaceLigatures
         antialias = theme.antialias
         cascadeFonts = theme.fontCascade
+        cascadeSizeRatios = theme.fontCascadeSizeRatios
         let size = theme.bodyFont.pointSize
         lineHeight = size > 0 ? max(1, min(3, (size + theme.lineSpacing) / size)) : 1
         super.init()
@@ -45,6 +50,12 @@ final class FontSettings: NSObject, ObservableObject {
 
     func selectStandardFont() { beginFontPanel(.standard, current: standardFont) }
     func selectMonospaceFont() { beginFontPanel(.monospace, current: monospaceFont) }
+    /// The panel's size is deliberately ignored for cascade entries — a
+    /// script's size is its ratio stepper, not an absolute point size.
+    func selectCascadeFont(_ script: FontCascadeScript) {
+        beginFontPanel(.cascade(script),
+                       current: previewFont(for: script) ?? NSFont.systemFont(ofSize: 16))
+    }
 
     func setStandardSize(_ size: CGFloat) {
         standardFont = NSFont(descriptor: standardFont.fontDescriptor, size: size) ?? standardFont
@@ -69,6 +80,13 @@ final class FontSettings: NSObject, ObservableObject {
         case .monospace:
             monospaceFont = sender.convert(monospaceFont)
             applyMonospace()
+        case .cascade(let script):
+            // The panel converts a specific face; the cascade persists the
+            // FAMILY — the resolver picks bold/italic members itself (and
+            // stroke-synthesizes when the family has none).
+            let converted = sender.convert(previewFont(for: script)
+                                           ?? NSFont.systemFont(ofSize: 16))
+            setCascadeFont(script, family: converted.familyName ?? converted.fontName)
         }
     }
 
@@ -164,13 +182,34 @@ final class FontSettings: NSObject, ObservableObject {
         applyToDocuments(updated)
     }
 
+    /// Sets (or clears, at 1.0) a script's size ratio and broadcasts live.
+    func setCascadeSizeRatio(_ script: FontCascadeScript, ratio: Double) {
+        var updated = theme
+        let clamped = min(2.0, max(0.5, ratio))
+        if abs(clamped - 1.0) < 0.001 {
+            updated.fontCascadeSizeRatios.removeValue(forKey: script)
+        } else {
+            updated.fontCascadeSizeRatios[script] = clamped
+        }
+        cascadeSizeRatios = updated.fontCascadeSizeRatios
+        theme = updated
+        updated.save()
+        applyToDocuments(updated)
+    }
+
+    /// A script's size ratio; 1.0 when unset.
+    func cascadeSizeRatio(for script: FontCascadeScript) -> Double {
+        cascadeSizeRatios[script] ?? 1.0
+    }
+
     /// The preview font for a script row: the user's choice at the preview
-    /// size, or nil when unset (the row then draws in the default UI font,
+    /// size scaled by the script's ratio (so the stepper visibly resizes the
+    /// sample), or nil when unset (the row then draws in the default UI font,
     /// which itself falls back per-script — a reasonable "system fallback"
     /// preview).
     func previewFont(for script: FontCascadeScript) -> NSFont? {
         guard let family = cascadeFonts[script] else { return nil }
-        return NSFont(name: family, size: 16)
+        return NSFont(name: family, size: 16 * cascadeSizeRatio(for: script))
     }
 
     private static func summary(_ font: NSFont) -> String {

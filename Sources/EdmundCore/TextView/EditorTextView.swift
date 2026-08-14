@@ -163,7 +163,8 @@ public class EditorTextView: NSTextView {
     /// from commonInit, since didSet does not fire for the initial value.
     private func syncCascadeResolver() {
         (textStorage as? EditorTextStorage)?.cascadeResolver =
-            FontCascadeResolver(cascade: theme.fontCascade)
+            FontCascadeResolver(cascade: theme.fontCascade,
+                                sizeRatios: theme.fontCascadeSizeRatios)
     }
 
     /// Styling touches these values for every block. Reusing the immutable

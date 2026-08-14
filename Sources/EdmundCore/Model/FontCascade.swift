@@ -189,6 +189,9 @@ public final class FontCascadeResolver {
     /// script → macOS font family name, as persisted in the theme.
     public let families: [FontCascadeScript: String]
 
+    /// script → multiplier of the run's point size (absent = 1.0).
+    private let sizeRatios: [FontCascadeScript: Double]
+
     /// (script, point size, bold, italic) → resolved font (+ whether its bold
     /// had to be stroke-synthesized). One instance per theme application,
     /// reused across all blocks — the same attribute-interner discipline as
@@ -204,14 +207,17 @@ public final class FontCascadeResolver {
 
     /// nil when the cascade is empty — callers keep a nil resolver in that
     /// case, and the substitution pass is byte-identical to pre-cascade.
-    public init?(cascade: [FontCascadeScript: String]) {
+    public init?(cascade: [FontCascadeScript: String],
+                 sizeRatios: [FontCascadeScript: Double] = [:]) {
         guard !cascade.isEmpty else { return nil }
         families = cascade
+        self.sizeRatios = sizeRatios
     }
 
-    /// The user's font for `script` at `base`'s size, or nil when the script
-    /// has no entry or its family is not installed — nil means the caller
-    /// falls back to the regular CoreText substitution (`CTFontCreateForString`).
+    /// The user's font for `script` at `base`'s size scaled by the script's
+    /// size ratio, or nil when the script has no entry or its family is not
+    /// installed — nil means the caller falls back to the regular CoreText
+    /// substitution (`CTFontCreateForString`).
     /// The persisted entry is kept either way: the font may be reinstalled.
     ///
     /// `synthesizedBold` is true when the family has no bold member and the
@@ -228,10 +234,14 @@ public final class FontCascadeResolver {
         let baseTraits = base.fontDescriptor.symbolicTraits
         let bold = baseTraits.contains(.bold)
         let italic = baseTraits.contains(.italic)
-        let key = CacheKey(script: script, size: base.pointSize, bold: bold, italic: italic)
+        // The per-script ratio scales the run's size; the cache keys on the
+        // RESOLVED size so different base sizes landing on the same result
+        // share one entry.
+        let size = base.pointSize * CGFloat(sizeRatios[script] ?? 1.0)
+        let key = CacheKey(script: script, size: size, bold: bold, italic: italic)
         if let cached = cache[key] { return cached }
 
-        guard var resolved = NSFont(name: family, size: base.pointSize) else { return nil }
+        guard var resolved = NSFont(name: family, size: size) else { return nil }
         if bold {
             resolved = NSFontManager.shared.convert(resolved, toHaveTrait: .boldFontMask)
         }
