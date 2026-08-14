@@ -357,6 +357,17 @@ struct FontCascadeEditorTests {
         #expect(font.fontName != editor.bodyFont.fontName)
     }
 
+    @Test("© in a low-codepoint run still gets the Emoji cascade font")
+    func copyrightSignUsesEmojiCascade() throws {
+        // © (U+00A9) is isEmoji and leads the emoji CSS unicode-range, so Read
+        // mode paints it in the emoji family. The Edit-mode prescan once
+        // skipped runs entirely below U+0300 — a "© 2026" line never reached
+        // the classifier and kept the body font, splitting Edit from Read.
+        let editor = editorWithCascade([.emoji: "Apple Color Emoji"], source: "© 2026")
+        let font = try #require(renderedFont(for: "©", in: editor))
+        #expect(font.fontName == NSFont(name: "Apple Color Emoji", size: 16)?.fontName)
+    }
+
     @Test("Uninstalled family falls back to CoreText substitution")
     func uninstalledFamilyFallsBack() throws {
         let editor = editorWithCascade([.han: "No Such Family 2049"], source: "漢字")

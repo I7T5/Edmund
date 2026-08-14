@@ -217,16 +217,23 @@ public class EditorTextStorage: NSTextStorage {
     }
 
     /// Cheap UTF-16 pre-scan: can any scalar in this run belong to a cascade
-    /// script? All cascade scripts live at U+0300 or above (or in
-    /// supplementary planes, reachable only via surrogate pairs), so a run
-    /// entirely below that — Latin, digits, whitespace, ASCII/common
-    /// punctuation — can skip per-cluster classification entirely.
+    /// script? Every cascade route lives at U+00A9 or above (or in
+    /// supplementary planes, reachable only via surrogate pairs): the script
+    /// ranges start at U+0370 (Greek), and the lowest scalar `classify` can
+    /// route to `.emoji` is U+00A9 © (isEmoji == true, and first in the
+    /// emoji CSS range). So a run entirely below U+00A9 — ASCII Latin,
+    /// digits, whitespace, common punctuation — skips classification.
+    ///
+    /// The bound was once 0x0300 ("all scripts live at U+0300+"): true of
+    /// the script ranges, false of the classifier — ©/® sat below it, so
+    /// Edit kept the body font for a "© 2026" line while Read's @font-face
+    /// (unicode-range lists U+A9 first) painted the emoji family.
     private func runMayContainCascadeScript(_ ns: NSString, in range: NSRange) -> Bool {
         var i = range.location
         let end = range.upperBound
         while i < end {
             let unit = ns.character(at: i)
-            if unit >= 0x0300 || (unit >= 0xD800 && unit <= 0xDBFF) { return true }
+            if unit >= 0xA9 || (unit >= 0xD800 && unit <= 0xDBFF) { return true }
             i += 1
         }
         return false
