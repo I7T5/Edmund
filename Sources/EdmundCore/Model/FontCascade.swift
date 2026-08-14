@@ -77,9 +77,15 @@ public enum FontCascadeScript: String, CaseIterable, Codable, Sendable {
     /// deriving it at runtime scans ~1M scalars (~27ms release / ~130ms debug)
     /// on the main thread on the first Read-mode render, once per launch.
     ///
-    /// `derivedEmojiUnicodeRange` below is kept alongside so a test can assert
-    /// the constant still equals the live scan — the "can never diverge from
-    /// the classifier" guarantee now lives in CI instead of in startup cost.
+    /// There is deliberately no test asserting this constant equals a live
+    /// `isEmoji` scan: the scan reads the host OS's Unicode tables (newer OS,
+    /// more emoji), so such a test is host-dependent by construction and fails
+    /// on older macOS — including CI's. The guard that matters is
+    /// `emojiCssRangeCoversClassifier` (every scalar the classifier routes to
+    /// `.emoji` is inside this range): it holds whenever the baked table is a
+    /// superset of the host's, i.e. always in practice, since Unicode emoji
+    /// tables only grow. If a future OS outgrows this constant, THAT test
+    /// fails — regenerate the constant then.
     private static let emojiUnicodeRange: String =
         "U+A9, U+AE, U+203C, U+2049, U+2122, U+2139, U+2194-U+2199, U+21A9-U+21AA, U+231A-U+231B, U+2328, U+2" +
         "3CF, U+23E9-U+23F3, U+23F8-U+23FA, U+24C2, U+25AA-U+25AB, U+25B6, U+25C0, U+25FB-U+25FE, U+2600-U+26" +
@@ -100,32 +106,6 @@ public enum FontCascadeScript: String, CaseIterable, Codable, Sendable {
         "F6E9, U+1F6EB-U+1F6EC, U+1F6F0, U+1F6F3-U+1F6FC, U+1F7E0-U+1F7EB, U+1F7F0, U+1F90C-U+1F93A, U+1F93C-" +
         "U+1F945, U+1F947-U+1F9FF, U+1FA70-U+1FA7C, U+1FA80-U+1FA8A, U+1FA8E-U+1FAC6, U+1FAC8, U+1FACD-U+1FAD" +
         "C, U+1FADF-U+1FAEA, U+1FAEF-U+1FAF8"
-
-    /// The same range computed live by scanning `isEmoji` — kept only so a test
-    /// can prove `emojiUnicodeRange` still matches the classifier (the startup
-    /// cost this used to carry is gone; the guarantee lives in CI).
-    static func derivedEmojiUnicodeRange() -> String {
-        var ranges: [(start: UInt32, end: UInt32)] = []
-        var inRange = false
-        var start: UInt32 = 0, end: UInt32 = 0
-        for value in 0x80...0x10FFFF {
-            // Skip surrogates — not scalar values; Unicode.Scalar(init:) traps on them.
-            if (0xD800...0xDFFF).contains(UInt32(value)) { continue }
-            let isEmoji = Unicode.Scalar(UInt32(value))!.properties.isEmoji
-            if isEmoji && !inRange { inRange = true; start = UInt32(value) }
-            if isEmoji { end = UInt32(value) }
-            if !isEmoji && inRange {
-                ranges.append((start, end))
-                inRange = false
-            }
-        }
-        if inRange { ranges.append((start, end)) }
-        return ranges.map { range in
-            range.start == range.end
-                ? "U+\(String(format: "%X", range.start))"
-                : "U+\(String(format: "%X", range.start))-U+\(String(format: "%X", range.end))"
-        }.joined(separator: ", ")
-    }
 
     /// Classifies one composed-character sequence (grapheme cluster) to a
     /// cascade script, or nil when the sequence should keep the body font
