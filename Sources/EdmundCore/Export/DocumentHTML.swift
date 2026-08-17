@@ -1,12 +1,13 @@
 import AppKit
+import EdmundMermaidBridge
 
 // MARK: - DocumentHTML
 //
 // Assembles the full, self-contained HTML document for Read mode and PDF export:
 // the `HTMLRenderer` body, the `HTMLTheme` stylesheet, and a second pass that
-// fills the renderer's placeholder elements with inlined assets (math
-// glyphs and local images) as data URIs. Callout/checkbox icons are inline
-// Lucide SVGs emitted by `HTMLRenderer` (no asset pass needed). Inlining keeps
+// fills the renderer's placeholder elements with inlined assets (Mermaid SVG,
+// math glyphs, and local images). Callout/checkbox icons are inline Lucide SVGs
+// emitted by `HTMLRenderer` (no asset pass needed). Inlining keeps
 // the document self-contained — the webview needs no file/network access.
 // Raw HTML in the markdown passes through per GFM, filtered by
 // `HTMLRenderer.filterRawHTML` (tagfilter + hardening); the page also carries a
@@ -23,6 +24,7 @@ enum DocumentHTML {
                      baseURL: URL? = nil,
                      options: ReadRenderOptions = .default) -> String {
         var body = HTMLRenderer.render(markdown: markdown, options: options)
+        body = fillMermaid(body, theme: theme, dark: dark)
         body = fillMath(body, theme: theme, dark: dark)
         body = fillImages(body, baseURL: baseURL, options: options)
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
@@ -37,6 +39,51 @@ enum DocumentHTML {
         </style></head>
         <body><div class="page">\(body)</div></body></html>
         """
+    }
+
+    // MARK: Mermaid (BeautifulMermaid → inline SVG)
+
+    // Group 1 carries the top-level source-line anchor inserted by
+    // HTMLRenderer.visitDocument; the replacement must retain it.
+    private static let mermaidPattern =
+        "<div( id=\"[^\"]*\")? class=\"mermaid-diagram\" data-source=\"([^\"]*)\"></div>"
+
+    private static func fillMermaid(_ html: String,
+                                    theme: EditorTheme,
+                                    dark: Bool) -> String {
+        let style = MermaidRenderStyle(editorTheme: theme, dark: dark)
+        return replaceMatches(html, pattern: mermaidPattern) { groups in
+            let id = groups[1]
+            guard let data = Data(base64Encoded: groups[2]),
+                  let source = String(data: data, encoding: .utf8),
+                  let svg = try? NativeMermaidRenderer.svg(
+                    source: source, theme: style.theme),
+                  isSafeMermaidSVG(svg) else {
+                let code = HTMLRenderer.escape(
+                    (Data(base64Encoded: groups[2])
+                        .flatMap { String(data: $0, encoding: .utf8) }) ?? "")
+                return "<div\(id) class=\"code-block-wrap\"><pre><code class=\"language-mermaid\">\(code)</code></pre></div>"
+            }
+            return "<div\(id) class=\"mermaid-diagram\" role=\"img\" aria-label=\"Mermaid diagram\">\(svg)</div>"
+        }
+    }
+
+    /// The renderer emits self-contained SVG. Reject active or externally
+    /// referencing SVG constructs before placing it into the read-mode page;
+    /// the CSP's `script-src 'none'` remains a second line of defense.
+    private static func isSafeMermaidSVG(_ svg: String) -> Bool {
+        let trimmed = svg.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("<svg"), trimmed.hasSuffix("</svg>") else { return false }
+        let lower = trimmed.lowercased()
+        let forbidden = [
+            "<script", "<foreignobject", "<iframe", "<object", "<embed",
+            "<image", "javascript:", "data:text/html", "xlink:href=", " href=",
+        ]
+        guard !forbidden.contains(where: lower.contains) else { return false }
+        guard let eventHandler = try? NSRegularExpression(
+            pattern: #"\son[a-z0-9_-]+\s*="#, options: [.caseInsensitive]) else { return false }
+        return eventHandler.firstMatch(
+            in: svg, range: NSRange(location: 0, length: (svg as NSString).length)) == nil
     }
 
     // MARK: Math (active engine → PNG data URI)

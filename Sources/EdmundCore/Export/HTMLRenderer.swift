@@ -282,6 +282,13 @@ struct HTMLRenderer: MarkupVisitor {
             .replacingOccurrences(of: "\u{2029}", with: "\n")
         // swift-markdown includes a trailing newline on the block's code.
         let code = raw.hasSuffix("\n") ? String(raw.dropLast()) : raw
+        if options.features.contains(.mermaid),
+           MermaidSyntax.matches(language: codeBlock.language) {
+            // Keep this AST renderer pure: the AppKit-backed native renderer
+            // fills the base64 payload in DocumentHTML's asset pass.
+            let source = Data(code.utf8).base64EncodedString()
+            return "<div class=\"mermaid-diagram\" data-source=\"\(source)\"></div>"
+        }
         let pre = "<pre><code\(lang)>\(Self.highlightCode(code, language: codeBlock.language))</code></pre>"
         return "<div class=\"code-block-wrap\">\(Self.copyButtonHTML(code: code))\(pre)</div>"
     }

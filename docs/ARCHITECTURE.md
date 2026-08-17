@@ -33,7 +33,8 @@ Two SPM targets (`Package.swift`):
   window setup.
 
 Dependencies: `swift-markdown` (CommonMark/GFM), `SwiftMath` (LaTeX),
-`Sparkle` (auto-update).
+`beautiful-mermaid-swift` + its `elk-swift` layout dependency (native Mermaid
+diagrams), `Sparkle` (auto-update).
 
 ---
 
@@ -78,7 +79,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   autolinks.
 - **`styleBlock(_:cursorPosition:)`** (`Rendering/EditorTextView+Rendering.swift`)
   renders ONE block. Each feature has a `Rendering/` extension: Callout,
-  Code, Image, List, ListMarker, Math, Table, WikiLinks.
+  Code, Image, List, ListMarker, Math, Mermaid, Table, WikiLinks.
 - **Recompose** (`TextView/EditorTextView+Composition.swift`) drives styling:
   - `recompose(cursorInRaw:)` — full: replace storage with rawSource, restyle
     all blocks (load, undo, indent).
@@ -169,6 +170,17 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   equality paired with constant-by-kind/count hashes turns Foundation's global
   attribute-dictionary interner into a collision chain and makes styling
   superlinear. Hash every field used by equality whenever the value permits it.
+- **Mermaid fences use the opening-fence fragment as their overlay anchor.**
+  `MermaidRendering.swift` renders inactive ```` ```mermaid ```` bodies on a
+  serialized background actor, caches the native image, hides/collapses the
+  remaining raw fence rows, and invalidates only matching blocks on completion.
+  The opening fence is a single-line fragment, so it stays outside the image
+  overlay wrapping wedge above. Preview and active source share one full-column
+  framed height: the frame takes the larger of the scaled image and measured
+  source, and the active form grows only its final fragment to consume the
+  remainder. This keeps ordinary source-line/caret metrics while preventing
+  content below from jumping when the block activates. Read/PDF uses the same
+  framed surface around its inline SVG.
 
 ---
 
@@ -181,13 +193,13 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Code-fence highlighting | A pluggable seam, not a hardcoded scanner. `CodeHighlighter` is the facade: it resolves the effective language, then hands `(code, language)` to the active `CodeSyntaxBackend`. `BuiltinSyntaxBackend` is the default — one single-pass O(n) char scanner driven by a declarative `LanguageDefinition` (keywords, comment/string delimiters) rather than per-language code. `SyntaxDefinitionStore` loads those definitions from two places: the bundled JSON in `EdmundCore/Resources/Syntaxes/` and the user's Application Support dir, so **users can add a language without a rebuild**. Settings ▸ Syntax picks the fallback language (`settings.syntax.defaultCodeSyntax`). |
 | Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift`, `LinkDefinitionState.swift` (incremental index of `[label]: dest` reference-link definitions, which resolve across blocks — so a definition edit dirties the blocks that cite it), `LineEnding.swift` (buffer is always LF internally so `BlockParser`'s `\n` split stays clean; the file's original CRLF/CR style is remembered and written back on save), `StatusBarPrefs.swift`, `SVGPath.swift` (minimal SVG→`CGPath` for the vendored Lucide geometry — §5's wrapping-callout icon) |
 | Text storage | `TextView/EditorTextStorage.swift` — `NSTextStorage` subclass whose `fixAttributes` does **font substitution only**. The editor manages every attribute on every character (incl. custom keys like `.blockDecoration`/`.fragmentOverlay`), so AppKit's usual attribute fixing would fight it. Also carries the `pendingEdit` that drives incremental reparse (§4) and the bypassed-edit heal (§8). |
-| Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout gated at render via `calloutInfo`), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Syntax pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
-| Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
+| Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, Mermaid fences, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout and Mermaid are gated at render), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Syntax pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
+| Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Mermaid, Table, WikiLinks) |
 | Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: no characters inserted, TextKit 2 only. `EditorTextView.invisibles` ← `AppSettings.invisiblesConfig`; Settings ▸ Edit. Mechanism: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | List indent guides | Faint vertical hairlines on list items: one per *ancestor* level spanning the item, plus the item's own column beside its wrapped continuation lines. Offsets from `listGuideOffsets(depth:slotWidth:)` (`Rendering/EditorTextView+ListRendering.swift`), written to `.listGuides` **whether or not the setting is on** — the fragment gates the drawing, so toggling is a re-vend, never a restyle. `EditorTextView.showListIndentGuides`; Settings ▸ Edit. Geometry traps (container-relative offsets, `lineFragmentPadding`): [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Line numbers | `TextView/EditorTextView+LineNumbers.swift` — source line numbers (Settings ▸ Edit ▸ Lines, off by default), `EditorTextView.showLineNumbers`. **Two placements over one walk**, and the placement is **not** a setting: it follows whether the margin can hold them (beside the content by default, a `LineNumberRulerView` at the window edge otherwise). Also home to `line(forOffset:)`/`offset(forLine:)`, binary-searching the cached `lineStarts`. Editor-only; never printed. Placement rules, the macOS 14 SIGSEGV, draw rules and the tabular-figure face: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Focus mode | `TextView/EditorTextView+FocusMode.swift` — dims all but the lines the selection touches (Settings ▸ Edit ▸ Editor, Edit ▸ Focus Mode; off by default), `EditorTextView.focusMode`. **One transparency layer around `DecoratedTextLayoutFragment.draw`**, so text and its decorations fade as one composite; it cannot be a scrim (NSTextView composites fragments *after* `draw(_:)` returns). Editor-only. Why, and the measurements: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
-| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: math + local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
+| Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`; Mermaid emits an asset placeholder), `HTMLTheme` (EditorTheme → CSS), `DocumentHTML` (assembly + asset inlining: Mermaid → sanitized inline SVG, math + local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
 | Icons | `Model/LucideIcons.swift` — vendored [Lucide](https://lucide.dev) SVGs (ISC, `LICENSES/lucide.txt`). Callout headers use them in **both** modes: Read inlines the SVG (CSS-tinted via `currentColor`); Edit rasterizes to a tinted `NSImage` overlay. SF Symbols can't ship in exported PDFs (license); app-chrome SF Symbols are fine (in-app UI). Edit-mode task checkboxes still use SF Symbols (on-screen only); Read-mode checkboxes are a composed Lucide SVG. |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift`, `+AutoPairs.swift`, `+ListRenumbering.swift` |
 | Hard wrap | `Editing/HardWrap.swift` (pure `wrap`/`unwrap`) + `Editing/EditorTextView+HardWrap.swift` (Edit ▸ Hard Wrap Paragraphs). Settings ▸ Edit ▸ Document, off by default; read at **load/save time in `Document`**, not pushed onto the editor. Treated as a property of the *file*: opening a wrapped file joins its paragraphs, save re-wraps, and **only files that arrived wrapped are wrapped** (`wasHardWrapped`). The column is **derived from the file's own existing breaks**, not guessed. Requires strict line breaks. Full rules, GFM constraints and perf numbers: [`architecture/hard-wrap.md`](architecture/hard-wrap.md). |
@@ -312,7 +324,8 @@ Notable subsystems:
   Element", with WebKit's own duplicate removed.
   **Export as PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
-  high-DPI PNG). Full spec: `docs/architecture/reader-and-export.md`.
+  high-DPI PNG, Mermaid is SVG). Full spec:
+  `docs/architecture/reader-and-export.md`.
 - **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
   `NSTextFinder` — it renders the system bar rather than the Notes look, and
   its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire
@@ -1077,6 +1090,8 @@ Dependencies and prior art worth consulting before designing something new:
   CommonMark/GFM parser both back-ends walk (§3, §6).
 - [SwiftMath](https://github.com/mgriebling/SwiftMath) — LaTeX rendering
   (raster only; no SVG output yet — why exported math is PNG, §6).
+- [beautiful-mermaid-swift](https://github.com/lukilabs/beautiful-mermaid-swift)
+  — native Mermaid parsing, ELK layout, bitmap, and SVG rendering.
 - [Sparkle](https://sparkle-project.org) — auto-update (§8, §13 for the
   signing/appcast quirks).
 - [Lucide](https://lucide.dev) — vendored icon SVGs (ISC),

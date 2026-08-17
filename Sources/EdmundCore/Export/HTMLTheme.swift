@@ -213,6 +213,10 @@ enum HTMLTheme {
        at rest. */
     .code-copy-icon { opacity: 0; transition: opacity .15s; }
     .code-block-wrap:hover .code-copy-icon { opacity: 1; }
+    .mermaid-diagram { margin: 1em 0; padding: 14px 16px; overflow-x: auto;
+                       text-align: center; background: var(--code-bg);
+                       border: 1px solid var(--table-border); }
+    .mermaid-diagram svg { display: block; width: auto; height: auto; max-width: 100%; margin: 0 auto; }
     /* Dark mode lifts the bar to the marker gray (--rule is nearly invisible
        there); light mode keeps --rule. */
     blockquote { margin: 1em 0; padding: 0.5em 1em; border-left: 3px solid var(--quote-bar); color: var(--faint); }
@@ -407,7 +411,7 @@ enum HTMLTheme {
          keeps them. `print-color-adjust: exact` forces faithful color output
          so callout backgrounds, code blocks, and highlights survive printing. */
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .callout, pre, blockquote, .table-wrap, .math-display,
+      .callout, pre, blockquote, .table-wrap, .math-display, .mermaid-diagram,
       .math-display-block { break-inside: avoid; }
       h1, h2, h3, h4, h5, h6 { break-after: avoid; }
       thead { display: table-header-group; }
