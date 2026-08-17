@@ -402,6 +402,11 @@ public class EditorTextView: NSTextView {
     /// The pointer-tracking area behind `hoveredTableBlock`.
     var tableHoverTrackingArea: NSTrackingArea?
 
+    /// The open popup cell editor, and the cell it is editing. See
+    /// EditorTextView+TableCellEditor.
+    var tableCellPopover: NSPopover?
+    var editingTableCell: TableCellRef?
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which
@@ -660,6 +665,16 @@ public class EditorTextView: NSTextView {
         // never reaches `super`. See EditorTextView+TableRawButton.
         if let tableBlock = tableRawButtonHit(at: event) {
             activateRawTableEditing(blockIndex: tableBlock)
+            return
+        }
+        // A click on a rendered table's cell edits that cell in a popover rather
+        // than putting a caret in the table, so this takes the click whole.
+        // Option-click is the way past it to the plain caret placement — which,
+        // landing in the table, renders it as raw markdown. See
+        // EditorTextView+TableCellEditor.
+        if !event.modifierFlags.contains(.option),
+           let cell = tableCellForCellEditor(at: event) {
+            openTableCellEditor(cell)
             return
         }
         // A wrapped table cell is drawn from a detached layout, so AppKit's own
