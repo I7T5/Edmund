@@ -285,5 +285,28 @@
                        length="14127906"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.4.3</title>
+            <pubDate>Mon, 17 Aug 2026 05:41:37 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Thanks to @aahventures for their first contribution (#269)</p>
+<h3>Added</h3>
+<ul>
+<li>⌘W to close window and ⌥⌘W to close all windows (#269 @aahventures)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Typewriter scroll not centering while typing on the last line of the document (#277)</li>
+<li>Launching app after closing every window with autoquit off no longer creates two blank documents (#278)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.4.3/Edmund-0.4.3.dmg"
+                       sparkle:version="12"
+                       sparkle:shortVersionString="0.4.3"
+                       sparkle:edSignature="noYaAIXJVsX0nLpJQLoLuOlnOyV9Mc8XoUG1MKOEmusWn+nj8WpAoisHv0w7r9XQiDf+8993jLjm6UG7+Qo+DQ=="
+                       length="14148685"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
