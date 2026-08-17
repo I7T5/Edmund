@@ -112,6 +112,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // reached when there is genuinely nothing to bring back — nothing else for
     // AppKit's default handling to do here.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        Self.shouldHandleReopen(hasVisibleWindows: flag)
+    }
+
+    /// The decision itself, as a type method so tests can exercise it without
+    /// building an `AppDelegate`: the stored `updaterController` starts Sparkle
+    /// on init, and a failed check puts up a *modal* alert that would sit on the
+    /// main thread forever in a test run.
+    static func shouldHandleReopen(hasVisibleWindows flag: Bool) -> Bool {
         guard !flag else { return true }
         if AppSettings.startupAction == .createNewDocument {
             NSDocumentController.shared.newDocument(nil)

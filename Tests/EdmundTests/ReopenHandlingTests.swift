@@ -24,11 +24,12 @@ struct ReopenHandlingTests {
 
     /// Standing in for AppKit's own reopen handling, which only ever runs when
     /// the delegate returns `true`.
+    ///
+    /// The type method, not an `AppDelegate` instance: building one starts
+    /// Sparkle (the stored `updaterController`), and a check that fails puts up
+    /// a modal alert — which in a test run is a main thread nobody comes back to.
     private func shouldHandleReopen(hasVisibleWindows: Bool) -> Bool {
-        // `NSApp` is nil until something asks for the shared application; the
-        // delegate ignores the sender, but the parameter still has to be real.
-        AppDelegate().applicationShouldHandleReopen(NSApplication.shared,
-                                                    hasVisibleWindows: hasVisibleWindows)
+        AppDelegate.shouldHandleReopen(hasVisibleWindows: hasVisibleWindows)
     }
 
     @Test("With no windows left, the delegate claims the reopen")
@@ -50,19 +51,25 @@ struct ReopenHandlingTests {
     /// untitled document with nothing typed into it now isn't archived at all.
     @Test("A blank untitled window is archived only once it has been edited")
     func untitledWindowEarnsRestorability() {
+        // A bare window rather than `makeWindowControllers()`, which builds the
+        // whole document window (toolbar included) — the same reason every other
+        // suite here assembles its own view stack.
         let document = Document()
-        document.makeWindowControllers()
-        let window = document.windowControllers.first?.window
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                              styleMask: [.titled], backing: .buffered, defer: true)
+        document.addWindowController(NSWindowController(window: window))
 
-        #expect(window?.isRestorable == false)
+        // Nothing typed in yet: nothing a restored window could hand back.
+        document.updateChangeCount(.changeCleared)
+        #expect(window.isRestorable == false)
 
         // Crash recovery still applies the moment there is unsaved work.
         document.updateChangeCount(.changeDone)
-        #expect(window?.isRestorable == true)
+        #expect(window.isRestorable == true)
 
         // …and stops applying if that work is undone away again.
         document.updateChangeCount(.changeUndone)
-        #expect(window?.isRestorable == false)
+        #expect(window.isRestorable == false)
     }
 
     /// A miniaturized window still counts as visible, so this is the branch for
