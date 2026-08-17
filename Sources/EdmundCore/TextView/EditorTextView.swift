@@ -389,6 +389,19 @@ public class EditorTextView: NSTextView {
     /// UTF-16 offsets of each line's first character; see `lineStarts`.
     var lineStartsCache: [Int]?
 
+    /// Block index of the table the pointer is over, or nil. Together with the
+    /// caret being inside a table, this is what reveals the `</>` button — the
+    /// margin stays empty until one of the two is true. See
+    /// EditorTextView+TableRawButton.
+    var hoveredTableBlock: Int?
+
+    /// Whether the pointer is on the revealed `</>` button itself, which draws
+    /// its hover highlight.
+    var tableRawButtonHovered = false
+
+    /// The pointer-tracking area behind `hoveredTableBlock`.
+    var tableHoverTrackingArea: NSTrackingArea?
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which

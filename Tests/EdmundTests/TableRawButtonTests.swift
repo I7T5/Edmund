@@ -2,10 +2,13 @@ import Testing
 import AppKit
 @testable import EdmundCore
 
-/// Each table carries a `</>` button in the reading column's left margin that
-/// puts the caret in the table — which is what renders it as raw markdown.
-/// Leaving raw editing is the existing active-block behaviour (the caret moves
-/// out), so there is nothing here to test for it.
+/// Each table carries a `</>` button in the line numbers' slot, level with its
+/// header row. It puts the caret in the table — which is what renders it as raw
+/// markdown. Leaving raw editing is the existing active-block behaviour (the
+/// caret moves out), so there is nothing here to test for it.
+///
+/// The button is revealed by hover or by the caret being inside the table; the
+/// margin is empty otherwise.
 
 @Suite("Table raw-editing button")
 @MainActor
@@ -13,34 +16,20 @@ struct TableRawButtonTests {
 
     private let table = "| a | b |\n|---|---|\n| x | y |"
 
-    @Test("The button hangs left of the text column")
-    func sitsInTheMargin() {
-        let x = EditorTextView.tableRawButtonX(textStartX: 100, reservedForLineNumbers: 0)
-        #expect(x + EditorTextView.tableRawButtonSize <= 100)
-    }
-
-    @Test("Line numbers in the same margin push the button further left")
-    func stepsLeftOfLineNumbers() {
-        let bare = EditorTextView.tableRawButtonX(textStartX: 100, reservedForLineNumbers: 0)
-        let shared = EditorTextView.tableRawButtonX(textStartX: 100, reservedForLineNumbers: 20)
-        #expect(shared == bare - 20)
-    }
-
-    @Test("A margin too tight to hold both keeps the button on screen")
-    func clampedIntoView() {
-        let x = EditorTextView.tableRawButtonX(textStartX: 10, reservedForLineNumbers: 40)
-        #expect(x >= 0)
+    /// The reading column's base inset is what opens the margin the button
+    /// hangs in; a freshly built editor hasn't computed it yet.
+    private func loadEditor(_ text: String) -> EditorTextView {
+        let editor = makeEditor()
+        editor.updateContentInset()
+        editor.loadContent(text)
+        ensureFullLayout(editor)
+        layOutViewport(editor)
+        return editor
     }
 
     @Test("A table gets one button, level with its header row")
     func oneButtonPerTable() {
-        let editor = makeEditor()
-        // The reading column's base inset is what opens the margin the button
-        // hangs in; a freshly built editor hasn't computed it yet.
-        editor.updateContentInset()
-        editor.loadContent("lead paragraph\n\n\(table)\n\ntrailing\n")
-        ensureFullLayout(editor)
-        layOutViewport(editor)
+        let editor = loadEditor("lead paragraph\n\n\(table)\n\ntrailing\n")
 
         let buttons = editor.visibleTableRawButtons()
         #expect(buttons.count == 1)
@@ -60,23 +49,111 @@ struct TableRawButtonTests {
             + (editor.textContainer?.lineFragmentPadding ?? 0))
     }
 
+    /// The whole point of the placement rework: the button occupies the slot the
+    /// line number for that row would, so it shares the numbers' right edge.
+    @Test("The button sits in the line numbers' slot")
+    func sitsInTheLineNumberSlot() {
+        let editor = loadEditor(table)
+        guard let button = editor.visibleTableRawButtons().first else {
+            Issue.record("no button")
+            return
+        }
+        let rightEdge = editor.textContainerOrigin.x
+            + (editor.textContainer?.lineFragmentPadding ?? 0)
+            - EditorTextView.lineNumberPadding
+        #expect(abs(button.rect.maxX - rightEdge) < 0.5)
+    }
+
+    /// The slot comes from `enumerateVisibleLineNumbers`, which is not gated on
+    /// the setting — so the button lands identically with the numbers off.
+    @Test("Placement does not depend on the line-number setting")
+    func placementIndependentOfLineNumbers() {
+        let editor = loadEditor(table)
+        editor.showLineNumbers = false
+        let off = editor.visibleTableRawButtons().first?.rect
+        editor.showLineNumbers = true
+        let on = editor.visibleTableRawButtons().first?.rect
+        #expect(off != nil)
+        #expect(off == on)
+    }
+
     @Test("A document without tables draws no buttons")
     func noTablesNoButtons() {
-        let editor = makeEditor()
-        editor.loadContent("just a paragraph\n\nand another\n")
-        ensureFullLayout(editor)
-        layOutViewport(editor)
+        let editor = loadEditor("just a paragraph\n\nand another\n")
         #expect(editor.visibleTableRawButtons().isEmpty)
     }
 
     @Test("Two tables get a button each")
     func oneButtonEachTable() {
-        let editor = makeEditor()
-        editor.loadContent("\(table)\n\nbetween\n\n\(table)\n")
-        ensureFullLayout(editor)
-        layOutViewport(editor)
+        let editor = loadEditor("\(table)\n\nbetween\n\n\(table)\n")
         #expect(editor.visibleTableRawButtons().count == 2)
     }
+
+    // MARK: - Reveal
+
+    @Test("Nothing shows until the table is hovered or holds the caret")
+    func hiddenAtRest() {
+        let editor = loadEditor("lead\n\n\(table)\n")
+        #expect(!editor.visibleTableRawButtons().isEmpty)   // it exists
+        #expect(editor.revealedTableRawButtons().isEmpty)   // but doesn't show
+    }
+
+    @Test("Hovering a table reveals its button")
+    func hoverReveals() {
+        let editor = loadEditor("lead\n\n\(table)\n")
+        guard let button = editor.visibleTableRawButtons().first else {
+            Issue.record("no button")
+            return
+        }
+        editor.hoveredTableBlock = button.blockIndex
+        #expect(editor.revealedTableRawButtons().count == 1)
+    }
+
+    @Test("Only the hovered table's button shows")
+    func hoverRevealsOnlyItsOwn() {
+        let editor = loadEditor("\(table)\n\nbetween\n\n\(table)\n")
+        let buttons = editor.visibleTableRawButtons()
+        #expect(buttons.count == 2)
+        guard let first = buttons.first else { return }
+        editor.hoveredTableBlock = first.blockIndex
+        #expect(editor.revealedTableRawButtons().map(\.blockIndex) == [first.blockIndex])
+    }
+
+    @Test("The caret being inside the table reveals its button")
+    func caretInsideReveals() {
+        let editor = loadEditor("lead\n\n\(table)\n")
+        guard let button = editor.visibleTableRawButtons().first else {
+            Issue.record("no button")
+            return
+        }
+        editor.activeBlockIndex = button.blockIndex
+        #expect(editor.revealedTableRawButtons().count == 1)
+    }
+
+    @Test("A hidden button is not clickable")
+    func hiddenButtonIsNotATarget() {
+        let editor = loadEditor("lead\n\n\(table)\n")
+        // Same predicate the hit test applies, minus the event plumbing.
+        #expect(editor.revealedTableRawButtons().isEmpty)
+        editor.hoveredTableBlock = editor.visibleTableRawButtons().first?.blockIndex
+        #expect(!editor.revealedTableRawButtons().isEmpty)
+    }
+
+    @Test("The header row's number gives way to a revealed button")
+    func revealedButtonTakesTheNumbersSlot() {
+        let editor = loadEditor("lead\n\n\(table)\n")
+        #expect(editor.linesCoveredByTableRawButtons().isEmpty)
+
+        guard let button = editor.visibleTableRawButtons().first else {
+            Issue.record("no button")
+            return
+        }
+        editor.hoveredTableBlock = button.blockIndex
+        let headerLine = editor.line(forOffset: editor.blocks[button.blockIndex].range.location)
+        #expect(editor.linesCoveredByTableRawButtons() == [headerLine])
+    }
+
+    // MARK: - Activation
 
     /// Only the caret placement is asserted. Making the table the *active*
     /// block — the restyle that reveals its raw markdown — is AppKit-async
@@ -84,10 +161,7 @@ struct TableRawButtonTests {
     /// hop belongs to the existing active-block machinery, not to the button.
     @Test("Activating puts the caret at the start of the table")
     func activationEntersRawEditing() {
-        let editor = makeEditor()
-        editor.loadContent("lead paragraph\n\n\(table)\n\ntrailing\n")
-        ensureFullLayout(editor)
-        layOutViewport(editor)
+        let editor = loadEditor("lead paragraph\n\n\(table)\n\ntrailing\n")
 
         guard let button = editor.visibleTableRawButtons().first else {
             Issue.record("no button to activate")
