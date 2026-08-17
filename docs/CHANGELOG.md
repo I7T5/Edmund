@@ -3,13 +3,16 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.3] - 2026-08-17
+
+Thanks to @aahventures for their first contribution (#269)
+
+### Added
+- ⌘W to close window and ⌥⌘W to close all windows (#269 @aahventures)
 
 ### Fixed
-- Typewriter scroll kept centering while typing on the last line of the document, instead of letting the text run off the bottom of the window (#277 @lluminate). The caret autoscroll had the same blind spot with typewriter scroll off.
-- ⌘W now closes the window — the File menu was missing its Close item, so the shortcut did nothing. ⌥⌘W closes all windows, as elsewhere on macOS.
-- Opening the app again after closing every window no longer creates two blank documents (#278)
-- A blank document left open when the app crashed or was force-quit no longer comes back as a second window at the next launch (#278)
+- Typewriter scroll not centering while typing on the last line of the document (#277)
+- Launching app after closing every window with autoquit off no longer creates two blank documents (#278)
 
 ## [0.4.2] - 2026-08-11
 
