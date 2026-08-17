@@ -397,7 +397,16 @@ Notable subsystems:
   1. *Window restoration.* Document windows are `isRestorable = true` for the
      whole session so a crash can hand back unsaved work;
      `AppDelegate.applicationShouldTerminate` clears the flag on a **clean**
-     quit when the preference is off, so nothing is archived.
+     quit when the preference is off, so nothing is archived. A blank untitled
+     document is the exception: it holds nothing a crash could hand back, so
+     `Document` leaves its window unarchived and gives it the flag on the first
+     edit (`updateChangeCount`) instead. An *unclean* exit never runs
+     `applicationShouldTerminate`, and what AppKit restores from that archive
+     arrives through `NSDocumentController`'s own restoration path
+     (`_restorePersistentDocumentWithState:` → `_openUntitledDocumentOfType:`),
+     which neither route-2's `reopenDocument` nor
+     `applicationShouldOpenUntitledFile` sees — so a blank window that *is*
+     archived cannot be stopped downstream.
   2. *Drafts.* With autosave-in-place on (`Document.autosavesInPlace` =
      `autoSaveWithVersions`, default on), every unsaved **untitled** document is
      kept by AppKit as a draft in `~/Library/Autosave Information/Unsaved edmd
@@ -412,6 +421,18 @@ Notable subsystems:
      the draft files are never deleted. Once skipped, AppKit drops the draft
      from its restore record, so turning the preference back on later does not
      resurrect old drafts; the file is still on disk.
+
+  The blank-document-on-startup preference (`startupAction`) has its own pair of
+  routes, and they are easy to double up: at launch AppKit asks
+  `applicationShouldOpenUntitledFile`, but on a *reopen* (Dock click, or opening
+  the still-running app again) it asks `applicationShouldHandleReopen` first and
+  then — if that returns `true` — runs its own handling, which for a document app
+  with no windows opens an untitled document through
+  `applicationShouldOpenUntitledFile` as well. Making the document in the reopen
+  delegate *and* returning `true` therefore produced two blank windows (#278);
+  the delegate returns `false` once it has handled the no-window case.
+  Miniaturized windows count as visible, so that branch only runs when there is
+  genuinely nothing to bring back.
 - **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to

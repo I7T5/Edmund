@@ -97,6 +97,22 @@ class Document: NSDocument, HeadingNavigable {
 
     // MARK: - Window Setup
 
+    /// Whether this document has anything a restored window could hand back: a
+    /// file on disk, or unsaved edits. False only for an untitled document
+    /// nobody has typed into.
+    private var isWorthRestoring: Bool { fileURL != nil || isDocumentEdited }
+
+    /// Every edit funnels through here (`EditorTextView+EditFlow.swift`), as does
+    /// saving, so this is where a window becomes worth restoring — or stops
+    /// being, if the last edit is undone away.
+    override func updateChangeCount(_ change: NSDocument.ChangeType) {
+        super.updateChangeCount(change)
+        let restorable = isWorthRestoring
+        for controller in windowControllers where controller.window?.isRestorable != restorable {
+            controller.window?.isRestorable = restorable
+        }
+    }
+
     override func makeWindowControllers() {
         // Default content size for first launch. Any saved size is applied as a
         // full window frame at the end of setup (below), once the toolbar is in
@@ -126,7 +142,15 @@ class Document: NSDocument, HeadingNavigable {
         // the preference applies — AppDelegate.applicationShouldTerminate turns
         // this off before terminating when it is disabled, so nothing is archived
         // and the next launch starts fresh.
-        window.isRestorable = true
+        //
+        // A blank untitled document is the exception: there is nothing in it for
+        // a crash to hand back, and archiving it means the next launch restores
+        // it — through `NSDocumentController`'s own restoration path, which
+        // neither `reopenDocument` nor `applicationShouldOpenUntitledFile` gates,
+        // so it lands *on top of* the startup document as a second blank window
+        // with "Reopen windows" off. It earns the flag on its first edit
+        // (`updateChangeCount`).
+        window.isRestorable = isWorthRestoring
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 

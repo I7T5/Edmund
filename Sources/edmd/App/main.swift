@@ -101,13 +101,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     // Reopen a new untitled document when the app is activated with no windows.
+    //
+    // Returning false is what keeps it to *one* document: `true` lets AppKit run
+    // its own reopen handling, which for a document-based app with no windows
+    // opens a second untitled document of its own (`_doOpenUntitled` →
+    // `applicationShouldOpenUntitledFile`, which says yes for the same
+    // preference). That is the double window in #278.
+    //
+    // Miniaturized windows count as visible, so the `!flag` branch is only
+    // reached when there is genuinely nothing to bring back — nothing else for
+    // AppKit's default handling to do here.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            if AppSettings.startupAction == .createNewDocument {
-                NSDocumentController.shared.newDocument(nil)
-            }
+        Self.shouldHandleReopen(hasVisibleWindows: flag)
+    }
+
+    /// The decision itself, as a type method so tests can exercise it without
+    /// building an `AppDelegate`: the stored `updaterController` starts Sparkle
+    /// on init, and a failed check puts up a *modal* alert that would sit on the
+    /// main thread forever in a test run.
+    static func shouldHandleReopen(hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        if AppSettings.startupAction == .createNewDocument {
+            NSDocumentController.shared.newDocument(nil)
         }
-        return true
+        return false
     }
 
     // MARK: - Settings
