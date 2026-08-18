@@ -169,14 +169,18 @@ final class FontSettings: NSObject, ObservableObject {
 
     /// Sets (or clears, with nil/empty) the user's font for one script and
     /// broadcasts the change live to every open document and Read view.
+    /// Clearing also drops the script's size ratio: an orphan ratio would
+    /// silently re-apply if the font is ever set again.
     func setCascadeFont(_ script: FontCascadeScript, family: String?) {
         var updated = theme
         if let family, !family.isEmpty {
             updated.fontCascade[script] = family
         } else {
             updated.fontCascade.removeValue(forKey: script)
+            updated.fontCascadeSizeRatios.removeValue(forKey: script)
         }
         cascadeFonts = updated.fontCascade
+        cascadeSizeRatios = updated.fontCascadeSizeRatios
         theme = updated
         updated.save()
         applyToDocuments(updated)

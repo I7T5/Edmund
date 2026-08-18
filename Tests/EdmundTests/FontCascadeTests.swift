@@ -366,7 +366,7 @@ struct FontCascadeEditorTests {
         let font = try #require(renderedFont(for: "😀", in: editor))
         // System fallback (Apple Color Emoji on stock macOS), not the Han font.
         #expect(font.familyName != family)
-        #expect(font.familyName != editor.bodyFont.fontName)
+        #expect(font.fontName != editor.bodyFont.fontName)
     }
 
     @Test("A script's size ratio scales the resolved font")

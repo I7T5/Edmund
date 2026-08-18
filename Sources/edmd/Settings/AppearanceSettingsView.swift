@@ -291,7 +291,7 @@ extension AppearanceSettingsView {
             }
             .buttonStyle(.static)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .help("A dedicated font per writing system. Unset scripts use the system fallback.")
+            .help("A dedicated font per writing system. Unset scripts use the system fallback. Right-click Select… to reset a script.")
         }
 
         if fontsByScriptExpanded {
@@ -317,6 +317,13 @@ extension AppearanceSettingsView {
                             .disabled(fonts.cascadeFonts[script] == nil)
                         Button("Select…") { fonts.selectCascadeFont(script) }
                             .fixedSize()
+                            // The only way to un-set a script's font — the
+                            // row is too tight for a permanent button. Named
+                            // in the section header's tooltip.
+                            .contextMenu {
+                                Button("Reset") { fonts.setCascadeFont(script, family: nil) }
+                                    .disabled(fonts.cascadeFonts[script] == nil)
+                            }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
