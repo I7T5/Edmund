@@ -156,6 +156,45 @@ struct TableCellCommitTests {
         #expect(editor.rawSource == before)
     }
 
+    // MARK: - Live write-back while typing
+
+    /// Typing in the popup rewrites the cell on every keystroke so the table
+    /// reflows under the card. That must not turn into one undo step per
+    /// keystroke — the whole session is a single edit.
+    @Test("A run of live edits is one undo step")
+    func liveEditsCoalesceIntoOneUndo() {
+        let editor = load(table)
+        let before = editor.rawSource
+        guard var target = cell(editor, at: "y") else {
+            Issue.record("no cell")
+            return
+        }
+        editor.cellEditorDidSnapshot = false
+        for text in ["z", "zz", "zzz", "zzzz"] {
+            target = editor.commitTableCellLive(target, text: text)
+            ensureFullLayout(editor)
+        }
+        #expect(editor.rawSource.contains("zzzz"))
+        editor.performUndo()
+        #expect(editor.rawSource == before)
+    }
+
+    /// Each live write shifts the ranges after it, so the helper has to hand
+    /// back a cell named by position or the next keystroke writes to the wrong
+    /// offsets.
+    @Test("A live edit returns the cell re-resolved by position")
+    func liveEditReturnsAFreshCell() {
+        let editor = load(table)
+        guard let target = cell(editor, at: "x") else {
+            Issue.record("no cell")
+            return
+        }
+        editor.cellEditorDidSnapshot = false
+        let fresh = editor.commitTableCellLive(target, text: "a much longer value")
+        #expect((editor.rawSource as NSString).substring(with: fresh.contentRange)
+            == " a much longer value ")
+    }
+
     @Test("Committing into a stale cell range does nothing")
     func staleRangeIsIgnored() {
         let editor = load(table)

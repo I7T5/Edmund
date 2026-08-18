@@ -2,8 +2,8 @@ import AppKit
 
 // MARK: - Popup table-cell editor
 //
-// Clicking a rendered table cell opens its markdown in a small panel below the
-// table. The panel has its own layout and its own text storage, which is what
+// Clicking a rendered table cell opens its markdown in a card hanging off that
+// cell's row: a row wide, top edge on the row's bottom, arrow on the cell. The panel has its own layout and its own text storage, which is what
 // makes it worth the trouble:
 //
 //   - A cell that overflows its column is drawn from a detached scratch layout
@@ -20,9 +20,9 @@ import AppKit
 //
 // It is deliberately *not* an NSPopover. A popover centres its body on its
 // positioning rect, so the body always travels with the arrow — and the whole
-// point here is the opposite: the panel spans the table and holds still while
-// only the arrow slides to the column being edited. Owning the drawing also
-// means the same class serves the attached and the torn-off states.
+// point here is the opposite: the card is a row wide and holds still while only
+// the arrow slides to the column being edited. Owning the drawing also means
+// the same class serves the attached and the torn-off states.
 //
 // The panel is a child window of the document window, so it follows the window
 // for free; only scrolling and resizing need repositioning by hand.
@@ -33,11 +33,14 @@ extension EditorTextView {
     /// usable field.
     static let cellEditorMinWidth: CGFloat = 220
 
-    /// Air between the table's bottom edge and the arrow's tip. Zero: the
-    /// arrow should touch the row it points at. The table's own rect already
-    /// carries the row's trailing cell padding, which is the gap you actually
-    /// see.
+    /// Air between the row's bottom edge and the arrow's tip. Zero: the arrow
+    /// should touch the row it points at.
     private static let cellEditorGap: CGFloat = 0
+
+    /// How far the card travels as it appears, and how long over. The exit is
+    /// the same motion run backwards.
+    private static let cellEditorTravel: CGFloat = 6
+    private static let cellEditorFade: TimeInterval = 0.12
 
     // MARK: - Geometry
 
@@ -51,8 +54,24 @@ extension EditorTextView {
     /// still span the column.
     func tableCellRect(for cell: TableCellRef) -> NSRect? {
         guard let tlm = textLayoutManager,
-              let range = blockTextRange(cell.contentRange, tlm) else { return nil }
+              let range = blockTextRange(columnRange(of: cell), tlm) else { return nil }
         return unionOfSegments(in: range, tlm)
+    }
+
+    /// The cell's range widened to take in the pipe that opens it.
+    ///
+    /// That pipe is where a right- or centre-aligned column hangs the kern that
+    /// gives the column its width — the same reason `tableCell(atRawOffset:)`
+    /// gives a pipe to the cell after it. Measuring the content alone therefore
+    /// comes up short of the column the reader sees.
+    private func columnRange(of cell: TableCellRef) -> NSRange {
+        let ns = rawSource as NSString
+        guard cell.contentRange.location > 0,
+              ns.character(at: cell.contentRange.location - 1) == 0x7C else {
+            return cell.contentRange
+        }
+        return NSRange(location: cell.contentRange.location - 1,
+                       length: cell.contentRange.length + 1)
     }
 
     /// The on-screen rect of a whole table (view coordinates).
@@ -74,8 +93,8 @@ extension EditorTextView {
         return union
     }
 
-    /// The width the popup takes for a table: the table's own width, so moving
-    /// between cells slides the arrow without resizing the field.
+    /// The width the popup takes: a whole row's, so moving between columns
+    /// slides the arrow without resizing the field under the user's eye.
     func cellEditorWidth(blockIndex: Int) -> CGFloat {
         max(Self.cellEditorMinWidth, tableRect(blockIndex: blockIndex)?.width ?? 0)
     }
@@ -107,9 +126,9 @@ extension EditorTextView {
         return nil
     }
 
-    /// How far along the card the arrow sits: the cell's centre, measured from
-    /// the table's left edge. This is the *only* thing that changes as the user
-    /// moves along a row — the card itself spans the table and holds still.
+    /// How far along the card the arrow sits: the cell's text centre, measured
+    /// from the card's left edge — which is the row's. This is the only thing
+    /// that changes as the user moves along a row.
     func cellEditorArrowX(for cell: TableCellRef) -> CGFloat? {
         guard let table = tableRect(blockIndex: cell.blockIndex),
               let cellRect = tableCellRect(for: cell) else { return nil }
@@ -150,37 +169,31 @@ extension EditorTextView {
         }
     }
 
-    /// `frame` reduced to just its arrow, top edge pinned — the state the card
-    /// springs out of and collapses back into.
-    static func cellEditorCollapsed(_ frame: NSRect) -> NSRect {
-        var collapsed = frame
-        collapsed.size.height = CellEditorChrome.arrowHeight + 2
-        collapsed.origin.y = frame.maxY - collapsed.height
-        return collapsed
-    }
-
     /// Where the panel goes, in screen coordinates, and where its arrow points.
     ///
-    /// The frame spans the table and sits under it; only `arrowX` changes as the
-    /// user moves along a row. Returns nil when the table isn't laid out.
+    /// The card is a row wide and hangs off the row being edited: the table's
+    /// left edge and width, top edge on the bottom of that row. Only `arrowX`
+    /// changes as the user moves along the row. Returns nil when the table
+    /// isn't laid out.
     func cellEditorPlacement(for cell: TableCellRef, height: CGFloat)
         -> (frame: NSRect, arrowX: CGFloat)? {
         guard let window,
               let table = tableRect(blockIndex: cell.blockIndex),
               let cellRect = tableCellRect(for: cell) else { return nil }
-        // The view is flipped, so the table's bottom edge is its maxY.
-        // `styleTableSpan` gives every row `paragraphSpacing = cellVPad`, so the
-        // block's rect ends below the last row's text. Anchoring on the raw
-        // maxY leaves that pad as a visible gap under the table.
+        // The view is flipped, so the row's bottom edge is its maxY.
+        // `styleTableSpan` gives every row `paragraphSpacing = cellVPad`, which
+        // the segment rect carries — anchoring on the raw maxY leaves that pad
+        // as a visible gap between the row and the arrow.
         let trailingPad = bodyFont.pointSize * 0.15
-        let bottomLeftInView = NSPoint(x: table.minX, y: table.maxY - trailingPad)
+        let bottomLeftInView = NSPoint(x: table.minX, y: cellRect.maxY - trailingPad)
         let inWindow = convert(bottomLeftInView, to: nil)
         let onScreen = window.convertPoint(toScreen: inWindow)
         let width = max(Self.cellEditorMinWidth, table.width)
         let frame = NSRect(x: onScreen.x,
                            y: onScreen.y - Self.cellEditorGap - height,
                            width: width, height: height)
-        return (frame, cellRect.midX - table.minX)
+        let center = tableCellTextCenterX(for: cell, in: cellRect) ?? cellRect.midX
+        return (frame, center - table.minX)
     }
 
     // MARK: - Opening
@@ -219,29 +232,29 @@ extension EditorTextView {
             onCancel: { [weak self] in self?.closeTableCellEditor(commit: false) },
             onTear: { [weak self] event in self?.detachCellEditor(with: event) },
             onStep: { [weak self] delta in self?.stepTableCellEditor(by: delta) })
-        controller.onHeightChange = { [weak self] in self?.repositionCellEditor() }
+        controller.onHeightChange = { [weak self] in self?.liveApplyCellEdit() }
 
         let panel = CellEditorPanel(contentRect: NSRect(x: 0, y: 0, width: 200, height: 60))
         panel.controller = controller
         panel.contentView = controller.view
         cellEditorPanel = panel
         isCellEditorDetached = false
+        cellEditorDidSnapshot = false
 
         repositionCellEditor()
-        // Unfurl from under the arrow: height grows from nothing to full with
-        // the top edge pinned, so the card appears to spring out of the row it
-        // points at. Width never changes, which is what keeps the text from
-        // reflowing mid-animation.
+        // Drops the last few points into place while fading in. Deliberately
+        // small and quick: the card is anchored to a cell the eye is already on,
+        // so anything longer reads as lag rather than as motion.
         let destination = panel.frame
-        panel.setFrame(Self.cellEditorCollapsed(destination), display: false)
+        var entry = destination
+        entry.origin.y += Self.cellEditorTravel
+        panel.setFrame(entry, display: false)
         panel.alphaValue = 0
         window.addChildWindow(panel, ordered: .above)
         panel.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.24
-            // Overshoots and settles — the bounce is what reads as "pop"
-            // rather than "slide".
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 1.7, 0.5, 1)
+            context.duration = Self.cellEditorFade
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().setFrame(destination, display: true)
             panel.animator().alphaValue = 1
         }
@@ -249,11 +262,46 @@ extension EditorTextView {
         observeForCellEditor()
     }
 
-    /// Puts the panel back under its table at its current height, and moves the
+    /// Writes the popup's current text into the cell on every keystroke, so the
+    /// table reflows — columns widen, rows wrap — under the card as the user
+    /// types, rather than snapping when the card closes.
+    ///
+    /// The whole session is still one undo step: `applyFormattingEdit` pushes a
+    /// snapshot per call, and every one after the first is dropped again, so
+    /// ⌘Z returns to the text the cell had when the card opened.
+    func liveApplyCellEdit() {
+        guard let cell = editingTableCell, let controller = cellEditorController else { return }
+        // Never mid-composition: the field holds provisional marked text then,
+        // and that must not reach the document (ARCHITECTURE §8).
+        guard !controller.isComposing else { return }
+        editingTableCell = commitTableCellLive(cell, text: controller.liveText())
+        repositionCellEditor(animateArrow: false)
+    }
+
+    /// One keystroke's worth of write-back, folded into this session's single
+    /// undo step, returning the cell renamed by position — the write shifts
+    /// every range after it, so the old `contentRange` is stale immediately.
+    @discardableResult
+    func commitTableCellLive(_ cell: TableCellRef, text: String) -> TableCellRef {
+        let depth = undoStack.count
+        commitTableCell(cell, text: text)
+        guard undoStack.count > depth else { return cell }
+        if cellEditorDidSnapshot {
+            // Keep the *first* snapshot of the session and drop this one, so
+            // undo lands on the text the cell had when the card opened rather
+            // than on the previous keystroke.
+            undoStack.removeLast()
+        } else {
+            cellEditorDidSnapshot = true
+        }
+        return tableCell(blockIndex: cell.blockIndex, row: cell.row, column: cell.column) ?? cell
+    }
+
+    /// Puts the panel back under its cell at its current height, and moves the
     /// arrow to the column being edited. The frame is recomputed from scratch,
-    /// so a table that changed width (a commit can redistribute the columns)
+    /// so a cell that changed width (typing can redistribute the columns)
     /// carries the panel with it.
-    func repositionCellEditor() {
+    func repositionCellEditor(animateArrow: Bool = true) {
         guard let panel = cellEditorPanel, let controller = panel.controller,
               let cell = editingTableCell, !isCellEditorDetached else { return }
         guard let placement = cellEditorPlacement(for: cell,
@@ -264,7 +312,7 @@ extension EditorTextView {
         }
         // The arrow glides only when the card is already up; on first show it
         // must start where it belongs.
-        controller.setArrowX(placement.arrowX, animated: panel.isVisible)
+        controller.setArrowX(placement.arrowX, animated: animateArrow && panel.isVisible)
         // Height is measured against the width the panel is about to have, then
         // the frame is built from that height — otherwise a width change and a
         // wrap change chase each other by one frame.
@@ -276,8 +324,8 @@ extension EditorTextView {
     }
 
     /// Commits the open cell and re-anchors on another cell of the same table.
-    /// Only the arrow moves — the panel spans the table, so the field stays
-    /// exactly where the user is already looking.
+    /// Only the arrow moves — the card is a row wide, so the field stays exactly
+    /// where the user is already looking.
     func moveTableCellEditor(toRow row: Int, column: Int) {
         guard let current = editingTableCell,
               let controller = cellEditorController else { return }
@@ -291,6 +339,7 @@ extension EditorTextView {
             return
         }
         editingTableCell = target
+        cellEditorDidSnapshot = false
         controller.load(text: (rawSource as NSString).substring(with: target.contentRange))
         repositionCellEditor()
         controller.focus()
@@ -340,14 +389,13 @@ extension EditorTextView {
         isCellEditorDetached = false
         if let panel {
             panel.controller = nil
-            // Collapse back into the row, the mirror of the way it came out.
-            // Quicker than the entrance and with a slight anticipation, so
-            // dismissing feels decisive rather than draggy.
-            let collapsed = Self.cellEditorCollapsed(panel.frame)
+            // The entrance run backwards: rises the same few points and fades.
+            var exit = panel.frame
+            exit.origin.y += Self.cellEditorTravel
             NSAnimationContext.runAnimationGroup({ context in
-                context.duration = 0.13
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.6, -0.3, 0.75, 1)
-                panel.animator().setFrame(collapsed, display: true)
+                context.duration = Self.cellEditorFade
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().setFrame(exit, display: true)
                 panel.animator().alphaValue = 0
             }, completionHandler: {
                 panel.parent?.removeChildWindow(panel)
@@ -727,6 +775,12 @@ public final class TableCellEditorController: NSViewController {
 
     func setArrowX(_ x: CGFloat, animated: Bool) { chrome.setArrowX(x, animated: animated) }
 
+    /// The text as it stands right now, for the live write-back on each
+    /// keystroke. Only meaningful while `isComposing` is false.
+    func liveText() -> String { field.string }
+
+    var isComposing: Bool { field.hasMarkedText() }
+
     func setDetached(_ detached: Bool) {
         closeButton.isHidden = !detached
         chrome.showsArrow = !detached
@@ -737,6 +791,12 @@ public final class TableCellEditorController: NSViewController {
         view.window?.makeFirstResponder(field)
         field.setSelectedRange(NSRange(location: (field.string as NSString).length, length: 0))
     }
+
+    #if DEBUG
+    func reproInsert(_ text: String) {
+        field.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+    #endif
 
     /// The edited text, with any in-flight IME composition finalised first —
     /// reading `string` mid-composition would capture a half-formed syllable.
@@ -835,6 +895,12 @@ extension EditorTextView {
 
     public func reproStepTableCellEditor(by delta: Int) {
         stepTableCellEditor(by: delta)
+    }
+
+    /// Types into the open card. The panel is key when it is up, so a scripted
+    /// keystroke aimed at the document window would go to the wrong view.
+    public func reproTypeInCellEditor(_ text: String) {
+        cellEditorController?.reproInsert(text)
     }
 }
 #endif

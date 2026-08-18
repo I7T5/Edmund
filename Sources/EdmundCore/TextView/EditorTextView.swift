@@ -411,6 +411,11 @@ public class EditorTextView: NSTextView {
     /// window: it stops tracking the table and grows its own close box.
     var isCellEditorDetached = false
 
+    /// True once this popup session has pushed its undo snapshot. Typing in the
+    /// popup rewrites the cell on every keystroke so the table reflows live, and
+    /// without this every keystroke would also be its own undo step.
+    var cellEditorDidSnapshot = false
+
     /// Ends the edit when the document window stops being key, and keeps the
     /// attached popup under its table while the view scrolls.
     var cellEditorKeyObserver: NSObjectProtocol?

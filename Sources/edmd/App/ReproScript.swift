@@ -26,6 +26,7 @@ import WebKit
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
 ///   logtoolbar        log every toolbar item's identifier and enabled state
+///   celltype <text>   type into the open table-cell card
 ///   logwindows        log each visible window's id, for `screencapture -l`
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   clickrow <title>  press a format-popover row by its title
@@ -285,6 +286,14 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     editor.reproStepTableCellEditor(by: Int(arg) ?? 1)
                     report("repro cellstep \(arg)")
+                }
+            case "celltype":
+                // The card is key while it is up, so `type` — which aims at the
+                // document's editor — would land in the wrong view.
+                for ch in arg {
+                    let s = String(ch)
+                    schedule(after: delay) { $0.reproTypeInCellEditor(s) }
+                    delay += 0.08
                 }
             case "logwindows":
                 // `NSWindow.windowNumber` is the CGWindowID `screencapture -l`

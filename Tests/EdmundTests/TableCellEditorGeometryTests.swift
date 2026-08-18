@@ -2,9 +2,9 @@ import Testing
 import AppKit
 @testable import EdmundCore
 
-/// The popup takes the table's width and keeps it from cell to cell, so moving
-/// along a row slides only the arrow. These cover the geometry and the
-/// by-position cell lookup that the move depends on; the popover itself needs a
+/// The popup is a row wide and hangs off the row it edits, with only the arrow
+/// moving between columns. These cover that geometry and the by-position cell
+/// lookup that moving between cells depends on; the panel itself needs a
 /// window, so it isn't built here.
 
 @Suite("Table cell editor geometry")
@@ -12,6 +12,10 @@ import AppKit
 struct TableCellEditorGeometryTests {
 
     private let table = "| a | bb | ccc |\n|---|---|---|\n| x | yy | zzz |"
+    /// A column far wider than its shortest value, so "the arrow follows the
+    /// text" and "the card matches the column" have room to differ.
+    private let wideTable =
+        "| \(String(repeating: "wide ", count: 20)) | b |\n|---|---|\n| x | y |"
 
     private func loadEditor(_ text: String) -> EditorTextView {
         let editor = makeEditor()
@@ -22,8 +26,8 @@ struct TableCellEditorGeometryTests {
         return editor
     }
 
-    @Test("The popup is as wide as the table")
-    func widthMatchesTheTable() {
+    @Test("The popup is as wide as a row")
+    func widthMatchesTheRow() {
         let editor = loadEditor("lead\n\n\(table)\n")
         guard let blockIndex = editor.blocks.firstIndex(where: { $0.kind == .table }),
               let rect = editor.tableRect(blockIndex: blockIndex) else {
@@ -35,8 +39,8 @@ struct TableCellEditorGeometryTests {
             == max(EditorTextView.cellEditorMinWidth, rect.width))
     }
 
-    /// The width is a property of the table, not of the cell — that is what
-    /// keeps the field still while the arrow travels.
+    /// The width is a property of the row, not of the cell — that is what keeps
+    /// the field still while the arrow travels.
     @Test("Every cell in a table yields the same popup width")
     func widthIsConstantAcrossCells() {
         let editor = loadEditor(table)
@@ -46,6 +50,23 @@ struct TableCellEditorGeometryTests {
         }
         let widths = (0..<3).map { _ in editor.cellEditorWidth(blockIndex: blockIndex) }
         #expect(Set(widths).count == 1)
+    }
+
+    /// Each cell's rect must span its whole column, not just its glyphs — the
+    /// arrow is positioned against it, and a right- or centre-aligned column
+    /// hangs half its padding kern on the pipe that opens the cell.
+    @Test("A cell's rect spans its column, edge to edge")
+    func cellRectsTileTheRow() {
+        let editor = loadEditor(table)
+        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }),
+              let first = editor.tableCell(blockIndex: b, row: 2, column: 0),
+              let second = editor.tableCell(blockIndex: b, row: 2, column: 1),
+              let a = editor.tableCellRect(for: first),
+              let c = editor.tableCellRect(for: second) else {
+            Issue.record("no rects")
+            return
+        }
+        #expect(abs(a.maxX - c.minX) < 0.5)
     }
 
     @Test("Cells in one row have different anchor rects")
@@ -65,13 +86,14 @@ struct TableCellEditorGeometryTests {
 
     // MARK: - The travelling arrow
 
-    /// The card spans the table and holds still; the arrow is the only thing
-    /// that moves. So the arrow's offset must grow with the column while the
-    /// card's width stays put.
+    /// The card is a row wide and holds still; the arrow is the only thing that
+    /// moves. So the arrow's offset must grow with the column while the card's
+    /// width stays put.
     @Test("The arrow tracks the column across a row")
     func arrowTracksTheColumn() {
         let editor = loadEditor(table)
-        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }) else {
+        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }),
+              let width = editor.tableRect(blockIndex: b)?.width else {
             Issue.record("no table")
             return
         }
@@ -82,29 +104,26 @@ struct TableCellEditorGeometryTests {
         #expect(xs.count == 3)
         #expect(xs == xs.sorted())
         #expect(Set(xs).count == 3)
+        #expect(xs.allSatisfy { $0 >= 0 && $0 <= width })
     }
 
-    @Test("The arrow stays inside the card")
-    func arrowWithinTheCard() {
-        let editor = loadEditor(table)
+    /// A short value in a left-aligned wide column sits at the column's left,
+    /// not its middle — the kern that pads the column hangs after the content.
+    @Test("The arrow follows the text, not the column's centre")
+    func arrowFollowsTheText() {
+        let editor = loadEditor(wideTable)
         guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }),
-              let width = editor.tableRect(blockIndex: b)?.width else {
-            Issue.record("no table")
+              let cell = editor.tableCell(blockIndex: b, row: 2, column: 0),
+              let rect = editor.tableCellRect(for: cell),
+              let x = editor.cellEditorArrowX(for: cell) else {
+            Issue.record("no cell")
             return
         }
-        for col in 0..<3 {
-            guard let cell = editor.tableCell(blockIndex: b, row: 0, column: col),
-                  let x = editor.cellEditorArrowX(for: cell) else {
-                Issue.record("no arrow for column \(col)")
-                continue
-            }
-            #expect(x >= 0)
-            #expect(x <= width)
-        }
+        #expect(x < rect.midX)
     }
 
-    /// A commit can redistribute the columns, which changes the table's width —
-    /// the card has to follow it rather than keep the width it opened with.
+    /// Typing widens the table, and the card has to follow it rather than keep
+    /// the width it opened with.
     @Test("The card's width follows the table's")
     func widthFollowsTheTable() {
         let editor = loadEditor("| a | b |\n|---|---|\n| x | y |")
