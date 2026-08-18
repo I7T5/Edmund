@@ -63,6 +63,63 @@ struct TableCellEditorGeometryTests {
         #expect(abs(a.midY - b.midY) < 1) // same row, so it travels sideways only
     }
 
+    // MARK: - The travelling arrow
+
+    /// The card spans the table and holds still; the arrow is the only thing
+    /// that moves. So the arrow's offset must grow with the column while the
+    /// card's width stays put.
+    @Test("The arrow tracks the column across a row")
+    func arrowTracksTheColumn() {
+        let editor = loadEditor(table)
+        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }) else {
+            Issue.record("no table")
+            return
+        }
+        let xs = (0..<3).compactMap { col -> CGFloat? in
+            guard let cell = editor.tableCell(blockIndex: b, row: 0, column: col) else { return nil }
+            return editor.cellEditorArrowX(for: cell)
+        }
+        #expect(xs.count == 3)
+        #expect(xs == xs.sorted())
+        #expect(Set(xs).count == 3)
+    }
+
+    @Test("The arrow stays inside the card")
+    func arrowWithinTheCard() {
+        let editor = loadEditor(table)
+        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }),
+              let width = editor.tableRect(blockIndex: b)?.width else {
+            Issue.record("no table")
+            return
+        }
+        for col in 0..<3 {
+            guard let cell = editor.tableCell(blockIndex: b, row: 0, column: col),
+                  let x = editor.cellEditorArrowX(for: cell) else {
+                Issue.record("no arrow for column \(col)")
+                continue
+            }
+            #expect(x >= 0)
+            #expect(x <= width)
+        }
+    }
+
+    /// A commit can redistribute the columns, which changes the table's width —
+    /// the card has to follow it rather than keep the width it opened with.
+    @Test("The card's width follows the table's")
+    func widthFollowsTheTable() {
+        let editor = loadEditor("| a | b |\n|---|---|\n| x | y |")
+        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }),
+              let cell = editor.tableCell(blockIndex: b, row: 2, column: 0) else {
+            Issue.record("no table")
+            return
+        }
+        let before = editor.cellEditorWidth(blockIndex: b)
+        editor.commitTableCell(cell, text: String(repeating: "wide ", count: 12))
+        ensureFullLayout(editor)
+        let after = editor.cellEditorWidth(blockIndex: b)
+        #expect(after > before)
+    }
+
     // MARK: - By-position lookup
 
     @Test("A cell can be found by row and column")

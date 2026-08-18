@@ -2,9 +2,9 @@ import AppKit
 
 // MARK: - Popup table-cell editor
 //
-// Clicking a rendered table cell opens its markdown in a popover instead of
-// putting a caret in the table. The popover has its own layout and its own text
-// storage, which is what makes it worth the trouble:
+// Clicking a rendered table cell opens its markdown in a small panel below the
+// table. The panel has its own layout and its own text storage, which is what
+// makes it worth the trouble:
 //
 //   - A cell that overflows its column is drawn from a detached scratch layout
 //     (`.tableCellWraps`), so a caret in the host storage cannot follow the
@@ -18,22 +18,23 @@ import AppKit
 // contiguous range replacement through `applyFormattingEdit`, the same
 // primitive the Format menu uses.
 //
-// The popup is as wide as the table and keeps that width from cell to cell, so
-// only its arrow travels as the user moves along a row — the field itself never
-// jumps out from under them. It grows downward as the text gets longer.
+// It is deliberately *not* an NSPopover. A popover centres its body on its
+// positioning rect, so the body always travels with the arrow — and the whole
+// point here is the opposite: the panel spans the table and holds still while
+// only the arrow slides to the column being edited. Owning the drawing also
+// means the same class serves the attached and the torn-off states.
 //
-// Dragging it off tears it out into a small floating window with a close box,
-// the way a Calendar event's popover detaches.
-//
-// Dismissal is hand-rolled (`.applicationDefined`) rather than `.transient`,
-// because transient closes on the very click that should have moved the popup
-// to the next cell.
+// The panel is a child window of the document window, so it follows the window
+// for free; only scrolling and resizing need repositioning by hand.
 
 extension EditorTextView {
 
     /// Smallest the popup is allowed to be, so a narrow table still gets a
     /// usable field.
     static let cellEditorMinWidth: CGFloat = 220
+
+    /// Air between the table's bottom edge and the panel's arrow.
+    private static let cellEditorGap: CGFloat = 4
 
     // MARK: - Geometry
 
@@ -103,14 +104,43 @@ extension EditorTextView {
         return nil
     }
 
+    /// How far along the card the arrow sits: the cell's centre, measured from
+    /// the table's left edge. This is the *only* thing that changes as the user
+    /// moves along a row — the card itself spans the table and holds still.
+    func cellEditorArrowX(for cell: TableCellRef) -> CGFloat? {
+        guard let table = tableRect(blockIndex: cell.blockIndex),
+              let cellRect = tableCellRect(for: cell) else { return nil }
+        return cellRect.midX - table.minX
+    }
+
+    /// Where the panel goes, in screen coordinates, and where its arrow points.
+    ///
+    /// The frame spans the table and sits under it; only `arrowX` changes as the
+    /// user moves along a row. Returns nil when the table isn't laid out.
+    func cellEditorPlacement(for cell: TableCellRef, height: CGFloat)
+        -> (frame: NSRect, arrowX: CGFloat)? {
+        guard let window,
+              let table = tableRect(blockIndex: cell.blockIndex),
+              let cellRect = tableCellRect(for: cell) else { return nil }
+        // The view is flipped, so the table's bottom edge is its maxY.
+        let bottomLeftInView = NSPoint(x: table.minX, y: table.maxY)
+        let inWindow = convert(bottomLeftInView, to: nil)
+        let onScreen = window.convertPoint(toScreen: inWindow)
+        let width = max(Self.cellEditorMinWidth, table.width)
+        let frame = NSRect(x: onScreen.x,
+                           y: onScreen.y - Self.cellEditorGap - height,
+                           width: width, height: height)
+        return (frame, cellRect.midX - table.minX)
+    }
+
     // MARK: - Opening
 
     /// The cell a click would edit, or nil if the click isn't on an editable
     /// cell of a *rendered* table.
     ///
     /// A table showing its raw markdown is excluded: the caret is already in it,
-    /// the user is already editing the source, and a popover on top of that
-    /// would be two editors for one piece of text.
+    /// the user is already editing the source, and a second editor on top of
+    /// that would be two editors for one piece of text.
     func tableCellForCellEditor(at event: NSEvent) -> TableCellRef? {
         guard let offset = wrappedCellCharIndex(at: event) ?? clickCharIndex(at: event),
               let cell = tableCell(atRawOffset: offset),
@@ -120,40 +150,67 @@ extension EditorTextView {
 
     /// Opens the popup editor on `cell`, or slides an open one over to it.
     func openTableCellEditor(_ cell: TableCellRef) {
-        // Same table: keep the popup, commit what's in it, and move the arrow.
         if let current = editingTableCell, current.blockIndex == cell.blockIndex,
-           tableCellPopover != nil, !isCellEditorDetached {
+           cellEditorPanel != nil, !isCellEditorDetached {
             moveTableCellEditor(toRow: cell.row, column: cell.column)
             return
         }
         closeTableCellEditor(commit: true)
-        guard let anchor = tableCellRect(for: cell) else { return }
+        guard let window else { return }
 
         editingTableCell = cell
         let controller = TableCellEditorController(
             text: (rawSource as NSString).substring(with: cell.contentRange),
-            width: cellEditorWidth(blockIndex: cell.blockIndex),
             font: bodyFont,
+            style: { [weak self] text, caret in
+                self?.styleBlock(text, cursorPosition: caret)
+            },
             onCommit: { [weak self] in self?.closeTableCellEditor(commit: true) },
             onCancel: { [weak self] in self?.closeTableCellEditor(commit: false) },
             onTear: { [weak self] event in self?.detachCellEditor(with: event) },
             onStep: { [weak self] delta in self?.stepTableCellEditor(by: delta) })
+        controller.onHeightChange = { [weak self] in self?.repositionCellEditor() }
 
-        let popover = NSPopover()
-        // Not `.transient`: that would close on the very click meant to move the
-        // popup to the next cell. Dismissal is handled here instead — see
-        // `mouseDown` and `windowDidResignKey`.
-        popover.behavior = .applicationDefined
-        popover.contentViewController = controller
-        tableCellPopover = popover
-        popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
+        let panel = CellEditorPanel(contentRect: NSRect(x: 0, y: 0, width: 200, height: 60))
+        panel.controller = controller
+        panel.contentView = controller.view
+        cellEditorPanel = panel
+        isCellEditorDetached = false
+
+        repositionCellEditor()
+        window.addChildWindow(panel, ordered: .above)
+        panel.makeKeyAndOrderFront(nil)
         controller.focus()
-        observeKeyLossForCellEditor()
+        observeForCellEditor()
+    }
+
+    /// Puts the panel back under its table at its current height, and moves the
+    /// arrow to the column being edited. The frame is recomputed from scratch,
+    /// so a table that changed width (a commit can redistribute the columns)
+    /// carries the panel with it.
+    func repositionCellEditor() {
+        guard let panel = cellEditorPanel, let controller = panel.controller,
+              let cell = editingTableCell, !isCellEditorDetached else { return }
+        guard let placement = cellEditorPlacement(for: cell,
+                                                  height: controller.fittingHeight(width: nil))
+        else {
+            closeTableCellEditor(commit: true)
+            return
+        }
+        controller.setArrowX(placement.arrowX)
+        // Height is measured against the width the panel is about to have, then
+        // the frame is built from that height — otherwise a width change and a
+        // wrap change chase each other by one frame.
+        let height = controller.fittingHeight(width: placement.frame.width)
+        var frame = placement.frame
+        frame.origin.y = frame.maxY - height
+        frame.size.height = height
+        panel.setFrame(frame, display: true)
     }
 
     /// Commits the open cell and re-anchors on another cell of the same table.
-    /// Only the arrow moves: the popup keeps the table's width, so the field
-    /// stays exactly where the user is already looking.
+    /// Only the arrow moves — the panel spans the table, so the field stays
+    /// exactly where the user is already looking.
     func moveTableCellEditor(toRow row: Int, column: Int) {
         guard let current = editingTableCell,
               let controller = cellEditorController else { return }
@@ -161,15 +218,14 @@ extension EditorTextView {
 
         // After the commit the table has been reparsed and relaid out, so the
         // target has to be found again by position — its old range is stale.
-        guard let target = tableCell(blockIndex: current.blockIndex, row: row, column: column),
-              let anchor = tableCellRect(for: target) else {
+        guard let target = tableCell(blockIndex: current.blockIndex, row: row, column: column)
+        else {
             closeTableCellEditor(commit: false)
             return
         }
         editingTableCell = target
-        controller.load(text: (rawSource as NSString).substring(with: target.contentRange),
-                        width: cellEditorWidth(blockIndex: target.blockIndex))
-        tableCellPopover?.positioningRect = anchor
+        controller.load(text: (rawSource as NSString).substring(with: target.contentRange))
+        repositionCellEditor()
         controller.focus()
     }
 
@@ -181,40 +237,20 @@ extension EditorTextView {
         moveTableCellEditor(toRow: current.row, column: current.column + delta)
     }
 
-    var cellEditorController: TableCellEditorController? {
-        (tableCellPopover?.contentViewController as? TableCellEditorController)
-            ?? detachedCellEditor?.editorController
-    }
-
-    var isCellEditorDetached: Bool { detachedCellEditor != nil }
+    var cellEditorController: TableCellEditorController? { cellEditorPanel?.controller }
 
     // MARK: - Tear-off
 
-    /// Pulls the popup out into a small floating window, the way a Calendar
-    /// event's popover detaches when you drag it.
-    ///
-    /// The controller's view is moved rather than rebuilt, so the text, the
-    /// selection and the field's own undo all survive the transition.
+    /// Pulls the panel off the table into a free-floating window, the way a
+    /// Calendar event's popover detaches when you drag it. Nothing is rebuilt —
+    /// the same window stops being a child and stops tracking.
     func detachCellEditor(with event: NSEvent) {
-        guard let popover = tableCellPopover,
-              let controller = popover.contentViewController as? TableCellEditorController,
-              let screenOrigin = popover.contentViewController?.view.window?.frame.origin
-        else { return }
-        let size = controller.view.frame.size
-
-        controller.view.removeFromSuperview()
-        popover.contentViewController = nil
-        tableCellPopover = nil
-        popover.close()
-
-        let panel = DetachedCellEditorPanel(
-            contentRect: NSRect(origin: screenOrigin, size: size))
-        panel.editorController = controller
-        controller.setDetached(true)
-        panel.contentView = controller.view
+        guard let panel = cellEditorPanel, !isCellEditorDetached else { return }
+        isCellEditorDetached = true
+        window?.removeChildWindow(panel)
+        panel.level = .floating
+        panel.controller?.setDetached(true)
         panel.makeKeyAndOrderFront(nil)
-        detachedCellEditor = panel
-        controller.focus()
         // Continue the same gesture, so the window comes away under the pointer
         // instead of appearing and waiting for a second drag.
         panel.performDrag(with: event)
@@ -230,23 +266,23 @@ extension EditorTextView {
         guard let cell = editingTableCell else { return }
         let controller = cellEditorController
         editingTableCell = nil
-        stopObservingKeyLossForCellEditor()
+        stopObservingForCellEditor()
 
-        let popover = tableCellPopover
-        tableCellPopover = nil
-        popover?.close()
-
-        let panel = detachedCellEditor
-        detachedCellEditor = nil
-        panel?.editorController = nil
-        panel?.close()
+        let panel = cellEditorPanel
+        cellEditorPanel = nil
+        isCellEditorDetached = false
+        if let panel {
+            panel.parent?.removeChildWindow(panel)
+            panel.controller = nil
+            panel.close()
+        }
 
         guard commit, let controller else { return }
         commitTableCell(cell, text: controller.committedText())
     }
 
     /// A click anywhere that isn't a cell of the table being edited ends the
-    /// edit. `.applicationDefined` popovers don't do this for themselves.
+    /// edit. Nothing dismisses this panel for us.
     func dismissCellEditorIfClickIsOutside(_ event: NSEvent) {
         guard editingTableCell != nil, !isCellEditorDetached else { return }
         if let cell = tableCellForCellEditor(at: event),
@@ -254,10 +290,11 @@ extension EditorTextView {
         closeTableCellEditor(commit: true)
     }
 
-    private func observeKeyLossForCellEditor() {
-        stopObservingKeyLossForCellEditor()
+    private func observeForCellEditor() {
+        stopObservingForCellEditor()
         guard let window else { return }
-        cellEditorKeyObserver = NotificationCenter.default.addObserver(
+        let center = NotificationCenter.default
+        cellEditorKeyObserver = center.addObserver(
             forName: NSWindow.didResignKeyNotification, object: window, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -265,13 +302,24 @@ extension EditorTextView {
                 self.closeTableCellEditor(commit: true)
             }
         }
+        // The panel is a child window, so it follows the window on its own; it
+        // does not follow the *content* scrolling under it.
+        if let clip = enclosingScrollView?.contentView {
+            clip.postsBoundsChangedNotifications = true
+            cellEditorScrollObserver = center.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: clip, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.repositionCellEditor() }
+            }
+        }
     }
 
-    private func stopObservingKeyLossForCellEditor() {
-        if let token = cellEditorKeyObserver {
+    private func stopObservingForCellEditor() {
+        for token in [cellEditorKeyObserver, cellEditorScrollObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(token)
-            cellEditorKeyObserver = nil
         }
+        cellEditorKeyObserver = nil
+        cellEditorScrollObserver = nil
     }
 
     /// Writes `text` back into `cell`, as one undoable step.
@@ -284,8 +332,8 @@ extension EditorTextView {
         guard replacement != existing else { return }
 
         // Keep the caret where it was. Anywhere inside the table would make it
-        // the active block and render it raw, undoing the popover's whole point.
-        // The live selection *is* the pre-edit one: opening the popover consumes
+        // the active block and render it raw, undoing the popup's whole point.
+        // The live selection *is* the pre-edit one: opening the popup consumes
         // the click before `super.mouseDown`, so AppKit never moved the caret.
         let delta = (replacement as NSString).length - cell.contentRange.length
         var caret = selectedRange()
@@ -325,15 +373,14 @@ extension EditorTextView {
     }
 }
 
-// MARK: - The detached window
+// MARK: - The window
 
-/// The torn-off cell editor. Borderless so it reads as a small floating card
-/// rather than a document window, which means `canBecomeKey` has to be granted
-/// by hand — a borderless window is refused key status otherwise, and this one
-/// has to take typing.
+/// Borderless so it reads as a card rather than a document window, which means
+/// `canBecomeKey` has to be granted by hand — a borderless window is refused key
+/// status otherwise, and this one has to take typing.
 @MainActor
-final class DetachedCellEditorPanel: NSPanel {
-    weak var editorController: TableCellEditorController?
+public final class CellEditorPanel: NSPanel {
+    var controller: TableCellEditorController?
 
     init(contentRect: NSRect) {
         super.init(contentRect: contentRect,
@@ -341,52 +388,113 @@ final class DetachedCellEditorPanel: NSPanel {
                    backing: .buffered, defer: false)
         isMovableByWindowBackground = true
         hasShadow = true
-        backgroundColor = .windowBackgroundColor
+        backgroundColor = .clear
         isOpaque = false
-        level = .floating
     }
 
-    override var canBecomeKey: Bool { true }
+    public override var canBecomeKey: Bool { true }
 }
 
-// MARK: - The popup itself
+// MARK: - The bubble
+
+/// Draws the card and its arrow. The arrow's x is the only thing that changes
+/// as the user moves along a row.
+@MainActor
+final class CellEditorChrome: NSView {
+    static let arrowHeight: CGFloat = 7
+    static let arrowHalfWidth: CGFloat = 7
+    static let cornerRadius: CGFloat = 7
+
+    var arrowX: CGFloat = 20 { didSet { needsDisplay = true } }
+    var showsArrow = true { didSet { needsDisplay = true } }
+
+    /// A drag starting on the card's own surface — the padding above the text,
+    /// never the text itself, which has to keep its selection drag — tears the
+    /// card off the table.
+    var onDrag: ((NSEvent) -> Void)?
+    private var dragOrigin: NSPoint?
+
+    override func mouseDown(with event: NSEvent) { dragOrigin = event.locationInWindow }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = dragOrigin else { return }
+        let moved = hypot(event.locationInWindow.x - start.x,
+                          event.locationInWindow.y - start.y)
+        // A few points of slop, so a twitch on mouse-down doesn't tear it off.
+        guard moved > 4 else { return }
+        dragOrigin = nil
+        onDrag?(event)
+    }
+
+    override func mouseUp(with event: NSEvent) { dragOrigin = nil }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let inset: CGFloat = 0.5
+        let top = bounds.maxY - (showsArrow ? Self.arrowHeight : 0)
+        let body = NSRect(x: bounds.minX + inset, y: bounds.minY + inset,
+                          width: bounds.width - 2 * inset, height: top - bounds.minY - inset)
+        let path = NSBezierPath(roundedRect: body,
+                                xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
+        if showsArrow {
+            let x = min(max(arrowX, Self.cornerRadius + Self.arrowHalfWidth),
+                        bounds.maxX - Self.cornerRadius - Self.arrowHalfWidth)
+            let arrow = NSBezierPath()
+            arrow.move(to: NSPoint(x: x - Self.arrowHalfWidth, y: top))
+            arrow.line(to: NSPoint(x: x, y: bounds.maxY))
+            arrow.line(to: NSPoint(x: x + Self.arrowHalfWidth, y: top))
+            arrow.close()
+            path.append(arrow)
+        }
+        NSColor.windowBackgroundColor.setFill()
+        path.fill()
+        NSColor.separatorColor.setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+}
+
+// MARK: - The editor itself
 
 /// A one-cell markdown editor: a plain `NSTextView`, deliberately not an
 /// `EditorTextView`. It wants none of the block pipeline — there is one block,
 /// it is a few dozen characters, and it is not the document.
 @MainActor
-final class TableCellEditorController: NSViewController {
+public final class TableCellEditorController: NSViewController {
 
     private let field = CellTextView()
     private let scroll = NSScrollView()
     private let closeButton = NSButton()
-    private let grip = GripView()
+    private let chrome = CellEditorChrome()
     private var initialText: String
-    private var width: CGFloat
     private let font: NSFont
-    private let onTear: (NSEvent) -> Void
 
-    /// Height of the drag strip along the top. It is the only place a drag can
-    /// start a tear-off — a drag on the text itself has to stay a selection.
-    private static let gripHeight: CGFloat = 16
+    /// Air above the text. Doubles as the only place a drag can start a
+    /// tear-off — a drag on the text itself has to stay a selection.
+    private static let topPadding: CGFloat = 18
+    private static let bottomPadding: CGFloat = 6
 
-    init(text: String, width: CGFloat, font: NSFont,
+    var onHeightChange: (() -> Void)?
+
+    init(text: String, font: NSFont,
+         style: @escaping (String, Int?) -> NSAttributedString?,
          onCommit: @escaping () -> Void, onCancel: @escaping () -> Void,
          onTear: @escaping (NSEvent) -> Void, onStep: @escaping (Int) -> Void) {
         self.initialText = text
-        self.width = width
         self.font = font
-        self.onTear = onTear
         super.init(nibName: nil, bundle: nil)
         field.onCancel = onCancel
         field.onCommit = onCommit
-        field.onResize = { [weak self] in self?.resizeToFitText() }
         field.onStep = onStep
+        field.style = style
+        field.onTextChanged = { [weak self] in self?.onHeightChange?() }
+        chrome.onDrag = onTear
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    override func loadView() {
+    public override func loadView() {
         field.string = initialText.trimmingCharacters(in: .whitespaces)
         field.font = font
         field.isRichText = false
@@ -397,84 +505,77 @@ final class TableCellEditorController: NSViewController {
         // provisional marked text, and marked text is the hazard here.
         field.isAutomaticTextCompletionEnabled = false
         field.drawsBackground = false
-        field.textContainerInset = NSSize(width: 6, height: 6)
+        field.textContainerInset = NSSize(width: 8, height: 0)
         field.isVerticallyResizable = true
         field.isHorizontallyResizable = false
         field.textContainer?.widthTracksTextView = true
-        field.autoresizingMask = [.width]
+        field.textContainer?.lineFragmentPadding = 0
 
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = false
         scroll.documentView = field
 
-        grip.onDrag = { [weak self] event in self?.onTear(event) }
-
         closeButton.isHidden = true          // only the torn-off window shows it
-        closeButton.bezelStyle = .circular
         closeButton.isBordered = false
+        closeButton.imagePosition = .imageOnly
         closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill",
                                     accessibilityDescription: "Close")
         closeButton.target = field
         closeButton.action = #selector(CellTextView.commitFromButton)
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 60))
-        container.addSubview(grip)
-        container.addSubview(scroll)
-        container.addSubview(closeButton)
-        view = container
+        chrome.addSubview(scroll)
+        chrome.addSubview(closeButton)
+        view = chrome
+        field.restyle()
+    }
+
+    public override func viewDidLayout() {
+        super.viewDidLayout()
         layOutContents()
-        resizeToFitText()
     }
 
     private func layOutContents() {
-        let h = view.frame.height
-        grip.frame = NSRect(x: 0, y: h - Self.gripHeight, width: width, height: Self.gripHeight)
-        grip.autoresizingMask = [.width, .minYMargin]
-        scroll.frame = NSRect(x: 0, y: 0, width: width, height: max(0, h - Self.gripHeight))
-        scroll.autoresizingMask = [.width, .height]
-        closeButton.frame = NSRect(x: 3, y: h - Self.gripHeight + 1, width: 14, height: 14)
-        closeButton.autoresizingMask = [.minYMargin]
+        let arrow = chrome.showsArrow ? CellEditorChrome.arrowHeight : 0
+        let h = chrome.bounds.height
+        let top = h - arrow - Self.topPadding
+        scroll.frame = NSRect(x: 0, y: Self.bottomPadding,
+                              width: chrome.bounds.width,
+                              height: max(0, top - Self.bottomPadding))
+        closeButton.frame = NSRect(x: 6, y: h - arrow - 15, width: 13, height: 13)
     }
 
-    /// Swaps in another cell's text without rebuilding the popup.
-    func load(text: String, width: CGFloat) {
-        self.width = width
-        self.initialText = text
-        field.string = text.trimmingCharacters(in: .whitespaces)
-        resizeToFitText()
-    }
-
-    /// Grows downward with the text, within reason. The width never changes —
-    /// it is the table's — so only the bottom edge moves.
-    private func resizeToFitText() {
-        guard let container = field.textContainer, let tlm = field.textLayoutManager else { return }
-        container.size = NSSize(width: width - 2 * field.textContainerInset.width,
-                                height: .greatestFiniteMagnitude)
+    /// Height the card needs for its text at `width` (nil = the current width).
+    func fittingHeight(width: CGFloat?) -> CGFloat {
+        let w = width ?? max(chrome.bounds.width, EditorTextView.cellEditorMinWidth)
+        let inner = max(10, w - 2 * field.textContainerInset.width)
+        guard let container = field.textContainer, let tlm = field.textLayoutManager else {
+            return 44
+        }
+        container.size = NSSize(width: inner, height: .greatestFiniteMagnitude)
         tlm.ensureLayout(for: tlm.documentRange)
         var textHeight: CGFloat = 0
         tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) {
             textHeight = max(textHeight, $0.layoutFragmentFrame.maxY)
             return true
         }
-        let body = min(max(textHeight + 2 * field.textContainerInset.height, 26), 260)
-        let total = body + Self.gripHeight
-        preferredContentSize = NSSize(width: width, height: total)
-        if let window = view.window as? DetachedCellEditorPanel {
-            // A torn-off window is not driven by `preferredContentSize`; keep
-            // its top edge pinned so it too grows downward.
-            var frame = window.frame
-            frame.origin.y += frame.height - total
-            frame.size = NSSize(width: width, height: total)
-            window.setFrame(frame, display: true)
-        } else {
-            view.setFrameSize(NSSize(width: width, height: total))
-        }
-        layOutContents()
+        let arrow = chrome.showsArrow ? CellEditorChrome.arrowHeight : 0
+        let body = min(max(textHeight, font.pointSize + 6), 260)
+        return arrow + Self.topPadding + body + Self.bottomPadding
     }
+
+    /// Swaps in another cell's text without rebuilding the card.
+    func load(text: String) {
+        initialText = text
+        field.string = text.trimmingCharacters(in: .whitespaces)
+        field.restyle()
+    }
+
+    func setArrowX(_ x: CGFloat) { chrome.arrowX = x }
 
     func setDetached(_ detached: Bool) {
         closeButton.isHidden = !detached
-        grip.showsBackground = detached
+        chrome.showsArrow = !detached
+        layOutContents()
     }
 
     func focus() {
@@ -491,54 +592,28 @@ final class TableCellEditorController: NSViewController {
         }
         return field.string
     }
-
-    override func viewDidAppear() {
-        super.viewDidAppear()
-        focus()
-    }
 }
 
-/// The strip along the top of the popup. A drag here tears the popup off; a
-/// drag on the text below stays a text selection.
-@MainActor
-private final class GripView: NSView {
-    var onDrag: ((NSEvent) -> Void)?
-    var showsBackground = false { didSet { needsDisplay = true } }
-    private var down: NSPoint?
+// MARK: - The field
 
-    override func mouseDown(with event: NSEvent) { down = event.locationInWindow }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let start = down else { return }
-        let moved = hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y)
-        // A few points of slop, so a twitch on mouse-down doesn't tear it off.
-        guard moved > 4 else { return }
-        down = nil
-        onDrag?(event)
-    }
-
-    override func mouseUp(with event: NSEvent) { down = nil }
-
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .openHand)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard showsBackground else { return }
-        NSColor.separatorColor.withAlphaComponent(0.25).setFill()
-        bounds.fill()
-    }
-}
-
-/// The popup's text view. Esc cancels, ⏎ commits, Tab steps along the row — a
-/// table cell cannot hold a newline or a tab, so neither key has anything else
-/// to mean here.
+/// Esc cancels, ⏎ commits, Tab steps along the row — a table cell cannot hold a
+/// newline or a tab, so none of those keys has anything else to mean here.
+///
+/// The text renders with the document's own inline styling, live. That is a
+/// single `styleBlock` call because the card holds exactly one block of a few
+/// dozen characters: none of the incremental machinery the main editor needs
+/// (block diffing, dirty sets, lazy styling, viewport layout) applies at this
+/// size, so a full restyle per keystroke is the cheap option as well as the
+/// simple one.
 @MainActor
 private final class CellTextView: NSTextView {
     var onCancel: (() -> Void)?
     var onCommit: (() -> Void)?
-    var onResize: (() -> Void)?
     var onStep: ((Int) -> Void)?
+    var onTextChanged: (() -> Void)?
+    var style: ((String, Int?) -> NSAttributedString?)?
+
+    private var isRestyling = false
 
     override func cancelOperation(_ sender: Any?) { onCancel?() }
     override func insertNewline(_ sender: Any?) { onCommit?() }
@@ -549,6 +624,40 @@ private final class CellTextView: NSTextView {
 
     override func didChangeText() {
         super.didChangeText()
-        onResize?()
+        restyle()
+        onTextChanged?()
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity,
+                                    stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        // Which delimiters show depends on where the caret is, exactly as it
+        // does in the document.
+        guard !stillSelecting, !isRestyling else { return }
+        restyle()
+    }
+
+    /// Re-applies the document's inline styling to the whole field.
+    func restyle() {
+        // Never while an IME is composing: storage holds provisional marked text
+        // then, and restyling through it is what strands the composition
+        // (ARCHITECTURE §8).
+        guard !isRestyling, !hasMarkedText(), let style,
+              let storage = textStorage else { return }
+        let text = storage.string
+        guard let styled = style(text, selectedRange().location),
+              styled.length == (text as NSString).length else { return }
+        isRestyling = true
+        let full = NSRange(location: 0, length: storage.length)
+        storage.beginEditing()
+        styled.enumerateAttributes(in: full) { attrs, range, _ in
+            // Paragraph style is the card's own business — the document's block
+            // spacing and indents would push the single line around.
+            var attrs = attrs
+            attrs.removeValue(forKey: .paragraphStyle)
+            storage.setAttributes(attrs, range: range)
+        }
+        storage.endEditing()
+        isRestyling = false
     }
 }

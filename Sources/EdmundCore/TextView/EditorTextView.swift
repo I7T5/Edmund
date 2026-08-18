@@ -404,15 +404,17 @@ public class EditorTextView: NSTextView {
 
     /// The open popup cell editor, and the cell it is editing. See
     /// EditorTextView+TableCellEditor.
-    var tableCellPopover: NSPopover?
+    var cellEditorPanel: CellEditorPanel?
     var editingTableCell: TableCellRef?
 
-    /// The torn-off cell editor, once the popup has been dragged out.
-    var detachedCellEditor: DetachedCellEditorPanel?
+    /// Set once the popup has been dragged off the table into a free-floating
+    /// window: it stops tracking the table and grows its own close box.
+    var isCellEditorDetached = false
 
-    /// Observer that ends the edit when the document window stops being key.
-    /// `.applicationDefined` popovers don't dismiss themselves.
+    /// Ends the edit when the document window stops being key, and keeps the
+    /// attached popup under its table while the view scrolls.
     var cellEditorKeyObserver: NSObjectProtocol?
+    var cellEditorScrollObserver: NSObjectProtocol?
 
     // MARK: - Derived Visual Properties
 
