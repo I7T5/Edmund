@@ -264,7 +264,7 @@ private struct ContentWidthSlider: NSViewRepresentable {
 extension AppearanceSettingsView {
 
     /// The collapsed-by-default "Fonts by script" section: one row per script
-    /// with a preview field, a size-ratio stepper, and a Select… button (the
+    /// with a preview field, a point-size stepper, and a Select… button (the
     /// same row shape as Standard/Monospaced above).
     ///
     /// The rows live in the pane's OWN Grid — hosting the section inside a
@@ -300,21 +300,21 @@ extension AppearanceSettingsView {
                     Text("\(script.label):")
                         .frame(width: Self.labelColumnWidth, alignment: .trailing)
                     HStack(spacing: 8) {
-                        // Preview mirrors the font rows above (same 240pt
-                        // bezeled field); the stepper edits the script's size
-                        // RATIO to the body size, shown as a percent.
-                        AntialiasingText(script.sample)
+                        // Same row shape as the Standard/Monospaced rows above:
+                        // family + absolute point size in the 240pt field, a
+                        // bare stepper, Select…. The stored model stays a ratio
+                        // of the body size — the row converts at the boundary
+                        // (see FontSettings.cascadePointSize).
+                        AntialiasingText(fonts.cascadeSummary(for: script))
                             .antialiasDisabled(!fonts.antialias)
                             .font(nsFont: fonts.previewFont(for: script))
                             .frame(width: 240)
-                        TextField("", value: cascadePercentBinding(for: script),
-                                  format: .number.precision(.fractionLength(0)))
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 36)
-                        Stepper("", value: cascadePercentBinding(for: script),
-                                in: 50...200, step: 5)
+                        Stepper("", value: cascadePointsBinding(for: script),
+                                in: 8...72, step: 1)
                             .labelsHidden()
-                        Text("%")
+                            // A ratio with no family drives nothing — no
+                            // resolver font, no @font-face — so say so.
+                            .disabled(fonts.cascadeFonts[script] == nil)
                         Button("Select…") { fonts.selectCascadeFont(script) }
                             .fixedSize()
                     }
@@ -324,12 +324,12 @@ extension AppearanceSettingsView {
         }
     }
 
-    /// Two-way binding between the stored ratio (0.5…2.0, 1.0 = unset) and
-    /// the row's percent controls (50…200).
-    private func cascadePercentBinding(for script: FontCascadeScript) -> Binding<Double> {
+    /// Two-way binding between the row's point-size stepper and the stored
+    /// ratio (display = body size × ratio; see FontSettings.cascadePointSize).
+    private func cascadePointsBinding(for script: FontCascadeScript) -> Binding<Double> {
         Binding(
-            get: { (fonts.cascadeSizeRatio(for: script) * 100).rounded() },
-            set: { fonts.setCascadeSizeRatio(script, ratio: $0 / 100) }
+            get: { fonts.cascadePointSize(for: script) },
+            set: { fonts.setCascadePointSize(script, points: $0) }
         )
     }
 }

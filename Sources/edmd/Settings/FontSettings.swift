@@ -202,14 +202,40 @@ final class FontSettings: NSObject, ObservableObject {
         cascadeSizeRatios[script] ?? 1.0
     }
 
-    /// The preview font for a script row: the user's choice at the preview
-    /// size scaled by the script's ratio (so the stepper visibly resizes the
-    /// sample), or nil when unset (the row then draws in the default UI font,
+    /// A script's displayed point size: the stored ratio rendered against the
+    /// body size. The model stays a RATIO — Read mode's only per-script size
+    /// lever is the relative `size-adjust` (a `@font-face` has no `font-size`
+    /// descriptor), and persisting points would leave Edit and Read
+    /// disagreeing the moment the body size differed — so the settings UI
+    /// converts at the boundary and stores back `points / bodySize`.
+    func cascadePointSize(for script: FontCascadeScript) -> Double {
+        (standardFont.pointSize * cascadeSizeRatio(for: script)).rounded()
+    }
+
+    /// Stores a displayed point size back as a ratio of the body size.
+    func setCascadePointSize(_ script: FontCascadeScript, points: Double) {
+        guard standardFont.pointSize > 0 else { return }
+        setCascadeSizeRatio(script, ratio: points / standardFont.pointSize)
+    }
+
+    /// The script row's field text, mirroring the Standard/Monospaced rows:
+    /// family and absolute point size ("Songti SC  17") when the script has a
+    /// font, else the script's sample glyph — a system-fallback family cannot
+    /// be named, so the sample stands in for it.
+    func cascadeSummary(for script: FontCascadeScript) -> String {
+        guard let font = previewFont(for: script) else { return script.sample }
+        return Self.summary(font)
+    }
+
+    /// The preview font for a script row: the user's choice drawn at the
+    /// displayed point size (body size × the script's ratio), so the number in
+    /// the field is the size the text is drawn at — the same convention as the
+    /// rows above. Nil when unset (the row then draws in the default UI font,
     /// which itself falls back per-script — a reasonable "system fallback"
     /// preview).
     func previewFont(for script: FontCascadeScript) -> NSFont? {
         guard let family = cascadeFonts[script] else { return nil }
-        return NSFont(name: family, size: 16 * cascadeSizeRatio(for: script))
+        return NSFont(name: family, size: standardFont.pointSize * cascadeSizeRatio(for: script))
     }
 
     private static func summary(_ font: NSFont) -> String {
