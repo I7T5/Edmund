@@ -508,6 +508,13 @@ public final class TableCellEditorController: NSViewController {
         field.textContainerInset = NSSize(width: 8, height: 0)
         field.isVerticallyResizable = true
         field.isHorizontallyResizable = false
+        // A text view added to a scroll view keeps whatever frame it has, and a
+        // freshly constructed one has none — so without these its container is
+        // zero-sized and the card comes up blank.
+        field.minSize = .zero
+        field.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                               height: CGFloat.greatestFiniteMagnitude)
+        field.autoresizingMask = [.width]
         field.textContainer?.widthTracksTextView = true
         field.textContainer?.lineFragmentPadding = 0
 
@@ -541,6 +548,13 @@ public final class TableCellEditorController: NSViewController {
         scroll.frame = NSRect(x: 0, y: Self.bottomPadding,
                               width: chrome.bounds.width,
                               height: max(0, top - Self.bottomPadding))
+        let content = scroll.contentSize
+        field.frame = NSRect(origin: .zero,
+                             size: NSSize(width: content.width,
+                                          height: max(content.height, field.frame.height)))
+        field.textContainer?.size = NSSize(
+            width: max(10, content.width - 2 * field.textContainerInset.width),
+            height: CGFloat.greatestFiniteMagnitude)
         closeButton.frame = NSRect(x: 6, y: h - arrow - 15, width: 13, height: 13)
     }
 
@@ -661,3 +675,25 @@ private final class CellTextView: NSTextView {
         isRestyling = false
     }
 }
+
+#if DEBUG
+// MARK: - Repro hooks
+//
+// The card only ever opens from a real mouse click, and a background app
+// cannot take focus to receive one — so without these a script can never get
+// the card on screen to look at. See ReproScript's `cellpopup` / `cellstep`.
+
+extension EditorTextView {
+    public func reproTableCell(atRawOffset offset: Int) -> TableCellRef? {
+        tableCell(atRawOffset: offset)
+    }
+
+    public func reproOpenTableCellEditor(_ cell: TableCellRef) {
+        openTableCellEditor(cell)
+    }
+
+    public func reproStepTableCellEditor(by delta: Int) {
+        stepTableCellEditor(by: delta)
+    }
+}
+#endif

@@ -9,7 +9,7 @@ import AppKit
 // takes no document context, and `blockIndexForRawOffset` stops at the block.
 
 /// One cell of one table, located in the document.
-struct TableCellRef: Equatable {
+public struct TableCellRef: Equatable {
     let blockIndex: Int
     /// Line index within the table block. 0 is the header, 1 the separator.
     let row: Int

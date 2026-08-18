@@ -266,6 +266,26 @@ enum ReproScript {
                         NSLog("WEBSTATE \(v.map(String.init(describing:)) ?? "nil") err=\(e.map(String.init(describing:)) ?? "none")")
                     }
                 }
+            case "cellpopup":
+                // Opens the table cell editor on a raw offset, in-process. The
+                // card is driven by a real mouse click in the app; there is no
+                // way to synthesize one here that lands, because a background
+                // app cannot take focus. This is the seam that lets the card be
+                // seen at all from a script.
+                schedule(after: delay) { editor in
+                    guard let cell = editor.reproTableCell(atRawOffset: Int(arg) ?? 0) else {
+                        report("repro cellpopup no cell at \(arg)")
+                        return
+                    }
+                    editor.reproOpenTableCellEditor(cell)
+                    report("repro cellpopup opened at \(arg)")
+                }
+            case "cellstep":
+                // Tab / Shift-Tab equivalent: move the open card along the row.
+                schedule(after: delay) { editor in
+                    editor.reproStepTableCellEditor(by: Int(arg) ?? 1)
+                    report("repro cellstep \(arg)")
+                }
             case "logwindows":
                 // `NSWindow.windowNumber` is the CGWindowID `screencapture -l`
                 // takes. Reporting it is the only way to grab a window from a
