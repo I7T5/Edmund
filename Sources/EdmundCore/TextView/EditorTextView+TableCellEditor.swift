@@ -33,8 +33,11 @@ extension EditorTextView {
     /// usable field.
     static let cellEditorMinWidth: CGFloat = 220
 
-    /// Air between the table's bottom edge and the panel's arrow.
-    private static let cellEditorGap: CGFloat = 4
+    /// Air between the table's bottom edge and the arrow's tip. Zero: the
+    /// arrow should touch the row it points at. The table's own rect already
+    /// carries the row's trailing cell padding, which is the gap you actually
+    /// see.
+    private static let cellEditorGap: CGFloat = 0
 
     // MARK: - Geometry
 
@@ -147,6 +150,15 @@ extension EditorTextView {
         }
     }
 
+    /// `frame` reduced to just its arrow, top edge pinned — the state the card
+    /// springs out of and collapses back into.
+    static func cellEditorCollapsed(_ frame: NSRect) -> NSRect {
+        var collapsed = frame
+        collapsed.size.height = CellEditorChrome.arrowHeight + 2
+        collapsed.origin.y = frame.maxY - collapsed.height
+        return collapsed
+    }
+
     /// Where the panel goes, in screen coordinates, and where its arrow points.
     ///
     /// The frame spans the table and sits under it; only `arrowX` changes as the
@@ -157,7 +169,11 @@ extension EditorTextView {
               let table = tableRect(blockIndex: cell.blockIndex),
               let cellRect = tableCellRect(for: cell) else { return nil }
         // The view is flipped, so the table's bottom edge is its maxY.
-        let bottomLeftInView = NSPoint(x: table.minX, y: table.maxY)
+        // `styleTableSpan` gives every row `paragraphSpacing = cellVPad`, so the
+        // block's rect ends below the last row's text. Anchoring on the raw
+        // maxY leaves that pad as a visible gap under the table.
+        let trailingPad = bodyFont.pointSize * 0.15
+        let bottomLeftInView = NSPoint(x: table.minX, y: table.maxY - trailingPad)
         let inWindow = convert(bottomLeftInView, to: nil)
         let onScreen = window.convertPoint(toScreen: inWindow)
         let width = max(Self.cellEditorMinWidth, table.width)
@@ -212,18 +228,20 @@ extension EditorTextView {
         isCellEditorDetached = false
 
         repositionCellEditor()
-        // Arrive the way a popover does: a short rise into place with a fade,
-        // rather than blinking into existence.
+        // Unfurl from under the arrow: height grows from nothing to full with
+        // the top edge pinned, so the card appears to spring out of the row it
+        // points at. Width never changes, which is what keeps the text from
+        // reflowing mid-animation.
         let destination = panel.frame
-        var entry = destination
-        entry.origin.y += 6
-        panel.setFrame(entry, display: false)
+        panel.setFrame(Self.cellEditorCollapsed(destination), display: false)
         panel.alphaValue = 0
         window.addChildWindow(panel, ordered: .above)
         panel.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.duration = 0.24
+            // Overshoots and settles — the bounce is what reads as "pop"
+            // rather than "slide".
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 1.7, 0.5, 1)
             panel.animator().setFrame(destination, display: true)
             panel.animator().alphaValue = 1
         }
@@ -322,8 +340,14 @@ extension EditorTextView {
         isCellEditorDetached = false
         if let panel {
             panel.controller = nil
+            // Collapse back into the row, the mirror of the way it came out.
+            // Quicker than the entrance and with a slight anticipation, so
+            // dismissing feels decisive rather than draggy.
+            let collapsed = Self.cellEditorCollapsed(panel.frame)
             NSAnimationContext.runAnimationGroup({ context in
-                context.duration = 0.09
+                context.duration = 0.13
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.6, -0.3, 0.75, 1)
+                panel.animator().setFrame(collapsed, display: true)
                 panel.animator().alphaValue = 0
             }, completionHandler: {
                 panel.parent?.removeChildWindow(panel)
@@ -562,6 +586,13 @@ final class CellEditorChrome: NSView {
         NSColor.separatorColor.setStroke()
         path.lineWidth = 1
         path.stroke()
+
+        // A borderless window's shadow is cached from the shape last drawn, and
+        // moving the arrow changes that shape. Without this the old arrow's
+        // silhouette stays on screen as a ghost outline after the card has
+        // moved on — the content is right, the shadow is stale. Invisible to
+        // `screencapture -l`, which grabs content and not shadow.
+        window?.invalidateShadow()
     }
 }
 
