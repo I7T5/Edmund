@@ -110,7 +110,41 @@ extension EditorTextView {
     func cellEditorArrowX(for cell: TableCellRef) -> CGFloat? {
         guard let table = tableRect(blockIndex: cell.blockIndex),
               let cellRect = tableCellRect(for: cell) else { return nil }
-        return cellRect.midX - table.minX
+        return (tableCellTextCenterX(for: cell, in: cellRect) ?? cellRect.midX) - table.minX
+    }
+
+    /// The centre of a cell's *glyphs*, which is not the centre of its cell
+    /// rect: the rect spans the whole column, because the padding that aligns
+    /// the column is kern hung on the cell's own characters. A short value in a
+    /// wide column therefore sits well off the rect's middle, and the arrow has
+    /// to follow the text rather than the column.
+    ///
+    /// Falls back to nil — meaning "use the column's centre" — when the text
+    /// fills its column anyway, or when the row can't be read.
+    private func tableCellTextCenterX(for cell: TableCellRef, in cellRect: NSRect) -> CGFloat? {
+        guard cell.blockIndex < blocks.count else { return nil }
+        let lines = blocks[cell.blockIndex].content.components(separatedBy: "\n")
+        guard lines.count > 1 else { return nil }
+        let text = (rawSource as NSString).substring(with: cell.contentRange)
+            .trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+
+        var width = styleBlock(text, cursorPosition: nil).size().width
+        // The header row is drawn bold, so it measures wider than the body face.
+        if cell.row == 0 {
+            width *= 1.06
+        }
+        // The same horizontal cell padding `styleTableSpan` lays out with.
+        let pad = bodyFont.pointSize * 0.3
+        guard width < cellRect.width - 2 * pad else { return nil }
+
+        let aligns = tableColumnAlignments(separatorRow: lines[1],
+                                           count: splitTableRow(lines[0]).count)
+        switch cell.column < aligns.count ? aligns[cell.column] : .left {
+        case .left:   return cellRect.minX + pad + width / 2
+        case .right:  return cellRect.maxX - pad - width / 2
+        case .center: return cellRect.midX
+        }
     }
 
     /// Where the panel goes, in screen coordinates, and where its arrow points.
@@ -178,8 +212,21 @@ extension EditorTextView {
         isCellEditorDetached = false
 
         repositionCellEditor()
+        // Arrive the way a popover does: a short rise into place with a fade,
+        // rather than blinking into existence.
+        let destination = panel.frame
+        var entry = destination
+        entry.origin.y += 6
+        panel.setFrame(entry, display: false)
+        panel.alphaValue = 0
         window.addChildWindow(panel, ordered: .above)
         panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(destination, display: true)
+            panel.animator().alphaValue = 1
+        }
         controller.focus()
         observeForCellEditor()
     }
@@ -197,7 +244,9 @@ extension EditorTextView {
             closeTableCellEditor(commit: true)
             return
         }
-        controller.setArrowX(placement.arrowX)
+        // The arrow glides only when the card is already up; on first show it
+        // must start where it belongs.
+        controller.setArrowX(placement.arrowX, animated: panel.isVisible)
         // Height is measured against the width the panel is about to have, then
         // the frame is built from that height — otherwise a width change and a
         // wrap change chase each other by one frame.
@@ -272,9 +321,14 @@ extension EditorTextView {
         cellEditorPanel = nil
         isCellEditorDetached = false
         if let panel {
-            panel.parent?.removeChildWindow(panel)
             panel.controller = nil
-            panel.close()
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.09
+                panel.animator().alphaValue = 0
+            }, completionHandler: {
+                panel.parent?.removeChildWindow(panel)
+                panel.close()
+            })
         }
 
         guard commit, let controller else { return }
@@ -398,14 +452,15 @@ public final class CellEditorPanel: NSPanel {
 // MARK: - The bubble
 
 /// Draws the card and its arrow. The arrow's x is the only thing that changes
-/// as the user moves along a row.
+/// as the user moves along a row, and it slides there rather than jumping.
 @MainActor
 final class CellEditorChrome: NSView {
     static let arrowHeight: CGFloat = 7
     static let arrowHalfWidth: CGFloat = 7
     static let cornerRadius: CGFloat = 7
+    private static let arrowGlide: CFTimeInterval = 0.16
 
-    var arrowX: CGFloat = 20 { didSet { needsDisplay = true } }
+    private(set) var arrowX: CGFloat = 20
     var showsArrow = true { didSet { needsDisplay = true } }
 
     /// A drag starting on the card's own surface — the padding above the text,
@@ -413,6 +468,43 @@ final class CellEditorChrome: NSView {
     /// card off the table.
     var onDrag: ((NSEvent) -> Void)?
     private var dragOrigin: NSPoint?
+
+    private var glideFrom: CGFloat = 0
+    private var glideTo: CGFloat = 0
+    private var glideProgress: CGFloat = 1
+    private var glideLink: CADisplayLink?
+
+    /// Moves the arrow. Animated, the card reads as one object sliding its
+    /// pointer along the table rather than blinking between columns.
+    func setArrowX(_ x: CGFloat, animated: Bool) {
+        guard animated, abs(x - arrowX) > 0.5 else {
+            glideLink?.invalidate()
+            glideLink = nil
+            glideProgress = 1
+            arrowX = x
+            needsDisplay = true
+            return
+        }
+        glideFrom = arrowX
+        glideTo = x
+        glideProgress = 0
+        glideLink?.invalidate()
+        let link = displayLink(target: self, selector: #selector(stepGlide))
+        link.add(to: .main, forMode: .common)
+        glideLink = link
+    }
+
+    @objc private func stepGlide(_ link: CADisplayLink) {
+        glideProgress = min(1, glideProgress + CGFloat(link.duration / Self.arrowGlide))
+        // Ease out, so it settles rather than stopping dead.
+        let t = 1 - pow(1 - glideProgress, 3)
+        arrowX = glideFrom + (glideTo - glideFrom) * t
+        needsDisplay = true
+        if glideProgress >= 1 {
+            link.invalidate()
+            glideLink = nil
+        }
+    }
 
     override func mouseDown(with event: NSEvent) { dragOrigin = event.locationInWindow }
 
@@ -431,22 +523,40 @@ final class CellEditorChrome: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
 
     override func draw(_ dirtyRect: NSRect) {
+        // The window is transparent, so drawing composites over the last frame
+        // unless the old pixels are actually removed — that is what left a
+        // second arrow behind every time this one moved.
+        NSColor.clear.setFill()
+        dirtyRect.fill(using: .copy)
+
         let inset: CGFloat = 0.5
-        let top = bounds.maxY - (showsArrow ? Self.arrowHeight : 0)
-        let body = NSRect(x: bounds.minX + inset, y: bounds.minY + inset,
-                          width: bounds.width - 2 * inset, height: top - bounds.minY - inset)
-        let path = NSBezierPath(roundedRect: body,
-                                xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
+        let r = Self.cornerRadius
+        let top = bounds.maxY - (showsArrow ? Self.arrowHeight : 0) - inset
+        let minX = bounds.minX + inset, maxX = bounds.maxX - inset
+        let minY = bounds.minY + inset
+
+        // One continuous outline, with the arrow spliced into the top edge —
+        // not a triangle appended as its own subpath, which would stroke the
+        // body's top edge straight across the arrow's base and give it a floor.
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: minX + r, y: top))
         if showsArrow {
-            let x = min(max(arrowX, Self.cornerRadius + Self.arrowHalfWidth),
-                        bounds.maxX - Self.cornerRadius - Self.arrowHalfWidth)
-            let arrow = NSBezierPath()
-            arrow.move(to: NSPoint(x: x - Self.arrowHalfWidth, y: top))
-            arrow.line(to: NSPoint(x: x, y: bounds.maxY))
-            arrow.line(to: NSPoint(x: x + Self.arrowHalfWidth, y: top))
-            arrow.close()
-            path.append(arrow)
+            let x = min(max(arrowX, minX + r + Self.arrowHalfWidth),
+                        maxX - r - Self.arrowHalfWidth)
+            path.line(to: NSPoint(x: x - Self.arrowHalfWidth, y: top))
+            path.line(to: NSPoint(x: x, y: bounds.maxY - inset))
+            path.line(to: NSPoint(x: x + Self.arrowHalfWidth, y: top))
         }
+        path.line(to: NSPoint(x: maxX - r, y: top))
+        path.appendArc(from: NSPoint(x: maxX, y: top), to: NSPoint(x: maxX, y: top - r), radius: r)
+        path.line(to: NSPoint(x: maxX, y: minY + r))
+        path.appendArc(from: NSPoint(x: maxX, y: minY), to: NSPoint(x: maxX - r, y: minY), radius: r)
+        path.line(to: NSPoint(x: minX + r, y: minY))
+        path.appendArc(from: NSPoint(x: minX, y: minY), to: NSPoint(x: minX, y: minY + r), radius: r)
+        path.line(to: NSPoint(x: minX, y: top - r))
+        path.appendArc(from: NSPoint(x: minX, y: top), to: NSPoint(x: minX + r, y: top), radius: r)
+        path.close()
+
         NSColor.windowBackgroundColor.setFill()
         path.fill()
         NSColor.separatorColor.setStroke()
@@ -472,8 +582,8 @@ public final class TableCellEditorController: NSViewController {
 
     /// Air above the text. Doubles as the only place a drag can start a
     /// tear-off — a drag on the text itself has to stay a selection.
-    private static let topPadding: CGFloat = 18
-    private static let bottomPadding: CGFloat = 6
+    private static let topPadding: CGFloat = 8
+    private static let bottomPadding: CGFloat = 8
 
     var onHeightChange: (() -> Void)?
 
@@ -584,7 +694,7 @@ public final class TableCellEditorController: NSViewController {
         field.restyle()
     }
 
-    func setArrowX(_ x: CGFloat) { chrome.arrowX = x }
+    func setArrowX(_ x: CGFloat, animated: Bool) { chrome.setArrowX(x, animated: animated) }
 
     func setDetached(_ detached: Bool) {
         closeButton.isHidden = !detached
