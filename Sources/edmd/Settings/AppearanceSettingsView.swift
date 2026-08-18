@@ -57,6 +57,11 @@ struct AppearanceSettingsView: View {
     }
 
     var body: some View {
+        // Every column-2 cell is maxWidth: .infinity: the 544pt content box is
+        // wider than the collapsed content, and the Grid hands the slack to
+        // whichever column can grow. If that is the label column, opening
+        // "Fonts by script" (whose rows out-width the rest) takes the slack
+        // back and every column-2 control slides sideways.
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
             GridRow {
                 Text("Appearance:")
@@ -68,6 +73,7 @@ struct AppearanceSettingsView: View {
                 .horizontalRadioGroupLayout()
                 .labelsHidden()
                 .onChange(of: appearanceMode) { AppSettings.applyAppearance() }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GridRow {
@@ -98,6 +104,7 @@ struct AppearanceSettingsView: View {
                         .buttonStyle(.plain)
                         .help("Switch between centimetres and inches")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .onChange(of: maxContentWidthCm) { applyContentWidthToOpenDocuments() }
             }
 
@@ -120,6 +127,7 @@ struct AppearanceSettingsView: View {
                         Toggle("Ligatures", isOn: $fonts.standardLigatures)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GridRow {
@@ -137,6 +145,7 @@ struct AppearanceSettingsView: View {
                         Toggle("Ligatures", isOn: $fonts.monospaceLigatures)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GridRow {
@@ -152,6 +161,7 @@ struct AppearanceSettingsView: View {
                         .labelsHidden()
                     Text("times")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GridRow {
@@ -260,8 +270,11 @@ extension AppearanceSettingsView {
     /// The rows live in the pane's OWN Grid — hosting the section inside a
     /// `gridCellColumns(2)` cell feeds the section's width back into the
     /// columns it spans and slides every row in the pane sideways as the
-    /// section opens. As plain GridRows with fixed-width labels, expanding
-    /// the section only grows the pane vertically.
+    /// section opens. Two further rules keep that true (both were learned the
+    /// hard way): labels are a fixed width, and EVERY column-2 cell in the
+    /// pane is `maxWidth: .infinity` (see `body`) so the label column can
+    /// never absorb the collapsed pane's slack. Expanding the section then
+    /// only grows the pane vertically.
     @ViewBuilder
     var fontCascadeSection: some View {
         GridRow {
@@ -277,6 +290,7 @@ extension AppearanceSettingsView {
                 }
             }
             .buttonStyle(.static)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .help("A dedicated font per writing system. Unset scripts use the system fallback.")
         }
 
@@ -304,6 +318,7 @@ extension AppearanceSettingsView {
                         Button("Select…") { fonts.selectCascadeFont(script) }
                             .fixedSize()
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }

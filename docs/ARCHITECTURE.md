@@ -384,7 +384,12 @@ Notable subsystems:
   scale the cascade for free; unset scripts keep the system fallback). The
   section's rows live in the pane's own Grid with fixed-width labels: a
   section hosted in a `gridCellColumns(2)` cell feeds its width back into the
-  columns it spans and slides every row sideways as it opens.
+  columns it spans and slides every row sideways as it opens. Fixed-width
+  labels alone don't finish the job — the Grid hands leftover width to
+  whichever column can grow, so EVERY column-2 cell in the pane is
+  `maxWidth: .infinity`; otherwise the collapsed pane's slack lands in the
+  label column and expanding the section still shifts every column-2
+  control sideways.
 - This section owns the *mechanism* and the settings with non-obvious
   behavior, not the full key list — that inventory drifts fastest and lives in
   `.claude/skills/edmund-config-and-flags/`. Grep
