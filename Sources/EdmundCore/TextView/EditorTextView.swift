@@ -407,6 +407,13 @@ public class EditorTextView: NSTextView {
     var tableCellPopover: NSPopover?
     var editingTableCell: TableCellRef?
 
+    /// The torn-off cell editor, once the popup has been dragged out.
+    var detachedCellEditor: DetachedCellEditorPanel?
+
+    /// Observer that ends the edit when the document window stops being key.
+    /// `.applicationDefined` popovers don't dismiss themselves.
+    var cellEditorKeyObserver: NSObjectProtocol?
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which
@@ -667,6 +674,9 @@ public class EditorTextView: NSTextView {
             activateRawTableEditing(blockIndex: tableBlock)
             return
         }
+        // An open popup ends on any click that isn't on its own table. The
+        // popover is `.applicationDefined`, so nothing else does this.
+        dismissCellEditorIfClickIsOutside(event)
         // A click on a rendered table's cell edits that cell in a popover rather
         // than putting a caret in the table, so this takes the click whole.
         // Option-click is the way past it to the plain caret placement — which,
