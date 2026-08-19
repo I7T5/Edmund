@@ -168,6 +168,20 @@ struct TableInlineStylingTests {
         #expect((structuralPipeFont?.pointSize ?? 99) < 1.0)
     }
 
+    /// A table with no outer pipes may start its header with a space. cmark
+    /// puts the table's source range at the first non-blank column, which used
+    /// to leave that space outside the span — and a layout fragment reads its
+    /// paragraph style and decoration from character 0, so the header row lost
+    /// its column borders and its indent while every row below kept both.
+    @Test("A header row indented by a space still owns its row geometry")
+    func leadingSpaceHeaderKeepsRowGeometry() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock(" a | b\n---|---\n c | d", cursorPosition: nil)
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil && ps!.firstLineHeadIndent > 0)
+        #expect(styled.attribute(.blockDecoration, at: 0, effectiveRange: nil) != nil)
+    }
+
     @Test("Row paragraph geometry survives cell styling (table owns it)")
     func rowGeometryPreserved() {
         let styled = table("**b**")
