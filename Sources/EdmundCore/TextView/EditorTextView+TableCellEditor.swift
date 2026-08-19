@@ -52,6 +52,13 @@ extension EditorTextView {
     /// for an overflowing cell too: its characters are hidden but its trailing
     /// character carries a `.kern` of the column's full slack, so the segments
     /// still span the column.
+    ///
+    /// Approximately, though: TextKit 2 splits the gap a kern opens between the
+    /// segments either side of it, so the edges land mid-padding rather than on
+    /// the pipe. Good enough for the vertical anchor and for centring the arrow
+    /// on an empty cell, which is all this is used for — anything that has to
+    /// agree with the column the reader sees measures the glyphs instead, via
+    /// `tableCellTextCenterX`.
     func tableCellRect(for cell: TableCellRef) -> NSRect? {
         guard let tlm = textLayoutManager,
               let range = blockTextRange(columnRange(of: cell), tlm) else { return nil }
@@ -132,41 +139,45 @@ extension EditorTextView {
     func cellEditorArrowX(for cell: TableCellRef) -> CGFloat? {
         guard let table = tableRect(blockIndex: cell.blockIndex),
               let cellRect = tableCellRect(for: cell) else { return nil }
-        return (tableCellTextCenterX(for: cell, in: cellRect) ?? cellRect.midX) - table.minX
+        return (tableCellTextCenterX(for: cell) ?? cellRect.midX) - table.minX
     }
 
-    /// The centre of a cell's *glyphs*, which is not the centre of its cell
-    /// rect: the rect spans the whole column, because the padding that aligns
-    /// the column is kern hung on the cell's own characters. A short value in a
-    /// wide column therefore sits well off the rect's middle, and the arrow has
-    /// to follow the text rather than the column.
+    /// The centre of a cell's *glyphs* (view coordinates), which is not the
+    /// centre of its cell rect: the padding that aligns a column is kern hung
+    /// on the cell's own characters, so a short value in a wide column sits
+    /// well off the rect's middle and the arrow has to follow the text.
     ///
-    /// Falls back to nil — meaning "use the column's centre" — when the text
-    /// fills its column anyway, or when the row can't be read.
-    private func tableCellTextCenterX(for cell: TableCellRef, in cellRect: NSRect) -> CGFloat? {
-        guard cell.blockIndex < blocks.count else { return nil }
-        let lines = blocks[cell.blockIndex].content.components(separatedBy: "\n")
-        guard lines.count > 1 else { return nil }
-        let text = (rawSource as NSString).substring(with: cell.contentRange)
-            .trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return nil }
+    /// Measured off the laid-out segments of the trimmed content rather than by
+    /// re-measuring the string, so it needs no alignment table and no bold
+    /// fudge for the header row — whatever the renderer did, this reads back.
+    ///
+    /// The kern has to be undone at the edges: TextKit 2 splits the gap a kern
+    /// opens evenly between the segments either side of it, so a trimmed range
+    /// whose neighbour carries the column's padding measures half a gap too
+    /// wide on that side. A kern on a line's last character is dropped from the
+    /// segments entirely, so there is nothing to undo there.
+    ///
+    /// Returns nil — meaning "use the column's centre" — for an empty cell.
+    private func tableCellTextCenterX(for cell: TableCellRef) -> CGFloat? {
+        guard let tlm = textLayoutManager,
+              let storage = textContentStorage?.textStorage else { return nil }
+        let ns = rawSource as NSString
+        var lo = cell.contentRange.location
+        var hi = min(cell.contentRange.upperBound, min(ns.length, storage.length))
+        while lo < hi, ns.character(at: lo) == 0x20 { lo += 1 }
+        while hi > lo, ns.character(at: hi - 1) == 0x20 { hi -= 1 }
+        guard hi > lo,
+              let range = blockTextRange(NSRange(location: lo, length: hi - lo), tlm),
+              var rect = unionOfSegments(in: range, tlm) else { return nil }
 
-        var width = styleBlock(text, cursorPosition: nil).size().width
-        // The header row is drawn bold, so it measures wider than the body face.
-        if cell.row == 0 {
-            width *= 1.06
-        }
-        // The same horizontal cell padding `styleTableSpan` lays out with.
-        let pad = bodyFont.pointSize * 0.3
-        guard width < cellRect.width - 2 * pad else { return nil }
-
-        let aligns = tableColumnAlignments(separatorRow: lines[1],
-                                           count: splitTableRow(lines[0]).count)
-        switch cell.column < aligns.count ? aligns[cell.column] : .left {
-        case .left:   return cellRect.minX + pad + width / 2
-        case .right:  return cellRect.maxX - pad - width / 2
-        case .center: return cellRect.midX
-        }
+        let kernBefore = lo > 0
+            ? (storage.attribute(.kern, at: lo - 1, effectiveRange: nil) as? CGFloat ?? 0) : 0
+        let endsTheLine = hi >= ns.length || ns.character(at: hi) == 0x0A
+        let kernAfter = endsTheLine
+            ? 0 : (storage.attribute(.kern, at: hi - 1, effectiveRange: nil) as? CGFloat ?? 0)
+        rect.origin.x += kernBefore / 2
+        rect.size.width -= kernBefore / 2 + kernAfter / 2
+        return rect.midX
     }
 
     /// Where the panel goes, in screen coordinates, and where its arrow points.
@@ -185,14 +196,20 @@ extension EditorTextView {
         // the segment rect carries — anchoring on the raw maxY leaves that pad
         // as a visible gap between the row and the arrow.
         let trailingPad = bodyFont.pointSize * 0.15
-        let bottomLeftInView = NSPoint(x: table.minX, y: cellRect.maxY - trailingPad)
+        // Frozen for the session. Typing reflows the table under the card —
+        // a column widens, a neighbouring cell wraps — and re-reading the row
+        // every keystroke would walk the card up and down under the pointer.
+        // View coordinates, not screen, so scrolling still carries it along.
+        let anchorY = cellEditorAnchorY ?? (cellRect.maxY - trailingPad)
+        cellEditorAnchorY = anchorY
+        let bottomLeftInView = NSPoint(x: table.minX, y: anchorY)
         let inWindow = convert(bottomLeftInView, to: nil)
         let onScreen = window.convertPoint(toScreen: inWindow)
         let width = max(Self.cellEditorMinWidth, table.width)
         let frame = NSRect(x: onScreen.x,
                            y: onScreen.y - Self.cellEditorGap - height,
                            width: width, height: height)
-        let center = tableCellTextCenterX(for: cell, in: cellRect) ?? cellRect.midX
+        let center = tableCellTextCenterX(for: cell) ?? cellRect.midX
         return (frame, center - table.minX)
     }
 
@@ -240,6 +257,7 @@ extension EditorTextView {
         cellEditorPanel = panel
         isCellEditorDetached = false
         cellEditorDidSnapshot = false
+        cellEditorAnchorY = nil
 
         repositionCellEditor()
         // Drops the last few points into place while fading in. Deliberately
@@ -340,6 +358,7 @@ extension EditorTextView {
         }
         editingTableCell = target
         cellEditorDidSnapshot = false
+        cellEditorAnchorY = nil
         controller.load(text: (rawSource as NSString).substring(with: target.contentRange))
         repositionCellEditor()
         controller.focus()
@@ -387,6 +406,7 @@ extension EditorTextView {
         let panel = cellEditorPanel
         cellEditorPanel = nil
         isCellEditorDetached = false
+        cellEditorAnchorY = nil
         if let panel {
             panel.controller = nil
             // The entrance run backwards: rises the same few points and fades.

@@ -122,6 +122,47 @@ struct TableCellEditorGeometryTests {
         #expect(x < rect.midX)
     }
 
+    /// The bug that made the arrow miss: a short cell in a row that isn't the
+    /// table's widest. Its *rect* is nowhere near the column the reader sees,
+    /// because TextKit 2 splits the gap a padding kern opens between the
+    /// segments either side of it. Two rows carrying the same value in a
+    /// left-aligned column must therefore get the same arrow, however wide the
+    /// row between them is.
+    @Test("The arrow ignores how wide the rest of the row is")
+    func arrowIgnoresTheRestOfTheRow() {
+        let long = String(repeating: "wide ", count: 8)
+        let editor = loadEditor("lead\n\n| a | q |\n|---|---|\n| \(long) | q |\n| b | q |")
+        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }) else {
+            Issue.record("no table")
+            return
+        }
+        let xs = [2, 3].compactMap { row -> CGFloat? in
+            editor.tableCell(blockIndex: b, row: row, column: 1)
+                .flatMap { editor.cellEditorArrowX(for: $0) }
+        }
+        #expect(xs.count == 2)
+        #expect(abs(xs[0] - xs[1]) < 0.5)
+    }
+
+    /// Same invariant from the other side: a centred column centres every row's
+    /// text on one x, so every row's arrow lands on that x too.
+    @Test("The arrow agrees down a centred column")
+    func arrowAgreesDownACentredColumn() {
+        let long = String(repeating: "wide ", count: 8)
+        let editor = loadEditor(
+            "lead\n\n| aa | bb |\n|:---:|:---:|\n| \(long) | dd |\n| c21 | c22 |")
+        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }) else {
+            Issue.record("no table")
+            return
+        }
+        let xs = [0, 2, 3].compactMap { row -> CGFloat? in
+            editor.tableCell(blockIndex: b, row: row, column: 1)
+                .flatMap { editor.cellEditorArrowX(for: $0) }
+        }
+        #expect(xs.count == 3)
+        #expect((xs.max() ?? 0) - (xs.min() ?? 0) < 1)
+    }
+
     /// Typing widens the table, and the card has to follow it rather than keep
     /// the width it opened with.
     @Test("The card's width follows the table's")

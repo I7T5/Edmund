@@ -411,6 +411,10 @@ public class EditorTextView: NSTextView {
     /// window: it stops tracking the table and grows its own close box.
     var isCellEditorDetached = false
 
+    /// The card's top edge in view coordinates, fixed for as long as it points
+    /// at one cell. Nil re-reads it from the row on the next placement.
+    var cellEditorAnchorY: CGFloat?
+
     /// True once this popup session has pushed its undo snapshot. Typing in the
     /// popup rewrites the cell on every keystroke so the table reflows live, and
     /// without this every keystroke would also be its own undo step.
