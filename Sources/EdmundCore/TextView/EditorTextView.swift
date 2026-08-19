@@ -411,6 +411,13 @@ public class EditorTextView: NSTextView {
     /// window: it stops tracking the table and grows its own close box.
     var isCellEditorDetached = false
 
+    /// True while a table is deliberately showing its raw markdown, which the
+    /// `</>` button asks for. A caret inside a table no longer implies raw —
+    /// the table stays rendered and the cell is edited in place — so this is
+    /// the only way back to the pipes, for the structural edits (adding a
+    /// column, fixing a separator row) that in-place editing cannot express.
+    var rawTableEditing = false
+
     /// The card's top edge in view coordinates, fixed for as long as it points
     /// at one cell. Nil re-reads it from the row on the next placement.
     var cellEditorAnchorY: CGFloat?
@@ -688,13 +695,10 @@ public class EditorTextView: NSTextView {
         // An open popup ends on any click that isn't on its own table. The
         // popover is `.applicationDefined`, so nothing else does this.
         dismissCellEditorIfClickIsOutside(event)
-        // A click on a rendered table's cell edits that cell in a popover rather
-        // than putting a caret in the table, so this takes the click whole.
-        // Option-click is the way past it to the plain caret placement — which,
-        // landing in the table, renders it as raw markdown. See
-        // EditorTextView+TableCellEditor.
-        if !event.modifierFlags.contains(.option),
-           let cell = tableCellForCellEditor(at: event) {
+        // EXPERIMENT (inline table editing): the popover no longer takes the
+        // click. A table now stays rendered with the caret inside it, so the
+        // click falls through to ordinary caret placement in the real text.
+        if false, let cell = tableCellForCellEditor(at: event) {
             openTableCellEditor(cell)
             return
         }

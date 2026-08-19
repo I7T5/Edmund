@@ -30,6 +30,11 @@ extension EditorTextView {
         let rawOffset = sel.location
         let newActiveIndex = blockIndexForRawOffset(rawOffset)
 
+        // Showing a table raw is a per-table request made with its `</>`
+        // button, so leaving the table takes it back — otherwise the next
+        // table the caret entered would come up raw too.
+        if newActiveIndex != activeBlockIndex { rawTableEditing = false }
+
         if newActiveIndex != activeBlockIndex && !pendingRecompose {
             pendingRecompose = true
             // Capture the flag now — it's reset synchronously after mouseDown

@@ -458,7 +458,16 @@ extension EditorTextView {
 
             case .table:
                 guard span.fullRange.upperBound <= result.length else { continue }
-                styleTableSpan(result, span: span, cursorInToken: cursorInToken)
+                // A table stays rendered with the caret inside it: unlike every
+                // other block, its raw form is not a readable fallback but a
+                // pipe soup, and its characters are the *same* characters the
+                // rendered form lays out (pipes hidden, columns kerned), so the
+                // caret can sit in them directly and edit the cell in place.
+                // Raw is now an explicit request — the `</>` button — rather
+                // than a side effect of putting the caret in the table.
+                styleTableSpan(result, span: span,
+                               cursorInToken: cursorInToken && rawTableEditing,
+                               caretAt: cursorPosition)
 
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }

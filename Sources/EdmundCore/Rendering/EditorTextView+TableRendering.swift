@@ -9,9 +9,16 @@ extension EditorTextView {
 
     /// Styles the `.table` content for one span. The caller has already
     /// bounds-checked `span.fullRange` against `result`.
+    /// `caretAt` is the caret's offset in `result`, or nil. The row holding it
+    /// is the one being edited in place, and it opts out of the overflow-wrap
+    /// path below: a wrapped cell hides its real characters and redraws them
+    /// from a detached layout, which the caret cannot follow (it stays pinned
+    /// at the column's left edge, advancing 0.005pt per character). The edited
+    /// row keeps its real glyphs and runs long instead.
     func styleTableSpan(_ result: NSMutableAttributedString,
                         span: SyntaxHighlighter.Span,
-                        cursorInToken: Bool) {
+                        cursorInToken: Bool,
+                        caretAt: Int? = nil) {
         if cursorInToken {
             // Active: monospace, all pipes dimmed
             result.addAttribute(.font, value: tableFont, range: span.fullRange)
@@ -33,6 +40,20 @@ extension EditorTextView {
             let tableNS = (result.string as NSString)
             let tableStr = tableNS.substring(with: span.fullRange)
             let lines = tableStr.components(separatedBy: "\n")
+
+            // Which row holds the caret, in `lines` indices. Counted in the
+            // same UTF-16 offsets `result` uses, so it survives any character
+            // the cells contain.
+            var activeLine: Int?
+            if let caretAt, caretAt >= span.fullRange.location,
+               caretAt <= span.fullRange.upperBound {
+                var scan = span.fullRange.location
+                for (li, line) in lines.enumerated() {
+                    let end = scan + (line as NSString).length
+                    if caretAt >= scan && caretAt <= end { activeLine = li; break }
+                    scan = end + 1
+                }
+            }
 
             let cellHPad = bodyFont.pointSize * 0.3
             let cellVPad = bodyFont.pointSize * 0.15
@@ -176,7 +197,7 @@ extension EditorTextView {
                 // (see DecoratedTextLayoutFragment). Computed once per row so
                 // both the hide/transplant step and the kern step below agree.
                 var overflowsCol = [Bool](repeating: false, count: numCols)
-                if i != 1, i < rowCells.count {
+                if i != 1, i != activeLine, i < rowCells.count {
                     for ci in 0..<min(rowCells[i].count, numCols) {
                         overflowsCol[ci] = rowCells[i][ci].styled.size().width
                             > colWidths[ci] - 2 * cellHPad + 0.5

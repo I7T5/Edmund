@@ -209,16 +209,30 @@ extension EditorTextView {
 
     // MARK: - Activation
 
-    /// Puts the caret at the start of a table, which is what renders it raw.
-    /// Nothing here teaches the renderer about the button: this is the same
-    /// state a click into the table already produces.
+    /// Toggles a table between its rendered form and its raw markdown, and
+    /// puts the caret in it.
+    ///
+    /// The caret alone no longer renders a table raw — it edits the cell it
+    /// lands in, in place — so unlike every other block this needs an explicit
+    /// switch, which is what the button is for.
     func activateRawTableEditing(blockIndex: Int) {
         guard blockIndex < blocks.count else { return }
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
+        let alreadyRaw = rawTableEditing
+            && activeBlockIndexForRawTable() == blockIndex
+        rawTableEditing = !alreadyRaw
         // Suppressed for the same reason `mouseDown` suppresses it: re-centring
         // the viewport because the user clicked something feels glitchy.
         suppressTypewriterCentering = true
         setSelectedRange(NSRange(location: blocks[blockIndex].range.location, length: 0))
         suppressTypewriterCentering = false
+        restyleBlock(blockIndex, cursorInBlock: 0)
+    }
+
+    /// The table the caret is in, if any — the one `rawTableEditing` applies to.
+    func activeBlockIndexForRawTable() -> Int? {
+        guard let i = blockIndexForRawOffset(selectedRange().location),
+              i < blocks.count, blocks[i].kind == .table else { return nil }
+        return i
     }
 }

@@ -69,9 +69,22 @@ struct TableAlignmentRenderTests {
         #expect(kern(at: start, in: styled) == nil)
     }
 
-    @Test("Active table has no alignment kern (raw monospace)")
-    func activeUnaffected() {
+    /// A caret in a table used to strip it back to raw monospace. It no longer
+    /// does — the table stays aligned and the cell is edited in place — so the
+    /// column kern must survive the caret.
+    @Test("A caret in a table keeps its alignment kern")
+    func caretKeepsAlignment() {
         let editor = makeEditor()
+        let table = "| aaa | bbb |\n|--:|--:|\n| x | y |"
+        let styled = editor.styleBlock(table, cursorPosition: 2)
+        let start = lastRowStart(styled)
+        #expect(kern(at: start, in: styled) != nil)
+    }
+
+    @Test("A raw table has no alignment kern (raw monospace)")
+    func rawUnaffected() {
+        let editor = makeEditor()
+        editor.rawTableEditing = true
         let table = "| aaa | bbb |\n|--:|--:|\n| x | y |"
         let styled = editor.styleBlock(table, cursorPosition: 2)
         let start = lastRowStart(styled)
