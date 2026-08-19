@@ -68,6 +68,9 @@ extension EditorTextView {
             super.insertNewline(sender)
             return
         }
+        // In a table, Return adds a row — splitting the line would cut the
+        // cell's text in half. See EditorTextView+TableInlineEditing.
+        if handleTableNewline() { return }
         // Blockquote/callout continuation is deliberately not gated: the setting
         // is worded "Automatically continue lists".
         if listContinuationEnabled, handleListNewline(sel) { return }
