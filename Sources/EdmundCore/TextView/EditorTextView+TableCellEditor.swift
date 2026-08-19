@@ -229,14 +229,23 @@ extension EditorTextView {
     }
 
     /// Opens the popup editor on `cell`, or slides an open one over to it.
+    ///
+    /// Only along a row does the card slide. Changing row closes it and opens a
+    /// fresh one: the exit and the entrance then overlap, which reads as the
+    /// card hopping from one row to the other rather than gliding through the
+    /// table's middle.
     func openTableCellEditor(_ cell: TableCellRef) {
         if let current = editingTableCell, current.blockIndex == cell.blockIndex,
-           cellEditorPanel != nil, !isCellEditorDetached {
+           current.row == cell.row, cellEditorPanel != nil, !isCellEditorDetached {
             moveTableCellEditor(toRow: cell.row, column: cell.column)
             return
         }
         closeTableCellEditor(commit: true)
         guard let window else { return }
+        // That close committed whatever cell was open, which can have shifted
+        // every range after it — this one included.
+        guard let cell = tableCell(blockIndex: cell.blockIndex,
+                                   row: cell.row, column: cell.column) else { return }
 
         editingTableCell = cell
         let controller = TableCellEditorController(
