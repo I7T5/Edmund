@@ -15,6 +15,7 @@ import WebKit
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
 ///   backspace <n>     press delete n times (300ms apart)
+///   enter             press Return (insertNewline: list continuation, table rows)
 ///   tab / backtab     indent / dedent the selected list line(s)
 ///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
 ///                     recentering, so a block can be driven off-screen)
@@ -139,6 +140,12 @@ enum ReproScript {
                 }
             case "return":
                 schedule(after: delay) { $0.insertText("\n", replacementRange: NSRange(location: NSNotFound, length: 0)) }
+                delay += 0.05
+            case "enter":
+                // The Return *key*, which AppKit routes to `insertNewline` — a
+                // different path from `return` above, and the only one that
+                // reaches list continuation and table row stepping.
+                schedule(after: delay) { $0.insertNewline(nil) }
                 delay += 0.05
             case "tab":
                 schedule(after: delay) { $0.insertTab(nil) }

@@ -70,4 +70,31 @@ extension EditorTextView {
         }
         return nil
     }
+
+    /// Re-resolves a cell by position rather than by range.
+    ///
+    /// Ranges shift the moment a commit changes a cell's length, so moving from
+    /// one cell to the next has to name the target by where it sits in the
+    /// table, not by the offsets that were valid before the write.
+    func tableCell(blockIndex: Int, row: Int, column: Int) -> TableCellRef? {
+        guard blockIndex < blocks.count, blocks[blockIndex].kind == .table else { return nil }
+        let block = blocks[blockIndex]
+        let lines = block.content.components(separatedBy: "\n")
+        guard row >= 0, row < lines.count, row != 1 else { return nil }
+        var lineStart = 0
+        for (i, line) in lines.enumerated() {
+            let lineNS = line as NSString
+            if i == row {
+                let cells = cellRanges(in: lineNS)
+                guard column >= 0, column < cells.count else { return nil }
+                let cell = cells[column]
+                return TableCellRef(
+                    blockIndex: blockIndex, row: row, column: column,
+                    contentRange: NSRange(location: block.range.location + lineStart + cell.start,
+                                          length: cell.end - cell.start))
+            }
+            lineStart += lineNS.length + 1
+        }
+        return nil
+    }
 }

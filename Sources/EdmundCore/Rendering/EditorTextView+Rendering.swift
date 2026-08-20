@@ -466,8 +466,7 @@ extension EditorTextView {
                 // Raw is now an explicit request — the `</>` button — rather
                 // than a side effect of putting the caret in the table.
                 styleTableSpan(result, span: span,
-                               cursorInToken: cursorInToken && rawTableEditing,
-                               caretAt: cursorPosition)
+                               cursorInToken: cursorInToken && rawTableEditing)
 
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }

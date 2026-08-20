@@ -11,6 +11,10 @@ extension EditorTextView {
         // text, so it has to repaint on every caret move, including the ones
         // that bail out of restyling. Marks only the numbers' strip.
         invalidateLineNumbers()
+        // A caret inside a table cell too wide for its column is drawn by hand,
+        // because AppKit's would sit on the cell's hidden characters rather than
+        // its visible text. See EditorTextView+TableCellCaret.
+        updateWrappedCaret()
         // A selection change landing mid-recompose is the drift signature
         // (issue #156); the stack names the AppKit path that moved the caret.
         if isUpdating { traceSelectionOrigin() }

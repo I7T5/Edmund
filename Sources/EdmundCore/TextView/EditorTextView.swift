@@ -418,6 +418,16 @@ public class EditorTextView: NSTextView {
     /// column, fixing a separator row) that in-place editing cannot express.
     var rawTableEditing = false
 
+    /// The caret Edmund draws itself, inside a table cell too wide for its
+    /// column: its blink phase, where it was last drawn (so the old position
+    /// can be invalidated when it moves) and the timer running the blink.
+    /// AppKit's own caret is switched off while this one is up — it would draw
+    /// at the column's left edge, where the cell's hidden characters are.
+    /// See EditorTextView+TableCellCaret.
+    var wrappedCaretOn = false
+    var wrappedCaretRect: NSRect?
+    var wrappedCaretTimer: Timer?
+
     /// The card's top edge in view coordinates, fixed for as long as it points
     /// at one cell. Nil re-reads it from the row on the next placement.
     var cellEditorAnchorY: CGFloat?

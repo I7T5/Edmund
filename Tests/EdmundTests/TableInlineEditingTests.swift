@@ -42,75 +42,166 @@ struct TableInlineEditingTests {
         #expect(storage.attribute(.blockDecoration, at: rowStart, effectiveRange: nil) != nil)
     }
 
-    /// The wall this change had to get past: a cell too wide for its column is
-    /// normally hidden and redrawn from a detached layout, where the caret
-    /// cannot follow it — it stays pinned at the column's left edge. The row
-    /// being edited keeps its real glyphs instead.
-    @Test("The caret can move inside an overflowing cell")
-    func caretMovesInsideAnOverflowingCell() {
-        let long = String(repeating: "overflowing ", count: 12)
-        let text = "Lead.\n\n| col1 | col2 |\n| ---- | ---- |\n| \(long) | b |\n"
-        let editor = loadEditor(text)
-        let base = (text as NSString).range(of: long).location
-        editor.setSelectedRange(NSRange(location: base + 20, length: 0))
-        guard let b = editor.blocks.firstIndex(where: { $0.kind == .table }) else {
-            Issue.record("no table")
-            return
+    // MARK: - The caret inside a wrapped cell
+
+    /// A table whose second column can't fit its text: the cell is hidden and
+    /// redrawn from a detached layout, which is the case the caret geometry
+    /// exists for.
+    private let wrapped = "Lead.\n\n| a | \(String(repeating: "overflowing ", count: 12))|\n| ---- | ---- |\n| b | c |\n"
+
+    private func wrappedEditor() -> (EditorTextView, NSRange) {
+        let editor = loadEditor(wrapped)
+        let cell = (wrapped as NSString).range(of: "overflowing ", options: [])
+        let long = NSRange(location: cell.location, length: 12 * 12)
+        editor.setSelectedRange(NSRange(location: long.location, length: 0))
+        if let b = editor.blocks.firstIndex(where: { $0.kind == .table }) {
+            editor.restyleBlock(b, cursorInBlock: long.location - editor.blocks[b].range.location)
         }
-        editor.restyleBlock(b, cursorInBlock: base + 20 - editor.blocks[b].range.location)
         ensureFullLayout(editor)
         layOutViewport(editor)
+        return (editor, long)
+    }
 
-        func caretX(_ off: Int) -> CGFloat? {
-            guard let tlm = editor.textLayoutManager,
-                  let cm = tlm.textContentManager,
-                  let loc = cm.location(cm.documentRange.location, offsetBy: off),
-                  let r = NSTextRange(location: loc, end: loc) else { return nil }
-            var x: CGFloat?
-            tlm.enumerateTextSegments(in: r, type: .selection,
-                                      options: .rangeNotRequired) { _, rect, _, _ in
-                x = rect.origin.x
-                return false
-            }
-            return x
+    private func fragment(_ editor: EditorTextView, at offset: Int)
+        -> (DecoratedTextLayoutFragment, Int)? {
+        guard let tlm = editor.textLayoutManager,
+              let loc = tlm.location(tlm.documentRange.location, offsetBy: offset),
+              let frag = tlm.textLayoutFragment(for: loc) as? DecoratedTextLayoutFragment,
+              let start = frag.textElement?.elementRange?.location else { return nil }
+        return (frag, tlm.offset(from: tlm.documentRange.location, to: start))
+    }
+
+    /// The wall this whole change had to get past: the cell's real characters
+    /// sit at 0.01pt each, so the layout manager's own caret rect crawls 0.005pt
+    /// per character. The rects come from the scratch layout instead.
+    @Test("The caret follows the drawn text of a wrapped cell")
+    func caretFollowsTheWrappedText() {
+        let (editor, long) = wrappedEditor()
+        func x(_ off: Int) -> CGFloat? {
+            editor.wrappedCellRects(for: NSRange(location: off, length: 0)).first?.minX
         }
-        guard let a = caretX(base), let c = caretX(base + 10) else {
+        guard let a = x(long.location), let b = x(long.location + 10) else {
             Issue.record("no caret rects")
             return
         }
-        // Ten characters of real text, not ten characters of 0.01pt hiddenFont
-        // (which moved the caret by 0.05pt in total).
-        #expect(c - a > 20)
+        #expect(b - a > 20)
     }
 
-    // MARK: - Return adds a row
+    /// The cell wraps, so a late offset has to sit on a lower visual line —
+    /// not just further right, which a single long line would also give.
+    @Test("The caret drops to the wrapped cell's later lines")
+    func caretDropsToTheNextVisualLine() {
+        let (editor, long) = wrappedEditor()
+        func rect(_ off: Int) -> NSRect? {
+            editor.wrappedCellRects(for: NSRange(location: off, length: 0)).first
+        }
+        guard let first = rect(long.location),
+              let last = rect(long.upperBound - 1) else {
+            Issue.record("no caret rects")
+            return
+        }
+        #expect(last.minY > first.minY)
+    }
 
-    @Test("Return in a cell adds a row instead of splitting it")
-    func returnAddsARow() {
+    /// The caret rect and the click mapping have to agree, or clicking a
+    /// character wouldn't put the caret on it. Checked past the first visual
+    /// line, where a line-relative index would have drifted.
+    @Test("Caret rects round-trip through the click mapping")
+    func caretRoundTripsWithTheClick() {
+        let (editor, long) = wrappedEditor()
+        guard let (frag, base) = fragment(editor, at: long.location) else {
+            Issue.record("no fragment")
+            return
+        }
+        let frame = frag.layoutFragmentFrame
+        let origin = editor.textContainerOrigin
+        for offset in [long.location + 2, long.location + 60, long.upperBound - 4] {
+            guard let rect = editor.wrappedCellRects(
+                for: NSRange(location: offset, length: 0)).first else {
+                Issue.record("no rect at \(offset)")
+                continue
+            }
+            // A point just inside the character the caret sits before.
+            let point = CGPoint(x: rect.minX - frame.minX - origin.x + 1,
+                                y: rect.midY - frame.minY - origin.y)
+            #expect(frag.cellWrapCharacterIndex(for: point).map { base + $0 } == offset)
+        }
+    }
+
+    /// Tab selects a cell's text, and a wrapped cell's real characters are
+    /// hidden — so without its own highlight the selection would be invisible.
+    @Test("A selection in a wrapped cell yields one rect per visual line")
+    func selectionSpansTheWrappedLines() {
+        let (editor, long) = wrappedEditor()
+        let rects = editor.wrappedCellRects(for: long)
+        #expect(rects.count > 1)
+        #expect(rects.allSatisfy { $0.width > 0 })
+    }
+
+    /// Down inside a wrapped cell walks its visual lines instead of leaving the
+    /// row, which is what the layout manager's own geometry would do.
+    @Test("Down moves within a wrapped cell, then out of it")
+    func downWalksTheWrappedLines() {
+        let (editor, long) = wrappedEditor()
+        editor.setSelectedRange(NSRange(location: long.location + 2, length: 0))
+        editor.moveDown(nil)
+        let after = editor.selectedRange().location
+        #expect(after > long.location + 2)
+        #expect(after < long.upperBound)
+        // Off the last line there is nothing left to walk, so the key goes back
+        // to ordinary movement rather than sticking at the cell's end.
+        editor.setSelectedRange(NSRange(location: long.upperBound - 2, length: 0))
+        #expect(editor.wrappedCellVerticalOffset(lineDelta: 1) == nil)
+    }
+
+    // MARK: - Return: down a row, or a new one
+
+    @Test("Return moves to the cell below and selects it")
+    func returnMovesDownARow() {
         let editor = loadEditor(doc)
         let caret = (doc as NSString).range(of: "c11").upperBound - 1
         editor.setSelectedRange(NSRange(location: caret, length: 0))
         editor.insertNewline(nil)
-        #expect(editor.rawSource.contains("| c11 | c12 |"))   // the cell survived whole
+        #expect(editor.rawSource == doc)   // nothing was split, nothing was added
+        #expect((editor.rawSource as NSString).substring(with: editor.selectedRange()) == "c21")
+    }
+
+    /// The header's row below is the first body row — row 1 is the separator.
+    @Test("Return from the header skips the separator row")
+    func returnFromTheHeaderSkipsTheSeparator() {
+        let editor = loadEditor(doc)
+        let caret = (doc as NSString).range(of: "col2").location
+        editor.setSelectedRange(NSRange(location: caret, length: 0))
+        editor.insertNewline(nil)
+        #expect((editor.rawSource as NSString).substring(with: editor.selectedRange()) == "c12")
+    }
+
+    @Test("Return on the last row adds one")
+    func returnOnTheLastRowAddsARow() {
+        let editor = loadEditor(doc)
+        let caret = (doc as NSString).range(of: "c21").location
+        editor.setSelectedRange(NSRange(location: caret, length: 0))
+        editor.insertNewline(nil)
+        #expect(editor.rawSource.contains("| c21 | c22 |"))   // the cell survived whole
         #expect(editor.rawSource.contains("|  |  |"))          // and a row appeared
         let rows = editor.rawSource.components(separatedBy: "\n")
             .filter { $0.contains("|") }.count
         #expect(rows == 5)   // header, separator, two body rows, the new one
     }
 
-    /// The new row goes below the caret's row, not at the table's end.
-    @Test("The new row lands under the caret's row")
-    func newRowLandsUnderTheCaret() {
+    /// The new row keeps the column the user was in, so Return down a column
+    /// carries on down it rather than snapping back to the first cell.
+    @Test("The added row keeps the caret's column")
+    func addedRowKeepsTheColumn() {
         let editor = loadEditor(doc)
-        let caret = (doc as NSString).range(of: "c11").location
+        let caret = (doc as NSString).range(of: "c22").location
         editor.setSelectedRange(NSRange(location: caret, length: 0))
         editor.insertNewline(nil)
-        let lines = editor.rawSource.components(separatedBy: "\n")
-        guard let i = lines.firstIndex(where: { $0.contains("c11") }) else {
-            Issue.record("row gone")
-            return
-        }
-        #expect(lines[i + 1].trimmingCharacters(in: .whitespaces) == "|  |  |")
+        let ns = editor.rawSource as NSString
+        let line = ns.lineRange(for: editor.selectedRange())
+        #expect(ns.substring(with: line).trimmingCharacters(in: .newlines) == "|  |  |")
+        // Second column of `|  |  |`: past the leading pipe, two spaces, a pipe.
+        #expect(editor.selectedRange().location == line.location + 5)
     }
 
     /// A table written without outer pipes must not gain them — the extra pipe

@@ -9,16 +9,14 @@ extension EditorTextView {
 
     /// Styles the `.table` content for one span. The caller has already
     /// bounds-checked `span.fullRange` against `result`.
-    /// `caretAt` is the caret's offset in `result`, or nil. The row holding it
-    /// is the one being edited in place, and it opts out of the overflow-wrap
-    /// path below: a wrapped cell hides its real characters and redraws them
-    /// from a detached layout, which the caret cannot follow (it stays pinned
-    /// at the column's left edge, advancing 0.005pt per character). The edited
-    /// row keeps its real glyphs and runs long instead.
+    /// Every row wraps its overflowing cells, the row holding the caret
+    /// included: the caret follows the drawn text through
+    /// `DecoratedTextLayoutFragment.cellWrapRects` (see
+    /// EditorTextView+TableCellCaret), so nothing has to run long to stay
+    /// editable.
     func styleTableSpan(_ result: NSMutableAttributedString,
                         span: SyntaxHighlighter.Span,
-                        cursorInToken: Bool,
-                        caretAt: Int? = nil) {
+                        cursorInToken: Bool) {
         if cursorInToken {
             // Active: monospace, all pipes dimmed
             result.addAttribute(.font, value: tableFont, range: span.fullRange)
@@ -41,20 +39,6 @@ extension EditorTextView {
             let tableStr = tableNS.substring(with: span.fullRange)
             let lines = tableStr.components(separatedBy: "\n")
 
-            // Which row holds the caret, in `lines` indices. Counted in the
-            // same UTF-16 offsets `result` uses, so it survives any character
-            // the cells contain.
-            var activeLine: Int?
-            if let caretAt, caretAt >= span.fullRange.location,
-               caretAt <= span.fullRange.upperBound {
-                var scan = span.fullRange.location
-                for (li, line) in lines.enumerated() {
-                    let end = scan + (line as NSString).length
-                    if caretAt >= scan && caretAt <= end { activeLine = li; break }
-                    scan = end + 1
-                }
-            }
-
             let cellHPad = bodyFont.pointSize * 0.3
             let cellVPad = bodyFont.pointSize * 0.15
 
@@ -68,10 +52,8 @@ extension EditorTextView {
             // are row-owned, see the transplant below); tall math or image
             // overlays get no extra line height in cells. A wrapped (overflowing)
             // cell is drawn from a detached scratch text layout rather than the
-            // live glyph run, so click-to-caret placement inside it is
-            // approximate while the table is non-active — clicking anywhere in
-            // the cell still enters the table and lands the caret at the raw
-            // source's nearest position once active.
+            // live glyph run, so its caret, selection and vertical movement all
+            // come from that layout instead (EditorTextView+TableCellCaret).
             let headerCells = splitTableRow(lines[0])
             let numCols = headerCells.count
             guard numCols > 0 else { return }
@@ -197,7 +179,7 @@ extension EditorTextView {
                 // (see DecoratedTextLayoutFragment). Computed once per row so
                 // both the hide/transplant step and the kern step below agree.
                 var overflowsCol = [Bool](repeating: false, count: numCols)
-                if i != 1, i != activeLine, i < rowCells.count {
+                if i != 1, i < rowCells.count {
                     for ci in 0..<min(rowCells[i].count, numCols) {
                         overflowsCol[ci] = rowCells[i][ci].styled.size().width
                             > colWidths[ci] - 2 * cellHPad + 0.5

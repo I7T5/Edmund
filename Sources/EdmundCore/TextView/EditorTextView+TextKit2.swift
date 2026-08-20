@@ -511,6 +511,94 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         return nil
     }
 
+    /// The inverse of `cellWrapCharacterIndex`: fragment-local rects covering
+    /// the part of `range` (paragraph-relative) that falls inside a wrapped
+    /// cell's drawn text, one rect per visual line it spans. A zero-length
+    /// range yields the caret's single zero-width rect. Empty when the range
+    /// touches no wrapped cell, which is every row whose cells all fit.
+    ///
+    /// Both line-fragment index APIs count in the scratch string's own
+    /// coordinates, not the line's (verified: `characterIndex(for:)` at the
+    /// left edge of the second line returns that line's first index, not 0),
+    /// so `charStart` is the only shift needed either way.
+    func cellWrapRects(forParagraphRange range: NSRange) -> [CGRect] {
+        for (wrap, lines) in resolvedCellWraps where !lines.isEmpty {
+            let cell = NSRange(location: wrap.charStart, length: wrap.styled.length)
+            // A caret sitting on either edge belongs to the cell; a selection
+            // has to actually overlap it.
+            let local: NSRange
+            if range.length == 0 {
+                guard range.location >= cell.location,
+                      range.location <= cell.upperBound else { continue }
+                local = NSRange(location: range.location - wrap.charStart, length: 0)
+            } else {
+                let hit = NSIntersectionRange(range, cell)
+                guard hit.length > 0 else { continue }
+                local = NSRange(location: hit.location - wrap.charStart, length: hit.length)
+            }
+
+            var rects: [CGRect] = []
+            var top = cellWrapTopInset
+            for line in lines {
+                let height = line.typographicBounds.height
+                let lineRange = line.characterRange
+                let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth,
+                                            align: wrap.align)
+                defer { top += height }
+                if local.length == 0 {
+                    // The caret goes on the first line that can hold it, which
+                    // at a soft break is the line it broke *from* — the same
+                    // line a click at that point would have resolved to.
+                    guard local.location < lineRange.upperBound
+                            || line === lines.last else { continue }
+                    let x = line.locationForCharacter(
+                        at: min(local.location, lineRange.upperBound)).x
+                    return [CGRect(x: wrap.x + dx + x, y: top, width: 0, height: height)]
+                }
+                let hit = NSIntersectionRange(local, lineRange)
+                guard hit.length > 0 else { continue }
+                let from = line.locationForCharacter(at: hit.location).x
+                let to = line.locationForCharacter(at: hit.upperBound).x
+                rects.append(CGRect(x: wrap.x + dx + from, y: top,
+                                    width: to - from, height: height))
+            }
+            if !rects.isEmpty { return rects }
+        }
+        return []
+    }
+
+    /// The paragraph offset one visual line up (`-1`) or down (`+1`) from
+    /// `offset`, inside the wrapped cell holding it. Nil when the offset is not
+    /// in a wrapped cell or the move would leave it — the caller then hands the
+    /// key back to ordinary vertical movement, which walks to the row above or
+    /// below.
+    func cellWrapOffset(fromParagraphOffset offset: Int, lineDelta: Int) -> Int? {
+        for (wrap, lines) in resolvedCellWraps where !lines.isEmpty {
+            let cell = NSRange(location: wrap.charStart, length: wrap.styled.length)
+            guard offset >= cell.location, offset <= cell.upperBound else { continue }
+            let local = offset - wrap.charStart
+            guard let index = lines.firstIndex(where: {
+                local < $0.characterRange.upperBound
+            }) ?? (lines.indices.last) else { return nil }
+            let target = index + lineDelta
+            guard lines.indices.contains(target) else { return nil }
+            let here = lines[index], there = lines[target]
+            // Alignment shifts each line independently, so the x has to be
+            // taken back out of the source line's shift and into the target's.
+            let dxHere = cellWrapLineOffset(here, contentWidth: wrap.contentWidth,
+                                            align: wrap.align)
+            let dxThere = cellWrapLineOffset(there, contentWidth: wrap.contentWidth,
+                                             align: wrap.align)
+            let x = here.locationForCharacter(
+                at: min(local, here.characterRange.upperBound)).x
+            let hit = there.characterIndex(
+                for: CGPoint(x: x + dxHere - dxThere, y: there.typographicBounds.midY))
+            guard hit >= 0 else { return nil }
+            return wrap.charStart + hit
+        }
+        return nil
+    }
+
     /// Extra row height needed to fit the tallest wrapped cell, beyond the
     /// row's natural (single-line) height.
     private var tableRowExtraHeight: CGFloat {

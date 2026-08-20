@@ -11,8 +11,8 @@ import AppKit
 // destroys the structure rather than editing it:
 //
 //   * Return would split the row's line in two, which cuts the cell's text in
-//     half and leaves both fragments as rows (`| c1` / `1 | c12 |`). It adds a
-//     row instead.
+//     half and leaves both fragments as rows (`| c1` / `1 | c12 |`). It moves
+//     down a row instead, and makes one when there is none below.
 //   * Tab would indent, which is meaningless mid-row. It steps to the next
 //     cell, which is what every other table editor does and the only quick way
 //     to reach a cell whose text is too short to click accurately.
@@ -33,12 +33,28 @@ extension EditorTextView {
         return tableCell(atRawOffset: selectedRange().location)
     }
 
-    // MARK: - Return: add a row
+    // MARK: - Return: down a row, or a new one
 
-    /// Adds an empty row below the caret's row and puts the caret in its first
-    /// cell. Returns false if the caret isn't in an in-place table.
+    /// Moves to the cell below and selects its text, the way Return does in a
+    /// spreadsheet; on the last row there is nothing below, so it adds one.
+    /// Returns false if the caret isn't in an in-place table.
     func handleTableNewline() -> Bool {
         guard let cell = inlineTableCell else { return false }
+        // Row 1 is the separator, so the header's row below is the first body
+        // row. Falling back to column 0 covers a ragged row that is short of
+        // the column the caret was in.
+        let below = cell.row == 0 ? 2 : cell.row + 1
+        if let target = tableCell(blockIndex: cell.blockIndex, row: below, column: cell.column)
+            ?? tableCell(blockIndex: cell.blockIndex, row: below, column: 0) {
+            selectCellText(target)
+            return true
+        }
+        return addTableRow(after: cell)
+    }
+
+    /// Appends an empty row below `cell`'s row and puts the caret in the column
+    /// the user was already in.
+    private func addTableRow(after cell: TableCellRef) -> Bool {
         let ns = rawSource as NSString
         let line = ns.lineRange(for: NSRange(location: cell.contentRange.location, length: 0))
         let lineText = ns.substring(with: line)
@@ -57,14 +73,15 @@ extension EditorTextView {
 
         // `line` includes its trailing newline except on the document's last
         // line, where the newline has to be added rather than reused.
-        let endsWithNewline = line.upperBound <= ns.length
-            && lineText.hasSuffix("\n")
+        let endsWithNewline = line.upperBound <= ns.length && lineText.hasSuffix("\n")
         let insertAt = endsWithNewline ? line.upperBound : ns.length
         let replacement = endsWithNewline ? row + "\n" : "\n" + row
 
-        // The caret lands in the new row's first cell — one character past the
-        // leading pipe and its space, which is where its content begins.
-        let caret = insertAt + (endsWithNewline ? 0 : 1) + (outer ? 2 : 1)
+        // Each cell of the new row is `|` + two spaces, so its content starts
+        // three characters on from the last, and the caret goes between them.
+        let column = min(cell.column, columns - 1)
+        let caret = insertAt + (endsWithNewline ? 0 : 1)
+            + (outer ? 1 : 0) + column * 3 + 1
         applyFormattingEdit(rawRange: NSRange(location: insertAt, length: 0),
                             replacement: replacement,
                             select: NSRange(location: caret, length: 0))
@@ -97,16 +114,20 @@ extension EditorTextView {
         guard let target = tableCell(blockIndex: cell.blockIndex,
                                      row: row, column: column) else { return false }
 
-        // Select the cell's text, not its surrounding padding spaces, so
-        // typing replaces the value the way a spreadsheet does.
+        selectCellText(target)
+        return true
+    }
+
+    /// Selects a cell's text without its padding spaces, so typing replaces the
+    /// value the way a spreadsheet does. Both Tab and Return land this way.
+    func selectCellText(_ cell: TableCellRef) {
         let ns = rawSource as NSString
-        var lo = target.contentRange.location
-        var hi = min(target.contentRange.upperBound, ns.length)
+        var lo = cell.contentRange.location
+        var hi = min(cell.contentRange.upperBound, ns.length)
         while lo < hi, ns.character(at: lo) == 0x20 { lo += 1 }
         while hi > lo, ns.character(at: hi - 1) == 0x20 { hi -= 1 }
         setSelectedRange(NSRange(location: lo, length: hi - lo))
         scrollRangeToVisible(selectedRange())
-        return true
     }
 
     /// The index of the last cell in a row, or nil if the row has none.
