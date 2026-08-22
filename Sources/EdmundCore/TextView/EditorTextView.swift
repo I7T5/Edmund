@@ -153,7 +153,18 @@ public class EditorTextView: NSTextView {
             cachedHiddenFont = nil
             textAntialias = theme.antialias
             codeBlockLabelFont = theme.monospaceFont(ofSize: max(9, theme.monospaceFontSize - 3))
+            syncCascadeResolver()
         }
+    }
+
+    /// Pushes the theme's per-script font choices into the text storage.
+    /// Called from theme.didSet (live changes via applyTheme — which already
+    /// recomposes, so no extra layout invalidation is needed here) and once
+    /// from commonInit, since didSet does not fire for the initial value.
+    private func syncCascadeResolver() {
+        (textStorage as? EditorTextStorage)?.cascadeResolver =
+            FontCascadeResolver(cascade: theme.fontCascade,
+                                sizeRatios: theme.fontCascadeSizeRatios)
     }
 
     /// Styling touches these values for every block. Reusing the immutable
@@ -508,6 +519,7 @@ public class EditorTextView: NSTextView {
 
         textAntialias = theme.antialias
         codeBlockLabelFont = theme.monospaceFont(ofSize: max(9, theme.monospaceFontSize - 3))
+        syncCascadeResolver()
         backgroundColor = editorBackgroundColor
         insertionPointColor = accentColor
         selectedTextAttributes = [

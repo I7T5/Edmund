@@ -88,6 +88,9 @@ enum AppSettings {
         static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
         // "cm" / "in" override the locale default for the content-width control.
         static let contentWidthUnit = "settings.appearance.contentWidthUnit"
+        // Whether the "Fonts by script" section at the foot of the Appearance
+        // pane is expanded (per-script cascade rows).
+        static let fontsByScriptExpanded = "settings.appearance.fontsByScriptExpanded"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let verboseEditorDiagnostics = "settings.advanced.verboseEditorDiagnostics"

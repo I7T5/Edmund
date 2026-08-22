@@ -51,6 +51,8 @@ Swift name) is what you pass as a launch arg.
 | `sentCrashReports` | `settings.advanced.sentCrashReports` | Dedup set of already-uploaded `.ips` filenames |
 | `lastWindowHeight` | `settings.window.lastHeight` | Persisted window sizing (see the frame-not-content trap) |
 | `automaticallyChecksForUpdates` | `SUAutomaticallyChecksForUpdates` | Sparkle's own key (not namespaced) |
+| `EditorTheme.Keys.fontCascade` | `EditorFontCascade` | Per-script font cascade: `[script: family]` dict (Settings ▸ Appearance ▸ Fonts by script). Scripts: han, kana, hangul, cyrillic, greek, arabic, hebrew, thai, emoji; absent/uninstalled ⇒ system fallback. Lives in `EditorTheme.swift`, **not** `AppSettings` |
+| `EditorTheme.Keys.fontCascadeSizeRatios` | `EditorFontCascadeSizeRatios` | Per-script size ratios: `[script: Double]` multiplier of the run's size; absent = 1.0 (clamped 0.5–2.0 on load). Same home as the cascade |
 
 **Content width (the physical-column design):** persisted as **centimetres**
 (`maxContentWidthCm`); `contentWidthUnit` is a display unit only. The column is
@@ -207,6 +209,8 @@ grep -nE 'static let [a-zA-Z]+ = "[a-zA-Z0-9._]+"' Sources/edmd/Settings/AppSett
 # §1 crash toggle still commented out / endpoint still placeholder:
 grep -n 'Crash reports:' Sources/edmd/Settings/AdvancedSettingsView.swift
 grep -n 'reportingEndpoint' Sources/EdmundCore/Diagnostics/CrashReporter.swift
+# §1 cascade key (lives in EditorTheme, not AppSettings):
+grep -n 'EditorFontCascade' Sources/EdmundCore/Model/EditorTheme.swift
 # §2 repro flag key:
 grep -n 'debug.reproScript' Sources/edmd/App/ReproScript.swift
 # §3 tripwire + constant:

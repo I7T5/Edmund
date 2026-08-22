@@ -29,4 +29,17 @@ struct SettingsPaneWidthTests {
         #expect(fittingWidth(ExtensionsSettingsView()) == general)
         #expect(fittingWidth(AdvancedSettingsView()) == general)
     }
+
+    /// The expanded "Fonts by script" section adds nine rows of 240pt preview
+    /// fields + steppers + Select… buttons — the pane must not grow wider.
+    /// (The hard 600pt frame in settingsPanePadding() means this can only
+    /// catch structural regressions; overflow inside the frame is a visual
+    /// check — see the PR's screencapture.)
+    @Test("Appearance pane stays the same width with the script section expanded")
+    func appearanceExpandedStaysSameWidth() {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: AppSettings.Key.fontsByScriptExpanded)
+        defer { defaults.removeObject(forKey: AppSettings.Key.fontsByScriptExpanded) }
+        #expect(fittingWidth(AppearanceSettingsView(fonts: FontSettings())) == 600)
+    }
 }
