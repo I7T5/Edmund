@@ -308,5 +308,23 @@
                        length="14148685"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.5.0</title>
+            <pubDate>Sat, 22 Aug 2026 15:08:27 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Thanks to @arthurlee116 for their first contribution (#268)</p>
+<h3>Added</h3>
+<ul>
+<li>Fonts by script: a separate font and size for each writing system, in Settings &gt; Appearance (#268 @arthurlee116)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.5.0/Edmund-0.5.0.dmg"
+                       sparkle:version="13"
+                       sparkle:shortVersionString="0.5.0"
+                       sparkle:edSignature="cgHeRmMtJitbjv/1Grmz4CdA2qIsTUZO4memOuW04VBHwuBq61s0IsnC9ZzFyt4LTzrmGprqLIOHlSBM5jSJDA=="
+                       length="14163541"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
