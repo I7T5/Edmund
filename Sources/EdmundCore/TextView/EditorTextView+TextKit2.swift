@@ -84,8 +84,13 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// table's left edge. `bottomBorder` draws a full-width line at this
         /// row's bottom edge — the grid line between data rows (the header/
         /// separator boundary already gets its line from `separator`).
+        /// `topInset` holds the borders off the top of the fragment, which the
+        /// header row uses to reserve the band its column handle sits in
+        /// (see EditorTextView+TableHandles) — without it the verticals would
+        /// run up through the handle.
         case tableRow(columnXOffsets: [CGFloat], width: CGFloat,
-                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool)
+                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool,
+                      topInset: CGFloat)
         /// Horizontal hairline across the text column, drawn `centerOffset`
         /// points below the fragment's vertical center. The offset compensates
         /// for adjacent text sitting at its baseline (low in its line box), so
@@ -142,11 +147,12 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
             hasher.combine(color)
             hasher.combine(width)
         case .tableRow(let offsets, let width, let leftInset,
-                       let separator, let bottomBorder):
+                       let separator, let bottomBorder, let topInset):
             hasher.combine(3)
             hasher.combine(offsets)
             hasher.combine(width)
             hasher.combine(leftInset)
+            hasher.combine(topInset)
             hasher.combine(separator)
             hasher.combine(bottomBorder)
         case .horizontalRule(let color, let centerOffset):
@@ -1002,7 +1008,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.fill(CGRect(x: point.x - width + decoration.inset, y: barTop,
                                 width: width, height: barHeight))
 
-        case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
+        case .tableRow(let xOffsets, let width, let leftInset, let separator,
+                       let bottomBorder, let topInset):
             // Offsets are text-relative; the fragment's origin is the text start.
             let borderColor = chromeLineColor
             context.setStrokeColor(borderColor.cgColor)
@@ -1018,8 +1025,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.setFillColor(borderColor.cgColor)
             for x in xOffsets {
                 let lineX = (((point.x + x) * scale).rounded()) / scale
-                context.fill(CGRect(x: lineX, y: point.y,
-                                    width: hairline, height: frame.height))
+                context.fill(CGRect(x: lineX, y: point.y + topInset,
+                                    width: hairline, height: frame.height - topInset))
             }
             if separator {
                 let y = round(point.y + frame.height / 2) + 0.5

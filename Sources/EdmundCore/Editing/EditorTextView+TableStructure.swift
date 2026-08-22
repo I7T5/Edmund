@@ -1,0 +1,210 @@
+import AppKit
+
+// MARK: - Changing a table's shape
+//
+// Adding and removing rows and columns, for the row and column handles and the
+// cell context menu. Rows are a line insert or delete; columns touch every line
+// at once, so they go through `applyFormattingEdit` on the whole table block —
+// still one undo step, since the block is contiguous.
+//
+// Every operation *splices*: it writes the few characters the change needs at
+// the offsets that need them and leaves the rest of the table byte-identical.
+// Rebuilding each row from its cells would be shorter but would silently
+// reformat a hand-written table's padding on any structural edit.
+//
+// Columns are counted the way `columnSpans` counts them, which keeps an empty
+// `||` cell — see the note there.
+//
+// The header row is not special-cased away. GFM needs a header, so "add a row
+// above the header" makes the new row the header and demotes the old one, and
+// "delete the header" promotes the row after it. Both are literally a line
+// insert or delete at index 0 — the separator stays where it is and the next
+// row becomes the header for free.
+
+extension EditorTextView {
+
+    // MARK: - What is allowed
+
+    /// The table's lines, or nil if `blockIndex` isn't a table.
+    func tableLines(blockIndex: Int) -> [String]? {
+        guard blockIndex >= 0, blockIndex < blocks.count,
+              blocks[blockIndex].kind == .table else { return nil }
+        return blocks[blockIndex].content.components(separatedBy: "\n")
+    }
+
+    /// How many columns the table has, counted off its header row.
+    func tableColumnCount(blockIndex: Int) -> Int {
+        guard let lines = tableLines(blockIndex: blockIndex), let header = lines.first
+        else { return 0 }
+        return columnSpans(in: header as NSString).count
+    }
+
+    /// Deleting the header is only offered when there is a body row to promote
+    /// into it; deleting any other row only needs that row to exist. Row 1 is
+    /// the separator and is never a target.
+    func canDeleteTableRow(blockIndex: Int, row: Int) -> Bool {
+        guard let lines = tableLines(blockIndex: blockIndex),
+              row != 1, lines.indices.contains(row) else { return false }
+        return row > 0 || lines.count > 2
+    }
+
+    func canDeleteTableColumn(blockIndex: Int, column: Int) -> Bool {
+        tableColumnCount(blockIndex: blockIndex) > 1
+            && column >= 0 && column < tableColumnCount(blockIndex: blockIndex)
+    }
+
+    // MARK: - Rows
+
+    /// Inserts an empty row at line `row`, and puts the caret in its `column`.
+    func insertTableRow(blockIndex: Int, at row: Int, column: Int = 0) {
+        guard let lines = tableLines(blockIndex: blockIndex),
+              row != 1, row >= 0, row <= lines.count,
+              let header = lines.first else { return }
+        let columns = columnSpans(in: header as NSString).count
+        guard columns > 0 else { return }
+
+        // Match the header's pipe style: a table written without outer pipes
+        // must not gain them, or the new row parses a column wider.
+        let outer = header.trimmingCharacters(in: .whitespaces).hasPrefix("|")
+        let body = Array(repeating: "  ", count: columns).joined(separator: "|")
+        let newRow = outer ? "|\(body)|" : body
+
+        if row == 0 {
+            // The separator has to stay on line 1, so a row above the header
+            // cannot simply land first: the new row takes the header's place
+            // and the old header drops to the top of the body, under the
+            // separator. Two line moves, so the whole table is rewritten.
+            guard lines.count >= 2 else { return }
+            var edited = lines
+            edited.insert(newRow, at: 0)
+            edited.swapAt(1, 2)
+            replaceTable(blockIndex: blockIndex, lines: edited)
+            landInCell(blockIndex: blockIndex, row: 0, column: column)
+            return
+        }
+
+        let block = blocks[blockIndex]
+        // Appending past the last line has to reuse the newline before it
+        // rather than the one after, which may not exist.
+        let atEnd = row == lines.count
+        let offset = block.range.location
+            + (atEnd ? (block.content as NSString).length : lineStart(in: lines, row: row))
+        applyFormattingEdit(rawRange: NSRange(location: offset, length: 0),
+                            replacement: atEnd ? "\n" + newRow : newRow + "\n",
+                            select: NSRange(location: offset, length: 0))
+        landInCell(blockIndex: blockIndex, row: row, column: column)
+    }
+
+    /// Deletes line `row`, and puts the caret in the row that takes its place.
+    func deleteTableRow(blockIndex: Int, row: Int, column: Int = 0) {
+        guard canDeleteTableRow(blockIndex: blockIndex, row: row),
+              let lines = tableLines(blockIndex: blockIndex) else { return }
+
+        if row == 0 {
+            // Mirror of the insert above: the first body row is promoted into
+            // the header's place and leaves its own, so the separator stays on
+            // line 1. Deleting line 0 alone would make the separator the header.
+            var edited = lines
+            edited[0] = lines[2]
+            edited.remove(at: 2)
+            replaceTable(blockIndex: blockIndex, lines: edited)
+            landInCell(blockIndex: blockIndex, row: 0, column: column)
+            return
+        }
+
+        let block = blocks[blockIndex]
+        let start = lineStart(in: lines, row: row)
+        let length = (lines[row] as NSString).length
+        // Every line but the last is followed by its newline; the last one is
+        // preceded by the newline that has to go with it.
+        let last = row == lines.count - 1
+        let cut = last
+            ? NSRange(location: start - 1, length: length + 1)
+            : NSRange(location: start, length: length + 1)
+        applyFormattingEdit(rawRange: NSRange(location: block.range.location + cut.location,
+                                              length: cut.length),
+                            replacement: "",
+                            select: NSRange(location: block.range.location, length: 0))
+        // The row below has slid up into this index; at the end, step back.
+        landInCell(blockIndex: blockIndex, row: last ? row - 1 : row, column: column)
+    }
+
+    // MARK: - Columns
+
+    /// Inserts an empty column at index `column` in every row, and puts the
+    /// caret in the new cell of `row`.
+    func insertTableColumn(blockIndex: Int, at column: Int, row: Int = 0) {
+        guard let lines = tableLines(blockIndex: blockIndex), column >= 0,
+              column <= tableColumnCount(blockIndex: blockIndex) else { return }
+        let edited = lines.enumerated().map { index, line -> String in
+            let ns = line as NSString
+            let spans = columnSpans(in: ns)
+            guard !spans.isEmpty else { return line }
+            // The separator row's new cell has to be dashes, or the table stops
+            // parsing as one.
+            let cell = index == 1 ? " --- " : "  "
+            // A ragged row short of this column gains its cell at the end.
+            guard column < spans.count else {
+                return ns.replacingCharacters(
+                    in: NSRange(location: spans[spans.count - 1].end, length: 0),
+                    with: "|" + cell)
+            }
+            return ns.replacingCharacters(
+                in: NSRange(location: spans[column].start, length: 0), with: cell + "|")
+        }
+        replaceTable(blockIndex: blockIndex, lines: edited)
+        landInCell(blockIndex: blockIndex, row: row, column: column)
+    }
+
+    /// Removes column `column` from every row, and puts the caret in the cell
+    /// that takes its place in `row`.
+    func deleteTableColumn(blockIndex: Int, column: Int, row: Int = 0) {
+        guard canDeleteTableColumn(blockIndex: blockIndex, column: column),
+              let lines = tableLines(blockIndex: blockIndex) else { return }
+        let edited = lines.map { line -> String in
+            let ns = line as NSString
+            let spans = columnSpans(in: ns)
+            guard column < spans.count else { return line }   // ragged: nothing to cut
+            let span = spans[column]
+            // A cell goes with one of the pipes beside it: the one before,
+            // unless it is the first cell, which takes the one after.
+            let cut: NSRange
+            if column > 0 {
+                cut = NSRange(location: span.start - 1, length: span.end - span.start + 1)
+            } else {
+                let trailing = span.end < ns.length && ns.character(at: span.end) == 0x7C
+                cut = NSRange(location: span.start,
+                              length: span.end - span.start + (trailing ? 1 : 0))
+            }
+            return ns.replacingCharacters(in: cut, with: "")
+        }
+        replaceTable(blockIndex: blockIndex, lines: edited)
+        landInCell(blockIndex: blockIndex, row: row, column: max(0, column - 1))
+    }
+
+    // MARK: - Shared
+
+    /// Character offset of line `row` within the table's own content.
+    private func lineStart(in lines: [String], row: Int) -> Int {
+        lines.prefix(row).reduce(0) { $0 + ($1 as NSString).length + 1 }
+    }
+
+    /// Writes a whole table back as one undoable edit. Columns need this: their
+    /// change lands on every line, and a table block is contiguous, so the whole
+    /// block is the smallest range that covers it.
+    private func replaceTable(blockIndex: Int, lines: [String]) {
+        let block = blocks[blockIndex]
+        applyFormattingEdit(rawRange: block.range,
+                            replacement: lines.joined(separator: "\n"),
+                            select: NSRange(location: block.range.location, length: 0))
+    }
+
+    /// Selects a cell by position *after* an edit, when the ranges captured
+    /// before it are all stale. Silently does nothing if the cell no longer
+    /// exists — a delete can leave fewer rows or columns than the caller hoped.
+    private func landInCell(blockIndex: Int, row: Int, column: Int) {
+        guard let cell = tableCell(blockIndex: blockIndex, row: row, column: column)
+                ?? tableCell(blockIndex: blockIndex, row: row, column: 0) else { return }
+        selectCellText(cell)
+    }
+}

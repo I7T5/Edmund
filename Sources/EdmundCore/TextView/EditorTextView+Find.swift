@@ -84,6 +84,10 @@ extension EditorTextView {
         // — the cell draws its own. Same pass, same reason: behind the glyphs.
         // See EditorTextView+TableCellCaret.
         drawWrappedCellChrome(in: rect)
+        // The active cell's row and column handles, and the outline around
+        // whichever cell a table context menu is acting on.
+        // See EditorTextView+TableHandles.
+        drawTableHandles(in: rect)
         guard findActive, !findMatches.isEmpty, let tlm = textLayoutManager else { return }
 
         let visible = viewportCharRange(tlm)

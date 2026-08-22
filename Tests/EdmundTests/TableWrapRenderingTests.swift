@@ -228,7 +228,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(let offsets, _, _, _, _)? =
+            if case .tableRow(let offsets, _, _, _, _, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 offsetsPerRow.append(offsets)
             }
@@ -248,7 +248,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(_, _, _, _, let bottomBorder)? =
+            if case .tableRow(_, _, _, _, let bottomBorder, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 bottoms.append(bottomBorder)
             }

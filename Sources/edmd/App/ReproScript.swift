@@ -32,6 +32,8 @@ import WebKit
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
+///   handlemenu row|column  open a table handle's menu via its real hit test
+///   cellmenu <needle>  right-click menu for the cell holding <needle>
 ///   assertsource <s>  PASS iff <s> appears in the document
 @MainActor
 enum ReproScript {
@@ -385,6 +387,21 @@ enum ReproScript {
                     }
                     report("repro clickicon \(arg) enabled=\(button.isEnabled)")
                     button.performClick(nil)
+                }
+            case "handlemenu":
+                // Opens a table row/column handle's menu through the real hit
+                // test, at the pill's own centre. `popUp` runs its own event
+                // loop, so nothing after this fires until the menu is dismissed.
+                schedule(after: delay) { editor in
+                    report("repro handlemenu \(arg) "
+                        + editor.debugOpenTableHandleMenu(column: arg == "column"))
+                }
+            case "cellmenu":
+                // The right-click menu for the cell holding <needle>, through
+                // `menu(for:)` — so the cell outline and the appended Table
+                // section come from the real path. Also modal; see above.
+                schedule(after: delay) { editor in
+                    report("repro cellmenu \(arg) " + editor.debugOpenTableCellMenu(needle: arg))
                 }
             case "assertsource":
                 schedule(after: delay) { editor in

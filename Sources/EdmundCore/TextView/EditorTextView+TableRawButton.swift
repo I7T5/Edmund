@@ -70,8 +70,13 @@ extension EditorTextView {
     }
 
     /// Whether a table's button is currently showing.
+    ///
+    /// Hover only. A caret inside the table used to reveal it too, but the row
+    /// handle now claims that same margin slot — so the caret being in a table
+    /// reveals the handles instead, and their menus carry "Edit as Markdown".
+    /// Two affordances, never both at once.
     func tableRawButtonIsRevealed(blockIndex: Int) -> Bool {
-        hoveredTableBlock == blockIndex || activeBlockIndex == blockIndex
+        hoveredTableBlock == blockIndex && activeBlockIndexForRawTable() != blockIndex
     }
 
     /// The buttons actually on screen — the only ones that draw, and the only
@@ -80,10 +85,17 @@ extension EditorTextView {
         visibleTableRawButtons().filter { tableRawButtonIsRevealed(blockIndex: $0.blockIndex) }
     }
 
-    /// Line numbers a revealed button is standing in for, so the numbers' own
-    /// draw can leave those rows to it.
+    /// Line numbers something else in the margin is standing in for, so the
+    /// numbers' own draw can leave those rows to it: a revealed `</>` button,
+    /// or the active row's handle. Both sit within `lineNumberPadding` of where
+    /// a number ends, so without this they overlap it.
     func linesCoveredByTableRawButtons() -> Set<Int> {
-        Set(revealedTableRawButtons().map { line(forOffset: blocks[$0.blockIndex].range.location) })
+        var covered = Set(revealedTableRawButtons()
+            .map { line(forOffset: blocks[$0.blockIndex].range.location) })
+        if let cell = activeTableCell, cell.blockIndex < blocks.count {
+            covered.insert(line(forOffset: cell.contentRange.location))
+        }
+        return covered
     }
 
     // MARK: - Drawing
@@ -188,14 +200,18 @@ extension EditorTextView {
 
     public override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        updateTableHover(at: convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        updateTableHover(at: point)
+        updateTableHandleHover(at: point)
     }
 
     public override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
-        guard hoveredTableBlock != nil || tableRawButtonHovered else { return }
+        guard hoveredTableBlock != nil || tableRawButtonHovered
+                || hoveredTableHandle != nil else { return }
         hoveredTableBlock = nil
         tableRawButtonHovered = false
+        hoveredTableHandle = nil
         needsDisplay = true
     }
 

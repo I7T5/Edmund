@@ -49,42 +49,9 @@ extension EditorTextView {
             selectCellText(target)
             return true
         }
-        return addTableRow(after: cell)
-    }
-
-    /// Appends an empty row below `cell`'s row and puts the caret in the column
-    /// the user was already in.
-    private func addTableRow(after cell: TableCellRef) -> Bool {
-        let ns = rawSource as NSString
-        let line = ns.lineRange(for: NSRange(location: cell.contentRange.location, length: 0))
-        let lineText = ns.substring(with: line)
-        // Count the columns off the line without its newline: a trailing `\n`
-        // after the closing pipe reads as one more (empty) cell, and the new
-        // row would come out a column too wide.
-        let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let columns = cellRanges(in: trimmed as NSString).count
-        guard columns > 0 else { return false }
-
-        // Match the row above: a table written without outer pipes must not
-        // gain them, or the new row parses with an extra empty column.
-        let outer = trimmed.hasPrefix("|")
-        let body = Array(repeating: "  ", count: columns).joined(separator: "|")
-        let row = (outer ? "|\(body)|" : body)
-
-        // `line` includes its trailing newline except on the document's last
-        // line, where the newline has to be added rather than reused.
-        let endsWithNewline = line.upperBound <= ns.length && lineText.hasSuffix("\n")
-        let insertAt = endsWithNewline ? line.upperBound : ns.length
-        let replacement = endsWithNewline ? row + "\n" : "\n" + row
-
-        // Each cell of the new row is `|` + two spaces, so its content starts
-        // three characters on from the last, and the caret goes between them.
-        let column = min(cell.column, columns - 1)
-        let caret = insertAt + (endsWithNewline ? 0 : 1)
-            + (outer ? 1 : 0) + column * 3 + 1
-        applyFormattingEdit(rawRange: NSRange(location: insertAt, length: 0),
-                            replacement: replacement,
-                            select: NSRange(location: caret, length: 0))
+        // No row below: make one, in the column the user was already in, so
+        // Return down a column carries on down it.
+        insertTableRow(blockIndex: cell.blockIndex, at: cell.row + 1, column: cell.column)
         return true
     }
 
@@ -119,13 +86,22 @@ extension EditorTextView {
     }
 
     /// Selects a cell's text without its padding spaces, so typing replaces the
-    /// value the way a spreadsheet does. Both Tab and Return land this way.
+    /// value the way a spreadsheet does. Tab, Return and the structural
+    /// operations all land this way.
     func selectCellText(_ cell: TableCellRef) {
         let ns = rawSource as NSString
         var lo = cell.contentRange.location
         var hi = min(cell.contentRange.upperBound, ns.length)
         while lo < hi, ns.character(at: lo) == 0x20 { lo += 1 }
         while hi > lo, ns.character(at: hi - 1) == 0x20 { hi -= 1 }
+        if lo == hi {
+            // An empty cell has no text to select, and trimming has run the
+            // caret to the far end of its padding — where typing would eat the
+            // space before the closing pipe. One space in keeps `|  |` padded
+            // on both sides as it fills.
+            lo = min(cell.contentRange.location + 1, hi)
+            hi = lo
+        }
         setSelectedRange(NSRange(location: lo, length: hi - lo))
         scrollRangeToVisible(selectedRange())
     }

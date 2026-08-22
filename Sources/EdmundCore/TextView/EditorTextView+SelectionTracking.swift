@@ -15,6 +15,9 @@ extension EditorTextView {
         // because AppKit's would sit on the cell's hidden characters rather than
         // its visible text. See EditorTextView+TableCellCaret.
         updateWrappedCaret()
+        // The row and column handles hang off the caret's cell, so they move
+        // with it and nothing else invalidates them.
+        invalidateTableHandles()
         // A selection change landing mid-recompose is the drift signature
         // (issue #156); the stack names the AppKit path that moved the caret.
         if isUpdating { traceSelectionOrigin() }

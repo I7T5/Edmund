@@ -399,6 +399,15 @@ public class EditorTextView: NSTextView {
     /// its hover highlight.
     var tableRawButtonHovered = false
 
+    /// The row/column handle under the pointer, the cell a table context menu
+    /// is acting on (outlined while it is up), and the bands the handles were
+    /// last drawn in — the handles follow the caret, so a caret move has to
+    /// repaint where they were as well as where they now are.
+    /// See EditorTextView+TableHandles.
+    var hoveredTableHandle: TableHandle?
+    var tableMenuCell: TableCellRef?
+    var lastTableHandleBands: [NSRect] = []
+
     /// The pointer-tracking area behind `hoveredTableBlock`.
     var tableHoverTrackingArea: NSTrackingArea?
 
@@ -700,6 +709,13 @@ public class EditorTextView: NSTextView {
         // never reaches `super`. See EditorTextView+TableRawButton.
         if let tableBlock = tableRawButtonHit(at: event) {
             activateRawTableEditing(blockIndex: tableBlock)
+            return
+        }
+        // A row/column handle hangs in the same margin, and in the band above
+        // the table. Same reasoning: nothing there to select, so it takes the
+        // click whole. See EditorTextView+TableHandles.
+        if let handle = tableHandleHit(at: event) {
+            showTableHandleMenu(handle, with: event)
             return
         }
         // An open popup ends on any click that isn't on its own table. The

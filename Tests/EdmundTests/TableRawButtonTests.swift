@@ -115,19 +115,30 @@ struct TableRawButtonTests {
         let buttons = editor.visibleTableRawButtons()
         #expect(buttons.count == 2)
         guard let first = buttons.first else { return }
+        // Out of both tables: a caret inside one hides that one's button (see
+        // below), which would otherwise mask what this is checking.
+        editor.setSelectedRange(NSRange(
+            location: (editor.rawSource as NSString).range(of: "between").location, length: 0))
         editor.hoveredTableBlock = first.blockIndex
         #expect(editor.revealedTableRawButtons().map(\.blockIndex) == [first.blockIndex])
     }
 
-    @Test("The caret being inside the table reveals its button")
-    func caretInsideReveals() {
+    /// The caret inside a table used to reveal the button. It now reveals the
+    /// row and column handles instead, and the row handle wants this exact
+    /// margin slot — so the button stands down and its command moves into the
+    /// handles' menus as "Edit as Markdown".
+    @Test("The caret inside a table hides its button")
+    func caretInsideHidesTheButton() {
         let editor = loadEditor("lead\n\n\(table)\n")
         guard let button = editor.visibleTableRawButtons().first else {
             Issue.record("no button")
             return
         }
-        editor.activeBlockIndex = button.blockIndex
+        editor.hoveredTableBlock = button.blockIndex
         #expect(editor.revealedTableRawButtons().count == 1)
+        editor.setSelectedRange(NSRange(
+            location: editor.blocks[button.blockIndex].range.location, length: 0))
+        #expect(editor.revealedTableRawButtons().isEmpty)
     }
 
     @Test("A hidden button is not clickable")

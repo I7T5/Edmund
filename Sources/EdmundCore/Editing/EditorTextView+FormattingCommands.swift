@@ -129,6 +129,9 @@ extension EditorTextView {
     /// Markdown Font menu (Bold, Italic, Highlight, Comments, …) so right-click
     /// offers the same commands as Format ▸ Font.
     public override func menu(for event: NSEvent) -> NSMenu? {
+        // A right-click on a row/column handle is that handle's menu, not the
+        // editor's — the pointer is out in the margin, over no text at all.
+        if let handle = tableHandleHit(at: event) { return tableHandleMenu(handle) }
         guard let menu = super.menu(for: event) else { return nil }
         if let provider = Self.contextFontMenuProvider,
            let fontItem = menu.items.first(where: { item in
@@ -138,7 +141,34 @@ extension EditorTextView {
            }) {
             fontItem.submenu = provider()
         }
+        attachTableSection(to: menu, for: event)
         return menu
+    }
+
+    /// A right-click inside a rendered table cell takes the whole cell as its
+    /// subject: its text is selected so Cut/Copy/Paste act on the cell rather
+    /// than on the word under the pointer, the cell is outlined for as long as
+    /// the menu is up, and a Table submenu of the row and column operations is
+    /// appended. Everything else about the standard menu is left alone.
+    private func attachTableSection(to menu: NSMenu, for event: NSEvent) {
+        guard !rawTableEditing,
+              let offset = wrappedCellCharIndex(at: event) ?? clickCharIndex(at: event),
+              let cell = tableCell(atRawOffset: offset) else { return }
+        selectCellText(cell)
+        tableMenuCell = cell
+        needsDisplay = true
+        menu.delegate = self
+
+        let submenu = NSMenu(title: "Table")
+        // Only this submenu: the standard items around it rely on AppKit's own
+        // validation, while these carry their guards on the item already.
+        submenu.autoenablesItems = false
+        addTableItems(to: submenu, blockIndex: cell.blockIndex,
+                      row: cell.row, column: cell.column, axis: nil)
+        let item = NSMenuItem(title: "Table", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        menu.addItem(.separator())
+        menu.addItem(item)
     }
 
     // MARK: - Menu validation

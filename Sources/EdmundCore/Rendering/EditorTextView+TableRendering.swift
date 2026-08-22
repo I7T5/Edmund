@@ -156,8 +156,14 @@ extension EditorTextView {
                     ps.paragraphSpacingBefore = 0
                     ps.paragraphSpacing = 0
                 } else {
+                    // The header row reserves the band its column handle sits
+                    // in, above everything the table draws. Unconditionally, so
+                    // that clicking into a table never shifts the page — the
+                    // cost is a little more air above every table.
                     ps.paragraphSpacingBefore = cellVPad + ((i == 0)
-                        ? bodyParagraphStyle.paragraphSpacingBefore : 0)
+                        ? max(bodyParagraphStyle.paragraphSpacingBefore,
+                              Self.tableHandleBand)
+                        : 0)
                     ps.paragraphSpacing = cellVPad
                 }
                 result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
@@ -170,7 +176,8 @@ extension EditorTextView {
                                                      // No rule under the last row: the
                                                      // table's bottom edge is open, like
                                                      // its left and right edges.
-                                                     bottomBorder: i > 1 && i < lines.count - 1)),
+                                                     bottomBorder: i > 1 && i < lines.count - 1,
+                                                     topInset: i == 0 ? Self.tableHandleBand : 0)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)
