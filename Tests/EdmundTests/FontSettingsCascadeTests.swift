@@ -83,6 +83,29 @@ struct FontSettingsCascadeTests {
         #expect(fonts.cascadeSizeRatios[.han] == nil)
     }
 
+    @Test("The stepper's point range is the ratio clamp rendered against the body size")
+    func stepperRangeTracksBodySize() {
+        let snapshot = snapshotThemeDefaults()
+        defer { restoreThemeDefaults(snapshot) }
+
+        let fonts = FontSettings()
+        fonts.setStandardSize(16)
+        #expect(fonts.cascadePointSizeRange == 8...32)
+
+        // The range moves with the body size, so the stepper can never offer
+        // a point size the ratio clamp would refuse (8…72 did: body 20, 72 in,
+        // 40 displayed — the up arrow live, the number frozen).
+        fonts.setStandardSize(20)
+        #expect(fonts.cascadePointSizeRange == 10...40)
+
+        // Every value the range offers must survive the model round-trip
+        // unclamped; check the ends and the midpoint.
+        for points in [10.0, 20.0, 40.0] {
+            fonts.setCascadePointSize(.han, points: points)
+            #expect(fonts.cascadePointSize(for: .han) == points)
+        }
+    }
+
     @Test("Unset rows show the script's sample; set rows show family and points")
     func cascadeSummaryShape() throws {
         let snapshot = snapshotThemeDefaults()

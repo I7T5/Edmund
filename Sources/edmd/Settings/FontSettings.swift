@@ -26,6 +26,12 @@ final class FontSettings: NSObject, ObservableObject {
     /// absent = 1.0). Persisted with the theme; see EditorTheme.
     @Published var cascadeSizeRatios: [FontCascadeScript: Double]
 
+    /// The ratio clamp — shared by the storage path (setCascadeSizeRatio) and
+    /// the stepper's bounds (cascadePointSizeRange), so the control can never
+    /// offer a value the model would refuse.
+    static let minCascadeSizeRatio = 0.5
+    static let maxCascadeSizeRatio = 2.0
+
     private var theme: EditorTheme
     private enum Target { case standard, monospace, cascade(FontCascadeScript) }
     private var target: Target = .standard
@@ -189,7 +195,7 @@ final class FontSettings: NSObject, ObservableObject {
     /// Sets (or clears, at 1.0) a script's size ratio and broadcasts live.
     func setCascadeSizeRatio(_ script: FontCascadeScript, ratio: Double) {
         var updated = theme
-        let clamped = min(2.0, max(0.5, ratio))
+        let clamped = min(Self.maxCascadeSizeRatio, max(Self.minCascadeSizeRatio, ratio))
         if abs(clamped - 1.0) < 0.001 {
             updated.fontCascadeSizeRatios.removeValue(forKey: script)
         } else {
@@ -220,6 +226,15 @@ final class FontSettings: NSObject, ObservableObject {
     func setCascadePointSize(_ script: FontCascadeScript, points: Double) {
         guard standardFont.pointSize > 0 else { return }
         setCascadeSizeRatio(script, ratio: points / standardFont.pointSize)
+    }
+
+    /// The stepper's bounds in points: the ratio clamp rendered against the
+    /// body size. Derived (not a fixed 8…72) so the control never offers a
+    /// value `setCascadeSizeRatio` would clamp away — past the bounds the
+    /// arrow would look live while the number stays frozen.
+    var cascadePointSizeRange: ClosedRange<Double> {
+        (standardFont.pointSize * Self.minCascadeSizeRatio).rounded()
+            ... (standardFont.pointSize * Self.maxCascadeSizeRatio).rounded()
     }
 
     /// The script row's field text, mirroring the Standard/Monospaced rows:

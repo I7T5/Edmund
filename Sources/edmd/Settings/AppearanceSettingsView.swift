@@ -310,7 +310,7 @@ extension AppearanceSettingsView {
                             .font(nsFont: fonts.previewFont(for: script))
                             .frame(width: 240)
                         Stepper("", value: cascadePointsBinding(for: script),
-                                in: 8...72, step: 1)
+                                in: fonts.cascadePointSizeRange, step: 1)
                             .labelsHidden()
                             // A ratio with no family drives nothing — no
                             // resolver font, no @font-face — so say so.
