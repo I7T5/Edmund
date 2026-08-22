@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 Thanks to @arthurlee116 for their first contribution (#268)
 
 ### Added
-- Fonts by script: a separate font and size for each writing system, in Settings > Appearance (#268 @arthurlee116)
+- Settings > Appearance > Font per script (#268 @arthurlee116)
 
 ## [0.4.3] - 2026-08-17
 

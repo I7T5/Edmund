@@ -316,7 +316,7 @@
 <p>Thanks to @arthurlee116 for their first contribution (#268)</p>
 <h3>Added</h3>
 <ul>
-<li>Fonts by script: a separate font and size for each writing system, in Settings &gt; Appearance (#268 @arthurlee116)</li>
+<li>Settings &gt; Appearance &gt; Font per script (#268 @arthurlee116)</li>
 </ul>
 ]]></description>
             <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.5.0/Edmund-0.5.0.dmg"
