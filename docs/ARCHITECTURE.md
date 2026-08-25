@@ -1042,6 +1042,14 @@ Sparkle's update dialog shows the changelog.
 in `Info.plist`, add a `## [x.y.z]` section to `CHANGELOG.md`, merge to
 `main`, then `git tag vx.y.z && git push origin vx.y.z`.
 
+A `PreToolUse` hook (`.claude/hooks/guard-release-gate.sh`) gates that last
+step for agents: it **denies** a tag push / `gh release create` /
+`release.sh` whose version disagrees with `Info.plist` or has no non-empty
+`## [x.y.z]` CHANGELOG section, denies bulk `--tags` pushes, and otherwise
+**asks** — showing the version and the notes — so a release is never
+automatic. The version number and the release-note wording are the
+maintainer's call, not something to infer from "cut a release".
+
 **EdDSA keypair — set up, not a placeholder.** Public key in `Info.plist`
 `SUPublicEDKey` (`0XdLbbuO…`); the private key lives in two places that
 must stay the *same* keypair: the maintainer's **login keychain** (used by
