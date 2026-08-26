@@ -34,6 +34,7 @@ import WebKit
 ///   clickicon <id>    press a format-popover icon button by its style id
 ///   handlemenu row|column  open a table handle's menu via its real hit test
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
+///   selectcells r0,c0,r1,c1  select that block of table cells
 ///   assertsource <s>  PASS iff <s> appears in the document
 @MainActor
 enum ReproScript {
@@ -402,6 +403,21 @@ enum ReproScript {
                 // section come from the real path. Also modal; see above.
                 schedule(after: delay) { editor in
                     report("repro cellmenu \(arg) " + editor.debugOpenTableCellMenu(needle: arg))
+                }
+            case "hovertable":
+                schedule(after: delay) { editor in
+                    report("repro hovertable " + editor.debugHoverTable())
+                }
+            case "selectcells":
+                // `selectcells r0,c0,r1,c1` — the selection a drag across those
+                // cells would leave, so a screenshot can show the box.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Int($0) }
+                    guard n.count == 4 else {
+                        report("repro selectcells: want r0,c0,r1,c1"); return
+                    }
+                    report("repro selectcells " + editor.debugSelectTableCells(
+                        fromRow: n[0], fromColumn: n[1], toRow: n[2], toColumn: n[3]))
                 }
             case "assertsource":
                 schedule(after: delay) { editor in

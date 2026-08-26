@@ -399,14 +399,17 @@ public class EditorTextView: NSTextView {
     /// its hover highlight.
     var tableRawButtonHovered = false
 
-    /// The row/column handle under the pointer, the cell a table context menu
-    /// is acting on (outlined while it is up), and the bands the handles were
+    /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
     /// repaint where they were as well as where they now are.
     /// See EditorTextView+TableHandles.
     var hoveredTableHandle: TableHandle?
-    var tableMenuCell: TableCellRef?
     var lastTableHandleBands: [NSRect] = []
+
+    /// Whether a multi-cell table selection was up at the last selection
+    /// change, so the box can be repainted away when it goes.
+    /// See EditorTextView+TableHandles.
+    var tableCellSelectionWasActive = false
 
     /// The pointer-tracking area behind `hoveredTableBlock`.
     var tableHoverTrackingArea: NSTrackingArea?
@@ -718,6 +721,13 @@ public class EditorTextView: NSTextView {
             showTableHandleMenu(handle, with: event)
             return
         }
+        // A dot on a cell selection's corner drags the selection wider. AppKit's
+        // tracking would anchor on the click and start a fresh selection, so
+        // this takes the gesture whole. See EditorTextView+TableHandles.
+        if let grab = tableCellSelectionAnchor(at: convert(event.locationInWindow, from: nil)) {
+            trackTableCellSelection(from: grab.anchor, blockIndex: grab.block.blockIndex)
+            return
+        }
         // An open popup ends on any click that isn't on its own table. The
         // popover is `.applicationDefined`, so nothing else does this.
         dismissCellEditorIfClickIsOutside(event)
@@ -764,7 +774,18 @@ public class EditorTextView: NSTextView {
         if stillSelecting, let first = ranges.first?.rangeValue {
             traceEdit("dragTick sel'={\(first.location),\(first.length)}")
         }
+        // A drag that crosses from one table cell into another selects whole
+        // cells, the way Notes does: a selection that stops mid-cell cannot say
+        // which cells a Copy would take. It is installed as one range per row —
+        // see EditorTextView+TableHandles for why that matters.
+        var ranges = ranges
+        if ranges.count == 1, let first = ranges[0].rangeValue as NSRange?,
+           let block = tableCellBlock(for: first) {
+            let perRow = tableCellSelectionRanges(block)
+            if !perRow.isEmpty { ranges = perRow }
+        }
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        updateTableCellSelectionChrome()
     }
 
     /// The range actually copied, for the "selection over rendered math copies

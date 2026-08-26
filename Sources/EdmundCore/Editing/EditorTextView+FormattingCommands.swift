@@ -145,19 +145,16 @@ extension EditorTextView {
         return menu
     }
 
-    /// A right-click inside a rendered table cell takes the whole cell as its
-    /// subject: its text is selected so Cut/Copy/Paste act on the cell rather
-    /// than on the word under the pointer, the cell is outlined for as long as
-    /// the menu is up, and a Table submenu of the row and column operations is
-    /// appended. Everything else about the standard menu is left alone.
+    /// A right-click inside a rendered table cell appends a Table submenu of
+    /// the row and column operations. Everything else about the standard menu
+    /// is left alone — including the selection: a right-click used to select
+    /// the whole cell so Cut/Copy would take it, but silently moving the
+    /// selection under a menu the user only meant to open is a surprise, and
+    /// the cell box is now reserved for a real drag across cells.
     private func attachTableSection(to menu: NSMenu, for event: NSEvent) {
         guard !rawTableEditing,
               let offset = wrappedCellCharIndex(at: event) ?? clickCharIndex(at: event),
               let cell = tableCell(atRawOffset: offset) else { return }
-        selectCellText(cell)
-        tableMenuCell = cell
-        needsDisplay = true
-        menu.delegate = self
 
         let submenu = NSMenu(title: "Table")
         // Only this submenu: the standard items around it rely on AppKit's own

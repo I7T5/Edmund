@@ -100,6 +100,16 @@ extension EditorTextView {
 
     // MARK: - Drawing
 
+    /// Ink for the `</>` glyph. A tier up from `syntaxDimColor`, which resolves
+    /// to `tertiaryLabelColor` — black at 26% alpha. That is the right weight
+    /// for a delimiter sitting inside a line of text, where the text around it
+    /// gives the eye something to read it against; alone out in the margin the
+    /// glyph all but disappeared. Dark mode already substitutes its own gray
+    /// for the dim tier for the same legibility reason, so it keeps that one.
+    private var tableRawButtonColor: NSColor {
+        isDarkAppearance ? syntaxDimColor : .secondaryLabelColor
+    }
+
     /// Draws the `</>` buttons. Called from `drawBackground(in:)` — they occupy
     /// margin the text never uses, so nothing has to move to make room.
     func drawTableRawButtons(in rect: NSRect) {
@@ -112,7 +122,7 @@ extension EditorTextView {
                                    accessibilityDescription: "Edit table as Markdown"),
               let configured = symbol.withSymbolConfiguration(
                 NSImage.SymbolConfiguration(pointSize: Self.tableRawButtonSize, weight: .regular)
-                    .applying(NSImage.SymbolConfiguration(paletteColors: [syntaxDimColor])))
+                    .applying(NSImage.SymbolConfiguration(paletteColors: [tableRawButtonColor])))
         else { return }
 
         for (box, blockIndex) in boxes {

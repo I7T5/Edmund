@@ -17,6 +17,9 @@ import AppKit
 // line numbers use. They draw on the background pass beside the numbers and the
 // `</>` button, which is also why they never disturb the text: that margin and
 // that band are space the text never occupies.
+//
+// This file also draws the other piece of table chrome, the box around a
+// multi-cell selection — see "Cell selection" below.
 
 /// Which handle, and what it acts on. The row and column indices are the ones
 /// the operations in EditorTextView+TableStructure take.
@@ -29,14 +32,25 @@ struct TableHandle: Equatable {
     let rect: NSRect
 }
 
+/// A rectangular run of cells in one table.
+struct TableCellBlock: Equatable {
+    let blockIndex: Int
+    let rows: ClosedRange<Int>
+    let columns: ClosedRange<Int>
+}
+
 extension EditorTextView {
 
     /// The pill's short side, its long side, and the air between it and the
     /// table. `tableHandleBand` is the room the header row has to reserve above
     /// itself for the column pill to have somewhere to be.
-    static let tableHandleThickness: CGFloat = 12
-    static let tableHandleLength: CGFloat = 26
+    ///
+    /// Measured off the Notes reference at 2×: a 32×16 px pill, 8 px clear of
+    /// the table, with a 3 px corner — a rounded rectangle, not a capsule.
+    static let tableHandleThickness: CGFloat = 8
+    static let tableHandleLength: CGFloat = 16
     static let tableHandleGap: CGFloat = 4
+    static let tableHandleRadius: CGFloat = 1.5
     static var tableHandleBand: CGFloat { tableHandleThickness + tableHandleGap }
 
     // MARK: - What the handles point at
@@ -78,32 +92,35 @@ extension EditorTextView {
 
     // MARK: - Drawing
 
-    /// Draws the handles and, while a context menu is up, the outline around the
-    /// cell it belongs to. Called from `drawBackground(in:)`.
+    /// Draws the handles and the box around a multi-cell selection. Called from
+    /// `drawBackground(in:)`.
     func drawTableHandles(in dirty: NSRect) {
-        drawTableMenuCellOutline(in: dirty)
+        drawTableCellSelection(in: dirty)
         for handle in tableHandles() where handle.rect.intersects(dirty) {
             let hovered = handle == hoveredTableHandle
             // Space, not a border, per the editor's chrome idiom — but a handle
             // has to read as a target with no text beside it to anchor on, so it
             // keeps a hairline outline and gains a fill only under the pointer.
             let body = NSBezierPath(roundedRect: handle.rect,
-                                    xRadius: handle.rect.height.rounded() / 2,
-                                    yRadius: handle.rect.width.rounded() / 2)
+                                    xRadius: Self.tableHandleRadius,
+                                    yRadius: Self.tableHandleRadius)
             (hovered ? NSColor.quaternaryLabelColor : NSColor.clear).setFill()
             body.fill()
             tableChromeLineColor.setStroke()
-            body.lineWidth = 1
+            // One device pixel, like the column borders it hangs off: a 1pt
+            // stroke reads as twice their weight on a Retina display.
+            body.lineWidth = 1 / (window?.backingScaleFactor ?? 1)
             body.stroke()
             drawHandleDots(handle)
         }
     }
 
-    /// Three dots along the pill's long axis.
+    /// Three dots along the pill's long axis, in the same gray as its outline —
+    /// the pill is chrome that should recede until it is looked for.
     private func drawHandleDots(_ handle: TableHandle) {
-        let size: CGFloat = 2
-        let spacing: CGFloat = 5
-        syntaxDimColor.setFill()
+        let size: CGFloat = 1.5
+        let spacing: CGFloat = 4
+        tableChromeLineColor.setFill()
         for step in -1...1 {
             let offset = CGFloat(step) * spacing
             let center = handle.axis == .column
@@ -114,22 +131,6 @@ extension EditorTextView {
         }
     }
 
-    /// The cell a context menu is currently acting on, outlined so the menu's
-    /// "this row"/"this column" is unambiguous. The box comes from the grid
-    /// rather than from the cell's text segments, so an overflowing cell
-    /// outlines its column and not the hidden characters underneath it.
-    private func drawTableMenuCellOutline(in dirty: NSRect) {
-        guard let cell = tableMenuCell,
-              let grid = tableGrid(blockIndex: cell.blockIndex),
-              let box = grid.cellRect(row: cell.row, column: cell.column),
-              box.intersects(dirty) else { return }
-        accentColor.setStroke()
-        let path = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5),
-                                xRadius: 3, yRadius: 3)
-        path.lineWidth = 1.5
-        path.stroke()
-    }
-
     /// `chromeLineColor` lives on the fragment's extension and is private there;
     /// the handles want the same gray so a pill reads as part of the same grid
     /// as the borders it hangs off.
@@ -138,11 +139,181 @@ extension EditorTextView {
             ? EditorTextView.darkRuleGray : NSColor.separatorColor
     }
 
+    // MARK: - Cell selection
+    //
+    // A drag across cells selects whole cells, and is drawn as one square-
+    // cornered box around them rather than as a text highlight. Two reasons,
+    // both visible in the "before" screenshot: a text highlight runs to the
+    // *text container's* right edge on every line it fully covers, which in a
+    // table means a band hanging hundreds of points past the table's own edge;
+    // and a highlight that stops mid-cell doesn't say which cells a Copy will
+    // take. The box says exactly that, and the two dots on its corners drag it
+    // wider.
+    //
+    // The bleed is why the selection is installed as *one range per row* rather
+    // than as a single span: AppKit runs a highlight to the container's edge
+    // only on a line the selection covers through its newline, so a range that
+    // stops at the row's last selected cell never triggers it. That also makes
+    // the highlight cover exactly the columns the box is drawn around, and
+    // there is nothing left to suppress — `selectedTextAttributes` would not
+    // have been enough anyway, since AppKit ignores it for the unemphasized
+    // highlight it draws while the window is not key.
+
+    /// The block of cells the selection covers, when it covers more than one
+    /// cell of a single rendered table.
+    var tableCellSelection: TableCellBlock? {
+        let ranges = selectedRanges.map(\.rangeValue)
+        guard let first = ranges.first, let last = ranges.last else { return nil }
+        return tableCellBlock(from: first.location, to: last.upperBound - 1)
+    }
+
+    /// The block of cells a range covers, when it covers more than one cell of
+    /// a single rendered table.
+    func tableCellBlock(for range: NSRange) -> TableCellBlock? {
+        guard range.length > 0 else { return nil }
+        return tableCellBlock(from: range.location, to: range.upperBound - 1)
+    }
+
+    private func tableCellBlock(from: Int, to: Int) -> TableCellBlock? {
+        guard to >= from, !rawTableEditing,
+              let start = tableCell(atRawOffset: from),
+              let end = tableCell(atRawOffset: to),
+              start.blockIndex == end.blockIndex,
+              start.row != end.row || start.column != end.column else { return nil }
+        return TableCellBlock(blockIndex: start.blockIndex,
+                              rows: min(start.row, end.row)...max(start.row, end.row),
+                              columns: min(start.column, end.column)...max(start.column, end.column))
+    }
+
+    /// One range per row of the block, each running from the row's first
+    /// selected cell to its last — never over the newline that ends the row.
+    /// The separator row holds no cells and simply contributes none.
+    func tableCellSelectionRanges(_ block: TableCellBlock) -> [NSValue] {
+        block.rows.compactMap { row in
+            guard let first = tableCell(blockIndex: block.blockIndex, row: row,
+                                        column: block.columns.lowerBound),
+                  let last = tableCell(blockIndex: block.blockIndex, row: row,
+                                       column: block.columns.upperBound) else { return nil }
+            return NSValue(range: NSRange(
+                location: first.contentRange.location,
+                length: last.contentRange.upperBound - first.contentRange.location))
+        }
+    }
+
+    /// The box a cell selection is drawn in, in view coordinates.
+    func tableCellSelectionBox() -> NSRect? {
+        guard let block = tableCellSelection,
+              let grid = tableGrid(blockIndex: block.blockIndex),
+              let first = grid.cellRect(row: block.rows.lowerBound,
+                                        column: block.columns.lowerBound),
+              let last = grid.cellRect(row: block.rows.upperBound,
+                                       column: block.columns.upperBound) else { return nil }
+        return first.union(last)
+    }
+
+    private func drawTableCellSelection(in dirty: NSRect) {
+        guard let box = tableCellSelectionBox(), box.intersects(dirty) else { return }
+        // Square corners: the box stands on the cell borders, and a radius
+        // would leave a gap at every corner it shares with them.
+        accentColor.setStroke()
+        let path = NSBezierPath(rect: box.insetBy(dx: 0.5, dy: 0.5))
+        path.lineWidth = 1
+        path.stroke()
+        accentColor.setFill()
+        for point in tableCellSelectionDots(box) {
+            NSBezierPath(ovalIn: NSRect(x: point.x - Self.tableCellDotRadius,
+                                        y: point.y - Self.tableCellDotRadius,
+                                        width: Self.tableCellDotRadius * 2,
+                                        height: Self.tableCellDotRadius * 2)).fill()
+        }
+    }
+
+    static let tableCellDotRadius: CGFloat = 2.5
+
+    /// The two drag dots: top-left and bottom-right of the box, the corners
+    /// Notes puts them on.
+    private func tableCellSelectionDots(_ box: NSRect) -> [NSPoint] {
+        [NSPoint(x: box.minX, y: box.minY), NSPoint(x: box.maxX, y: box.maxY)]
+    }
+
+    /// The cell a drag from one of the dots should hold fixed — the corner
+    /// opposite the one grabbed — or nil if the point is on neither dot.
+    func tableCellSelectionAnchor(at point: NSPoint)
+        -> (block: TableCellBlock, anchor: (row: Int, column: Int))? {
+        guard let block = tableCellSelection, let box = tableCellSelectionBox() else { return nil }
+        let dots = tableCellSelectionDots(box)
+        let slack = Self.tableCellDotRadius + 4
+        if NSRect(x: dots[0].x - slack, y: dots[0].y - slack,
+                  width: slack * 2, height: slack * 2).contains(point) {
+            return (block, (block.rows.upperBound, block.columns.upperBound))
+        }
+        if NSRect(x: dots[1].x - slack, y: dots[1].y - slack,
+                  width: slack * 2, height: slack * 2).contains(point) {
+            return (block, (block.rows.lowerBound, block.columns.lowerBound))
+        }
+        return nil
+    }
+
+    /// Runs the drag started on a selection dot. AppKit's own tracking loop
+    /// would anchor on the click point and start a fresh selection, so this
+    /// takes the gesture whole and keeps the opposite corner fixed.
+    func trackTableCellSelection(from anchor: (row: Int, column: Int), blockIndex: Int) {
+        guard let window else { return }
+        while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if event.type == .leftMouseUp { break }
+            let point = convert(event.locationInWindow, from: nil)
+            guard let now = tableCellPosition(at: point, blockIndex: blockIndex) else { continue }
+            selectTableCells(blockIndex: blockIndex, from: anchor, to: now)
+        }
+    }
+
+    /// The cell of `blockIndex` under a view point, clamped into the table so a
+    /// drag that wanders outside it still extends to the nearest edge. Never
+    /// the separator row, which holds no text to select.
+    func tableCellPosition(at point: NSPoint, blockIndex: Int) -> (row: Int, column: Int)? {
+        guard let grid = tableGrid(blockIndex: blockIndex), !grid.rows.isEmpty,
+              grid.columns > 0 else { return nil }
+        var row = grid.rows.firstIndex { point.y < $0.maxY } ?? grid.rows.count - 1
+        if row == 1 { row = point.y < grid.rows[1].midY ? 0 : 2 }
+        row = min(max(0, row), grid.rows.count - 1)
+        let edge = grid.columnEdges.firstIndex { point.x < $0 } ?? grid.columnEdges.count
+        return (row, min(max(0, edge - 1), grid.columns - 1))
+    }
+
+    /// Selects every cell between two positions.
+    func selectTableCells(blockIndex: Int,
+                          from: (row: Int, column: Int), to: (row: Int, column: Int)) {
+        let block = TableCellBlock(
+            blockIndex: blockIndex,
+            rows: min(from.row, to.row)...max(from.row, to.row),
+            columns: min(from.column, to.column)...max(from.column, to.column))
+        let ranges = tableCellSelectionRanges(block)
+        guard !ranges.isEmpty else { return }
+        setSelectedRanges(ranges, affinity: .downstream, stillSelecting: false)
+    }
+
+    /// Repaints when a cell selection appears, changes or goes. Called on every
+    /// selection change, drag ticks included.
+    ///
+    /// It repaints the whole view rather than the box's band, and keys off the
+    /// selection rather than off `tableCellSelectionBox()`, because the box
+    /// needs the grid and the grid needs laid-out fragments — which the block
+    /// does not have at the instant the selection changes and restyles it. A
+    /// box invalidated from a nil rect never repaints, and what reaches the
+    /// screen is whatever slice of it some later, unrelated repaint happens to
+    /// cover.
+    func updateTableCellSelectionChrome() {
+        let active = tableCellSelection != nil
+        guard active || tableCellSelectionWasActive else { return }
+        tableCellSelectionWasActive = active
+        needsDisplay = true
+    }
+
     // MARK: - Pointer
 
     /// A generous hit box: the pill is small chrome in empty space, so the slack
     /// costs nothing.
-    private func handleHitBox(_ rect: NSRect) -> NSRect { rect.insetBy(dx: -4, dy: -4) }
+    private func handleHitBox(_ rect: NSRect) -> NSRect { rect.insetBy(dx: -6, dy: -6) }
 
     func tableHandleHit(at event: NSEvent) -> TableHandle? {
         let point = convert(event.locationInWindow, from: nil)
@@ -244,17 +415,12 @@ extension EditorTextView {
         activateRawTableEditing(blockIndex: blockIndex)
     }
 
-    /// Opens a handle's menu at the pill, and outlines the cell it acts on for
-    /// as long as the menu is up.
+    /// Opens a handle's menu at the pill.
     func showTableHandleMenu(_ handle: TableHandle, with event: NSEvent) {
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
-        tableMenuCell = tableCell(blockIndex: handle.blockIndex,
-                                  row: handle.row, column: handle.column)
-        needsDisplay = true
-        let menu = tableHandleMenu(handle)
-        menu.delegate = self
-        menu.popUp(positioning: nil,
-                   at: NSPoint(x: handle.rect.minX, y: handle.rect.maxY), in: self)
+        tableHandleMenu(handle).popUp(positioning: nil,
+                                      at: NSPoint(x: handle.rect.minX, y: handle.rect.maxY),
+                                      in: self)
     }
 }
 
@@ -271,15 +437,6 @@ final class TableOperation: NSObject {
         self.blockIndex = blockIndex
         self.row = row
         self.column = column
-    }
-}
-
-extension EditorTextView: NSMenuDelegate {
-    /// The cell outline belongs to the menu, so it goes when the menu does.
-    public func menuDidClose(_ menu: NSMenu) {
-        guard tableMenuCell != nil else { return }
-        tableMenuCell = nil
-        needsDisplay = true
     }
 }
 
@@ -317,9 +474,34 @@ extension EditorTextView {
         guard let event = debugMouseEvent(at: point), let menu = menu(for: event) else {
             return "no menu at \(point)"
         }
-        let report = "cell=\(String(describing: tableMenuCell)) items=\(menu.items.map(\.title))"
+        let report = "sel=\(selectedRange()) items=\(menu.items.map(\.title))"
         menu.popUp(positioning: nil, at: point, in: self)
         return report
+    }
+
+    /// Selects a block of cells the way a drag across them would, so a
+    /// screenshot can show the selection box without synthesizing a drag.
+    public func debugSelectTableCells(fromRow: Int, fromColumn: Int,
+                                      toRow: Int, toColumn: Int) -> String {
+        guard let blockIndex = blocks.firstIndex(where: { $0.kind == .table }) else {
+            return "no table"
+        }
+        selectTableCells(blockIndex: blockIndex,
+                         from: (fromRow, fromColumn), to: (toRow, toColumn))
+        return "ranges=\(selectedRanges.map(\.rangeValue))"
+            + " box=\(String(describing: tableCellSelectionBox()))"
+    }
+
+    /// Forces the hover state the `</>` button is revealed by, so a screenshot
+    /// can show it without the pointer being parked on the table.
+    public func debugHoverTable() -> String {
+        guard let blockIndex = blocks.firstIndex(where: { $0.kind == .table }) else {
+            return "no table"
+        }
+        hoveredTableBlock = blockIndex
+        needsDisplay = true
+        return "revealed=\(tableRawButtonIsRevealed(blockIndex: blockIndex))"
+            + " boxes=\(revealedTableRawButtons().map(\.rect))"
     }
 
     private func debugMouseEvent(at point: NSPoint) -> NSEvent? {
