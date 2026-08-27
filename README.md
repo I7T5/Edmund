@@ -94,7 +94,7 @@ The list is by no means exhaustive, and neither was it meant to be. I just wante
 - [Typora](https://typora.io) and [Obsidian](https://obsidian.md) for much of the vision
 - [Swift Markdown Engine](https://github.com/nodes-app/swift-markdown-engine) for the architecture reference
 - Apple, Iowan Old Style, [Tomorrow Light](https://github.com/chriskempson/tomorrow-theme) and [One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) for the aesthetics
-- [create-dmg](https://github.com/sindresorhus/create-dmg), [screenshot-studio](screenshot-studio.com), and [shields](shields.io) for the utilities
+- [create-dmg](https://github.com/sindresorhus/create-dmg), [screenshot-studio](https://screenshot-studio.com), and [shields](https://shields.io) for the utilities
 - Claude, [caveman](https://github.com/JuliusBrussee/caveman), and [ponytail](https://github.com/DietrichGebert/ponytail) for the engineering. 
 <!-- - [RaTeX], [beautiful-mermaid], [Shiki] for extension functionalities -->
 
