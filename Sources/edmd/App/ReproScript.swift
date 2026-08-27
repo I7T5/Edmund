@@ -404,6 +404,10 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     report("repro cellmenu \(arg) " + editor.debugOpenTableCellMenu(needle: arg))
                 }
+            case "caretpositions":
+                schedule(after: delay) { editor in
+                    report("repro caretpositions " + editor.debugCaretPositions(needle: arg))
+                }
             case "hovertable":
                 schedule(after: delay) { editor in
                     report("repro hovertable " + editor.debugHoverTable())

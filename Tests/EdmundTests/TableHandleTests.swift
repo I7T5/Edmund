@@ -222,6 +222,52 @@ struct TableHandleTests {
         #expect(deleteRow?.isEnabled == false)   // no body row to promote
     }
 
+    // MARK: - The caret in a cell's padding
+
+    /// A column pads by kerning the cell's last character, so that one space
+    /// can be hundreds of points wide and a click past its midpoint puts the
+    /// caret at the far end of it — drawn out in the middle of the cell rather
+    /// than against the text. Measured before the fix: the caret for the cell
+    /// end sat at x=652 in a cell spanning 459…802.
+    @Test("A caret in a cell's trailing pad snaps back to the text")
+    func caretSnapsOutOfThePad() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        let ns = editor.rawSource as NSString
+        guard let cell = editor.tableCell(atRawOffset: ns.range(of: "c21").location) else {
+            Issue.record("no cell")
+            return
+        }
+        let afterText = ns.range(of: "c21").upperBound
+        // The cell's own end is past the text; it comes back to just after "1".
+        #expect(editor.tableCellCaretSnap(cell.contentRange.upperBound) == afterText)
+        // A caret already on the text is left alone.
+        #expect(editor.tableCellCaretSnap(afterText) == nil)
+        #expect(editor.tableCellCaretSnap(cell.contentRange.location) == nil)
+    }
+
+    /// An all-blank cell has no text to snap to, so it keeps one space — the
+    /// same rule `selectCellText` uses, so typing does not eat the pad before
+    /// the closing pipe.
+    @Test("An empty cell snaps one space in, not to its far end")
+    func emptyCellSnapsOneSpaceIn() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n|    | b |\n")
+        let ns = editor.rawSource as NSString
+        let row = ns.range(of: "|    |").location
+        guard let cell = editor.tableCell(atRawOffset: row + 2) else {
+            Issue.record("no cell")
+            return
+        }
+        #expect(editor.tableCellCaretSnap(cell.contentRange.upperBound)
+                == cell.contentRange.location + 1)
+    }
+
+    @Test("Nothing snaps outside a table")
+    func noSnapOutsideATable() {
+        let editor = loadEditor(doc)
+        #expect(editor.tableCellCaretSnap((editor.rawSource as NSString)
+                                            .range(of: "Intro").location + 2) == nil)
+    }
+
     // MARK: - Cell selection
 
     /// A selection that stops inside two different cells is widened to cover

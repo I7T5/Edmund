@@ -754,6 +754,12 @@ public class EditorTextView: NSTextView {
         if let wrappedCellCaret, selectedRange().length == 0 {
             setSelectedRange(NSRange(location: wrappedCellCaret, length: 0))
         }
+        // A click that landed out in a cell's trailing pad comes back to the
+        // text. See `tableCellCaretSnap`.
+        if selectedRange().length == 0,
+           let snapped = tableCellCaretSnap(selectedRange().location) {
+            setSelectedRange(NSRange(location: snapped, length: 0))
+        }
         // `super.mouseDown` returns only after the whole tracking loop (drag +
         // mouse-up) finishes; `sel` in this line is the gesture's net result.
         traceEdit("mouseDown done")

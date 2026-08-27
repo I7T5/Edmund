@@ -213,11 +213,14 @@ extension EditorTextView {
 
     private func drawTableCellSelection(in dirty: NSRect) {
         guard let box = tableCellSelectionBox(), box.intersects(dirty) else { return }
-        // Square corners: the box stands on the cell borders, and a radius
-        // would leave a gap at every corner it shares with them.
+        // Square corners, and the stroke centred on the box's own edge rather
+        // than inset within it: the box stands *on* the cell borders, so it
+        // reads as those borders thickening rather than as a second rectangle
+        // drawn just inside them. A radius would leave a gap at every corner it
+        // shares with them.
         accentColor.setStroke()
-        let path = NSBezierPath(rect: box.insetBy(dx: 0.5, dy: 0.5))
-        path.lineWidth = 1
+        let path = NSBezierPath(rect: box)
+        path.lineWidth = 2
         path.stroke()
         accentColor.setFill()
         for point in tableCellSelectionDots(box) {
@@ -228,10 +231,11 @@ extension EditorTextView {
         }
     }
 
-    static let tableCellDotRadius: CGFloat = 2.5
+    static let tableCellDotRadius: CGFloat = 3
 
     /// The two drag dots: top-left and bottom-right of the box, the corners
-    /// Notes puts them on.
+    /// Notes puts them on — centred on the corner itself, where the two lines
+    /// of the box cross.
     private func tableCellSelectionDots(_ box: NSRect) -> [NSPoint] {
         [NSPoint(x: box.minX, y: box.minY), NSPoint(x: box.maxX, y: box.maxY)]
     }
@@ -278,6 +282,42 @@ extension EditorTextView {
         row = min(max(0, row), grid.rows.count - 1)
         let edge = grid.columnEdges.firstIndex { point.x < $0 } ?? grid.columnEdges.count
         return (row, min(max(0, edge - 1), grid.columns - 1))
+    }
+
+    /// Where a click that landed in a cell's trailing padding should really put
+    /// the caret, or nil when it landed on the text already.
+    ///
+    /// A column pads its cells by hanging a `.kern` on the cell's last
+    /// character, so that one space can be hundreds of points wide. AppKit
+    /// hit-tests it like any other glyph: click past its midpoint and the caret
+    /// goes to the far side, which draws it out in the middle of the empty part
+    /// of the cell rather than against the text it belongs to. Landing one
+    /// space in from the end also means typing fills the cell without eating
+    /// the space before its closing pipe.
+    ///
+    /// Click-only, deliberately: it would trap a Right-arrow that is legitimately
+    /// walking out of the cell.
+    func tableCellCaretSnap(_ offset: Int) -> Int? {
+        guard !rawTableEditing else { return nil }
+        // A pipe belongs to the cell it *opens*, so an offset sitting at one
+        // cell's very end resolves to the next one. Step back a character to
+        // get the cell whose padding the caret is really standing in.
+        var found = tableCell(atRawOffset: offset)
+        if found.map({ offset < $0.contentRange.location }) ?? true, offset > 0 {
+            found = tableCell(atRawOffset: offset - 1)
+        }
+        guard let cell = found,
+              offset >= cell.contentRange.location,
+              offset <= cell.contentRange.upperBound else { return nil }
+        let ns = rawSource as NSString
+        var textEnd = cell.contentRange.upperBound
+        while textEnd > cell.contentRange.location, ns.character(at: textEnd - 1) == 0x20 {
+            textEnd -= 1
+        }
+        // An all-blank cell keeps one space, the same rule `selectCellText` uses.
+        let target = max(textEnd, min(cell.contentRange.location + 1,
+                                      cell.contentRange.upperBound))
+        return offset > target ? target : nil
     }
 
     /// Selects every cell between two positions.
@@ -490,6 +530,31 @@ extension EditorTextView {
                          from: (fromRow, fromColumn), to: (toRow, toColumn))
         return "ranges=\(selectedRanges.map(\.rangeValue))"
             + " box=\(String(describing: tableCellSelectionBox()))"
+    }
+
+    /// Where the caret lands for every offset in the cell holding `needle`,
+    /// beside the cell's own box — so a caret that draws away from the text it
+    /// should sit against shows up as a number rather than as a squint.
+    public func debugCaretPositions(needle: String) -> String {
+        let ns = rawSource as NSString
+        let found = ns.range(of: needle)
+        guard found.location != NSNotFound,
+              let cell = tableCell(atRawOffset: found.location) else { return "no \(needle)" }
+        var out = "sel=\(selectedRange()) cell=\(cell.contentRange)"
+        if let grid = tableGrid(blockIndex: cell.blockIndex),
+           let box = grid.cellRect(row: cell.row, column: cell.column) {
+            out += " box.x=\(box.minX)...\(box.maxX)"
+        }
+        for offset in cell.contentRange.location...cell.contentRange.upperBound {
+            var actual = NSRange()
+            let rect = firstRect(forCharacterRange: NSRange(location: offset, length: 0),
+                                 actualRange: &actual)
+            let point = window.map { convert($0.convertPoint(fromScreen: rect.origin), from: nil) }
+            let char = offset < ns.length ? ns.substring(with: NSRange(location: offset, length: 1))
+                                          : "EOF"
+            out += " | \(offset)'\(char == "\n" ? "\\n" : char)'x=\(point.map { Int($0.x) } ?? -1)"
+        }
+        return out
     }
 
     /// Forces the hover state the `</>` button is revealed by, so a screenshot
