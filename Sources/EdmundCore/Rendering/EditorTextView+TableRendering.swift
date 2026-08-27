@@ -173,10 +173,9 @@ extension EditorTextView {
                                                      width: totalWidth,
                                                      leftInset: cellHPad,
                                                      separator: i == 1,
-                                                     // No rule under the last row: the
-                                                     // table's bottom edge is open, like
-                                                     // its left and right edges.
-                                                     bottomBorder: i > 1 && i < lines.count - 1,
+                                                     // Including the last row: the table
+                                                     // is closed on all four sides.
+                                                     bottomBorder: i > 1,
                                                      topInset: i == 0 ? Self.tableHandleBand : 0)),
                     range: lineRange)
 

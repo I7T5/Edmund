@@ -64,8 +64,12 @@ extension EditorTextView {
     }
 
     /// The row and column pills for the active cell, in view coordinates.
+    ///
+    /// None while a block of cells is selected: the pills point at one row and
+    /// one column, which is not what is selected then, and Notes takes them off
+    /// screen for the same reason. The selection box is the affordance.
     func tableHandles() -> [TableHandle] {
-        guard let cell = activeTableCell,
+        guard tableCellSelection == nil, let cell = activeTableCell,
               let grid = tableGrid(blockIndex: cell.blockIndex),
               grid.rows.indices.contains(cell.row),
               let cellRect = grid.cellRect(row: cell.row, column: cell.column),
@@ -161,10 +165,29 @@ extension EditorTextView {
 
     /// The block of cells the selection covers, when it covers more than one
     /// cell of a single rendered table.
-    var tableCellSelection: TableCellBlock? {
-        let ranges = selectedRanges.map(\.rangeValue)
-        guard let first = ranges.first, let last = ranges.last else { return nil }
+    var tableCellSelection: TableCellBlock? { tableCellBlock(forRanges: selectedRanges) }
+
+    /// The block a set of selection ranges covers — the ranges as they are
+    /// about to be installed, which is what the highlight decision needs.
+    func tableCellBlock(forRanges ranges: [NSValue]) -> TableCellBlock? {
+        let spans = ranges.map(\.rangeValue)
+        guard let first = spans.first, let last = spans.last,
+              last.upperBound > 0 else { return nil }
         return tableCellBlock(from: first.location, to: last.upperBound - 1)
+    }
+
+    /// Switches AppKit's text highlight off while a block of cells is selected.
+    /// Notes drops the text selection entirely at that point — the box is the
+    /// only marker — and a highlight here would say the wrong thing anyway,
+    /// since what is selected is cells, not a run of characters.
+    func setTableCellHighlight(suppressed: Bool) {
+        guard suppressed != tableCellHighlightSuppressed else { return }
+        // Read before the swap, never inside the ternary: the stored default is
+        // lazy, and evaluating it on the restoring call would capture the
+        // cleared attributes as "the default" and lose the highlight for good.
+        let restore = defaultSelectedTextAttributes
+        tableCellHighlightSuppressed = suppressed
+        selectedTextAttributes = suppressed ? [.backgroundColor: NSColor.clear] : restore
     }
 
     /// The block of cells a range covers, when it covers more than one cell of
@@ -231,7 +254,9 @@ extension EditorTextView {
         }
     }
 
-    static let tableCellDotRadius: CGFloat = 3
+    /// 7.5pt across, measured off the Notes recording at 2x (a 15px blob on a
+    /// 4px stroke).
+    static let tableCellDotRadius: CGFloat = 3.75
 
     /// The two drag dots: top-left and bottom-right of the box, the corners
     /// Notes puts them on — centred on the corner itself, where the two lines

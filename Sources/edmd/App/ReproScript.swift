@@ -404,6 +404,17 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     report("repro cellmenu \(arg) " + editor.debugOpenTableCellMenu(needle: arg))
                 }
+            case "activate":
+                // Makes the window key. AppKit draws an *unemphasized* selection
+                // in an inactive window and ignores `selectedTextAttributes`
+                // there, so anything about the selection's appearance has to be
+                // checked with the window actually focused.
+                schedule(after: delay) { editor in
+                    NSApp.activate(ignoringOtherApps: true)
+                    editor.window?.makeKeyAndOrderFront(nil)
+                    editor.window?.makeFirstResponder(editor)
+                    report("repro activate key=\(editor.window?.isKeyWindow == true)")
+                }
             case "caretpositions":
                 schedule(after: delay) { editor in
                     report("repro caretpositions " + editor.debugCaretPositions(needle: arg))

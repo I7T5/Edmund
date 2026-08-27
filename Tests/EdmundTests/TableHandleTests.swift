@@ -153,6 +153,20 @@ struct TableHandleTests {
         #expect(abs(laterRow.rect.minX - firstRow.rect.minX) < 0.5) // same margin slot
     }
 
+    /// The pills name one row and one column, which is not what a block of
+    /// cells is — Notes takes them off screen for the duration too.
+    @Test("No handles while a block of cells is selected")
+    func noHandlesDuringACellSelection() {
+        let editor = loadEditor(doc)
+        caret(editor, to: "a")
+        #expect(!editor.tableHandles().isEmpty)
+        let ns = editor.rawSource as NSString
+        let from = ns.range(of: "a").location
+        editor.setSelectedRange(NSRange(location: from,
+                                        length: ns.range(of: "d").location + 1 - from))
+        #expect(editor.tableHandles().isEmpty)
+    }
+
     @Test("No handles with the caret outside a table")
     func noHandlesOutsideATable() {
         let editor = loadEditor(doc)
@@ -313,6 +327,51 @@ struct TableHandleTests {
         #expect(editor.selectedRange() == range)
         #expect(editor.tableCellSelection == nil)
         #expect(editor.tableCellSelectionBox() == nil)
+        // Its text highlight is AppKit's own — only a block of cells drops it.
+        #expect(editor.tableCellHighlightSuppressed == false)
+    }
+
+    /// Notes drops the text highlight the moment a drag crosses out of its
+    /// cell: what is selected then is cells, and the box is the only marker.
+    @Test("A block of cells drops the text highlight, a single cell keeps it")
+    func cellBlockDropsTheHighlight() {
+        let editor = loadEditor(doc)
+        let ns = editor.rawSource as NSString
+        let from = ns.range(of: "a").location
+        let to = ns.range(of: "d").location + 1
+        editor.setSelectedRange(NSRange(location: from, length: to - from))
+        #expect(editor.tableCellHighlightSuppressed)
+        #expect(editor.selectedTextAttributes[.backgroundColor] as? NSColor == .clear)
+
+        editor.setSelectedRange(NSRange(location: from, length: 1))
+        #expect(editor.tableCellHighlightSuppressed == false)
+        #expect(editor.selectedTextAttributes[.backgroundColor] as? NSColor != .clear)
+    }
+
+    /// Once a drag has left its cell, coming back to one selects that cell
+    /// whole — the gesture stays a cell-picking gesture rather than reverting
+    /// to picking characters partway through.
+    @Test("Returning to one cell after crossing selects it whole")
+    func returningToOneCellSelectsItWhole() {
+        let editor = loadEditor(doc)
+        let ns = editor.rawSource as NSString
+        let from = ns.range(of: "a").location
+        // Cross into another cell...
+        editor.setSelectedRange(NSRange(location: from,
+                                        length: ns.range(of: "d").location + 1 - from))
+        #expect(editor.tableCellSelection != nil)
+        // ...then back inside the first one.
+        editor.setSelectedRange(NSRange(location: from, length: 1))
+        guard let cell = editor.tableCell(blockIndex: tableIndex(editor), row: 2, column: 0) else {
+            Issue.record("no cell")
+            return
+        }
+        #expect(editor.selectedRange() == cell.contentRange)
+
+        // A drag that never left its cell keeps its own range.
+        editor.tableDragCrossedCells = false
+        editor.setSelectedRange(NSRange(location: from, length: 1))
+        #expect(editor.selectedRange() == NSRange(location: from, length: 1))
     }
 
     /// The box is the hull of the cells, and it stays inside the table — the

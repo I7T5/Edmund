@@ -1023,21 +1023,25 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
             let hairline = 1 / scale
             context.setFillColor(borderColor.cgColor)
-            for x in xOffsets {
-                let lineX = (((point.x + x) * scale).rounded()) / scale
+            // The table is closed on all four sides, like Notes': the two outer
+            // verticals join the column borders, and the header carries the top
+            // rule the way the last row carries the bottom one. A closed grid is
+            // also what lets a cell-selection box stand on a real line wherever
+            // it is drawn, rather than floating at an open edge.
+            for x in [0] + xOffsets + [width - leftInset] {
+                let lineX = (((point.x + x - (x == 0 ? leftInset : 0)) * scale).rounded()) / scale
                 context.fill(CGRect(x: lineX, y: point.y + topInset,
                                     width: hairline, height: frame.height - topInset))
             }
-            if separator {
-                let y = round(point.y + frame.height / 2) + 0.5
+            func rule(atY y: CGFloat) {
                 context.move(to: CGPoint(x: point.x - leftInset, y: y))
                 context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
             }
-            if bottomBorder {
-                let y = round(point.y + frame.height) + 0.5
-                context.move(to: CGPoint(x: point.x - leftInset, y: y))
-                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
-            }
+            // `topInset` is reserved only by the header row, so it also says
+            // which row owns the table's top edge.
+            if topInset > 0 { rule(atY: round(point.y + topInset) + 0.5) }
+            if separator { rule(atY: round(point.y + frame.height / 2) + 0.5) }
+            if bottomBorder { rule(atY: round(point.y + frame.height) + 0.5) }
             context.strokePath()
 
         case .horizontalRule(let color, let centerOffset):

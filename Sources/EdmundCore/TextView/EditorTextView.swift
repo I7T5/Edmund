@@ -411,6 +411,18 @@ public class EditorTextView: NSTextView {
     /// See EditorTextView+TableHandles.
     var tableCellSelectionWasActive = false
 
+    /// A block of cells is marked by its box alone, so AppKit's text highlight
+    /// is switched off while one is up. These hold the attributes to put back,
+    /// and whether they are currently swapped out.
+    lazy var defaultSelectedTextAttributes: [NSAttributedString.Key: Any]
+        = selectedTextAttributes
+    var tableCellHighlightSuppressed = false
+
+    /// Whether the drag in progress has left the cell it started in. Once it
+    /// has, coming back to a single cell selects that cell whole rather than
+    /// reverting to a character selection. Reset at every `mouseDown`.
+    var tableDragCrossedCells = false
+
     /// The pointer-tracking area behind `hoveredTableBlock`.
     var tableHoverTrackingArea: NSTrackingArea?
 
@@ -746,6 +758,8 @@ public class EditorTextView: NSTextView {
         // across the click's activate-the-table restyle because it is a raw
         // source offset (storage == rawSource).
         let wrappedCellCaret = wrappedCellCharIndex(at: event)
+        // A fresh gesture starts inside whatever cell it lands in.
+        tableDragCrossedCells = false
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
@@ -785,11 +799,24 @@ public class EditorTextView: NSTextView {
         // which cells a Copy would take. It is installed as one range per row —
         // see EditorTextView+TableHandles for why that matters.
         var ranges = ranges
-        if ranges.count == 1, let first = ranges[0].rangeValue as NSRange?,
-           let block = tableCellBlock(for: first) {
-            let perRow = tableCellSelectionRanges(block)
-            if !perRow.isEmpty { ranges = perRow }
+        if ranges.count == 1, let first = ranges[0].rangeValue as NSRange? {
+            if let block = tableCellBlock(for: first) {
+                tableDragCrossedCells = true
+                let perRow = tableCellSelectionRanges(block)
+                if !perRow.isEmpty { ranges = perRow }
+            } else if tableDragCrossedCells, first.length > 0,
+                      let cell = tableCell(atRawOffset: first.location) {
+                // Back inside a single cell after having left it: Notes
+                // reselects that cell whole rather than the sliver the pointer
+                // happens to be over, so the gesture reads as picking cells
+                // throughout rather than switching back to picking characters.
+                ranges = [NSValue(range: cell.contentRange)]
+            }
         }
+        // Before `super`: AppKit resolves the highlight's colour as it installs
+        // the selection, so attributes set afterwards only land at the *next*
+        // change.
+        setTableCellHighlight(suppressed: tableCellBlock(forRanges: ranges) != nil)
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         updateTableCellSelectionChrome()
     }
