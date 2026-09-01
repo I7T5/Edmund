@@ -768,10 +768,12 @@ public class EditorTextView: NSTextView {
         if let wrappedCellCaret, selectedRange().length == 0 {
             setSelectedRange(NSRange(location: wrappedCellCaret, length: 0))
         }
-        // A click that landed out in a cell's trailing pad comes back to the
-        // text. See `tableCellCaretSnap`.
+        // A click that landed out in a cell's pad comes back to the text, and
+        // one that AppKit carried into the neighbouring cell comes back to the
+        // cell it was aimed at. See `tableCellCaretSnap(at:offset:)`.
         if selectedRange().length == 0,
-           let snapped = tableCellCaretSnap(selectedRange().location) {
+           let snapped = tableCellCaretSnap(at: convert(event.locationInWindow, from: nil),
+                                            offset: selectedRange().location) {
             setSelectedRange(NSRange(location: snapped, length: 0))
         }
         // `super.mouseDown` returns only after the whole tracking loop (drag +

@@ -53,6 +53,16 @@ extension EditorTextView {
     static let tableHandleRadius: CGFloat = 1.5
     static var tableHandleBand: CGFloat { tableHandleThickness + tableHandleGap }
 
+    /// The pill's outline and its dots, as multiples of the table's own border
+    /// weight. Notes draws its grid rules at 190/255 gray, its pill outline at
+    /// 230 and its dots at 170 (measured off the reference at 2×): the box
+    /// carries about 0.4 of the grid's weight and the dots about 1.3. Ours drew
+    /// both at the grid's own weight, which left the pill reading louder than
+    /// the table it hangs off — the box is meant to recede and the dots are
+    /// meant to be the part you see.
+    static let tableHandleOutlineWeight: CGFloat = 0.4
+    static let tableHandleDotWeight: CGFloat = 1.3
+
     // MARK: - What the handles point at
 
     /// The cell the caret is in, if it is in a table that is currently rendered.
@@ -100,7 +110,14 @@ extension EditorTextView {
     /// `drawBackground(in:)`.
     func drawTableHandles(in dirty: NSRect) {
         drawTableCellSelection(in: dirty)
-        for handle in tableHandles() where handle.rect.intersects(dirty) {
+        let handles = tableHandles()
+        // Where the pills are *on screen*, which is the only thing the next
+        // caret move can repaint away. `invalidateTableHandles` cannot be
+        // trusted to record it: it runs before the restyle a click triggers,
+        // and a grid that is briefly unavailable makes it record nothing at
+        // all — after which the pill it forgot outlives its own move.
+        lastTableHandleBands = handles.map { handleHitBox($0.rect) }
+        for handle in handles where handle.rect.intersects(dirty) {
             let hovered = handle == hoveredTableHandle
             // Space, not a border, per the editor's chrome idiom — but a handle
             // has to read as a target with no text beside it to anchor on, so it
@@ -110,7 +127,7 @@ extension EditorTextView {
                                     yRadius: Self.tableHandleRadius)
             (hovered ? NSColor.quaternaryLabelColor : NSColor.clear).setFill()
             body.fill()
-            tableChromeLineColor.setStroke()
+            tableHandleInk(Self.tableHandleOutlineWeight).setStroke()
             // One device pixel, like the column borders it hangs off: a 1pt
             // stroke reads as twice their weight on a Retina display.
             body.lineWidth = 1 / (window?.backingScaleFactor ?? 1)
@@ -119,12 +136,21 @@ extension EditorTextView {
         }
     }
 
-    /// Three dots along the pill's long axis, in the same gray as its outline —
-    /// the pill is chrome that should recede until it is looked for.
+    /// The chrome gray scaled by one of the weights above. Resolved through
+    /// sRGB first: the gray is a dynamic colour, and only a resolved one has an
+    /// alpha to scale.
+    private func tableHandleInk(_ weight: CGFloat) -> NSColor {
+        let base = tableChromeLineColor
+        let alpha = base.usingColorSpace(.sRGB)?.alphaComponent ?? 1
+        return base.withAlphaComponent(min(1, alpha * weight))
+    }
+
+    /// Three dots along the pill's long axis, carrying the pill on their own —
+    /// its outline is a hint of a box, not a border.
     private func drawHandleDots(_ handle: TableHandle) {
         let size: CGFloat = 1.5
         let spacing: CGFloat = 4
-        tableChromeLineColor.setFill()
+        tableHandleInk(Self.tableHandleDotWeight).setFill()
         for step in -1...1 {
             let offset = CGFloat(step) * spacing
             let center = handle.axis == .column
@@ -309,6 +335,37 @@ extension EditorTextView {
         return (row, min(max(0, edge - 1), grid.columns - 1))
     }
 
+    /// The cell a point lands in, judged by the drawn grid rather than by the
+    /// character underneath it. The grid is the only authority on which cell
+    /// the user aimed at: a cell's padding is a single kerned glyph, and AppKit
+    /// splits that glyph's advance down the middle, so the far half of a cell's
+    /// pad hit-tests as the *next* cell's first character.
+    func tableCell(at point: NSPoint) -> TableCellRef? {
+        for (i, block) in blocks.enumerated() where block.kind == .table {
+            guard let grid = tableGrid(blockIndex: i), let bounds = grid.bounds,
+                  bounds.contains(point),
+                  let position = tableCellPosition(at: point, blockIndex: i) else { continue }
+            return tableCell(blockIndex: i, row: position.row, column: position.column)
+        }
+        return nil
+    }
+
+    /// Where a click at `point` should leave the caret, or nil to keep the
+    /// offset AppKit chose.
+    ///
+    /// Two corrections, in order. First the offset is pulled back into the cell
+    /// the click actually landed in — AppKit's midpoint rule on a pad glyph
+    /// hundreds of points wide can otherwise carry it clean over a drawn
+    /// border into the next cell, which no click inside a cell should ever do.
+    /// Then it comes back to the text, as below.
+    func tableCellCaretSnap(at point: NSPoint, offset: Int) -> Int? {
+        guard !rawTableEditing else { return nil }
+        guard let cell = tableCell(at: point) else { return tableCellCaretSnap(offset) }
+        let clamped = min(max(offset, cell.contentRange.location), cell.contentRange.upperBound)
+        let snapped = tableCellCaretSnap(clamped) ?? clamped
+        return snapped == offset ? nil : snapped
+    }
+
     /// Where a click that landed in a cell's trailing padding should really put
     /// the caret, or nil when it landed on the text already.
     ///
@@ -378,7 +435,7 @@ extension EditorTextView {
 
     /// A generous hit box: the pill is small chrome in empty space, so the slack
     /// costs nothing.
-    private func handleHitBox(_ rect: NSRect) -> NSRect { rect.insetBy(dx: -6, dy: -6) }
+    func handleHitBox(_ rect: NSRect) -> NSRect { rect.insetBy(dx: -6, dy: -6) }
 
     func tableHandleHit(at event: NSEvent) -> TableHandle? {
         let point = convert(event.locationInWindow, from: nil)
@@ -395,12 +452,17 @@ extension EditorTextView {
         hoveredTableHandle = hit
     }
 
-    /// Repaints the bands the handles live in. Called on every caret move, since
-    /// the handles follow the active cell and nothing else invalidates them.
+    /// Repaints the bands the handles live in — where they are going and where
+    /// they have been. Called on every caret move, since the handles follow the
+    /// active cell and nothing else invalidates them.
+    ///
+    /// It does not record anything: `drawTableHandles` is the one writer of
+    /// `lastTableHandleBands`, because only a draw knows what actually reached
+    /// the screen.
     func invalidateTableHandles() {
-        let bands = tableHandles().map { handleHitBox($0.rect) } + lastTableHandleBands
-        for band in bands { setNeedsDisplay(band) }
-        lastTableHandleBands = tableHandles().map { handleHitBox($0.rect) }
+        for band in tableHandles().map({ handleHitBox($0.rect) }) + lastTableHandleBands {
+            setNeedsDisplay(band)
+        }
     }
 
     // MARK: - Menus
@@ -568,7 +630,7 @@ extension EditorTextView {
         var out = "sel=\(selectedRange()) cell=\(cell.contentRange)"
         if let grid = tableGrid(blockIndex: cell.blockIndex),
            let box = grid.cellRect(row: cell.row, column: cell.column) {
-            out += " box.x=\(box.minX)...\(box.maxX)"
+            out += " box.x=\(box.minX)...\(box.maxX) box.y=\(box.minY)...\(box.maxY)"
         }
         for offset in cell.contentRange.location...cell.contentRange.upperBound {
             var actual = NSRange()
@@ -592,6 +654,46 @@ extension EditorTextView {
         needsDisplay = true
         return "revealed=\(tableRawButtonIsRevealed(blockIndex: blockIndex))"
             + " boxes=\(revealedTableRawButtons().map(\.rect))"
+    }
+
+    /// Clicks at a view point through the real `mouseDown` path and reports
+    /// what each stage of it decided. CGEvent clicks do not land in the harness
+    /// environment, so the mouse-up is posted to the window's queue first and
+    /// `mouseDown` is then called directly: `super.mouseDown` runs its own
+    /// tracking loop and finds that up event, so the whole gesture — hit test,
+    /// AppKit's own caret placement, the wrapped-cell override, the pad snap —
+    /// runs exactly as it would for a user.
+    public func debugClickProbe(x: CGFloat, y: CGFloat) -> String {
+        let point = NSPoint(x: x, y: y)
+        guard let window, let down = debugMouseEvent(at: point) else { return "no window" }
+        let hit = clickCharIndex(at: down)
+        let wrapped = wrappedCellCharIndex(at: down)
+        var out = "point=(\(Int(x)),\(Int(y))) hit=\(hit.map(String.init) ?? "nil")"
+            + " wrapped=\(wrapped.map(String.init) ?? "nil")"
+        if let hit {
+            out += " snap(hit)=\(tableCellCaretSnap(hit).map(String.init) ?? "nil")"
+            if let cell = tableCell(atRawOffset: hit) {
+                out += " cell=r\(cell.row)c\(cell.column)\(cell.contentRange)"
+            }
+        }
+        let up = NSEvent.mouseEvent(with: .leftMouseUp, location: convert(point, to: nil),
+                                    modifierFlags: [],
+                                    timestamp: ProcessInfo.processInfo.systemUptime,
+                                    windowNumber: window.windowNumber, context: nil,
+                                    eventNumber: 0, clickCount: 1, pressure: 0)
+        if let up { window.postEvent(up, atStart: false) }
+        mouseDown(with: down)
+        let sel = selectedRange()
+        out += " -> sel=\(sel)"
+        var actual = NSRange()
+        let screen = firstRect(forCharacterRange: NSRange(location: sel.location, length: 0),
+                               actualRange: &actual)
+        let appkit = convert(window.convertPoint(fromScreen: screen.origin), from: nil)
+        out += " appkitCaretX=\(Int(appkit.x))"
+        if let wrappedRect = wrappedCellCaretRect() {
+            out += " wrappedCaretX=\(Int(wrappedRect.minX))"
+        }
+        return out
     }
 
     private func debugMouseEvent(at point: NSPoint) -> NSEvent? {

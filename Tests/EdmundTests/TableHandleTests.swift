@@ -259,6 +259,76 @@ struct TableHandleTests {
         #expect(editor.tableCellCaretSnap(cell.contentRange.location) == nil)
     }
 
+    /// A pill that has moved has to be repainted where it *was*, and only a
+    /// draw knows where that is. The regression this pins: the record used to
+    /// be written by the invalidation instead, which runs before the restyle a
+    /// click triggers — so a grid that was briefly unavailable made it record
+    /// nothing, and the pill it forgot stayed on screen next to the live one.
+    @Test("The handles remember where they were drawn, not where they were computed")
+    func drawnHandleBandsSurviveAnInvalidation() {
+        let editor = loadEditor(doc)
+        caret(editor, to: "a")
+        let drawn = editor.tableHandles().map { editor.handleHitBox($0.rect) }
+        #expect(!drawn.isEmpty)
+        drawOffscreen(editor)
+        #expect(editor.lastTableHandleBands == drawn)
+
+        // The caret moves to another row and the pills move with it. Until the
+        // next draw, the bands the old ones occupy must still be on record.
+        caret(editor, to: "c")
+        editor.invalidateTableHandles()
+        #expect(editor.lastTableHandleBands == drawn)
+        drawOffscreen(editor)
+        #expect(editor.lastTableHandleBands != drawn)
+    }
+
+    /// Runs the background pass the handles draw on, into a throwaway bitmap.
+    private func drawOffscreen(_ editor: EditorTextView) {
+        let size = NSSize(width: max(1, editor.bounds.width), height: max(1, editor.bounds.height))
+        guard let rep = editor.bitmapImageRepForCachingDisplay(
+                in: NSRect(origin: .zero, size: size)),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else {
+            Issue.record("no context")
+            return
+        }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        editor.drawTableHandles(in: NSRect(origin: .zero, size: size))
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// The failure the offset-only snap could not see: AppKit splits a pad
+    /// glyph's advance down the middle, so a click in the far part of a cell's
+    /// pad hit-tests as the *next* cell's first character — the caret crosses a
+    /// drawn border the click never went near. The point decides the cell.
+    @Test("A click in a cell's far pad stays in that cell")
+    func farPadClickStaysInTheCell() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        caret(editor, to: "c21")
+        let ns = editor.rawSource as NSString
+        let index = tableIndex(editor)
+        guard let grid = editor.tableGrid(blockIndex: index),
+              let box = grid.cellRect(row: 2, column: 0),
+              let cell = editor.tableCell(blockIndex: index, row: 2, column: 0) else {
+            Issue.record("no grid")
+            return
+        }
+        let afterText = ns.range(of: "c21").upperBound
+        let point = NSPoint(x: box.maxX - 2, y: box.midY)
+        #expect(editor.tableCell(at: point)?.contentRange == cell.contentRange)
+        // Every offset AppKit can hand back for that click — the cell's own
+        // end, its closing pipe, the next cell's first character — comes back
+        // to the text this cell ends with.
+        for stray in [cell.contentRange.upperBound,
+                      cell.contentRange.upperBound + 1,
+                      cell.contentRange.upperBound + 2] {
+            #expect(editor.tableCellCaretSnap(at: point, offset: stray) == afterText)
+        }
+        // A click on the text itself still leaves AppKit's own answer alone.
+        let onText = NSPoint(x: box.minX + 6, y: box.midY)
+        #expect(editor.tableCellCaretSnap(at: onText, offset: afterText) == nil)
+    }
+
     /// An all-blank cell has no text to snap to, so it keeps one space — the
     /// same rule `selectCellText` uses, so typing does not eat the pad before
     /// the closing pipe.

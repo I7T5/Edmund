@@ -419,6 +419,16 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     report("repro caretpositions " + editor.debugCaretPositions(needle: arg))
                 }
+            case "clickprobe":
+                // "clickprobe x y" — a real click at a view point, with a
+                // report of what every stage of `mouseDown` decided.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count == 2 else {
+                        report("repro clickprobe: want x,y"); return
+                    }
+                    report("repro clickprobe " + editor.debugClickProbe(x: n[0], y: n[1]))
+                }
             case "hovertable":
                 schedule(after: delay) { editor in
                     report("repro hovertable " + editor.debugHoverTable())
