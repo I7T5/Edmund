@@ -419,15 +419,26 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     report("repro caretpositions " + editor.debugCaretPositions(needle: arg))
                 }
+            case "tablerules":
+                schedule(after: delay) { editor in
+                    report("repro tablerules\n" + editor.debugTableRules())
+                }
+            case "clickaudit":
+                // Clicks every cell of every table and reports what came out
+                // wrong. See `debugClickAudit`.
+                schedule(after: delay) { editor in
+                    report("repro clickaudit " + editor.debugClickAudit())
+                }
             case "clickprobe":
                 // "clickprobe x y" — a real click at a view point, with a
                 // report of what every stage of `mouseDown` decided.
                 schedule(after: delay) { editor in
                     let n = arg.split(separator: ",").compactMap { Double($0) }
-                    guard n.count == 2 else {
-                        report("repro clickprobe: want x,y"); return
+                    guard n.count == 2 || n.count == 3 else {
+                        report("repro clickprobe: want x,y[,clicks]"); return
                     }
-                    report("repro clickprobe " + editor.debugClickProbe(x: n[0], y: n[1]))
+                    report("repro clickprobe " + editor.debugClickProbe(
+                        x: n[0], y: n[1], clicks: n.count == 3 ? Int(n[2]) : 1))
                 }
             case "hovertable":
                 schedule(after: delay) { editor in

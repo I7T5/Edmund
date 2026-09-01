@@ -771,10 +771,23 @@ public class EditorTextView: NSTextView {
         // A click that landed out in a cell's pad comes back to the text, and
         // one that AppKit carried into the neighbouring cell comes back to the
         // cell it was aimed at. See `tableCellCaretSnap(at:offset:)`.
-        if selectedRange().length == 0,
-           let snapped = tableCellCaretSnap(at: convert(event.locationInWindow, from: nil),
-                                            offset: selectedRange().location) {
-            setSelectedRange(NSRange(location: snapped, length: 0))
+        //
+        // A double-click counts too when what it caught was pad rather than
+        // text — see `tableCellSelectionIsJunk`. Only a double-click: a drag
+        // across cells is also a selection this view did not choose, but that
+        // one is deliberate and means every cell it covers.
+        let clickPoint = convert(event.locationInWindow, from: nil)
+        let clickSelection = selectedRange()
+        let junk = event.clickCount == 2
+            && tableCellSelectionIsJunk(clickSelection, at: clickPoint)
+        if clickSelection.length == 0 || junk {
+            let snapped = tableCellCaretSnap(at: clickPoint, offset: clickSelection.location)
+            // A junk selection collapses even when the snap declines: the snap
+            // only answers "is this offset in the pad", and the offset can be
+            // right while the one selected pad character is not.
+            if let target = snapped ?? (junk ? clickSelection.location : nil) {
+                setSelectedRange(NSRange(location: target, length: 0))
+            }
         }
         // `super.mouseDown` returns only after the whole tracking loop (drag +
         // mouse-up) finishes; `sel` in this line is the gesture's net result.

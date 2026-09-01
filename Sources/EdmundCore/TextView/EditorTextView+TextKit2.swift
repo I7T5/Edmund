@@ -1041,7 +1041,14 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // which row owns the table's top edge.
             if topInset > 0 { rule(atY: round(point.y + topInset) + 0.5) }
             if separator { rule(atY: round(point.y + frame.height / 2) + 0.5) }
-            if bottomBorder { rule(atY: round(point.y + frame.height) + 0.5) }
+            // Half a point *above* the boundary, not below it. A 1pt stroke
+            // covers the whole point it is centred in, so `+ 0.5` put the line
+            // entirely inside the row below — which then erased it the next
+            // time that row repainted on its own (a caret move restyles one
+            // row and dirties only its rect, so the row that owns the line is
+            // never asked to draw it again). Kept inside the drawing row, the
+            // line survives every partial repaint but its own.
+            if bottomBorder { rule(atY: round(point.y + frame.height) - 0.5) }
             context.strokePath()
 
         case .horizontalRule(let color, let centerOffset):

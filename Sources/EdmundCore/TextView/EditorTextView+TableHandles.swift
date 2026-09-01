@@ -53,15 +53,15 @@ extension EditorTextView {
     static let tableHandleRadius: CGFloat = 1.5
     static var tableHandleBand: CGFloat { tableHandleThickness + tableHandleGap }
 
-    /// The pill's outline and its dots, as multiples of the table's own border
-    /// weight. Notes draws its grid rules at 190/255 gray, its pill outline at
-    /// 230 and its dots at 170 (measured off the reference at 2×): the box
-    /// carries about 0.4 of the grid's weight and the dots about 1.3. Ours drew
-    /// both at the grid's own weight, which left the pill reading louder than
-    /// the table it hangs off — the box is meant to recede and the dots are
-    /// meant to be the part you see.
-    static let tableHandleOutlineWeight: CGFloat = 0.4
-    static let tableHandleDotWeight: CGFloat = 1.3
+    /// Ink for the pill's outline and its dots, as alpha on the label colour.
+    ///
+    /// Absolute, not a multiple of the table's own border: our grid is drawn far
+    /// lighter than Notes' (230/255 gray against its 190), so weighting the pill
+    /// against ours is what made it vanish. Notes puts its pill outline at 230
+    /// and its dots at 170 — and since the pill has to carry itself here without
+    /// a darker grid behind it, both go a step past that.
+    static let tableHandleOutlineAlpha: CGFloat = 0.22
+    static let tableHandleDotAlpha: CGFloat = 0.45
 
     // MARK: - What the handles point at
 
@@ -127,7 +127,7 @@ extension EditorTextView {
                                     yRadius: Self.tableHandleRadius)
             (hovered ? NSColor.quaternaryLabelColor : NSColor.clear).setFill()
             body.fill()
-            tableHandleInk(Self.tableHandleOutlineWeight).setStroke()
+            tableHandleInk(Self.tableHandleOutlineAlpha).setStroke()
             // One device pixel, like the column borders it hangs off: a 1pt
             // stroke reads as twice their weight on a Retina display.
             body.lineWidth = 1 / (window?.backingScaleFactor ?? 1)
@@ -136,13 +136,11 @@ extension EditorTextView {
         }
     }
 
-    /// The chrome gray scaled by one of the weights above. Resolved through
-    /// sRGB first: the gray is a dynamic colour, and only a resolved one has an
-    /// alpha to scale.
-    private func tableHandleInk(_ weight: CGFloat) -> NSColor {
-        let base = tableChromeLineColor
-        let alpha = base.usingColorSpace(.sRGB)?.alphaComponent ?? 1
-        return base.withAlphaComponent(min(1, alpha * weight))
+    /// The pill's ink. `labelColor` rather than the grid's gray so it inverts
+    /// with the appearance: on a dark background the pill has to lighten, not
+    /// darken.
+    private func tableHandleInk(_ alpha: CGFloat) -> NSColor {
+        NSColor.labelColor.withAlphaComponent(alpha)
     }
 
     /// Three dots along the pill's long axis, carrying the pill on their own —
@@ -150,7 +148,7 @@ extension EditorTextView {
     private func drawHandleDots(_ handle: TableHandle) {
         let size: CGFloat = 1.5
         let spacing: CGFloat = 4
-        tableHandleInk(Self.tableHandleDotWeight).setFill()
+        tableHandleInk(Self.tableHandleDotAlpha).setFill()
         for step in -1...1 {
             let offset = CGFloat(step) * spacing
             let center = handle.axis == .column
@@ -400,6 +398,23 @@ extension EditorTextView {
         let target = max(textEnd, min(cell.contentRange.location + 1,
                                       cell.contentRange.upperBound))
         return offset > target ? target : nil
+    }
+
+    /// Whether a double-click's selection is worth keeping. It is only worth
+    /// keeping if it is text belonging to the cell the click landed in.
+    ///
+    /// A double-click in a cell's padding has no word to take: the pad is one
+    /// kerned space, and beside it sits the row's hidden pipe. AppKit selects
+    /// one of those, and a one-character selection of an invisible glyph draws
+    /// exactly like a caret stranded in the middle of the cell — while a ⌘C
+    /// then copies a delimiter. Neither is a selection the user asked for.
+    func tableCellSelectionIsJunk(_ selection: NSRange, at point: NSPoint) -> Bool {
+        guard selection.length > 0, !rawTableEditing,
+              let cell = tableCell(at: point) else { return false }
+        if selection.location < cell.contentRange.location
+            || selection.upperBound > cell.contentRange.upperBound { return true }
+        return (rawSource as NSString).substring(with: selection)
+            .allSatisfy { $0 == " " || $0 == "|" }
     }
 
     /// Selects every cell between two positions.
@@ -663,12 +678,14 @@ extension EditorTextView {
     /// tracking loop and finds that up event, so the whole gesture — hit test,
     /// AppKit's own caret placement, the wrapped-cell override, the pad snap —
     /// runs exactly as it would for a user.
-    public func debugClickProbe(x: CGFloat, y: CGFloat) -> String {
+    public func debugClickProbe(x: CGFloat, y: CGFloat, clicks: Int = 1) -> String {
         let point = NSPoint(x: x, y: y)
-        guard let window, let down = debugMouseEvent(at: point) else { return "no window" }
+        guard let window,
+              let down = debugMouseEvent(at: point, clicks: clicks) else { return "no window" }
         let hit = clickCharIndex(at: down)
         let wrapped = wrappedCellCharIndex(at: down)
-        var out = "point=(\(Int(x)),\(Int(y))) hit=\(hit.map(String.init) ?? "nil")"
+        var out = "point=(\(Int(x)),\(Int(y))) clicks=\(clicks)"
+            + " hit=\(hit.map(String.init) ?? "nil")"
             + " wrapped=\(wrapped.map(String.init) ?? "nil")"
         if let hit {
             out += " snap(hit)=\(tableCellCaretSnap(hit).map(String.init) ?? "nil")"
@@ -680,7 +697,7 @@ extension EditorTextView {
                                     modifierFlags: [],
                                     timestamp: ProcessInfo.processInfo.systemUptime,
                                     windowNumber: window.windowNumber, context: nil,
-                                    eventNumber: 0, clickCount: 1, pressure: 0)
+                                    eventNumber: 0, clickCount: clicks, pressure: 0)
         if let up { window.postEvent(up, atStart: false) }
         mouseDown(with: down)
         let sel = selectedRange()
@@ -696,13 +713,125 @@ extension EditorTextView {
         return out
     }
 
-    private func debugMouseEvent(at point: NSPoint) -> NSEvent? {
+    /// Clicks every cell of every table at five points across its width and
+    /// reports only what came out wrong: a caret that left the cell it was
+    /// clicked in, or one that stopped short of the cell's text when the click
+    /// landed past that text. One run answers "does clicking into a cell put
+    /// the caret where it should" for the whole document.
+    public func debugClickAudit() -> String {
+        var lines: [String] = []
+        var checked = 0
+        for (index, block) in blocks.enumerated() where block.kind == .table {
+            guard let grid = tableGrid(blockIndex: index) else { continue }
+            for row in grid.rows.indices where row != 1 {
+                for column in 0..<grid.columns {
+                    guard let box = grid.cellRect(row: row, column: column),
+                          let cell = tableCell(blockIndex: index, row: row, column: column)
+                    else { continue }
+                    let target = tableCellCaretSnap(cell.contentRange.upperBound)
+                        ?? cell.contentRange.upperBound
+                    let textEnd = caretRect(target)
+                    for fraction in [0.04, 0.25, 0.5, 0.75, 0.96] as [CGFloat] {
+                        let point = NSPoint(x: box.minX + box.width * fraction, y: box.midY)
+                        // Only meaningful on the text's own visual line: a
+                        // wrapped cell's earlier lines are all "past" the last
+                        // line's caret in x while being ordinary text.
+                        let onTextLine = point.y >= textEnd.minY && point.y <= textEnd.maxY
+                        let pastText = onTextLine && point.x > textEnd.maxX + 1
+                        for clicks in [1, 2] {
+                            click(at: point, clicks: clicks)
+                            checked += 1
+                            let selection = selectedRange()
+                            let got = selection.location
+                            let inCell = got >= cell.contentRange.location
+                                && selection.upperBound <= cell.contentRange.upperBound
+                            let what = "r\(row)c\(column) f\(fraction) x\(clicks)"
+                            if !inCell {
+                                lines.append("\(what) LEFT THE CELL"
+                                    + " sel=\(selection) cell=\(cell.contentRange)")
+                            } else if tableCellSelectionIsJunk(selection, at: point) {
+                                lines.append("\(what) SELECTED PAD sel=\(selection)")
+                            } else if pastText && selection.length == 0 && got != target {
+                                lines.append("\(what) SHORT OF THE TEXT"
+                                    + " sel=\(got) want=\(target)")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return "checked=\(checked) failures=\(lines.count)"
+            + (lines.isEmpty ? "" : "\n  " + lines.joined(separator: "\n  "))
+    }
+
+    /// The caret's rect for an offset, in view coordinates.
+    private func caretRect(_ offset: Int) -> NSRect {
+        guard let window else { return .zero }
+        var actual = NSRange()
+        let screen = firstRect(forCharacterRange: NSRange(location: offset, length: 0),
+                               actualRange: &actual)
+        let origin = convert(window.convertPoint(fromScreen: screen.origin), from: nil)
+        return NSRect(x: origin.x, y: origin.y, width: screen.width, height: screen.height)
+    }
+
+    /// A real click at a view point: the mouse-up goes on the window's queue
+    /// first so `super.mouseDown`'s own tracking loop finds it, and the whole
+    /// gesture then runs exactly as it would for a user. CGEvent clicks do not
+    /// land in the harness environment, which is why this exists.
+    private func click(at point: NSPoint, clicks: Int = 1) {
+        guard let window, let down = debugMouseEvent(at: point, clicks: clicks) else { return }
+        let up = NSEvent.mouseEvent(with: .leftMouseUp, location: convert(point, to: nil),
+                                    modifierFlags: [],
+                                    timestamp: ProcessInfo.processInfo.systemUptime,
+                                    windowNumber: window.windowNumber, context: nil,
+                                    eventNumber: 0, clickCount: clicks, pressure: 0)
+        if let up { window.postEvent(up, atStart: false) }
+        mouseDown(with: down)
+    }
+
+    /// Every table row's decoration flags beside the fragment they are drawn
+    /// against, so a missing grid line can be read off as a number: whether the
+    /// row asked for a bottom border at all, and where that border would land.
+    public func debugTableRules() -> String {
+        guard let tlm = textLayoutManager, let storage = textStorage else { return "no layout" }
+        var out: [String] = []
+        for (index, block) in blocks.enumerated() where block.kind == .table {
+            out.append("table block \(index) range=\(block.range)")
+            let ns = rawSource as NSString
+            var line = 0
+            var offset = block.range.location
+            while offset < block.range.upperBound {
+                let lineRange = ns.lineRange(for: NSRange(location: offset, length: 0))
+                var flags = "no decoration"
+                if let decoration = storage.attribute(.blockDecoration, at: offset,
+                                                      effectiveRange: nil) as? BlockDecoration,
+                   case .tableRow(_, _, _, let separator, let bottomBorder,
+                                  let topInset) = decoration.kind {
+                    flags = "sep=\(separator ? "Y" : "N") bottom=\(bottomBorder ? "Y" : "N")"
+                        + " topInset=\(topInset)"
+                }
+                var geometry = "no fragment"
+                if let location = tlm.location(tlm.documentRange.location, offsetBy: offset),
+                   let fragment = tlm.textLayoutFragment(for: location) {
+                    let frame = fragment.layoutFragmentFrame
+                    geometry = "y=\(frame.minY) h=\(frame.height)"
+                        + " ruleAt=\(frame.minY + frame.height)"
+                }
+                out.append("  line \(line) \(flags) \(geometry)")
+                line += 1
+                offset = lineRange.upperBound
+            }
+        }
+        return out.joined(separator: "\n")
+    }
+
+    private func debugMouseEvent(at point: NSPoint, clicks: Int = 1) -> NSEvent? {
         guard let window else { return nil }
         return NSEvent.mouseEvent(with: .leftMouseDown, location: convert(point, to: nil),
                                   modifierFlags: [],
                                   timestamp: ProcessInfo.processInfo.systemUptime,
                                   windowNumber: window.windowNumber, context: nil,
-                                  eventNumber: 0, clickCount: 1, pressure: 1)
+                                  eventNumber: 0, clickCount: clicks, pressure: 1)
     }
 }
 #endif

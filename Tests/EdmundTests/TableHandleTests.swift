@@ -329,6 +329,39 @@ struct TableHandleTests {
         #expect(editor.tableCellCaretSnap(at: onText, offset: afterText) == nil)
     }
 
+    /// A double-click has to find a word. In a cell's padding there is none —
+    /// the pad is one kerned space with the row's hidden pipe beside it — so
+    /// AppKit selects one of those, and a one-character selection of an
+    /// invisible glyph draws exactly like a caret stranded mid-cell.
+    @Test("A double-click in a cell's pad catches only delimiters")
+    func padDoubleClickIsJunk() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        caret(editor, to: "c21")
+        let ns = editor.rawSource as NSString
+        let index = tableIndex(editor)
+        guard let grid = editor.tableGrid(blockIndex: index),
+              let box = grid.cellRect(row: 2, column: 0),
+              let cell = editor.tableCell(blockIndex: index, row: 2, column: 0) else {
+            Issue.record("no grid")
+            return
+        }
+        let inThePad = NSPoint(x: box.maxX - 2, y: box.midY)
+        // The closing pipe, and the padded space before it.
+        let pipe = NSRange(location: cell.contentRange.upperBound, length: 1)
+        let pad = NSRange(location: cell.contentRange.upperBound - 1, length: 1)
+        #expect(ns.substring(with: pipe) == "|")
+        #expect(ns.substring(with: pad) == " ")
+        #expect(editor.tableCellSelectionIsJunk(pipe, at: inThePad))
+        #expect(editor.tableCellSelectionIsJunk(pad, at: inThePad))
+        // A double-click that did find a word keeps it.
+        let word = ns.range(of: "c21")
+        let onText = NSPoint(x: box.minX + 6, y: box.midY)
+        #expect(!editor.tableCellSelectionIsJunk(word, at: onText))
+        // And nothing outside a table is ever junk — the rule is about pads.
+        #expect(!editor.tableCellSelectionIsJunk(ns.range(of: "Intro"),
+                                                 at: NSPoint(x: 5, y: 5)))
+    }
+
     /// An all-blank cell has no text to snap to, so it keeps one space — the
     /// same rule `selectCellText` uses, so typing does not eat the pad before
     /// the closing pipe.
