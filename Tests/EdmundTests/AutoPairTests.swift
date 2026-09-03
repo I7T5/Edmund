@@ -95,6 +95,66 @@ struct EditorTextViewAutoPairTests {
         #expect(editor.rawSource == "(paste)")
     }
 
+    // MARK: - Deleting the opener takes the adjacent closer with it
+
+    @Test("Deleting an opening bracket removes the adjacent closer")
+    @MainActor func deleteRemovesAdjacentCloser() {
+        let editor = makeEditor()
+        editor.loadContent("")
+        type("(", at: 0, in: editor)
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource == "")
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 0))
+    }
+
+    @Test("Every pair deletes as a pair")
+    @MainActor func deleteAllPairs() {
+        for text in ["()", "[]", "{}", "\"\"", "''", "``"] {
+            let editor = makeEditor()
+            editor.loadContent("a" + text + "b")
+            editor.setSelectedRange(NSRange(location: 2, length: 0))
+            editor.deleteBackward(nil)
+            #expect(editor.rawSource == "ab")
+        }
+    }
+
+    @Test("A separated pair deletes only the opener")
+    @MainActor func deleteSeparatedPair() {
+        let editor = makeEditor()
+        editor.loadContent("(x)")
+        editor.setSelectedRange(NSRange(location: 1, length: 0))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource == "x)")
+    }
+
+    @Test("Deleting the closer leaves the opener alone")
+    @MainActor func deleteCloserOnly() {
+        let editor = makeEditor()
+        editor.loadContent("()")
+        editor.setSelectedRange(NSRange(location: 2, length: 0))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource == "(")
+    }
+
+    @Test("A selected range still deletes only the selection")
+    @MainActor func deleteSelectionUntouched() {
+        let editor = makeEditor()
+        editor.loadContent("a()b")
+        editor.setSelectedRange(NSRange(location: 0, length: 2))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource == ")b")
+    }
+
+    @Test("Disabled: deleting an opener leaves the closer")
+    @MainActor func disabledDeleteLeavesCloser() {
+        let editor = makeEditor()
+        editor.autoCloseBracketsEnabled = false
+        editor.loadContent("()")
+        editor.setSelectedRange(NSRange(location: 1, length: 0))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource == ")")
+    }
+
     @Test("Replacing a selection does not auto-close")
     @MainActor func selectionReplacementUntouched() {
         let editor = makeEditor()

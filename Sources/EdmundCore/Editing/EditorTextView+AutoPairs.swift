@@ -5,7 +5,8 @@ import AppKit
 // Typing an opening bracket or quote inserts its closing partner and leaves the
 // caret between the two; typing a closing character that is already sitting to
 // the right of the caret steps over it instead of inserting a second one.
-// Gated by `autoCloseBracketsEnabled` (Settings ▸ Edit ▸ Editing).
+// Deleting an opening character while its partner still sits next to it removes
+// both. Gated by `autoCloseBracketsEnabled` (Settings ▸ Edit ▸ Editing).
 //
 // Everything goes through `super.insertText`, so the edit takes the normal
 // pipeline (shouldChangeText → undo record → didChangeText → resync). The caret
@@ -66,6 +67,29 @@ extension EditorTextView {
         if between <= (textStorage?.length ?? 0) {
             setSelectedRange(NSRange(location: between, length: 0))
         }
+    }
+
+    /// Deleting an opening character takes its closing partner with it, but only
+    /// while the two are still adjacent — the state auto-closing just left behind.
+    /// Once anything sits between them the pair is ordinary text and the closer
+    /// stays put.
+    public override func deleteBackward(_ sender: Any?) {
+        let target = selectedRange()
+        guard autoCloseBracketsEnabled,
+              !hasMarkedText(),
+              target.length == 0,
+              let opener = character(at: target.location - 1),
+              let closer = Self.autoPairs[opener],
+              character(at: target.location) == closer
+        else {
+            super.deleteBackward(sender)
+            return
+        }
+
+        // Delete both as one selection, so it takes the normal edit pipeline and
+        // undoes in a single step.
+        setSelectedRange(NSRange(location: target.location - 1, length: 2))
+        super.deleteBackward(sender)
     }
 
     /// Whether typing `ch` at `location` should bring a closing partner along.
