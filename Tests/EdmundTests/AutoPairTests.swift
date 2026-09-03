@@ -145,6 +145,17 @@ struct EditorTextViewAutoPairTests {
         #expect(editor.rawSource == ")b")
     }
 
+    @Test("The pair delete undoes in one step")
+    @MainActor func deleteUndoesAsOne() {
+        let editor = makeEditor()
+        editor.loadContent("a()b")
+        editor.setSelectedRange(NSRange(location: 2, length: 0))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource == "ab")
+        editor.performUndo()
+        #expect(editor.rawSource == "a()b")
+    }
+
     @Test("Disabled: deleting an opener leaves the closer")
     @MainActor func disabledDeleteLeavesCloser() {
         let editor = makeEditor()

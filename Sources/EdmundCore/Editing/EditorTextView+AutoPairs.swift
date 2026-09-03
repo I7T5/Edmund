@@ -86,9 +86,13 @@ extension EditorTextView {
             return
         }
 
-        // Delete both as one selection, so it takes the normal edit pipeline and
-        // undoes in a single step.
-        setSelectedRange(NSRange(location: target.location - 1, length: 2))
+        // Drop the closer with AppKit's own forward delete, then let the normal
+        // backward delete take the opener. Selecting both and deleting the
+        // selection in one go looks tidier but crashes: NSTextView's
+        // post-edit `updateFontPanel` re-reads the selection we just set, which
+        // by then runs past the end of the shrunken storage
+        // (NSMutableRLEArray … Out of bounds).
+        super.deleteForward(sender)
         super.deleteBackward(sender)
     }
 
