@@ -754,11 +754,13 @@ class Document: NSDocument, HeadingNavigable {
     }
 
     @objc override func printDocument(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
         MarkdownPrinter.print(markdown: editor.rawSource,
                               theme: editor.theme,
                               callouts: mergedCallouts,
                               baseURL: documentDirectory,
                               options: renderOptions,
+                              suggestedName: name.isEmpty ? "Untitled" : name,
                               window: windowControllers.first?.window)
     }
 
