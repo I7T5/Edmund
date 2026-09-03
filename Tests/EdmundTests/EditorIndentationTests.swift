@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import Markdown
 @testable import EdmundCore
 
 // MARK: - Tab / Shift-Tab List Indentation
@@ -426,5 +427,111 @@ struct EditorListIndentIntegrationTests {
         editor.insertTab(nil)
 
         #expect(editor.rawSource == "  - [ ] todo\n  - [x] done")
+    }
+
+    // MARK: - Nesting Columns
+    //
+    // Tab has to land the child at or past the parent item's *content* column,
+    // or CommonMark parses a sibling while the editor draws a child — the
+    // divergence that made nested lists come out flat in Read mode.
+
+    /// True when `markdown`'s first list contains a nested list, i.e. the
+    /// indentation really nests rather than only looking indented.
+    private func parsesAsNested(_ markdown: String) -> Bool {
+        func hasChildList(_ markup: Markup) -> Bool {
+            for child in markup.children {
+                if child is UnorderedList || child is OrderedList { return true }
+                if child is ListItem, hasChildList(child) { return true }
+            }
+            return false
+        }
+        return hasChildList(Document(parsing: markdown))
+    }
+
+    @Test("Tab under an ordered marker pads to the parent's content column")
+    @MainActor func tabPadsUnderOrderedMarker() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n1. child")
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertTab(nil)
+        // "2. " is three columns wide, so a 2-space unit would leave a sibling.
+        #expect(editor.rawSource == "2. parent\n   1. child")
+        #expect(parsesAsNested(editor.rawSource))
+    }
+
+    @Test("What Tab nests in the editor, Read mode renders nested")
+    @MainActor func tabbedNestingReachesReadMode() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n1. child")
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertTab(nil)
+        // The reported bug: the editor drew this nested while Read mode — which
+        // parses the bytes, not the drawn indent — rendered a flat sibling.
+        let html = HTMLRenderer.render(markdown: editor.rawSource)
+        #expect(html.contains("<ol><li>child</li></ol>"))
+    }
+
+    @Test("Tab under a wide ordered marker pads further")
+    @MainActor func tabPadsUnderWideOrderedMarker() {
+        let editor = makeEditor()
+        editor.loadContent("10. parent\n1. child")
+        editor.setSelectedRange(NSRange(location: 13, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "10. parent\n    1. child")
+        #expect(parsesAsNested(editor.rawSource))
+    }
+
+    @Test("Tab under a bullet keeps the plain indent unit")
+    @MainActor func tabUnderBulletIsUnchanged() {
+        let editor = makeEditor()
+        editor.loadContent("- parent\n- child")
+        editor.setSelectedRange(NSRange(location: 11, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "- parent\n  - child")
+        #expect(parsesAsNested(editor.rawSource))
+    }
+
+    @Test("A wider indent unit is never narrowed to the content column")
+    @MainActor func tabKeepsWiderUnit() {
+        let editor = makeEditor()
+        editor.indentWidth = 4
+        editor.loadContent("2. parent\n1. child")
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "2. parent\n    1. child")
+    }
+
+    @Test("Tab nests a second level under a padded parent")
+    @MainActor func tabPadsSecondLevel() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n   1. child\n   1. grandchild")
+        editor.setSelectedRange(NSRange(location: 25, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "2. parent\n   1. child\n      1. grandchild")
+    }
+
+    @Test("Shift-Tab undoes a padded indent exactly")
+    @MainActor func shiftTabUndoesPaddedIndent() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n   1. child")
+        editor.setSelectedRange(NSRange(location: 15, length: 0))
+        editor.insertBacktab(nil)
+        // All three columns come off. Removing a bare indentUnit would strand
+        // one space here, dragging the document's detected indent unit down to
+        // 1 and re-depthing every list in it. The item rejoins the outer run,
+        // so renumbering relabels it 3.
+        #expect(editor.rawSource == "2. parent\n3. child")
+    }
+
+    @Test("Tab then Shift-Tab round-trips under an ordered marker")
+    @MainActor func paddedIndentRoundTrips() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n3. child")
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "2. parent\n   1. child")
+        editor.setSelectedRange(NSRange(location: 15, length: 0))
+        editor.insertBacktab(nil)
+        #expect(editor.rawSource == "2. parent\n3. child")
     }
 }
