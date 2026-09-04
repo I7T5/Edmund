@@ -283,21 +283,20 @@ extension AppearanceSettingsView {
                 .padding(.top, 5)
             scriptFontBox
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .help("Unset scripts use the system fallback. Right-click a font to reset it.")
+                .help("Click a script to choose its font, right-click to reset it. Unset scripts use the system fallback.")
         }
     }
 
     /// Box width, and one script row's height. Five rows are visible and the
     /// remaining four scroll — the same 5-row window the Syntax pane's box uses.
-    private var scriptBoxWidth: CGFloat { 380 }
+    /// Narrower than it was with a third column: two columns in a 380pt box
+    /// left a stretch of nothing down the middle.
+    private var scriptBoxWidth: CGFloat { 300 }
     private var scriptRowHeight: CGFloat { 28 }
 
     /// Column widths and the leading/trailing inset, shared by the header cells
     /// and the rows beneath them so each title sits over its own column. Same
     /// arrangement as the Key Bindings pane's hand-built header.
-    /// The sample column. Wide enough for the longest sample ("Ελληνικά") at
-    /// a body size a good deal larger than the default.
-    private static let sampleColumnWidth: CGFloat = 96
     private static let ligatureColumnWidth: CGFloat = 62
     private static let scriptRowInset: CGFloat = 6
 
@@ -324,8 +323,6 @@ extension AppearanceSettingsView {
     private var scriptListHeader: some View {
         HStack(spacing: 8) {
             Text("Script")
-                .frame(width: Self.sampleColumnWidth, alignment: .leading)
-            Text("Font + Size")
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("Ligatures")
                 .frame(width: Self.ligatureColumnWidth, alignment: .center)
@@ -352,53 +349,45 @@ extension AppearanceSettingsView {
         .frame(height: scriptRowHeight * 5)
     }
 
-    /// One script's row, under the three column titles: a sample of the script
-    /// drawn in its own face, the font's name and size, and the ligature switch.
+    /// One script's row, under the two column titles: a sample of the script
+    /// drawn in its own face, and the ligature switch.
     ///
     /// The sample stands in for an English script name. "Chinese (Han)" told a
     /// reader nothing the glyphs do not, and the sample says the one thing the
-    /// name could not: which face the script is actually being rendered in. The
-    /// name is still a hover away, on the row's tooltip, for anyone who cannot
-    /// read the sample.
+    /// name could not: which face the script is actually being rendered in.
     ///
-    /// Sample and name together are the font button — there is no separate one.
-    /// The panel carries both the family and the size, so the row's whole left
-    /// side is one target: you click the face you want to change.
+    /// The family and size are on the tooltip rather than in a column of their
+    /// own. A row's font is worth being able to check, but it is not worth a
+    /// third of the box's width on nine rows most people never set — and the
+    /// sample already shows the size, drawn at it.
     ///
-    /// The name is a size down from the pane's own controls, and grey until the
-    /// script is set. These are overrides to the Standard/Monospaced fonts
-    /// above, not nine more settings of the same rank; only the sample is drawn
-    /// full size, because its size is the setting.
+    /// The sample IS the font button; there is no separate one. Dimmed until
+    /// the script is set, so a row still says whether its face is a choice or
+    /// the fallback — which is the one thing the vanished column carried.
     @ViewBuilder
     private func scriptRow(_ script: FontCascadeScript) -> some View {
         let isSet = fonts.cascadeFonts[script] != nil
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Button { fonts.selectCascadeFont(script) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    AntialiasingText(script.sample)
-                        .plain()
-                        .antialiasDisabled(!fonts.antialias)
-                        .font(nsFont: fonts.previewFont(for: script))
-                        .alignment(.left)
-                        .clickThrough()
-                        .baselineAligned()
-                        .frame(width: Self.sampleColumnWidth)
-                    Text(fonts.cascadeSummary(for: script))
-                        .font(.caption)
-                        // Grey means "this is the fallback, not your choice" —
-                        // the name is worth showing either way, but only a set
-                        // script gets to look set.
-                        .foregroundStyle(isSet ? .primary : .secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                // Text draws no farther than its glyphs, so without this only
-                // the words are clickable, not the rest of the columns.
-                .contentShape(Rectangle())
+                AntialiasingText(script.sample)
+                    .plain()
+                    .antialiasDisabled(!fonts.antialias)
+                    .font(nsFont: fonts.previewFont(for: script))
+                    .alignment(.left)
+                    .clickThrough()
+                    .baselineAligned()
+                    .opacity(isSet ? 1 : 0.7)
+                    .frame(maxWidth: .infinity)
+                    // The field draws no farther than its glyphs, so without
+                    // this only the sample itself is clickable, not the rest of
+                    // the column it sits in.
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("\(script.label) — click to choose a font")
+            // Where the family and size went. Named even when unset — it is
+            // then the system fallback the editor will really use, which is
+            // worth being able to check.
+            .help("\(script.label) — \(fonts.cascadeSummary(for: script))")
             // Still the only way to un-set a script's font; the row has no
             // room for a permanent button. Named in the box's tooltip.
             .contextMenu {
