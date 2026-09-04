@@ -191,6 +191,7 @@ public final class FontCascadeResolver {
 
     /// script → multiplier of the run's point size (absent = 1.0).
     private let sizeRatios: [FontCascadeScript: Double]
+    private let ligatures: [FontCascadeScript: Bool]
 
     /// (script, point size, bold, italic) → resolved font (+ whether its bold
     /// had to be stroke-synthesized). One instance per theme application,
@@ -208,10 +209,12 @@ public final class FontCascadeResolver {
     /// nil when the cascade is empty — callers keep a nil resolver in that
     /// case, and the substitution pass is byte-identical to pre-cascade.
     public init?(cascade: [FontCascadeScript: String],
-                 sizeRatios: [FontCascadeScript: Double] = [:]) {
+                 sizeRatios: [FontCascadeScript: Double] = [:],
+                 ligatures: [FontCascadeScript: Bool] = [:]) {
         guard !cascade.isEmpty else { return nil }
         families = cascade
         self.sizeRatios = sizeRatios
+        self.ligatures = ligatures
     }
 
     /// The user's font for `script` at `base`'s size scaled by the script's
@@ -253,6 +256,9 @@ public final class FontCascadeResolver {
         // common bold-less CJK cascade choice). Signal that so the caller can
         // stroke-synthesize rather than render regular.
         let synthesizedBold = bold && !resolved.fontDescriptor.symbolicTraits.contains(.bold)
+        // Baked into the descriptor, like the body/monospace switches — the
+        // `.ligature` attribute is not reliably honored by the TextKit 2 path.
+        resolved = EditorTheme.applyingLigatures(ligatures[script] ?? true, to: resolved)
         let result = (resolved, synthesizedBold)
         cache[key] = result
         return result

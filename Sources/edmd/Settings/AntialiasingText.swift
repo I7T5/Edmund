@@ -61,6 +61,19 @@ private final class AntialiasingTextField: NSTextField {
         set { _ = newValue }
     }
 
+    /// The cell draws the title vertically CENTERED in this fixed-height field
+    /// (see `CenteringTextFieldCell`), which is not where AppKit's default
+    /// layout would put it. SwiftUI reads this value to line the field up with
+    /// the row's label under `.firstTextBaseline`, so report the baseline the
+    /// text is actually drawn on — otherwise the label sits off the preview's
+    /// baseline by however far the cell recentered it.
+    override var firstBaselineOffsetFromTop: CGFloat {
+        guard let font else { return super.firstBaselineOffsetFromTop }
+        let titleHeight = attributedStringValue.size().height
+        let top = ((bounds.height - titleHeight) / 2).rounded(.up)
+        return top + font.ascender
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         if antialiasDisabled {
             NSGraphicsContext.saveGraphicsState()
