@@ -182,10 +182,13 @@ struct AppearanceSettingsView: View {
     @ViewBuilder
     private func fontRow(summary: String, font: NSFont, antialias: Bool,
                          size: Binding<Double>, select: @escaping () -> Void) -> some View {
-        HStack(spacing: 8) {
+        // Baseline, not center: the label beside this row sits on the text
+        // drawn inside the field, not on the field's midpoint.
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             AntialiasingText(summary)
                 .antialiasDisabled(!antialias)
                 .font(nsFont: font)
+                .baselineAligned()
                 .frame(width: 240)
             Stepper("", value: size, in: 8...72, step: 1)
                 .labelsHidden()
@@ -278,9 +281,9 @@ extension AppearanceSettingsView {
                 .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 // Pull the label onto the box's first row of text.
                 .padding(.top, 5)
-            scriptFontList
+            scriptFontBox
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .help("Unset scripts use the system fallback.")
+                .help("Unset scripts use the system fallback. Right-click a font to reset it.")
         }
     }
 
@@ -289,55 +292,125 @@ extension AppearanceSettingsView {
     private var scriptBoxWidth: CGFloat { 380 }
     private var scriptRowHeight: CGFloat { 28 }
 
+    /// Column widths and the leading/trailing inset, shared by the header cells
+    /// and the rows beneath them so each title sits over its own column. Same
+    /// arrangement as the Key Bindings pane's hand-built header.
+    /// The sample column. Wide enough for the longest sample ("Ελληνικά") at
+    /// a body size a good deal larger than the default.
+    private static let sampleColumnWidth: CGFloat = 96
+    private static let ligatureColumnWidth: CGFloat = 62
+    private static let scriptRowInset: CGFloat = 6
+
+    /// A plain List still insets its row content by this much after
+    /// `listRowInsets` is set, so the header adds it to keep the column titles
+    /// above their values. Key Bindings' hand-built header carries the same
+    /// constant for the same reason.
+    private static let scriptListInset: CGFloat = 8
+
+    /// Header over the list. A hand-built one rather than a `Table`, for the
+    /// reason Key Bindings gives: `Table` draws a separator under every row and
+    /// offers no way to turn them off.
+    private var scriptFontBox: some View {
+        VStack(spacing: 0) {
+            scriptListHeader
+            Divider()
+            scriptFontList
+        }
+        .frame(width: scriptBoxWidth)
+        .settingsSurfaceBackground()
+        .border(.separator)
+    }
+
+    private var scriptListHeader: some View {
+        HStack(spacing: 8) {
+            Text("Script")
+                .frame(width: Self.sampleColumnWidth, alignment: .leading)
+            Text("Font + Size")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Ligatures")
+                .frame(width: Self.ligatureColumnWidth, alignment: .center)
+        }
+        .padding(.horizontal, Self.scriptRowInset + Self.scriptListInset)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(height: 20)
+    }
+
     private var scriptFontList: some View {
         List {
             ForEach(FontCascadeScript.allCases, id: \.self) { script in
                 scriptRow(script)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+                    .listRowInsets(EdgeInsets(top: 2, leading: Self.scriptRowInset,
+                                              bottom: 2, trailing: Self.scriptRowInset))
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .environment(\.defaultMinListRowHeight, scriptRowHeight)
         .contentMargins(.vertical, 0, for: .scrollContent)
-        .frame(width: scriptBoxWidth, height: scriptRowHeight * 5)
-        .settingsSurfaceBackground()
-        .border(.separator)
+        .frame(height: scriptRowHeight * 5)
     }
 
-    /// One script's row: name, the preview field (its text stays centered), the
-    /// font button, and the script's ligature switch.
+    /// One script's row, under the three column titles: a sample of the script
+    /// drawn in its own face, the font's name and size, and the ligature switch.
     ///
-    /// The font button replaces the old stepper + "Select…" pair: the panel
-    /// carries the size as well as the family, so the stepper was a second way
-    /// to say the same thing, and dropping both is what makes room for the
-    /// ligature checkbox inside the box.
+    /// The sample stands in for an English script name. "Chinese (Han)" told a
+    /// reader nothing the glyphs do not, and the sample says the one thing the
+    /// name could not: which face the script is actually being rendered in. The
+    /// name is still a hover away, on the row's tooltip, for anyone who cannot
+    /// read the sample.
+    ///
+    /// Sample and name together are the font button — there is no separate one.
+    /// The panel carries both the family and the size, so the row's whole left
+    /// side is one target: you click the face you want to change.
+    ///
+    /// The name is a size down from the pane's own controls, and grey until the
+    /// script is set. These are overrides to the Standard/Monospaced fonts
+    /// above, not nine more settings of the same rank; only the sample is drawn
+    /// full size, because its size is the setting.
     @ViewBuilder
     private func scriptRow(_ script: FontCascadeScript) -> some View {
-        HStack(spacing: 8) {
-            Text(script.label)
-                .frame(width: 108, alignment: .leading)
-            AntialiasingText(fonts.cascadeSummary(for: script))
-                .antialiasDisabled(!fonts.antialias)
-                .font(nsFont: fonts.previewFont(for: script))
-                .frame(maxWidth: .infinity)
+        let isSet = fonts.cascadeFonts[script] != nil
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Button { fonts.selectCascadeFont(script) } label: {
-                Image(systemName: "textformat")
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    AntialiasingText(script.sample)
+                        .plain()
+                        .antialiasDisabled(!fonts.antialias)
+                        .font(nsFont: fonts.previewFont(for: script))
+                        .alignment(.left)
+                        .clickThrough()
+                        .baselineAligned()
+                        .frame(width: Self.sampleColumnWidth)
+                    Text(fonts.cascadeSummary(for: script))
+                        .font(.caption)
+                        // Grey means "this is the fallback, not your choice" —
+                        // the name is worth showing either way, but only a set
+                        // script gets to look set.
+                        .foregroundStyle(isSet ? .primary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                // Text draws no farther than its glyphs, so without this only
+                // the words are clickable, not the rest of the columns.
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
-            .help("Choose a font for this script")
+            .buttonStyle(.plain)
+            .help("\(script.label) — click to choose a font")
             // Still the only way to un-set a script's font; the row has no
-            // room for a permanent button.
+            // room for a permanent button. Named in the box's tooltip.
             .contextMenu {
                 Button("Reset") { fonts.setCascadeFont(script, family: nil) }
-                    .disabled(fonts.cascadeFonts[script] == nil)
+                    .disabled(!isSet)
             }
             Toggle("", isOn: cascadeLigaturesBinding(for: script))
                 .labelsHidden()
-                .help("Ligatures")
+                .controlSize(.small)
+                .frame(width: Self.ligatureColumnWidth, alignment: .center)
                 // A ligature switch with no family drives nothing.
-                .disabled(fonts.cascadeFonts[script] == nil)
+                .disabled(!isSet)
         }
     }
 

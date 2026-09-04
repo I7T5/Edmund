@@ -106,7 +106,7 @@ struct FontSettingsCascadeTests {
         }
     }
 
-    @Test("Unset rows show the script's sample; set rows show family and points")
+    @Test("Every row names a family and a size — the fallback's when unset")
     func cascadeSummaryShape() throws {
         let snapshot = snapshotThemeDefaults()
         defer { restoreThemeDefaults(snapshot) }
@@ -114,15 +114,22 @@ struct FontSettingsCascadeTests {
         let fonts = FontSettings()
         // Explicitly clear first — a dev machine may have a real Han cascade.
         fonts.setCascadeFont(.han, family: nil)
-        #expect(fonts.cascadeSummary(for: .han) == FontCascadeScript.han.sample)
-
         fonts.setStandardSize(20)
+        // An unset script still names something: the system fallback the editor
+        // will really render it in, at the body size. The row greys it — the
+        // sample beside it is what the script itself looks like. (Which family
+        // that is depends on the host's installed fonts, so only the shape is
+        // pinned here.)
+        let unset = fonts.cascadeSummary(for: .han)
+        #expect(!unset.isEmpty)
+        #expect(unset.hasSuffix("  20"))
+        #expect(unset != FontCascadeScript.han.sample)
+
         fonts.setCascadeFont(.han, family: "Helvetica")
         fonts.setCascadePointSize(.han, points: 25)
         let summary = fonts.cascadeSummary(for: .han)
         // The display name's localization is the host's business; the row's
         // contract is that the family is named and the point size is shown…
-        #expect(summary != FontCascadeScript.han.sample)
         #expect(summary.hasSuffix("  25"))
         // …and that the field draws at the size it names.
         #expect(try #require(fonts.previewFont(for: .han)).pointSize == 25)

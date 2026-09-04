@@ -266,17 +266,15 @@ final class FontSettings: NSObject, ObservableObject {
             ... (standardFont.pointSize * Self.maxCascadeSizeRatio).rounded()
     }
 
-    /// The script row's field text, mirroring the Standard/Monospaced rows:
-    /// family and absolute point size ("Songti SC  17") when the script has a
-    /// font, else the script's sample glyph — a system-fallback family cannot
-    /// be named, so the sample stands in for it.
+    /// The script row's font name and size ("Songti SC  17"), mirroring the
+    /// Standard/Monospaced rows.
+    ///
+    /// Named even when the script is unset: the name is then the system
+    /// fallback the editor will really render it in, which is worth saying. The
+    /// row greys it, so naming it never reads as "configured" — and the sample
+    /// beside it is drawn in that same face either way.
     func cascadeSummary(for script: FontCascadeScript) -> String {
-        // Keyed off the stored family, not `previewFont`: an unset script still
-        // resolves a preview font (the system fallback it will really render
-        // in), and naming that face would claim the script is configured.
-        guard cascadeFonts[script] != nil, let font = previewFont(for: script) else {
-            return script.sample
-        }
+        guard let font = previewFont(for: script) else { return "" }
         return Self.summary(font)
     }
 
