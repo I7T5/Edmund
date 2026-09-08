@@ -35,8 +35,15 @@ final class SettingsTabViewController: NSTabViewController {
         super.viewDidLoad()
         tabStyle = .toolbar
 
+        // General first and Advanced last are fixed; between them the look of
+        // the thing comes before its behaviour, which is where CotEditor
+        // (General, Window, Appearance, Edit) and Mail (General, Accounts,
+        // Junk, Fonts & Colors, Viewing) both put it. Appearance precedes
+        // Themes: it holds the broad choices, Themes is the authoring pane.
         addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
-        addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
+        addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance",
+                symbol: "eyeglasses")
+        addPane(ThemesSettingsView(), label: "Themes", symbol: "paintbrush")
         addPane(EditSettingsView(), label: "Edit", symbol: "square.and.pencil")
         addPane(SyntaxSettingsView(), label: "Syntax", symbol: "chevron.left.forwardslash.chevron.right")
         addPane(KeyBindingsSettingsView(), label: "Key Bindings", symbol: "keyboard")
