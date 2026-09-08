@@ -61,12 +61,18 @@ struct AntialiasingText: NSViewRepresentable {
     /// The arithmetic mirrors `CenteringTextFieldCell.titleRect`, which is what
     /// actually draws the title: centered in the field, so the baseline lands an
     /// ascender below the top of that centered line box.
+    /// Measured out here, not in the closure: an alignment guide's closure is
+    /// `@Sendable`, so it cannot reach the view's own main-actor state (nor
+    /// carry an NSFont across). Two CGFloats are all the arithmetic needs.
     func baselineAligned() -> some View {
-        alignmentGuide(.firstTextBaseline) { dimensions in
-            guard let font else { return dimensions[.firstTextBaseline] }
-            let title = NSAttributedString(string: text, attributes: [.font: font])
-            let top = ((dimensions.height - title.size().height) / 2).rounded(.up)
-            return top + font.ascender
+        let metrics: (titleHeight: CGFloat, ascender: CGFloat)? = font.map {
+            (NSAttributedString(string: text, attributes: [.font: $0]).size().height,
+             $0.ascender)
+        }
+        return alignmentGuide(.firstTextBaseline) { dimensions in
+            guard let metrics else { return dimensions[.firstTextBaseline] }
+            let top = ((dimensions.height - metrics.titleHeight) / 2).rounded(.up)
+            return top + metrics.ascender
         }
     }
 
