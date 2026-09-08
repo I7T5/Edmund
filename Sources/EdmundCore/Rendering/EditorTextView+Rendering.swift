@@ -46,9 +46,21 @@ extension EditorTextView {
         isDarkAppearance ? Self.darkChromeGray : .tertiaryLabelColor
     }
 
-    /// Color for links and wikilinks — always the theme's accent blue, independent of
-    /// the system accent so links stay consistently blue across user accent preferences.
-    var linkColor: NSColor { theme.linkBlueColor }
+    /// Color for links and wikilinks — from the active general theme, independent
+    /// of the system accent so links stay consistently blue across user accent
+    /// preferences.
+    var linkColor: NSColor {
+        generalTheme.link.flatMap(NSColor.init(hex:)) ?? .systemBlue
+    }
+
+    /// Background for ==highlighted== spans, from the active general theme.
+    /// ponytail: a themed highlight is opaque, exactly as `selectionHighlightColor`
+    /// is and for the same reason — `NSColor(hex:)` takes 6 digits, no alpha. The
+    /// unthemed default keeps the translucent yellow it has always been.
+    var highlightColor: NSColor {
+        generalTheme.highlight.flatMap(NSColor.init(hex:))
+            ?? .systemYellow.withAlphaComponent(0.3)
+    }
 
     /// Monospaced font for tables.
     var tableFont: NSFont { renderingMonospaceFont }
@@ -272,7 +284,7 @@ extension EditorTextView {
 
             case .highlight:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: span.contentRange)
+                result.addAttribute(.backgroundColor, value: highlightColor, range: span.contentRange)
 
             case .heading(let level):
                 guard span.fullRange.upperBound <= result.length else { continue }

@@ -17,7 +17,7 @@ enum HTMLTheme {
     /// `--bg` variable and `ReadModeWebView.underPageBackgroundColor` so the
     /// webview's own background can't drift from the page it's about to show.
     private static func backgroundHex(dark: Bool) -> String {
-        dark ? "#292929" : "#ffffff"
+        ThemeStore.shared.general(dark: dark).background ?? (dark ? "#292929" : "#ffffff")
     }
 
     /// `NSColor` form of `backgroundHex`, for `WKWebView.underPageBackgroundColor`.
@@ -31,6 +31,7 @@ enum HTMLTheme {
                     callouts: [String: CalloutStyle],
                     dark: Bool,
                     maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {
+        let general = ThemeStore.shared.general(dark: dark)
         let bg = backgroundHex(dark: dark)
         // Body ink comes from the editor's own definition, not a second hex, so
         // Edit and Read mode can never drift apart again (EditorTheme
@@ -77,7 +78,8 @@ enum HTMLTheme {
           --body-size: \(trim(theme.fontSize))px;
           --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
           --mono-size: \(trim(theme.monospaceFontSize))px;
-          --accent: \(theme.linkBlueHex);
+          --accent: \(general.link ?? "#3366E6");
+          --highlight: \(general.highlight ?? "rgba(255, 200, 0, 0.3)");
           --code: \(theme.codeHex);
           --bg: \(bg);
           --fg: \(fg);
@@ -91,7 +93,7 @@ enum HTMLTheme {
           --table-border: \(dark ? darkRule : rule);
           --hr: \(dark ? "#4a4a4a" : rule);
           --quote-bar: \(dark ? darkChrome : rule);
-          --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
+          --check-fill: \(general.checkbox ?? resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
           --page-max-width: \(pageMaxWidth);
@@ -227,7 +229,7 @@ enum HTMLTheme {
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1.5px solid var(--hr); margin: 1.6em 0; }
-    mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
+    mark { background: var(--highlight); color: inherit; padding: 0 0.1em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);
            background: color-mix(in srgb, var(--accent) 14%, transparent);

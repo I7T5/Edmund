@@ -88,6 +88,13 @@ enum AppSettings {
         static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
         // "cm" / "in" override the locale default for the content-width control.
         static let contentWidthUnit = "settings.appearance.contentWidthUnit"
+        // Settings ▸ Themes. Which theme is active in each of the four slots —
+        // two kinds (editor chrome, code syntax) × two appearances. Values are
+        // ThemeStore theme names; an unknown one falls back to the built-in.
+        static let themeGeneralLight = "settings.themes.generalLight"
+        static let themeGeneralDark  = "settings.themes.generalDark"
+        static let themeSyntaxLight  = "settings.themes.syntaxLight"
+        static let themeSyntaxDark   = "settings.themes.syntaxDark"
         // Whether the "Fonts by script" section at the foot of the Appearance
         // pane is expanded (per-script cascade rows).
         static let fontsByScriptExpanded = "settings.appearance.fontsByScriptExpanded"
@@ -436,6 +443,93 @@ enum AppSettings {
         SyntaxDefinitionStore.shared.reload()
     }
 
+    // MARK: - Themes pane
+
+    /// The active theme name for a slot, or the built-in when unset. The
+    /// defaults live in `ThemeStore`, not here, so Core still works standalone
+    /// (Quick Look, tests) with no settings to read.
+    static func themeName(_ key: String, default fallback: String) -> String {
+        UserDefaults.standard.string(forKey: key) ?? fallback
+    }
+
+    /// The theme each slot holds when nothing has been chosen — and what
+    /// Restore Defaults puts back. Named rather than spelled out at each use:
+    /// the accessors below, the pane's `@AppStorage` defaults and the restore
+    /// all have to agree, and four copies of "one-dark" is three chances to
+    /// drift.
+    enum DefaultTheme {
+        static let generalLight = "classic-light"
+        static let generalDark = "classic-dark"
+        static let syntaxLight = "tomorrow"
+        static let syntaxDark = "one-dark"
+    }
+
+    static var generalThemeLight: String {
+        get { themeName(Key.themeGeneralLight, default: DefaultTheme.generalLight) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeGeneralLight) }
+    }
+    static var generalThemeDark: String {
+        get { themeName(Key.themeGeneralDark, default: DefaultTheme.generalDark) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeGeneralDark) }
+    }
+    static var syntaxThemeLight: String {
+        get { themeName(Key.themeSyntaxLight, default: DefaultTheme.syntaxLight) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeSyntaxLight) }
+    }
+    static var syntaxThemeDark: String {
+        get { themeName(Key.themeSyntaxDark, default: DefaultTheme.syntaxDark) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeSyntaxDark) }
+    }
+    /// The bundled editor themes were `default-light` / `default-dark` before
+    /// they were named Classic. A stored selection still pointing at an old
+    /// name resolves to nothing: the editor falls back and keeps drawing, but
+    /// the sidebar shows no theme as active, which reads as broken.
+    ///
+    /// Renaming a *bundled* theme's `name` is normally out of bounds for
+    /// exactly that reason — it is the value stored in settings — and this is
+    /// the migration that buys the exception.
+    static func migrateRenamedThemes() {
+        let renamed = ["default-light": "classic-light", "default-dark": "classic-dark"]
+        for key in [Key.themeGeneralLight, Key.themeGeneralDark] {
+            guard let stored = UserDefaults.standard.string(forKey: key),
+                  let now = renamed[stored] else { continue }
+            UserDefaults.standard.set(now, forKey: key)
+        }
+    }
+
+    /// Pushes the four active theme names into the shared store and reloads
+    /// bundled + user themes. Called at launch, and after the Themes pane
+    /// changes a selection or a theme file is added/removed.
+    ///
+    /// Reload first, then assign: `reload()` rebuilds the tables but leaves the
+    /// active names alone, so assigning after it means a name that only just
+    /// appeared on disk resolves on this pass rather than the next.
+    static func applyThemes() {
+        ThemeStore.shared.reload()
+        migrateRenamedThemes()
+        ThemeStore.shared.activeGeneralLight = generalThemeLight
+        ThemeStore.shared.activeGeneralDark = generalThemeDark
+        ThemeStore.shared.activeSyntaxLight = syntaxThemeLight
+        ThemeStore.shared.activeSyntaxDark = syntaxThemeDark
+    }
+
+    /// Re-renders every open document after a theme change. Colors are baked
+    /// into `NSAttributedString` attributes rather than resolved at draw time, so
+    /// a theme swap needs the same full restyle an appearance flip does.
+    @MainActor static func applyThemesToOpenDocuments() {
+        applyThemes()
+        for case let document as Document in NSDocumentController.shared.documents {
+            guard let editor = document.editor else { continue }
+            // Fonts before colors: a theme may override the font, and
+            // `applyChromeColors` bakes it into `typingAttributes`.
+            editor.resolveTheme()
+            editor.applyChromeColors()
+            editor.invisibles = invisiblesConfig
+            editor.recomposeAllDirty()
+            document.refreshReadView()
+        }
+    }
+
     // MARK: - Edit pane
 
     /// Whether document windows show their toolbar. Mirrored by the View menu's
@@ -544,14 +638,26 @@ enum AppSettings {
     static var invisibleControl: Bool { boolDefaultTrue(Key.invisibleControl) }
 
     /// The invisibles config pushed onto every editor, or nil when off. The mark
-    /// color is `tertiaryLabelColor`, which adapts to light/dark on its own.
-    static var invisiblesConfig: InvisiblesConfig? {
+    /// color comes from the active general theme; unthemed it is
+    /// `tertiaryLabelColor`, which adapts to light/dark on its own.
+    ///
+    /// The theme is resolved for the *app's* appearance rather than a specific
+    /// editor's, because this config is built once and pushed to every open
+    /// document. That is the same appearance every editor has — Edmund does not
+    /// mix light and dark windows.
+    @MainActor static var invisiblesConfig: InvisiblesConfig? {
         guard showInvisibles else { return nil }
+        // `NSApplication.shared`, not `NSApp`: the latter is an implicitly
+        // unwrapped global that is still nil until the app instance is first
+        // created, and this is reachable from early setup.
+        let appearance = NSApplication.shared.effectiveAppearance
+        let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let themed = ThemeStore.shared.general(dark: dark).invisibles.flatMap(NSColor.init(hex:))
         return InvisiblesConfig(
             lineEnding: invisibleLineEnding, tab: invisibleTab, space: invisibleSpace,
             otherWhitespace: invisibleWhitespace, otherControl: invisibleControl,
             // mode: invisiblesMode == .always ? .always : .uponSelection,
-            color: .tertiaryLabelColor)
+            color: themed ?? .tertiaryLabelColor)
     }
 
     /// Draw the vertical guides on nested list items — default off.

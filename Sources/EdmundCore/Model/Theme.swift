@@ -27,12 +27,13 @@ public enum ThemeAppearance: String, Codable, Sendable {
 
 // MARK: - General Theme
 
-/// The editor chrome colors, plus the two themes this one hands off to.
+/// The editor chrome colors, plus the code-syntax theme this one hands off to.
 ///
-/// `syntaxTheme` is the inheritance seam: a theme that leaves it `nil` takes
-/// whatever the Defaults row in Settings ▸ Themes says, which is how a newly
-/// created theme starts. It names a theme rather than restating its values, so
-/// adding a token color to that kind never widens this struct.
+/// `syntaxTheme` names a theme rather than restating its values, so adding a
+/// token color to that kind never widens this struct. A theme that leaves it
+/// `nil` falls back to whichever syntax theme is active for its appearance —
+/// the pane shows that resolved name, so the popup is never blank and the first
+/// choice writes a real one.
 public struct GeneralTheme: Codable, Sendable, Equatable {
     /// Unique id, matching the JSON file's stem. A light/dark pair sharing a
     /// display name still needs two distinct names ("anura", "anura-dark").

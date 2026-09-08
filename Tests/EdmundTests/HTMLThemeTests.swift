@@ -8,7 +8,7 @@ struct HTMLThemeTests {
 
     private func css(dark: Bool) -> String {
         let theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
-                                linkBlueHex: "#3366E6", codeHex: "#8A2425",
+                                codeHex: "#8A2425",
                                 lineSpacing: 4, paragraphSpacingBefore: 2)
         return HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: dark)
     }
@@ -35,7 +35,7 @@ struct HTMLThemeTests {
     @Test("Cascade scripts emit @font-face local() blocks and lead the body stack")
     func cascadeBlocks() {
         var theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
-                                linkBlueHex: "#3366E6", codeHex: "#8A2425",
+                                codeHex: "#8A2425",
                                 lineSpacing: 4, paragraphSpacingBefore: 2)
         theme.fontCascade = [.han: "Songti SC", .emoji: "Apple Color Emoji"]
         let out = HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: false)
@@ -53,7 +53,7 @@ struct HTMLThemeTests {
     @Test("A script size ratio becomes a size-adjust descriptor; 1.0 is omitted")
     func cascadeSizeAdjust() {
         var theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
-                                linkBlueHex: "#3366E6", codeHex: "#8A2425",
+                                codeHex: "#8A2425",
                                 lineSpacing: 4, paragraphSpacingBefore: 2)
         theme.fontCascade = [.han: "Songti SC", .emoji: "Apple Color Emoji"]
         theme.fontCascadeSizeRatios = [.han: 1.2]   // emoji stays at 1.0
@@ -92,7 +92,7 @@ struct HTMLThemeTests {
     @Test("Reading column max-width matches the editor's physical cap; uncapped by default")
     func pageMaxWidth() {
         let theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
-                                linkBlueHex: "#3366E6", codeHex: "#8A2425",
+                                codeHex: "#8A2425",
                                 lineSpacing: 4, paragraphSpacingBefore: 2)
         let capped = HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: false,
                                    maxContentWidthPoints: 340)

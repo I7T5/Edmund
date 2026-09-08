@@ -37,7 +37,6 @@ public struct EditorTheme: Equatable, Sendable {
 
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
-    public var linkBlueHex: String
     public var codeHex: String
     /// Color for LaTeX operators/commands (`_`, `^`, `\sum`, …) in raw math.
     public var mathOperatorHex: String
@@ -49,7 +48,7 @@ public struct EditorTheme: Equatable, Sendable {
     public var lineSpacing: CGFloat
     public var paragraphSpacingBefore: CGFloat
 
-    public init(fontName: String, fontSize: CGFloat, linkBlueHex: String, codeHex: String,
+    public init(fontName: String, fontSize: CGFloat, codeHex: String,
                 lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat,
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
@@ -58,7 +57,6 @@ public struct EditorTheme: Equatable, Sendable {
                 fontCascadeSizeRatios: [FontCascadeScript: Double] = [:]) {
         self.fontName = fontName
         self.fontSize = fontSize
-        self.linkBlueHex = linkBlueHex
         self.codeHex = codeHex
         self.lineSpacing = lineSpacing
         self.paragraphSpacingBefore = paragraphSpacingBefore
@@ -78,7 +76,6 @@ public struct EditorTheme: Equatable, Sendable {
     public static let `default` = EditorTheme(
         fontName: "Iowan Old Style",
         fontSize: 16,
-        linkBlueHex: "#3366E6",
         codeHex: "#8A2425",
         lineSpacing: 4,
         paragraphSpacingBefore: 2
@@ -151,9 +148,16 @@ public struct EditorTheme: Equatable, Sendable {
     /// system costs nothing. Dark mode is the exception, and it predates this:
     /// `textColor` is pure white there, which glares against the `#292929` page,
     /// so both modes use Read mode's long-standing `#e6e6e6` instead.
+    /// The active general theme's `text` wins when it sets one; the values below
+    /// are what the bundled Default themes fall back to. Kept as the single
+    /// definition so Edit mode, Read mode's `--fg`, and the math bitmaps cannot
+    /// drift apart — every one of them routes through here.
     @MainActor public static func bodyTextColor(dark: Bool) -> NSColor {
-        dark ? NSColor(srgbRed: 230 / 255, green: 230 / 255, blue: 230 / 255, alpha: 1)
-             : .textColor
+        if let themed = ThemeStore.shared.general(dark: dark).text.flatMap(NSColor.init(hex:)) {
+            return themed
+        }
+        return dark ? NSColor(srgbRed: 230 / 255, green: 230 / 255, blue: 230 / 255, alpha: 1)
+                    : .textColor
     }
 
     /// `bodyTextColor(dark:)` resolved against that appearance rather than
@@ -167,10 +171,6 @@ public struct EditorTheme: Equatable, Sendable {
             color = color.usingColorSpace(.deviceRGB) ?? color
         }
         return color
-    }
-
-    @MainActor public var linkBlueColor: NSColor {
-        NSColor(hex: linkBlueHex) ?? .systemBlue
     }
 
     @MainActor public var codeColor: NSColor {
@@ -195,7 +195,6 @@ public struct EditorTheme: Equatable, Sendable {
         static let standardLigatures = "EditorStandardLigatures"
         static let monospaceLigatures = "EditorMonospaceLigatures"
         static let antialias = "EditorAntialias"
-        static let linkBlueHex = "EditorLinkBlueHex"
         static let codeHex = "EditorCodeHex"
         static let mathOperatorHex = "EditorMathOperatorHex"
         static let mathNumberHex = "EditorMathNumberHex"
@@ -214,10 +213,6 @@ public struct EditorTheme: Equatable, Sendable {
             let v = CGFloat(d.float(forKey: Keys.fontSize))
             return v > 0 ? v : def.fontSize
         }()
-        // The accent color is not user-customizable; always use the default so a
-        // stale persisted value (e.g. left over from the removed in-app accent
-        // picker) can't leak in and recolor links.
-        let linkBlueHex = def.linkBlueHex
         let monospaceFontName = d.string(forKey: Keys.monospaceFontName) ?? def.monospaceFontName
         let monospaceFontSize: CGFloat = {
             let v = CGFloat(d.float(forKey: Keys.monospaceFontSize))
@@ -269,7 +264,6 @@ public struct EditorTheme: Equatable, Sendable {
         return EditorTheme(
             fontName: fontName,
             fontSize: fontSize,
-            linkBlueHex: linkBlueHex,
             codeHex: codeHex,
             lineSpacing: lineSpacing,
             paragraphSpacingBefore: paragraphSpacingBefore,
@@ -294,7 +288,6 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(standardLigatures, forKey: Keys.standardLigatures)
         d.set(monospaceLigatures, forKey: Keys.monospaceLigatures)
         d.set(antialias, forKey: Keys.antialias)
-        d.set(linkBlueHex, forKey: Keys.linkBlueHex)
         d.set(codeHex, forKey: Keys.codeHex)
         d.set(mathOperatorHex, forKey: Keys.mathOperatorHex)
         d.set(mathNumberHex, forKey: Keys.mathNumberHex)
