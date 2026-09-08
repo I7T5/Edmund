@@ -108,6 +108,10 @@ public class EditorTextView: NSTextView {
     /// Coalesces the didChangeText-bypass check scheduled from
     /// shouldChangeText (see EditorTextView+EditFlow).
     var bypassedEditCheckScheduled = false
+    /// Image files dropped on an untitled document, held while the Save sheet
+    /// runs (see EditorTextView+ImageDrop). Only one sheet can be up at a time,
+    /// so a single slot is enough.
+    var pendingDroppedImages: [URL] = []
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0
@@ -536,6 +540,17 @@ public class EditorTextView: NSTextView {
 
         // Vend decoration-drawing layout fragments (TextKit 2).
         textLayoutManager?.delegate = self
+
+        // Register the dragged types from our overridden `acceptableDragTypes`
+        // (see EditorTextView+ImageDrop), so image files can be dropped in.
+        // Explicitly, not via `updateDragTypeRegistration()`: that one is a
+        // no-op this early (measured — `registeredDraggedTypes` stays empty),
+        // and the drop would then only start working once something toggled
+        // `isEditable`. AppKit does re-register on its own when isEditable
+        // flips (the viewMode setter does that), and it reads the same
+        // overridden `acceptableDragTypes`, so this registration survives
+        // edit/read mode switches.
+        registerForDraggedTypes(acceptableDragTypes)
 
         #if DEBUG
         // TextKit 1 fallback is silent and permanent: it happens when any
