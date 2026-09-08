@@ -373,11 +373,33 @@ Notable subsystems:
 - `AppSettings` (`edmd/Settings`) = UserDefaults keys + typed accessors.
   SwiftUI panes use `@AppStorage`. Live changes broadcast to every open
   `Document.editor` (the font/line-height/content-width `applyTo…` helpers).
-- **Seven panes**, built by `SettingsWindowController.addPane`: General,
-  Appearance, Edit, Syntax, Key Bindings, Extensions, Advanced. Keys are
+- **Eight panes**, built by `SettingsWindowController.addPane`: General,
+  Appearance, Themes, Edit, Syntax, Key Bindings, Extensions, Advanced. Keys are
   namespaced to match (`settings.<pane>.<name>`), so the key tells you which
   pane owns it. There is no "Markdown" pane — the Markdown feature toggles
-  (§6) live under `settings.syntax.*`. The per-script font cascade is NOT a
+  (§6) live under `settings.syntax.*`.
+- **Appearance and Themes are separate on purpose.** Appearance owns typography
+  and the broad choices (light/dark, the measure, both faces, line height, the
+  per-script cascade); Themes owns color, and is the authoring pane — it makes
+  and edits themes. Fonts were briefly a third *theme kind*, named by an editor
+  theme; that added a third noun with an assignment between it and the others,
+  and it let the light↔dark switch change the reader's typeface. A writing app's
+  font is chosen once and kept, so it is a setting, and a theme is a color
+  scheme. Typography keys therefore keep their old `Editor*` names
+  (`EditorFontName`, `EditorLineSpacing`, …) rather than moving to a
+  `settings.font.*` namespace: they are the shipped keys, and renaming them
+  would strand every existing install.
+- **Themes are JSON, loaded by `ThemeStore`** (§`Sources/EdmundCore/Model/`).
+  Two kinds — `GeneralTheme` (editor chrome) and `SyntaxTheme` (code tokens) —
+  each declaring the appearance it is legible on; the app holds one active theme
+  per kind per appearance and swaps on light↔dark. A file's stem is the theme's
+  `name` and the value stored in settings, so renaming touches `displayName`
+  only. Bundled themes load first and a user file of the same name shadows one,
+  which is what lets a shipped theme be edited without being replaced and
+  restored by deleting the shadow. A `nil` color means "use the platform default
+  for this role" and is resolved at the call site, beside the value it falls
+  back to — not the same as missing data, because a semantic color like
+  `NSColor.textColor` tracks Increase Contrast and a hex cannot. The per-script font cascade is NOT a
   pane: it is a collapsed "Fonts by script" section at the foot of Appearance
   (`EditorFontCascade` = `[script: family]` dict, `EditorFontCascadeSizeRatios`
   = `[script: ratio]` — ratios of the body size, so zoom and body-size changes
