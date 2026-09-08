@@ -93,7 +93,11 @@ final class SettingsTabViewController: NSTabViewController {
             context.duration = window.animationResizeTime(frame)
             window.setFrame(frame, display: true)
         } completionHandler: { [weak self] in
-            self?.view.isHidden = false
+            // AppKit runs this on the main thread but types it as a plain
+            // `@Sendable` closure, so the isolation has to be asserted rather
+            // than hopped to — a hop would land a frame later and flash the
+            // pane back in after the resize had already finished.
+            MainActor.assumeIsolated { self?.view.isHidden = false }
         }
     }
 }
