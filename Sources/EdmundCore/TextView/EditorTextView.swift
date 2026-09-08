@@ -246,6 +246,10 @@ public class EditorTextView: NSTextView {
     /// Dedupe flag for `scheduleOverscrollUpdate`.
     var overscrollUpdateScheduled = false
 
+    /// Coalesces table restyling outside AppKit's resize/layout pass.
+    var tableWidthUpdateScheduled = false
+    var lastStyledTableWidth: CGFloat?
+
     /// Blank space reserved above the first line by typewriter mode (half the
     /// viewport) and below the last line (half the viewport, always). Applied
     /// through `textContainerInset` + `textContainerOrigin` — see
