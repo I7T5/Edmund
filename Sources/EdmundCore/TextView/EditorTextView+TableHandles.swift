@@ -116,7 +116,7 @@ extension EditorTextView {
         // trusted to record it: it runs before the restyle a click triggers,
         // and a grid that is briefly unavailable makes it record nothing at
         // all — after which the pill it forgot outlives its own move.
-        lastTableHandleBands = handles.map { handleHitBox($0.rect) }
+        lastTableHandleBands = handles.map { handleHitBox($0) }
         for handle in handles where handle.rect.intersects(dirty) {
             let hovered = handle == hoveredTableHandle
             // Space, not a border, per the editor's chrome idiom — but a handle
@@ -417,6 +417,32 @@ extension EditorTextView {
             .allSatisfy { $0 == " " || $0 == "|" }
     }
 
+    /// Where a caret that has come to rest on a table's hidden pipe should go
+    /// instead, or nil when it is resting somewhere legitimate.
+    ///
+    /// A pipe is drawn clear and at a hidden font, and it carries half of its
+    /// column's padding as kern — so a caret sitting on one appears to float in
+    /// the very middle of the cell's blank space, and typing there lands
+    /// outside any cell's content. No caret should ever rest there, whatever
+    /// put it there: a click, an arrow, or a selection AppKit fixed up after an
+    /// edit. Which way it was heading decides where it goes — backwards to the
+    /// text it just left, forwards to the text it was reaching for — so this
+    /// never traps an arrow key mid-row.
+    func tableCellCaretRest(_ offset: Int, from previous: Int) -> Int? {
+        guard !rawTableEditing, offset >= 0 else { return nil }
+        let ns = rawSource as NSString
+        guard offset < ns.length, ns.character(at: offset) == 0x7C,
+              !(offset > 0 && ns.character(at: offset - 1) == 0x5C),
+              tableCell(atRawOffset: offset) != nil else { return nil }
+        if previous <= offset, let next = tableCell(atRawOffset: offset) {
+            // Forwards: the first character of the cell this pipe opens, one
+            // space in, which is where `selectCellText` starts a cell too.
+            return min(next.contentRange.location + 1, next.contentRange.upperBound)
+        }
+        // Backwards: the end of the text in the cell this pipe closes.
+        return tableCellCaretSnap(offset)
+    }
+
     /// Selects every cell between two positions.
     func selectTableCells(blockIndex: Int,
                           from: (row: Int, column: Int), to: (row: Int, column: Int)) {
@@ -449,21 +475,35 @@ extension EditorTextView {
     // MARK: - Pointer
 
     /// A generous hit box: the pill is small chrome in empty space, so the slack
-    /// costs nothing.
-    func handleHitBox(_ rect: NSRect) -> NSRect { rect.insetBy(dx: -6, dy: -6) }
+    /// costs nothing — except on the side facing the table, where it would
+    /// cost a click. The pill sits `tableHandleGap` clear of the table, so
+    /// slack wider than the gap reaches into the first column (or the header
+    /// row), and a click a couple of points inside a narrow column would open
+    /// the pill's menu instead of putting the caret in the cell it landed in.
+    func handleHitBox(_ handle: TableHandle) -> NSRect {
+        var box = handle.rect.insetBy(dx: -6, dy: -6)
+        switch handle.axis {
+        case .row:
+            box.size.width = handle.rect.maxX + Self.tableHandleGap - box.minX
+        case .column:
+            // Flipped coordinates: the table is below the column pill.
+            box.size.height = handle.rect.maxY + Self.tableHandleGap - box.minY
+        }
+        return box
+    }
 
     func tableHandleHit(at event: NSEvent) -> TableHandle? {
         let point = convert(event.locationInWindow, from: nil)
-        return tableHandles().first { handleHitBox($0.rect).contains(point) }
+        return tableHandles().first { handleHitBox($0).contains(point) }
     }
 
     /// Recomputes which handle the pointer is over. Called from `mouseMoved`
     /// beside the `</>` button's own hover tracking.
     func updateTableHandleHover(at point: NSPoint) {
-        let hit = tableHandles().first { handleHitBox($0.rect).contains(point) }
+        let hit = tableHandles().first { handleHitBox($0).contains(point) }
         guard hit != hoveredTableHandle else { return }
-        if let old = hoveredTableHandle { setNeedsDisplay(handleHitBox(old.rect)) }
-        if let hit { setNeedsDisplay(handleHitBox(hit.rect)) }
+        if let old = hoveredTableHandle { setNeedsDisplay(handleHitBox(old)) }
+        if let hit { setNeedsDisplay(handleHitBox(hit)) }
         hoveredTableHandle = hit
     }
 
@@ -475,7 +515,7 @@ extension EditorTextView {
     /// `lastTableHandleBands`, because only a draw knows what actually reached
     /// the screen.
     func invalidateTableHandles() {
-        for band in tableHandles().map({ handleHitBox($0.rect) }) + lastTableHandleBands {
+        for band in tableHandles().map({ handleHitBox($0) }) + lastTableHandleBands {
             setNeedsDisplay(band)
         }
     }
@@ -718,12 +758,13 @@ extension EditorTextView {
     /// clicked in, or one that stopped short of the cell's text when the click
     /// landed past that text. One run answers "does clicking into a cell put
     /// the caret where it should" for the whole document.
-    public func debugClickAudit() -> String {
+    public func debugClickAudit(rows wanted: ClosedRange<Int>? = nil) -> String {
         var lines: [String] = []
         var checked = 0
         for (index, block) in blocks.enumerated() where block.kind == .table {
             guard let grid = tableGrid(blockIndex: index) else { continue }
-            for row in grid.rows.indices where row != 1 {
+            for row in grid.rows.indices where row != 1
+                && (wanted?.contains(row) ?? true) {
                 for column in 0..<grid.columns {
                     guard let box = grid.cellRect(row: row, column: column),
                           let cell = tableCell(blockIndex: index, row: row, column: column)
@@ -733,13 +774,14 @@ extension EditorTextView {
                     let textEnd = caretRect(target)
                     for fraction in [0.04, 0.25, 0.5, 0.75, 0.96] as [CGFloat] {
                         let point = NSPoint(x: box.minX + box.width * fraction, y: box.midY)
+
                         // Only meaningful on the text's own visual line: a
                         // wrapped cell's earlier lines are all "past" the last
                         // line's caret in x while being ordinary text.
                         let onTextLine = point.y >= textEnd.minY && point.y <= textEnd.maxY
                         let pastText = onTextLine && point.x > textEnd.maxX + 1
                         for clicks in [1, 2] {
-                            click(at: point, clicks: clicks)
+                            guard click(at: point, clicks: clicks) else { continue }
                             checked += 1
                             let selection = selectedRange()
                             let got = selection.location
@@ -778,8 +820,17 @@ extension EditorTextView {
     /// first so `super.mouseDown`'s own tracking loop finds it, and the whole
     /// gesture then runs exactly as it would for a user. CGEvent clicks do not
     /// land in the harness environment, which is why this exists.
-    private func click(at point: NSPoint, clicks: Int = 1) {
-        guard let window, let down = debugMouseEvent(at: point, clicks: clicks) else { return }
+    @discardableResult
+    private func click(at point: NSPoint, clicks: Int = 1) -> Bool {
+        guard let window, let down = debugMouseEvent(at: point, clicks: clicks) else { return false }
+        // A pill's hit box is generous enough to reach a couple of points into
+        // a narrow first column, and its menu runs its own event loop — which
+        // would hang the audit rather than fail it. Checked here rather than
+        // once per point: the pills follow the caret, so the click before this
+        // one can have moved a pill onto the very point about to be clicked.
+        if tableHandleHit(at: down) != nil { return false }
+        if tableCellSelectionAnchor(at: point) != nil { return false }
+
         let up = NSEvent.mouseEvent(with: .leftMouseUp, location: convert(point, to: nil),
                                     modifierFlags: [],
                                     timestamp: ProcessInfo.processInfo.systemUptime,
@@ -787,6 +838,11 @@ extension EditorTextView {
                                     eventNumber: 0, clickCount: clicks, pressure: 0)
         if let up { window.postEvent(up, atStart: false) }
         mouseDown(with: down)
+        // If the tracking loop did not consume the up, it would be picked up by
+        // the next gesture's loop — which is how a stale up carrying another
+        // click count turns the next single click into a word selection.
+        NSApp.discardEvents(matching: .any, before: nil)
+        return true
     }
 
     /// Every table row's decoration flags beside the fragment they are drawn

@@ -423,11 +423,27 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     report("repro tablerules\n" + editor.debugTableRules())
                 }
+            case "resizewindow":
+                // "resizewindow w,h" — the window geometry is part of the
+                // repro: column widths, and therefore the pad each cell
+                // carries, come out of the content width.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count == 2, let window = editor.window else {
+                        report("repro resizewindow: want w,h"); return
+                    }
+                    var frame = window.frame
+                    frame.size = NSSize(width: n[0], height: n[1])
+                    window.setFrame(frame, display: true)
+                    report("repro resizewindow \(window.frame.size)")
+                }
             case "clickaudit":
                 // Clicks every cell of every table and reports what came out
                 // wrong. See `debugClickAudit`.
                 schedule(after: delay) { editor in
-                    report("repro clickaudit " + editor.debugClickAudit())
+                    let n = arg.split(separator: ",").compactMap { Int($0) }
+                    let rows = n.count == 2 ? n[0]...n[1] : nil
+                    report("repro clickaudit " + editor.debugClickAudit(rows: rows))
                 }
             case "clickprobe":
                 // "clickprobe x y" — a real click at a view point, with a

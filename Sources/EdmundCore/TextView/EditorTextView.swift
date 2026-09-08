@@ -423,6 +423,13 @@ public class EditorTextView: NSTextView {
     /// reverting to a character selection. Reset at every `mouseDown`.
     var tableDragCrossedCells = false
 
+    /// Where the click now in flight landed, in view coordinates, for as long
+    /// as `mouseDown` is running. It is what lets `setSelectedRanges` keep a
+    /// caret in the cell the user aimed at: only the point knows which cell
+    /// that was, and by then the point is long gone from the call stack.
+    /// See `tableCellCaretSnap(at:offset:)`.
+    var tableClickPoint: NSPoint?
+
     /// The pointer-tracking area behind `hoveredTableBlock`.
     var tableHoverTrackingArea: NSTrackingArea?
 
@@ -760,9 +767,16 @@ public class EditorTextView: NSTextView {
         let wrappedCellCaret = wrappedCellCharIndex(at: event)
         // A fresh gesture starts inside whatever cell it lands in.
         tableDragCrossedCells = false
+        // Held for the whole gesture so that every selection AppKit installs —
+        // the first one included — is corrected as it goes in rather than
+        // afterwards. `super.mouseDown` does not return until the mouse comes
+        // up, and it paints while it tracks, so a correction made after it
+        // returns is a correction the user watches happen.
+        tableClickPoint = convert(event.locationInWindow, from: nil)
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
+        tableClickPoint = nil
         // Only a plain click: a drag or a double-click made a real selection,
         // and honouring those would collapse it.
         if let wrappedCellCaret, selectedRange().length == 0 {
@@ -814,6 +828,22 @@ public class EditorTextView: NSTextView {
         // which cells a Copy would take. It is installed as one range per row —
         // see EditorTextView+TableHandles for why that matters.
         var ranges = ranges
+        // A caret placed by the click in flight belongs to the cell that click
+        // landed in. Corrected here, where the selection is installed, so no
+        // other placement is ever painted — and so that it holds for every path
+        // that sets a selection during the gesture, not just the one that
+        // returns through `mouseDown`.
+        if let point = tableClickPoint, ranges.count == 1,
+           let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
+           let snapped = tableCellCaretSnap(at: point, offset: caret.location) {
+            ranges = [NSValue(range: NSRange(location: snapped, length: 0))]
+        }
+        // And wherever it came from, a caret never rests on a hidden pipe.
+        // See `tableCellCaretRest`.
+        if ranges.count == 1, let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
+           let moved = tableCellCaretRest(caret.location, from: selectedRange().location) {
+            ranges = [NSValue(range: NSRange(location: moved, length: 0))]
+        }
         if ranges.count == 1, let first = ranges[0].rangeValue as NSRange? {
             if let block = tableCellBlock(for: first) {
                 tableDragCrossedCells = true

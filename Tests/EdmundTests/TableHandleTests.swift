@@ -268,7 +268,7 @@ struct TableHandleTests {
     func drawnHandleBandsSurviveAnInvalidation() {
         let editor = loadEditor(doc)
         caret(editor, to: "a")
-        let drawn = editor.tableHandles().map { editor.handleHitBox($0.rect) }
+        let drawn = editor.tableHandles().map { editor.handleHitBox($0) }
         #expect(!drawn.isEmpty)
         drawOffscreen(editor)
         #expect(editor.lastTableHandleBands == drawn)
@@ -327,6 +327,67 @@ struct TableHandleTests {
         // A click on the text itself still leaves AppKit's own answer alone.
         let onText = NSPoint(x: box.minX + 6, y: box.midY)
         #expect(editor.tableCellCaretSnap(at: onText, offset: afterText) == nil)
+    }
+
+    /// The correction has to happen as the selection is installed, not after
+    /// the gesture. `super.mouseDown` does not return until the mouse comes up
+    /// and it paints while it tracks, so a caret corrected afterwards is one
+    /// the user watches sit in the wrong place and then jump.
+    @Test("A click's caret is corrected before it is ever installed")
+    func clickCaretIsCorrectedInFlight() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        caret(editor, to: "c21")
+        let ns = editor.rawSource as NSString
+        let afterText = ns.range(of: "c21").upperBound
+        let index = tableIndex(editor)
+        guard let grid = editor.tableGrid(blockIndex: index),
+              let box = grid.cellRect(row: 2, column: 0),
+              let cell = editor.tableCell(blockIndex: index, row: 2, column: 0) else {
+            Issue.record("no grid")
+            return
+        }
+        editor.tableClickPoint = NSPoint(x: box.maxX - 2, y: box.midY)
+        defer { editor.tableClickPoint = nil }
+        // Every offset AppKit's own hit test could hand back for that click.
+        for stray in [cell.contentRange.upperBound, cell.contentRange.upperBound + 1] {
+            editor.setSelectedRange(NSRange(location: stray, length: 0))
+            #expect(editor.selectedRange() == NSRange(location: afterText, length: 0))
+        }
+    }
+
+    /// The pipe is invisible and carries half its column's padding as kern, so
+    /// a caret resting on one appears to float in the middle of the cell's
+    /// blank space. Whatever put it there, it does not stay.
+    @Test("A caret never rests on a hidden pipe")
+    func caretNeverRestsOnAPipe() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        caret(editor, to: "c21")
+        let ns = editor.rawSource as NSString
+        let afterText = ns.range(of: "c21").upperBound
+        guard let cell = editor.tableCell(atRawOffset: ns.range(of: "c21").location) else {
+            Issue.record("no cell")
+            return
+        }
+        let pipe = cell.contentRange.upperBound
+        #expect(ns.substring(with: NSRange(location: pipe, length: 1)) == "|")
+
+        // Reached from the left: forward, to the text of the cell it opens.
+        editor.setSelectedRange(NSRange(location: afterText, length: 0))
+        editor.setSelectedRange(NSRange(location: pipe, length: 0))
+        let forward = editor.selectedRange().location
+        #expect(forward != pipe)
+        #expect(forward > pipe)
+
+        // Reached from the right: back to the text of the cell it closes.
+        editor.setSelectedRange(NSRange(location: pipe + 2, length: 0))
+        editor.setSelectedRange(NSRange(location: pipe, length: 0))
+        #expect(editor.selectedRange().location == afterText)
+
+        // A pipe outside a rendered table is an ordinary character.
+        let plain = loadEditor("a | b\n")
+        let bar = (plain.rawSource as NSString).range(of: "|").location
+        plain.setSelectedRange(NSRange(location: bar, length: 0))
+        #expect(plain.selectedRange().location == bar)
     }
 
     /// A double-click has to find a word. In a cell's padding there is none —
