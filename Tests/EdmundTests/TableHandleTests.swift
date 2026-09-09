@@ -394,7 +394,11 @@ struct TableHandleTests {
     /// what the `</>` button does and shows the table's markdown.
     @Test("A double-click on a cell's empty space shows the markdown")
     func padDoubleClickShowsTheMarkdown() {
-        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        // A wide column, so there is real empty space beside a short cell —
+        // the case this is for. In a column the width of its own text there is
+        // nowhere to put the gesture.
+        let editor = loadEditor("Intro.\n\n| a rather wide heading | c2 |\n"
+            + "| --- | --- |\n| c21 | b |\n")
         caret(editor, to: "c21")
         let ns = editor.rawSource as NSString
         let index = tableIndex(editor)
@@ -404,20 +408,18 @@ struct TableHandleTests {
             Issue.record("no grid")
             return
         }
-        // What a double-click out in the padding catches: the closing pipe.
-        let pad = NSPoint(x: box.maxX - 2, y: box.midY)
-        let pipe = NSRange(location: cell.contentRange.upperBound, length: 1)
-        #expect(editor.tableRawEditingDoubleClick(pipe, at: pad) == index)
+        // Out in the padding, anywhere past the cell's text.
+        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.maxX - 2, y: box.midY)) == index)
+        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.midX, y: box.midY)) == index)
 
-        // A double-click that found a word is an ordinary one.
-        let onText = NSPoint(x: box.minX + 6, y: box.midY)
-        #expect(editor.tableRawEditingDoubleClick(ns.range(of: "c21"), at: onText) == nil)
+        // On the text it is an ordinary double-click, whatever it selects.
+        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.minX + 6, y: box.midY)) == nil)
 
         // And with the markdown already showing there is no grid to hit, so
         // the gesture cannot toggle it back — the button does that.
         editor.activateRawTableEditing(blockIndex: index)
         #expect(editor.rawTableEditing)
-        #expect(editor.tableRawEditingDoubleClick(pipe, at: pad) == nil)
+        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.maxX - 2, y: box.midY)) == nil)
     }
 
     /// The regression the resting rule introduced: it read a direction into a

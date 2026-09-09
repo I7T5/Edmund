@@ -788,20 +788,13 @@ public class EditorTextView: NSTextView {
         if let wrappedCellCaret, selectedRange().length == 0 {
             setSelectedRange(NSRange(location: wrappedCellCaret, length: 0))
         }
-        // A click that landed out in a cell's pad comes back to the text, and
-        // one that AppKit carried into the neighbouring cell comes back to the
-        // cell it was aimed at. See `tableCellCaretSnap(at:offset:)`.
-        //
-        // A double-click counts too when what it caught was pad rather than
-        // text — see `tableCellSelectionIsJunk`. Only a double-click: a drag
-        // across cells is also a selection this view did not choose, but that
-        // one is deliberate and means every cell it covers.
         let clickPoint = convert(event.locationInWindow, from: nil)
         let clickSelection = selectedRange()
-        // A double-click on a cell's empty space shows the table's markdown.
-        // See `tableRawEditingDoubleClick`.
-        if event.clickCount == 2,
-           let block = tableRawEditingDoubleClick(clickSelection, at: clickPoint) {
+        // A double-click on a cell's empty space shows the table's markdown —
+        // see `tableCellEmptySpace`. A single click out there comes back to the
+        // cell's text instead, as does one AppKit carried into the neighbouring
+        // cell — see `tableCellCaretSnap(at:offset:)`.
+        if event.clickCount == 2, let block = tableCellEmptySpace(at: clickPoint) {
             activateRawTableEditing(blockIndex: block)
         } else if clickSelection.length == 0,
                   let snapped = tableCellCaretSnap(at: clickPoint,

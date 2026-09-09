@@ -459,19 +459,37 @@ extension EditorTextView {
     /// The table a double-click should show the markdown of, or nil when the
     /// click has an ordinary meaning.
     ///
-    /// A double-click on a cell's empty space has no word to take — what it
-    /// catches is the column's padding or the row's hidden pipe. It shows the
-    /// table's source instead, which is what the `</>` button beside it does:
-    /// double-clicking blank space to get at what is underneath is the same
-    /// idea, reached the same way.
+    /// Decided from where the pointer is, not from what the double-click
+    /// managed to select. There is nothing out in a cell's padding to select —
+    /// and by the time the gesture is over the caret has already been pulled
+    /// back to the cell's text, so asking what came back says "a caret on the
+    /// text" for a click that was nowhere near it.
     ///
     /// One direction only. A table already showing its markdown has no grid, so
-    /// no point resolves to a cell and this never fires — the button is what
-    /// brings it back.
-    func tableRawEditingDoubleClick(_ selection: NSRange, at point: NSPoint) -> Int? {
-        guard tableCellSelectionIsJunk(selection, at: point),
-              let cell = tableCell(at: point) else { return nil }
-        return cell.blockIndex
+    /// no point resolves to a cell and this never fires — the `</>` button is
+    /// what brings it back.
+    func tableCellEmptySpace(at point: NSPoint) -> Int? {
+        guard !rawTableEditing, let cell = tableCell(at: point),
+              let tlm = textLayoutManager else { return nil }
+        let ns = rawSource as NSString
+        var start = cell.contentRange.location
+        var end = cell.contentRange.upperBound
+        while end > start, ns.character(at: end - 1) == 0x20 { end -= 1 }
+        while start < end, ns.character(at: start) == 0x20 { start += 1 }
+        // A cell with no text at all is empty space from edge to edge.
+        guard end > start,
+              let from = tlm.location(tlm.documentRange.location, offsetBy: start),
+              let to = tlm.location(tlm.documentRange.location, offsetBy: end),
+              let range = NSTextRange(location: from, end: to) else { return cell.blockIndex }
+        let origin = textContainerOrigin
+        var box: NSRect?
+        tlm.enumerateTextSegments(in: range, type: .standard, options: []) { _, frame, _, _ in
+            let rect = frame.offsetBy(dx: origin.x, dy: origin.y)
+            box = box.map { $0.union(rect) } ?? rect
+            return true
+        }
+        guard let box else { return cell.blockIndex }
+        return point.x > box.maxX + 1 ? cell.blockIndex : nil
     }
 
     /// A selection trimmed to the text of the cell it lies in, or nil when it
@@ -856,7 +874,7 @@ extension EditorTextView {
         if let up { window.postEvent(up, atStart: false) }
         mouseDown(with: down)
         let sel = selectedRange()
-        out += " -> sel=\(sel)"
+        out += " -> sel=\(sel) raw=\(rawTableEditing ? "Y" : "N")"
         var actual = NSRange()
         let screen = firstRect(forCharacterRange: NSRange(location: sel.location, length: 0),
                                actualRange: &actual)

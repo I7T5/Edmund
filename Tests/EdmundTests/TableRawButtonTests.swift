@@ -61,9 +61,13 @@ struct TableRawButtonTests {
             Issue.record("no button")
             return
         }
+        // A number's own right edge: the numbers leave one character of air
+        // before the text, and the button lines up with them, not with the
+        // container's edge a character further over.
         let rightEdge = editor.textContainerOrigin.x
             + (editor.textContainer?.lineFragmentPadding ?? 0)
             - EditorTextView.lineNumberPadding
+            - editor.lineNumberStyle.digitWidth
         #expect(abs(button.rect.maxX - rightEdge) < 0.5)
     }
 

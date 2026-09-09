@@ -60,9 +60,15 @@ extension EditorTextView {
         let rightEdge = origin.x + padding - Self.lineNumberPadding
         let size = Self.tableRawButtonSize
         var result: [(rect: NSRect, blockIndex: Int)] = []
+        // A line number is drawn with one character of air between it and the
+        // text, so a number's right edge is a digit-width in from `rightEdge`.
+        // The button shares that edge rather than the container's, or it hangs
+        // a character closer to the text than every number above it.
+        let trailing = lineNumberStyle.digitWidth
         enumerateVisibleLineNumbers { line, capCenterY in
             guard let blockIndex = headerLines[line] else { return }
-            let slot = NSRect(x: rightEdge - size, y: origin.y + capCenterY - size / 2,
+            let slot = NSRect(x: rightEdge - trailing - size,
+                              y: origin.y + capCenterY - size / 2,
                               width: size, height: size)
             // The row pill and this button share one strip of margin, and the
             // strip is barely wider than the two of them — so the button steps
