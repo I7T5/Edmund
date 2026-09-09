@@ -456,6 +456,24 @@ extension EditorTextView {
         return tableCellCaretSnap(offset)
     }
 
+    /// The table a double-click should show the markdown of, or nil when the
+    /// click has an ordinary meaning.
+    ///
+    /// A double-click on a cell's empty space has no word to take — what it
+    /// catches is the column's padding or the row's hidden pipe. It shows the
+    /// table's source instead, which is what the `</>` button beside it does:
+    /// double-clicking blank space to get at what is underneath is the same
+    /// idea, reached the same way.
+    ///
+    /// One direction only. A table already showing its markdown has no grid, so
+    /// no point resolves to a cell and this never fires — the button is what
+    /// brings it back.
+    func tableRawEditingDoubleClick(_ selection: NSRange, at point: NSPoint) -> Int? {
+        guard tableCellSelectionIsJunk(selection, at: point),
+              let cell = tableCell(at: point) else { return nil }
+        return cell.blockIndex
+    }
+
     /// A selection trimmed to the text of the cell it lies in, or nil when it
     /// is already clean or is not a single cell's selection.
     ///

@@ -62,24 +62,28 @@ extension EditorTextView {
         var result: [(rect: NSRect, blockIndex: Int)] = []
         enumerateVisibleLineNumbers { line, capCenterY in
             guard let blockIndex = headerLines[line] else { return }
-            // The row pill stands between this slot and the table whenever the
-            // caret is in that table, and the margin is barely wider than the
-            // two of them — so the button steps aside by exactly the band the
-            // pill occupies. Only while the pill is really there: with the
-            // caret elsewhere the button keeps the line number's own slot.
-            let shift = self.tableRawButtonSlotIsTaken(blockIndex: blockIndex)
-                ? Self.tableHandleBand : 0
-            result.append((NSRect(x: max(0, rightEdge - size - shift),
-                                  y: origin.y + capCenterY - size / 2,
-                                  width: size, height: size), blockIndex))
+            let slot = NSRect(x: rightEdge - size, y: origin.y + capCenterY - size / 2,
+                              width: size, height: size)
+            // The row pill and this button share one strip of margin, and the
+            // strip is barely wider than the two of them — so the button steps
+            // aside by exactly the band the pill occupies. Only when the pill
+            // is really in the way: it follows the caret's row, so it reaches
+            // this line only while the header row is the active one, and the
+            // button belongs back in the line number's slot the moment the
+            // caret moves to any other row.
+            let shift = self.tableRawButtonSlotIsTaken(slot) ? Self.tableHandleBand : 0
+            result.append((slot.offsetBy(dx: -min(shift, slot.minX), dy: 0), blockIndex))
         }
         return result
     }
 
-    /// Whether the row pill is currently occupying the margin beside this
-    /// table, which is the slot the `</>` button would otherwise sit in.
-    func tableRawButtonSlotIsTaken(blockIndex: Int) -> Bool {
-        !rawTableEditing && activeTableCell?.blockIndex == blockIndex
+    /// Whether the row pill currently stands in the button's own slot, asked of
+    /// the geometry rather than assumed from the caret being in the table
+    /// somewhere — the pill sits on one row, and every other row leaves the
+    /// slot free.
+    func tableRawButtonSlotIsTaken(_ slot: NSRect) -> Bool {
+        guard !rawTableEditing else { return false }
+        return tableHandles().contains { $0.axis == .row && handleHitBox($0).intersects(slot) }
     }
 
     /// Whether a table's button is currently showing.

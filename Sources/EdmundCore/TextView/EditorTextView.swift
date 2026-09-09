@@ -798,16 +798,15 @@ public class EditorTextView: NSTextView {
         // one is deliberate and means every cell it covers.
         let clickPoint = convert(event.locationInWindow, from: nil)
         let clickSelection = selectedRange()
-        let junk = event.clickCount == 2
-            && tableCellSelectionIsJunk(clickSelection, at: clickPoint)
-        if clickSelection.length == 0 || junk {
-            let snapped = tableCellCaretSnap(at: clickPoint, offset: clickSelection.location)
-            // A junk selection collapses even when the snap declines: the snap
-            // only answers "is this offset in the pad", and the offset can be
-            // right while the one selected pad character is not.
-            if let target = snapped ?? (junk ? clickSelection.location : nil) {
-                setSelectedRange(NSRange(location: target, length: 0))
-            }
+        // A double-click on a cell's empty space shows the table's markdown.
+        // See `tableRawEditingDoubleClick`.
+        if event.clickCount == 2,
+           let block = tableRawEditingDoubleClick(clickSelection, at: clickPoint) {
+            activateRawTableEditing(blockIndex: block)
+        } else if clickSelection.length == 0,
+                  let snapped = tableCellCaretSnap(at: clickPoint,
+                                                   offset: clickSelection.location) {
+            setSelectedRange(NSRange(location: snapped, length: 0))
         }
         // `super.mouseDown` returns only after the whole tracking loop (drag +
         // mouse-up) finishes; `sel` in this line is the gesture's net result.

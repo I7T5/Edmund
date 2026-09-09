@@ -390,6 +390,36 @@ struct TableHandleTests {
         #expect(plain.selectedRange().location == bar)
     }
 
+    /// A double-click on a cell's empty space has no word to take, so it does
+    /// what the `</>` button does and shows the table's markdown.
+    @Test("A double-click on a cell's empty space shows the markdown")
+    func padDoubleClickShowsTheMarkdown() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        caret(editor, to: "c21")
+        let ns = editor.rawSource as NSString
+        let index = tableIndex(editor)
+        guard let grid = editor.tableGrid(blockIndex: index),
+              let box = grid.cellRect(row: 2, column: 0),
+              let cell = editor.tableCell(blockIndex: index, row: 2, column: 0) else {
+            Issue.record("no grid")
+            return
+        }
+        // What a double-click out in the padding catches: the closing pipe.
+        let pad = NSPoint(x: box.maxX - 2, y: box.midY)
+        let pipe = NSRange(location: cell.contentRange.upperBound, length: 1)
+        #expect(editor.tableRawEditingDoubleClick(pipe, at: pad) == index)
+
+        // A double-click that found a word is an ordinary one.
+        let onText = NSPoint(x: box.minX + 6, y: box.midY)
+        #expect(editor.tableRawEditingDoubleClick(ns.range(of: "c21"), at: onText) == nil)
+
+        // And with the markdown already showing there is no grid to hit, so
+        // the gesture cannot toggle it back — the button does that.
+        editor.activateRawTableEditing(blockIndex: index)
+        #expect(editor.rawTableEditing)
+        #expect(editor.tableRawEditingDoubleClick(pipe, at: pad) == nil)
+    }
+
     /// The regression the resting rule introduced: it read a direction into a
     /// click. A caret arriving at a pipe from earlier in the document looked
     /// like forward motion, so a click near the end of a long cell was sent to

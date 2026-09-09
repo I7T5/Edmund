@@ -63,6 +63,39 @@ struct TableRawButtonSlotTests {
         }
     }
 
+    /// The pill sits on the caret's row, so it reaches the button's line only
+    /// while the header row is the active one. Every other row leaves the slot
+    /// free, and the button belongs back in it.
+    @Test("The button returns to the line number's slot off the header row")
+    func buttonReturnsToItsSlot() {
+        let editor = loadEditor(doc)
+        // The slot itself, measured with the caret on a row whose pill is
+        // nowhere near it, rather than recomputed from the same geometry the
+        // code uses — that would only assert the arithmetic against itself.
+        caret(editor, to: "| a")
+        guard let free = editor.visibleTableRawButtons().first else {
+            Issue.record("no button")
+            return
+        }
+
+        caret(editor, to: "c1")   // the header row: the pill is in the way
+        guard let shifted = editor.visibleTableRawButtons().first else {
+            Issue.record("no button on the header row")
+            return
+        }
+        #expect(shifted.rect.minX < free.rect.minX - 1)
+
+        for cell in ["| a", "| c |"] { // any other row: the slot is free again
+            caret(editor, to: cell)
+            guard let button = editor.visibleTableRawButtons().first else {
+                Issue.record("no button with the caret in \(cell)")
+                return
+            }
+            #expect(abs(button.rect.minX - free.rect.minX) < 0.5,
+                    "the button stayed out of its slot with the caret in \(cell)")
+        }
+    }
+
     /// The button toggles the table's raw markdown, and stays put afterwards so
     /// the same click brings the table back.
     @Test("The button toggles raw markdown both ways")
