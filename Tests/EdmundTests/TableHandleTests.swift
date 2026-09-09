@@ -196,8 +196,9 @@ struct TableHandleTests {
             return
         }
         let titles = editor.tableHandleMenu(handle).items.map(\.title)
-        #expect(titles == ["Add Row Above", "Add Row Below", "Delete Row", "",
-                           "Edit as Markdown"])
+        // The operations and nothing else — no trailing "Edit as Markdown",
+        // and no AutoFill or Shortcuts entry from the text system.
+        #expect(titles == ["Add Row Above", "Add Row Below", "Delete Row"])
     }
 
     @Test("A column handle's menu offers the column operations")
@@ -209,8 +210,7 @@ struct TableHandleTests {
             return
         }
         let titles = editor.tableHandleMenu(handle).items.map(\.title)
-        #expect(titles == ["Add Column Before", "Add Column After", "Delete Column", "",
-                           "Edit as Markdown"])
+        #expect(titles == ["Add Column Before", "Add Column After", "Delete Column"])
     }
 
     /// The guards the operations enforce have to show up as a greyed item, not

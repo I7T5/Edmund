@@ -564,6 +564,10 @@ extension EditorTextView {
         // AppKit must not second-guess it: auto-enabling asks the responder
         // chain to validate a selector it does not know and greys the lot.
         menu.autoenablesItems = false
+        // Nothing may add to this menu but the operations below. It carried an
+        // "Edit as Markdown" item until the `</>` button became reachable while
+        // a cell is being edited, which is a better home for the same command.
+        menu.allowsContextMenuPlugIns = false
         switch handle.axis {
         case .row:
             addTableItems(to: menu, blockIndex: handle.blockIndex,
@@ -572,12 +576,6 @@ extension EditorTextView {
             addTableItems(to: menu, blockIndex: handle.blockIndex,
                           row: handle.row, column: handle.column, axis: .column)
         }
-        menu.addItem(.separator())
-        let raw = NSMenuItem(title: "Edit as Markdown",
-                             action: #selector(editTableAsMarkdown(_:)), keyEquivalent: "")
-        raw.target = self
-        raw.representedObject = handle.blockIndex
-        menu.addItem(raw)
         return menu
     }
 
@@ -627,17 +625,17 @@ extension EditorTextView {
         }
     }
 
-    @objc func editTableAsMarkdown(_ sender: NSMenuItem) {
-        guard let blockIndex = sender.representedObject as? Int else { return }
-        activateRawTableEditing(blockIndex: blockIndex)
-    }
-
     /// Opens a handle's menu at the pill.
     func showTableHandleMenu(_ handle: TableHandle, with event: NSEvent) {
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
-        tableHandleMenu(handle).popUp(positioning: nil,
-                                      at: NSPoint(x: handle.rect.minX, y: handle.rect.maxY),
-                                      in: self)
+        // Popped with no view, in screen coordinates. A menu shown *in* a text
+        // view is handed to the text system on its way to the screen, which
+        // adds AutoFill and Shortcuts entries of its own — reasonable in a text
+        // field's context menu, meaningless in a list of table operations. With
+        // no view there is nothing in the chain left to contribute them.
+        let corner = NSPoint(x: handle.rect.minX, y: handle.rect.maxY)
+        let onScreen = window?.convertPoint(toScreen: convert(corner, to: nil)) ?? corner
+        tableHandleMenu(handle).popUp(positioning: nil, at: onScreen, in: nil)
     }
 }
 
@@ -665,6 +663,34 @@ extension EditorTextView {
     /// `menu(for:)` — so a screenshot shows what a user would get rather than
     /// what the menu builders would produce in isolation. `popUp` runs its own
     /// event loop, so these do not return until the menu is dismissed.
+    /// Snapshots a menu's items once it is actually on screen, then dismisses
+    /// it. Anything the text system contributes is added as the menu is
+    /// displayed, so a menu that has only been *built* proves nothing.
+    private final class MenuProbe: NSObject, NSMenuDelegate {
+        var titles: [String] = []
+        func menuWillOpen(_ menu: NSMenu) {
+            DispatchQueue.main.async {
+                self.titles = menu.items.map(\.title)
+                menu.cancelTracking()
+            }
+        }
+    }
+
+    /// Pops a handle's menu and reports what was on it while it was open.
+    public func debugTableHandleMenuItems(column wantsColumn: Bool) -> String {
+        let axis: TableHandle.Axis = wantsColumn ? .column : .row
+        guard let handle = tableHandles().first(where: { $0.axis == axis }) else {
+            return "no \(wantsColumn ? "column" : "row") handle"
+        }
+        let menu = tableHandleMenu(handle)
+        let probe = MenuProbe()
+        menu.delegate = probe
+        let corner = NSPoint(x: handle.rect.minX, y: handle.rect.maxY)
+        let onScreen = window?.convertPoint(toScreen: convert(corner, to: nil)) ?? corner
+        menu.popUp(positioning: nil, at: onScreen, in: nil)
+        return "items=\(probe.titles)"
+    }
+
     public func debugOpenTableHandleMenu(column wantsColumn: Bool) -> String {
         let axis: TableHandle.Axis = wantsColumn ? .column : .row
         guard let handle = tableHandles().first(where: { $0.axis == axis }),

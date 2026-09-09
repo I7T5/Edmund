@@ -126,10 +126,6 @@ struct TableRawButtonTests {
         #expect(editor.revealedTableRawButtons().map(\.blockIndex) == [first.blockIndex])
     }
 
-    /// The caret inside a table used to reveal the button. It now reveals the
-    /// row and column handles instead, and the row handle wants this exact
-    /// margin slot — so the button stands down and its command moves into the
-    /// handles' menus as "Edit as Markdown".
     /// It used to hide itself for the table the caret was in, so the row pill
     /// could have the margin. That also took it away from anyone editing a cell
     /// who wanted the raw markdown — and the hit test only considers a revealed

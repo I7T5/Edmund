@@ -437,6 +437,13 @@ enum ReproScript {
                     window.setFrame(frame, display: true)
                     report("repro resizewindow \(window.frame.size)")
                 }
+            case "menuitems":
+                // "menuitems row" / "menuitems column" — what is on a pill's
+                // menu once it is on screen, injected entries included.
+                schedule(after: delay) { editor in
+                    report("repro menuitems " + editor.debugTableHandleMenuItems(
+                        column: arg.hasPrefix("col")))
+                }
             case "copyprobe":
                 schedule(after: delay) { editor in
                     report("repro copyprobe " + editor.debugCopyProbe())
