@@ -213,21 +213,20 @@ struct GeneralThemeDetail: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 rowLabel("Code syntax")
-                VStack(alignment: .leading, spacing: 6) {
-                    syntaxAssignment
-                        .frame(width: Self.syntaxRowWidth)
-                    // Under the popup, not beside it: it is a preview of the
-                    // theme the popup names, and sitting under the name is what
-                    // says so without a label of its own.
-                    if let syntax = previewedSyntax {
-                        SyntaxSample(syntax: syntax,
-                                     background: theme.background,
-                                     appearance: theme.appearance,
-                                     width: Self.syntaxRowWidth)
-                    }
-                }
+                syntaxAssignment
+                    .frame(width: Self.syntaxRowWidth)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Full width, under both the label and the popup: a page of code is
+            // what it is imitating, and a page runs to its margins. Boxed to
+            // the popup's width it read as an attachment hanging off the
+            // control rather than as the bottom of the pane.
+            if let syntax = previewedSyntax {
+                SyntaxSample(syntax: syntax,
+                             background: theme.background,
+                             appearance: theme.appearance)
+            }
         }
     }
 
@@ -511,7 +510,6 @@ private struct SyntaxSample: View {
     let syntax: SyntaxTheme
     let background: String?
     let appearance: ThemeAppearance
-    var width: CGFloat
 
     private static let inset: CGFloat = 7
 
@@ -549,9 +547,7 @@ private struct SyntaxSample: View {
                 .font(.system(size: 10, design: .monospaced))
             }
         }
-        // Inset by the padding, so the box's own width is `width` and its edges
-        // land on the popup's above rather than a few points past them.
-        .frame(width: width - 2 * Self.inset, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 5)
         .padding(.horizontal, Self.inset)
         .background(pageColor)
