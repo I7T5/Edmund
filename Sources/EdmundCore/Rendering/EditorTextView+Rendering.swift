@@ -198,8 +198,13 @@ extension EditorTextView {
     /// - Parameters:
     ///   - markdown: Raw markdown text.
     ///   - cursorPosition: Cursor offset within the markdown (nil = hide all inline delimiters).
+    ///   - listDepth: Nesting depth for this block's list line, from the
+    ///     document's column stack (see `listDepths`). nil for callers with no
+    ///     block index — a table cell, a callout's inner blocks, the styling
+    ///     tests — which fall back to the whitespace-and-unit estimate.
     func styleBlock(_ markdown: String, cursorPosition: Int? = nil,
-                    hideComments: Bool = false) -> NSAttributedString {
+                    hideComments: Bool = false,
+                    listDepth: Int? = nil) -> NSAttributedString {
         let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
         guard !markdown.isEmpty else { return result }
 
@@ -454,7 +459,7 @@ extension EditorTextView {
                 guard span.fullRange.upperBound <= result.length else { continue }
                 styleListItemSpan(result, span: span, markdown: markdown,
                                   ordered: ordered, checkbox: checkbox,
-                                  cursorInToken: cursorInToken)
+                                  cursorInToken: cursorInToken, depth: listDepth)
 
             case .table:
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -865,9 +870,12 @@ extension EditorTextView {
             // would tag-style. (Source mode still shows plain raw mono below.)
             styled = styleFrontMatter(block.content)
         } else {
+            let depth = listDepth(ofBlock: blockIndex)
             switch viewMode {
-            case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock)
-            case .reading: styled = styleBlock(block.content, cursorPosition: nil, hideComments: true)
+            case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock,
+                                               listDepth: depth)
+            case .reading: styled = styleBlock(block.content, cursorPosition: nil,
+                                               hideComments: true, listDepth: depth)
             case .source:  styled = sourceStyled(block.content)
             }
         }

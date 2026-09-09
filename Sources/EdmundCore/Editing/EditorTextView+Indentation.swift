@@ -106,13 +106,11 @@ extension EditorTextView {
     // (and GitHub, and pandoc) parse it flat. Pad Tab out to the previous
     // sibling's content column so the bytes mean what the editor draws.
     //
-    // ponytail: this fixes what Tab writes, not how depth is read back.
-    // `listDepth` is still `columns / listIndentUnit`, which can't model a
-    // required indent that varies by marker width — so a document that mixes
-    // 2-column bullet nesting with 3-column ordered nesting can still have a
-    // deep item drawn one level off. Upgrade path if that shows up in a real
-    // document: derive depth by walking preceding list lines with a column
-    // stack instead of dividing.
+    // Depth is read back the same way — `ListDepthMap` stacks the content
+    // columns of the preceding lines — so a document that mixes 2-column
+    // bullet nesting with 3-column ordered nesting reads back exactly as it
+    // was written, and the width Tab picks here has no effect on any list but
+    // the one being indented.
 
     /// Marker plus the spaces after it — everything before an item's content.
     /// Spaces-indented lines only; tab-indented ones are handled by the callers.
@@ -237,7 +235,7 @@ extension EditorTextView {
             }
         }
         let newText = parts[startBlock...endBlock].joined(separator: blockSeparator)
-        let oldIndentUnit = listIndentUnit
+        let oldDepths = listDepths
         rawSource = parts.joined(separator: blockSeparator)
         rebuildListIndentState()
         rebuildLinkDefState()
@@ -254,7 +252,7 @@ extension EditorTextView {
         stabilizingViewport {
             recomposeReplacing(oldRange: oldRange, with: newText,
                                dirty: indentDirtySet(startBlock, endBlock,
-                                                     unitChanged: listIndentUnit != oldIndentUnit),
+                                                     oldDepths: oldDepths),
                                cursorInRaw: newRawStart, selectionInRaw: selInRaw)
         }
         // The indented blocks changed depth: they may now belong to a
@@ -265,17 +263,14 @@ extension EditorTextView {
         document?.updateChangeCount(.changeDone)
     }
 
-    /// Blocks to restyle for an indent/dedent: the directly-edited span, plus —
-    /// when the document-global list indent unit moved — every list block,
-    /// whose rendered indentation is derived from that unit.
+    /// Blocks to restyle for an indent/dedent: the directly-edited span, plus
+    /// any list block whose depth moved with it. Moving one item across a
+    /// column boundary can re-parent the items nested under it, and those sit
+    /// outside the edited span.
     private func indentDirtySet(_ startBlock: Int, _ endBlock: Int,
-                                unitChanged: Bool) -> IndexSet {
+                                oldDepths: [Int]) -> IndexSet {
         var dirty = IndexSet(integersIn: startBlock...min(endBlock, blocks.count - 1))
-        if unitChanged {
-            for (i, block) in blocks.enumerated() where block.kind == .listItem {
-                dirty.insert(i)
-            }
-        }
+        dirty.formUnion(listDepthChanges(from: oldDepths))
         return dirty
     }
 
@@ -326,7 +321,7 @@ extension EditorTextView {
             }
         }
         let newText = parts[startBlock...endBlock].joined(separator: blockSeparator)
-        let oldIndentUnit = listIndentUnit
+        let oldDepths = listDepths
         rawSource = parts.joined(separator: blockSeparator)
         rebuildListIndentState()
         rebuildLinkDefState()
@@ -354,7 +349,7 @@ extension EditorTextView {
         stabilizingViewport {
             recomposeReplacing(oldRange: oldRange, with: newText,
                                dirty: indentDirtySet(startBlock, endBlock,
-                                                     unitChanged: listIndentUnit != oldIndentUnit),
+                                                     oldDepths: oldDepths),
                                cursorInRaw: newRawStart, selectionInRaw: selInRaw)
         }
         // The dedented blocks changed depth: they may now belong to a

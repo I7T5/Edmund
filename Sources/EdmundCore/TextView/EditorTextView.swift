@@ -68,19 +68,23 @@ public class EditorTextView: NSTextView {
     }
     /// Columns of leading whitespace that make up one list-nesting level,
     /// detected from the document (the smallest indent used, or one tab).
-    /// Defaults to 4. Used to map a list item's indentation to a nesting depth.
-    /// Maintained incrementally from `listIndentState` on the edit path;
-    /// rebuilt by the whole-document paths (load, undo, indent).
-    /// Every list item's rendered depth is `columns / listIndentUnit`, so a
-    /// change here silently re-indents *every* list in the document — the
-    /// mechanism behind "indenting one list moved another one". Rare enough
-    /// (a few per session) to log at `info`, so an ordinary user log carries
-    /// the evidence without verbose tracing having been switched on first.
+    /// Defaults to 4. Maintained incrementally from `listIndentState` on the
+    /// edit path; rebuilt by the whole-document paths (load, undo, indent).
+    ///
+    /// Document-global, so it is deliberately **not** what a list item in the
+    /// document is drawn at any more — see `listDepths`. Dividing by it made
+    /// one Tab that wrote a narrower indent re-depth every other list on
+    /// screen. It survives as the fallback for `styleBlock` calls that have no
+    /// block index (a list inside a table cell or a callout, and the styling
+    /// tests), where there are no preceding lines to stack.
+    ///
+    /// Still logged on change: rare (a few per session at most), and it says
+    /// the document's indent convention shifted under the user.
     public var listIndentUnit: Int = 4 {
         didSet {
             guard listIndentUnit != oldValue else { return }
             Log.info("list indent unit \(oldValue) → \(listIndentUnit) "
-                     + "(every list re-depths; histogram=\(listIndentState.histogram) "
+                     + "(histogram=\(listIndentState.histogram) "
                      + "tabLines=\(listIndentState.tabLines))", category: .edit)
         }
     }
@@ -106,7 +110,62 @@ public class EditorTextView: NSTextView {
     /// Line ending of the most recently loaded content. The buffer itself is
     /// always LF; this is remembered so saves preserve the file's style.
     public var originalLineEnding: LineEnding = .lf
-    var blocks: [Block] = []
+    var blocks: [Block] = [] {
+        didSet { listDepthsCache = nil }
+    }
+    var listDepthsCache: [Int]?
+
+    /// Nesting depth of each block's list line, or `ListDepthMap.notAList`.
+    /// Built lazily and dropped by `blocks`' `didSet`, the one hook covering
+    /// every reparse. This — not `listIndentUnit` — is what the renderer draws
+    /// list indentation from, so a line's depth depends only on the lines above
+    /// it and indenting one list can't move another.
+    // ponytail: recomputed whole on the next read after any reparse. O(blocks),
+    // and only the leading whitespace of each block, so it costs about what
+    // `rebuildListIndentState` already does per edit. Upgrade path if it shows
+    // up in a profile: rebuild forward from the changed block and stop once the
+    // stack matches the old one, since everything past that point is unchanged.
+    var listDepths: [Int] {
+        if let listDepthsCache { return listDepthsCache }
+        let depths = ListDepthMap.build(from: blocks)
+        listDepthsCache = depths
+        return depths
+    }
+
+    /// Depth to draw block `index` at, or nil when it has no list line — the
+    /// document-context answer `styleBlock` uses in place of its whitespace
+    /// fallback.
+    func listDepth(ofBlock index: Int) -> Int? {
+        let depths = listDepths
+        guard index >= 0, index < depths.count, depths[index] != ListDepthMap.notAList else {
+            return nil
+        }
+        return depths[index]
+    }
+
+    /// List blocks whose depth differs from `old` — the depths captured before
+    /// this reparse — so a caller can restyle exactly them. Depth is a column
+    /// stack over the preceding lines, so changing one list line's indent
+    /// re-depths the lines below it, which is why an edit's own dirty set isn't
+    /// enough on its own.
+    ///
+    /// The two arrays are matched by common prefix and suffix, so inserting or
+    /// deleting a block shifts indices without reporting everything below it as
+    /// changed — an ordinary keystroke reports nothing.
+    func listDepthChanges(from old: [Int]) -> IndexSet {
+        let new = listDepths
+        var prefix = 0
+        while prefix < old.count, prefix < new.count, old[prefix] == new[prefix] { prefix += 1 }
+        guard prefix < old.count || prefix < new.count else { return IndexSet() }
+        var suffix = 0
+        while suffix < old.count - prefix, suffix < new.count - prefix,
+              old[old.count - 1 - suffix] == new[new.count - 1 - suffix] { suffix += 1 }
+        var changed = IndexSet()
+        for i in prefix..<(new.count - suffix) where new[i] != ListDepthMap.notAList {
+            changed.insert(i)
+        }
+        return changed
+    }
     var activeBlockIndex: Int? = nil
     var isUpdating = false
     /// Coalesces the async active-block restyle scheduled from a caret move
