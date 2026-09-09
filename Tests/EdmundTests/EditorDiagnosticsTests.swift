@@ -70,4 +70,39 @@ struct EditorDiagnosticsTests {
             #expect(recon == editor.rawSource)                       // block model consistent
         }
     }
+
+    // MARK: - List indent diagnostics
+    //
+    // Tab on one list used to re-indent every other list in the document (the
+    // document-global `listIndentUnit`, since replaced by `listDepths`). The
+    // fix is pinned in EditorIndentationTests; these two only check that the
+    // signals which would have exposed it are in the log.
+
+    /// A document nesting at 4 spaces; Tab on a top-level item writes 2, which
+    /// still moves the document's narrowest list indent — it just no longer
+    /// moves anything on screen.
+    private func indentUnitShiftEditor() -> EditorTextView {
+        let editor = makeEditor()
+        editor.loadContent("- alpha\n    - alpha child\n- beta\n\nprose\n\n- gamma\n    - gamma child")
+        #expect(editor.listIndentUnit == 4)
+        let beta = (editor.rawSource as NSString).range(of: "- beta").location
+        editor.setSelectedRange(NSRange(location: beta, length: 6))
+        return editor
+    }
+
+    @Test func indentUnitChangeIsLoggedWithoutVerbose() {
+        let log = captureLog(verbose: false) {
+            indentUnitShiftEditor().insertTab(nil)
+        }
+        #expect(log.contains("list indent unit 4 → 2"))
+        #expect(!log.contains("indent blocks"))   // still no verbose spam
+    }
+
+    @Test func verboseIndentTraceNamesTheAffectedBlocks() {
+        let log = captureLog(verbose: true) {
+            indentUnitShiftEditor().insertTab(nil)
+        }
+        #expect(log.contains("indent blocks 2…2"))   // only "- beta" was touched
+        #expect(log.contains("target=2"))            // padded to "- alpha"'s content column
+    }
 }
