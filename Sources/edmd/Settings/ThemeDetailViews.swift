@@ -214,6 +214,10 @@ struct GeneralThemeDetail: View {
                     .frame(width: 200)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Set down from the wells by more than the gap between their own
+            // rows. It is a row of the same pane, not a section of its own, but
+            // at the grid's spacing it read as a ninth color.
+            .padding(.top, 8)
         }
     }
 
