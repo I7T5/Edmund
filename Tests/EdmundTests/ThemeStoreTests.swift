@@ -7,7 +7,12 @@ import AppKit
 /// expected values are transcribed from the code as it stood before the move,
 /// not read back out of the new JSON — a test that compared the JSON to itself
 /// would pass no matter how far the built-ins drifted.
-@Suite("Theme store — parity with the pre-theme palette")
+/// Serialized: these tests share one on-disk store — `ThemeStore.shared` plus
+/// the real user theme directory — and several of them write a shadow file for
+/// the same bundled theme. Run concurrently, one test's shadow is visible to
+/// another's assertions; `restoreAllBuiltIns` counts every shadowed built-in,
+/// so it returned 2 where the test that created exactly one expected 1.
+@Suite("Theme store — parity with the pre-theme palette", .serialized)
 @MainActor
 struct ThemeStoreTests {
 
