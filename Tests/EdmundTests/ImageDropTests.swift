@@ -152,7 +152,10 @@ struct ImageDropTests {
     /// *application-modal* panel when `windowForSheet` is nil, and that modal
     /// loop never returns without a window server — one drop test froze every
     /// `@MainActor` test in the suite and CI was cancelled 18 minutes later.
-    /// Spinning the run loop here is the point: it fires the scheduled block.
+    /// Driven directly rather than by spinning the main run loop: a nested run
+    /// loop inside a parallel `@MainActor` test reenters the other
+    /// run-loop-driven suites and SIGSEGV'd the whole test process on macOS 14
+    /// CI (clean on macOS 15 locally).
     @Test("A deferred save prompt with no window gives up instead of going modal")
     func untitledDocumentWithNoWindowDoesNotBlock() {
         let dir = makeDocDirectory()
@@ -161,10 +164,10 @@ struct ImageDropTests {
         _ = e.readSelection(from: pasteboard(with: [png]), type: .fileURL)
 
         #expect(doc.windowForSheet == nil)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        // Reaching the assertions at all is the check — an app-modal Save panel
+        // here would hang forever rather than fail.
+        e.presentSavePrompt(for: doc)
 
-        // Reaching this line at all is the assertion — a modal panel here would
-        // hang forever rather than fail.
         #expect(e.pendingDroppedImages.isEmpty)
         #expect(e.rawSource == "")
         _ = doc

@@ -83,23 +83,33 @@ extension EditorTextView {
             // closure just isn't statically annotated as such.
             MainActor.assumeIsolated {
                 guard let self, let doc else { return }
-                // No window to hang the sheet on ⇒ don't ask. `save(withDelegate:)`
-                // on an untitled document falls back to an *application-modal*
-                // Save panel when `windowForSheet` is nil, and a modal loop with
-                // no window server never returns — it froze the whole headless
-                // test suite (every @MainActor test stalled at once; CI ran 18
-                // minutes past its last output and was cancelled). A real
-                // untitled document always has a window, so this only ever fires
-                // headless.
-                guard doc.windowForSheet != nil else {
-                    self.pendingDroppedImages = []
-                    return
-                }
-                doc.save(withDelegate: self,
-                         didSave: #selector(EditorTextView.document(_:didSave:contextInfo:)),
-                         contextInfo: nil)
+                self.presentSavePrompt(for: doc)
             }
         }
+    }
+
+    /// The deferred half of `promptToSaveThenInsert`. Split out so a test can
+    /// drive it directly: spinning the main run loop from inside a parallel
+    /// `@MainActor` test reenters the other run-loop-driven suites, and that
+    /// SIGSEGV'd the whole test process on macOS 14 CI while running clean on
+    /// macOS 15 locally — the same shape as the line-number ruler re-tiling
+    /// inside `setFrameSize` (`docs/architecture/editor-affordances.md`).
+    ///
+    /// No window to hang the sheet on ⇒ don't ask. `save(withDelegate:)` on an
+    /// untitled document falls back to an *application-modal* Save panel when
+    /// `windowForSheet` is nil, and a modal loop with no window server never
+    /// returns — it froze the whole headless test suite (every `@MainActor`
+    /// test stalled at once; CI ran 18 minutes past its last output and was
+    /// cancelled). A real untitled document always has a window, so the bail-out
+    /// only ever fires headless.
+    func presentSavePrompt(for doc: NSDocument) {
+        guard doc.windowForSheet != nil else {
+            pendingDroppedImages = []
+            return
+        }
+        doc.save(withDelegate: self,
+                 didSave: #selector(EditorTextView.document(_:didSave:contextInfo:)),
+                 contextInfo: nil)
     }
 
     /// `save(withDelegate:…)` callback. Cancelled save → drop the pending URLs
