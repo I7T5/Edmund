@@ -478,6 +478,27 @@ extension EditorTextView {
         return trimmed == range ? nil : trimmed
     }
 
+    /// The block a drag from one point to another covers, or nil when the drag
+    /// has not left the cell it started in and is an ordinary text selection.
+    ///
+    /// Geometry, not offsets. A selection's character range is linear, so a
+    /// diagonal drag runs through everything between its two ends — drag from
+    /// a header cell down into the row below and the range sweeps the whole
+    /// rest of the header on its way, which read as "the header row, every
+    /// column" and flashed the box out to the table's full width before it
+    /// settled. Two points name two cells, and the rectangle between them is
+    /// the only thing a drag across a grid can mean.
+    func tableCellBlock(fromPoint: NSPoint, toPoint: NSPoint) -> TableCellBlock? {
+        guard !rawTableEditing, let anchor = tableCell(at: fromPoint),
+              let start = tableCellPosition(at: fromPoint, blockIndex: anchor.blockIndex),
+              let end = tableCellPosition(at: toPoint, blockIndex: anchor.blockIndex),
+              start != end else { return nil }
+        return TableCellBlock(
+            blockIndex: anchor.blockIndex,
+            rows: min(start.row, end.row)...max(start.row, end.row),
+            columns: min(start.column, end.column)...max(start.column, end.column))
+    }
+
     /// Selects every cell between two positions.
     func selectTableCells(blockIndex: Int,
                           from: (row: Int, column: Int), to: (row: Int, column: Int)) {

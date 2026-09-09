@@ -655,6 +655,46 @@ struct TableHandleTests {
                                          blockIndex: tableIndex(editor))?.row == 2)
     }
 
+    /// The reported glitch: dragging diagonally out of a header cell flashed
+    /// the box across the table's full width before it settled.
+    ///
+    /// A selection's character range is linear, so the range for that drag ran
+    /// through the whole rest of the header row on its way down — which reads
+    /// as "the header row, every column". The drag is a rectangle between two
+    /// cells, and that is what it is read off now.
+    @Test("A diagonal drag covers the rectangle between two cells")
+    func diagonalDragIsARectangle() {
+        let editor = loadEditor("Intro.\n\n| a | b | c |\n| --- | --- | --- |\n"
+            + "| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n")
+        caret(editor, to: "a")
+        let index = tableIndex(editor)
+        guard let grid = editor.tableGrid(blockIndex: index),
+              let headerCell = grid.cellRect(row: 0, column: 0),
+              let middle = grid.cellRect(row: 2, column: 1),
+              let last = grid.cellRect(row: 3, column: 2) else {
+            Issue.record("no grid")
+            return
+        }
+        let from = NSPoint(x: headerCell.midX, y: headerCell.midY)
+
+        // Down and one column across: the header's other columns are not in it.
+        let block = editor.tableCellBlock(fromPoint: from,
+                                          toPoint: NSPoint(x: middle.midX, y: middle.midY))
+        #expect(block?.rows == 0...2)
+        #expect(block?.columns == 0...1)
+
+        // The far corner takes the whole grid.
+        let whole = editor.tableCellBlock(fromPoint: from,
+                                          toPoint: NSPoint(x: last.midX, y: last.midY))
+        #expect(whole?.rows == 0...3)
+        #expect(whole?.columns == 0...2)
+
+        // Still inside the cell it started in: an ordinary text selection.
+        #expect(editor.tableCellBlock(fromPoint: from,
+                                      toPoint: NSPoint(x: headerCell.midX + 2,
+                                                       y: headerCell.midY)) == nil)
+    }
+
     /// A right-click used to select the cell's text. It no longer does: moving
     /// the selection under a menu the user only meant to open is a surprise.
     @Test("A cell's context menu leaves the selection alone")

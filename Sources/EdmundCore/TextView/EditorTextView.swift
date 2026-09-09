@@ -857,6 +857,18 @@ public class EditorTextView: NSTextView {
            let moved = tableCellCaretRest(caret.location, from: selectedRange().location) {
             ranges = [NSValue(range: NSRange(location: moved, length: 0))]
         }
+        // A drag across cells is a rectangle between where it started and where
+        // the pointer is now — read off the grid rather than off the character
+        // range it happens to have swept. See `tableCellBlock(fromPoint:toPoint:)`.
+        if let anchorPoint = tableClickPoint, ranges.count == 1,
+           let first = ranges[0].rangeValue as NSRange?, first.length > 0,
+           let window,
+           case let pointer = convert(window.mouseLocationOutsideOfEventStream, from: nil),
+           let block = tableCellBlock(fromPoint: anchorPoint, toPoint: pointer) {
+            tableDragCrossedCells = true
+            let perRow = tableCellSelectionRanges(block)
+            if !perRow.isEmpty { ranges = perRow }
+        }
         if ranges.count == 1, let first = ranges[0].rangeValue as NSRange? {
             if let block = tableCellBlock(for: first) {
                 tableDragCrossedCells = true
