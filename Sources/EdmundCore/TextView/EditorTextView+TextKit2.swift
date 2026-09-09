@@ -1012,8 +1012,6 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                        let bottomBorder, let topInset):
             // Offsets are text-relative; the fragment's origin is the text start.
             let borderColor = chromeLineColor
-            context.setStrokeColor(borderColor.cgColor)
-            context.setLineWidth(1)
             // Column borders are FILLED at exactly one device pixel rather than
             // stroked: a 1pt stroke straddling a pixel boundary lands on two
             // device rows on a Retina display, which made the verticals read
@@ -1033,23 +1031,24 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 context.fill(CGRect(x: lineX, y: point.y + topInset,
                                     width: hairline, height: frame.height - topInset))
             }
+            // Filled at one device pixel, exactly like the column borders above
+            // — a 1pt stroke is two device rows on a Retina display, which is
+            // what made the row rules read twice the weight of the verticals
+            // they meet. The whole grid is one hairline now.
             func rule(atY y: CGFloat) {
-                context.move(to: CGPoint(x: point.x - leftInset, y: y))
-                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
+                let lineY = ((y * scale).rounded()) / scale
+                context.fill(CGRect(x: point.x - leftInset, y: lineY,
+                                    width: width, height: hairline))
             }
             // `topInset` is reserved only by the header row, so it also says
             // which row owns the table's top edge.
-            if topInset > 0 { rule(atY: round(point.y + topInset) + 0.5) }
-            if separator { rule(atY: round(point.y + frame.height / 2) + 0.5) }
-            // Half a point *above* the boundary, not below it. A 1pt stroke
-            // covers the whole point it is centred in, so `+ 0.5` put the line
-            // entirely inside the row below — which then erased it the next
-            // time that row repainted on its own (a caret move restyles one
-            // row and dirties only its rect, so the row that owns the line is
-            // never asked to draw it again). Kept inside the drawing row, the
-            // line survives every partial repaint but its own.
-            if bottomBorder { rule(atY: round(point.y + frame.height) - 0.5) }
-            context.strokePath()
+            if topInset > 0 { rule(atY: point.y + topInset) }
+            if separator { rule(atY: point.y + frame.height / 2) }
+            // Inside the drawing row, not below it: the row beneath repaints on
+            // its own (a caret move restyles one row and dirties only its
+            // rect), and it would erase a line it knows nothing about — the row
+            // that owns the line never being asked to draw it again.
+            if bottomBorder { rule(atY: point.y + frame.height - hairline) }
 
         case .horizontalRule(let color, let centerOffset):
             // Filled at a fixed 3 device pixels (1.5pt on Retina) rather than
