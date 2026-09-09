@@ -71,7 +71,19 @@ public class EditorTextView: NSTextView {
     /// Defaults to 4. Used to map a list item's indentation to a nesting depth.
     /// Maintained incrementally from `listIndentState` on the edit path;
     /// rebuilt by the whole-document paths (load, undo, indent).
-    public var listIndentUnit: Int = 4
+    /// Every list item's rendered depth is `columns / listIndentUnit`, so a
+    /// change here silently re-indents *every* list in the document — the
+    /// mechanism behind "indenting one list moved another one". Rare enough
+    /// (a few per session) to log at `info`, so an ordinary user log carries
+    /// the evidence without verbose tracing having been switched on first.
+    public var listIndentUnit: Int = 4 {
+        didSet {
+            guard listIndentUnit != oldValue else { return }
+            Log.info("list indent unit \(oldValue) → \(listIndentUnit) "
+                     + "(every list re-depths; histogram=\(listIndentState.histogram) "
+                     + "tabLines=\(listIndentState.tabLines))", category: .edit)
+        }
+    }
     /// Histogram of indented-list-line indents (see ListIndentState) backing
     /// the incremental `listIndentUnit`.
     var listIndentState = ListIndentState()

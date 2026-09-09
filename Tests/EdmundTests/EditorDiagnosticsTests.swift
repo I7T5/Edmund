@@ -70,4 +70,46 @@ struct EditorDiagnosticsTests {
             #expect(recon == editor.rawSource)                       // block model consistent
         }
     }
+
+    // MARK: - List indent diagnostics
+    //
+    // `listIndentUnit` is document-global and every list item's rendered depth
+    // is `columns / unit`, so one Tab that writes a narrower indent than the
+    // document already uses re-indents every *other* list on screen. These two
+    // tests pin the evidence that makes that diagnosable from a user's log.
+
+    /// A document that nests at 4 spaces, Tab on a top-level item writing 2 —
+    /// the unit drops to 2 and every 4-space item silently gains a level.
+    private func indentUnitContaminationEditor() -> EditorTextView {
+        let editor = makeEditor()
+        editor.loadContent("- alpha\n    - alpha child\n- beta\n\nprose\n\n- gamma\n    - gamma child")
+        #expect(editor.listIndentUnit == 4)
+        let beta = (editor.rawSource as NSString).range(of: "- beta").location
+        editor.setSelectedRange(NSRange(location: beta, length: 6))
+        return editor
+    }
+
+    @Test func indentUnitChangeIsLoggedWithoutVerbose() {
+        var depths: (Int, Int) = (0, 0)
+        let log = captureLog(verbose: false) {
+            let editor = indentUnitContaminationEditor()
+            let before = editor.listDepth(leadingWhitespace: "    ")
+            editor.insertTab(nil)
+            depths = (before, editor.listDepth(leadingWhitespace: "    "))
+        }
+        // The unrelated list really did move: this is the bug being logged.
+        #expect(depths == (1, 2))
+        #expect(log.contains("list indent unit 4 → 2"))
+        #expect(log.contains("every list re-depths"))
+        #expect(!log.contains("indent blocks"))   // still no verbose spam
+    }
+
+    @Test func verboseIndentTraceNamesTheAffectedBlocks() {
+        let log = captureLog(verbose: true) {
+            let editor = indentUnitContaminationEditor()
+            editor.insertTab(nil)
+        }
+        #expect(log.contains("indent blocks 2…2"))   // only "- beta" was touched
+        #expect(log.contains("target=2"))            // padded to "- alpha"'s content column
+    }
 }

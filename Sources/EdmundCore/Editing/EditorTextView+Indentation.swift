@@ -186,6 +186,24 @@ extension EditorTextView {
         return indentUnit.count
     }
 
+    // MARK: - Diagnostics
+
+    /// Which blocks a Tab/Shift-Tab actually resolved to, and their leading
+    /// whitespace — enough to tell "it moved the lines I selected" from "it
+    /// moved a different part of the list". Verbose-only; the document-global
+    /// consequence is logged separately by `listIndentUnit`'s `didSet`.
+    private func traceIndent(_ op: String, _ startBlock: Int, _ endBlock: Int,
+                             _ change: String) {
+        guard Log.shouldTrace else { return }
+        let lines = (startBlock...endBlock).prefix(6).map { i -> String in
+            "\(i):cols=\(blocks[i].content.prefix(while: { $0 == " " || $0 == "\t" }).count)"
+                + " \(logSnippet(String(blocks[i].content.prefix(24))))"
+        }
+        let more = endBlock - startBlock + 1 > 6 ? " …+\(endBlock - startBlock + 1 - 6)" : ""
+        traceEdit("\(op) blocks \(startBlock)…\(endBlock) \(change) unit=\(listIndentUnit)"
+                  + " [\(lines.joined(separator: ", "))\(more)]")
+    }
+
     // MARK: - Indent (Tab)
 
     private func indentListBlocks(from startBlock: Int, to endBlock: Int) {
@@ -194,6 +212,8 @@ extension EditorTextView {
         let rawEnd = sel.location + sel.length
         let indent = indentString(from: startBlock)
         let indentLen = (indent as NSString).length
+        let target = nestingTargetColumn(before: startBlock).map(String.init) ?? "none"
+        traceIndent("indent", startBlock, endBlock, "+\(indentLen)col target=\(target)")
 
         // The pre-edit storage span covering exactly the affected blocks; only
         // this is replaced so layout above/below — and the viewport — is kept.
@@ -280,6 +300,8 @@ extension EditorTextView {
         }
 
         let totalRemoved = removed[startBlock...endBlock].reduce(0, +)
+        traceIndent("dedent", startBlock, endBlock,
+                    "−\(maxRemove)col removed=\(Array(removed[startBlock...endBlock]))")
         guard totalRemoved > 0 else { return }
 
         // The pre-edit storage span covering exactly the affected blocks; only
