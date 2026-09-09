@@ -111,6 +111,53 @@ private struct ColorRow: View {
     }
 }
 
+/// One color as a well with its name beneath it.
+///
+/// The name goes under rather than beside because four of these have to fit
+/// across the pane: label-beside-well needs about 550pt for a row of four, and
+/// there are 376. That is the trade the two-row layout buys its compactness
+/// with — the rest of Settings labels to the left.
+private struct ColorCell: View {
+    let label: String
+    @Binding var hex: String?
+    let systemFallback: NSColor
+    let appearance: ThemeAppearance
+    let isEditable: Bool
+
+    private static let wellWidth: CGFloat = 40
+    /// Sized to the longest name ("Background") at caption2.
+    fileprivate static let cellWidth: CGFloat = 58
+
+    private var resolved: NSColor {
+        if let hex, let color = NSColor(hex: hex) { return color }
+        var fallback = systemFallback
+        NSAppearance(named: appearance == .dark ? .darkAqua : .aqua)?
+            .performAsCurrentDrawingAppearance {
+                fallback = systemFallback.usingColorSpace(.deviceRGB) ?? systemFallback
+            }
+        return fallback
+    }
+
+    private var swatch: Binding<Color> {
+        Binding(get: { Color(nsColor: resolved) },
+                set: { hex = NSColor($0).hexString })
+    }
+
+    var body: some View {
+        VStack(spacing: 3) {
+            ColorPicker("", selection: swatch, supportsOpacity: false)
+                .labelsHidden()
+                .disabled(!isEditable)
+                .frame(width: Self.wellWidth)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+        .frame(width: Self.cellWidth)
+    }
+}
+
 /// Drives the shared font panel for a theme's own font override.
 ///
 /// `NSFontManager` is an app-wide singleton with a single target, the same
@@ -165,39 +212,48 @@ struct GeneralThemeDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Two columns, as CotEditor's Appearance pane has them: the ink the
-            // editor lays down on the left, the surface and what marks it on
-            // the right.
-            HStack(alignment: .top, spacing: 28) {
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 6) {
-                    ColorRow(label: "Text", hex: color(\.text),
-                             systemFallback: .textColor, appearance: theme.appearance,
-                             isEditable: isEditable)
-                    ColorRow(label: "Invisibles", hex: color(\.invisibles),
-                             systemFallback: .tertiaryLabelColor, appearance: theme.appearance,
-                             isEditable: isEditable)
-                    ColorRow(label: "Background", hex: color(\.background),
-                             systemFallback: .textBackgroundColor, appearance: theme.appearance,
-                             isEditable: isEditable)
-                    ColorRow(label: "Cursor", hex: color(\.cursor),
-                             systemFallback: .controlAccentColor, appearance: theme.appearance,
-                             isEditable: isEditable, offersSystemColor: true)
+            // Two rows of four, labels under the wells, each closed by the
+            // system-color box for its last well. The ink the editor lays down
+            // on the first row, the surface and what marks it on the second.
+            //
+            // The box names its role — "Use system cursor", not "Use system
+            // color" — because at the end of a row of four wells a generic
+            // label reads as governing all of them. Under a single well the
+            // owner was obvious; here it has to be said.
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: Self.cellGap) {
+                    ColorCell(label: "Text", hex: color(\.text),
+                              systemFallback: .textColor, appearance: theme.appearance,
+                              isEditable: isEditable)
+                    ColorCell(label: "Invisibles", hex: color(\.invisibles),
+                              systemFallback: .tertiaryLabelColor, appearance: theme.appearance,
+                              isEditable: isEditable)
+                    ColorCell(label: "Background", hex: color(\.background),
+                              systemFallback: .textBackgroundColor, appearance: theme.appearance,
+                              isEditable: isEditable)
+                    ColorCell(label: "Cursor", hex: color(\.cursor),
+                              systemFallback: .controlAccentColor, appearance: theme.appearance,
+                              isEditable: isEditable)
+                    systemColorBox("System cursor", color(\.cursor),
+                                   fallback: .controlAccentColor)
                 }
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 6) {
-                    ColorRow(label: "Checkbox", hex: color(\.checkbox),
-                             systemFallback: .controlAccentColor, appearance: theme.appearance,
-                             isEditable: isEditable)
-                    ColorRow(label: "Link", hex: color(\.link),
-                             systemFallback: .systemBlue, appearance: theme.appearance,
-                             isEditable: isEditable)
-                    ColorRow(label: "Highlight", hex: color(\.highlight),
-                             systemFallback: .systemYellow.withAlphaComponent(0.3),
-                             appearance: theme.appearance,
-                             isEditable: isEditable)
-                    ColorRow(label: "Selection", hex: color(\.selection),
-                             systemFallback: .systemOrange.withAlphaComponent(0.3),
-                             appearance: theme.appearance,
-                             isEditable: isEditable, offersSystemColor: true)
+                HStack(alignment: .center, spacing: Self.cellGap) {
+                    ColorCell(label: "Checkbox", hex: color(\.checkbox),
+                              systemFallback: .controlAccentColor, appearance: theme.appearance,
+                              isEditable: isEditable)
+                    ColorCell(label: "Link", hex: color(\.link),
+                              systemFallback: .systemBlue, appearance: theme.appearance,
+                              isEditable: isEditable)
+                    ColorCell(label: "Highlight", hex: color(\.highlight),
+                              systemFallback: .systemYellow.withAlphaComponent(0.3),
+                              appearance: theme.appearance,
+                              isEditable: isEditable)
+                    ColorCell(label: "Selection", hex: color(\.selection),
+                              systemFallback: .systemOrange.withAlphaComponent(0.3),
+                              appearance: theme.appearance,
+                              isEditable: isEditable)
+                    systemColorBox("System selection", color(\.selection),
+                                   fallback: .systemOrange.withAlphaComponent(0.3))
                 }
             }
 
@@ -231,6 +287,21 @@ struct GeneralThemeDetail: View {
                              appearance: theme.appearance)
             }
         }
+    }
+
+    fileprivate static let cellGap: CGFloat = 8
+
+    /// The system-color box for one role, closing its row. Vertically centered
+    /// on the cells beside it — well plus label — rather than pinned to the
+    /// wells' line, which left it riding high above a two-line neighbour.
+    private func systemColorBox(_ title: String, _ hex: Binding<String?>,
+                                fallback: NSColor) -> some View {
+        Toggle(title, isOn: Binding(
+            get: { hex.wrappedValue == nil },
+            set: { hex.wrappedValue = $0 ? nil : fallback.hexString }))
+            .controlSize(.small)
+            .disabled(!isEditable)
+            .fixedSize()
     }
 
     /// What this theme's code colors resolve to when it names none — so the
@@ -528,13 +599,34 @@ private struct SyntaxSample: View {
           ("// ready", syntax.comment)]]
     }
 
-    private var pageColor: Color {
-        if let background, let color = NSColor(hex: background) {
-            return Color(nsColor: color)
+    private var pageColor: NSColor {
+        if let background, let color = NSColor(hex: background) { return color }
+        return appearance == .dark
+            ? NSColor(srgbRed: 0x29 / 255, green: 0x29 / 255, blue: 0x29 / 255, alpha: 1)
+            : .textBackgroundColor
+    }
+
+    /// The pane's own surface, resolved for the appearance the Settings window
+    /// is actually in — not the theme's, which may be the other one.
+    private var paneColor: NSColor {
+        var resolved = NSColor.controlBackgroundColor
+        NSApplication.shared.effectiveAppearance.performAsCurrentDrawingAppearance {
+            resolved = NSColor.controlBackgroundColor.usingColorSpace(.deviceRGB)
+                ?? .controlBackgroundColor
         }
-        return Color(nsColor: appearance == .dark
-                     ? NSColor(srgbRed: 0x29 / 255, green: 0x29 / 255, blue: 0x29 / 255, alpha: 1)
-                     : .textBackgroundColor)
+        return resolved
+    }
+
+    /// Only when the sample's page is close enough to the pane's to disappear
+    /// into it. A theme of the other appearance draws its own edge — a rule
+    /// around it there is a second line saying what the color already said.
+    private var needsBorder: Bool {
+        guard let page = pageColor.usingColorSpace(.deviceRGB),
+              let pane = paneColor.usingColorSpace(.deviceRGB) else { return true }
+        let distance = abs(page.redComponent - pane.redComponent)
+            + abs(page.greenComponent - pane.greenComponent)
+            + abs(page.blueComponent - pane.blueComponent)
+        return distance < 0.3
     }
 
     var body: some View {
@@ -550,11 +642,13 @@ private struct SyntaxSample: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 5)
         .padding(.horizontal, Self.inset)
-        .background(pageColor)
+        .background(Color(nsColor: pageColor))
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(.separator, lineWidth: 0.5)
+            if needsBorder {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(.separator, lineWidth: 0.5)
+            }
         }
         .accessibilityLabel("Sample code in \(syntax.displayName)")
     }
