@@ -201,23 +201,33 @@ struct GeneralThemeDetail: View {
                 }
             }
 
-            // Labelled, and with no rule above it: one row under the wells
-            // is not a second section, and the label is what says the popup
-            // names code colors rather than anything else on the pane.
+            // A rule, now that this is more than a row. Everything above edits
+            // THIS theme's own colors; below it, the theme hands code off to a
+            // different theme and shows what that one looks like — a real
+            // boundary, and one the eye finds faster than the label does.
             //
             // Shown outright rather than behind an "Advanced" disclosure. One
             // popup is not worth hiding, and hiding it made a theme's most
             // consequential choice the one thing you had to go looking for.
+            Divider()
+
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 rowLabel("Code syntax")
-                syntaxAssignment
-                    .frame(width: 200)
+                VStack(alignment: .leading, spacing: 6) {
+                    syntaxAssignment
+                        .frame(width: Self.syntaxRowWidth)
+                    // Under the popup, not beside it: it is a preview of the
+                    // theme the popup names, and sitting under the name is what
+                    // says so without a label of its own.
+                    if let syntax = previewedSyntax {
+                        SyntaxSample(syntax: syntax,
+                                     background: theme.background,
+                                     appearance: theme.appearance,
+                                     width: Self.syntaxRowWidth)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // Set down from the wells by more than the gap between their own
-            // rows. It is a row of the same pane, not a section of its own, but
-            // at the grid's spacing it read as a ninth color.
-            .padding(.top, 8)
         }
     }
 
@@ -231,6 +241,16 @@ struct GeneralThemeDetail: View {
             : AppSettings.DefaultTheme.syntaxLight
         if syntaxThemes.contains(where: { $0.name == shipped }) { return shipped }
         return syntaxThemes.first { $0.appearance == theme.appearance }?.name ?? ""
+    }
+
+    /// Shared by the popup and the palette beneath it, so the two share an edge.
+    private static let syntaxRowWidth: CGFloat = 200
+
+    /// The syntax theme this one shows a palette of — the one it names, or the
+    /// one it falls back to when it names none.
+    private var previewedSyntax: SyntaxTheme? {
+        let name = theme.syntaxTheme ?? resolvedSyntaxName
+        return syntaxThemes.first { $0.name == name }
     }
 
     /// The tag for the trailing "New Theme…" item. A tag no theme can carry —
@@ -473,5 +493,73 @@ struct SyntaxThemeDetail: View {
             edited[keyPath: path] = picked.hexString
             onChange(edited)
         }
+    }
+}
+
+/// Two lines of code drawn in a syntax theme, on the editor theme's own page.
+///
+/// A preview rather than a set of swatches: it shows the colors doing the job
+/// they are for, which is the only way to tell whether a theme is actually
+/// legible — two colors that look distinct as rectangles can be hard to tell
+/// apart as words. It previews the *pair*, too: syntax colors on this theme's
+/// background, which is the combination the reader will really see.
+///
+/// The spans are fixed rather than run through `CodeHighlighter`: the scanner
+/// is internal to EdmundCore, and this is a sample, not a claim about
+/// tokenization. The lines are chosen to reach nine of the ten scopes.
+private struct SyntaxSample: View {
+    let syntax: SyntaxTheme
+    let background: String?
+    let appearance: ThemeAppearance
+    var width: CGFloat
+
+    private static let inset: CGFloat = 7
+
+    /// Chosen for coverage: attribute, keyword, variable, type, number on the
+    /// first line; command, string, comment on the second, with punctuation
+    /// left plain. Short enough not to wrap at the popup's width.
+    private var lines: [[(String, String)]] {
+        [[("@State", syntax.attribute), (" ", syntax.plain),
+          ("var", syntax.keyword), (" ", syntax.plain),
+          ("count", syntax.variable), (": ", syntax.plain),
+          ("Int", syntax.type), (" = ", syntax.plain),
+          ("42", syntax.number)],
+         [("print", syntax.command), ("(", syntax.plain),
+          ("\"Hi\"", syntax.string), (", ", syntax.plain),
+          ("count", syntax.variable), (")  ", syntax.plain),
+          ("// ready", syntax.comment)]]
+    }
+
+    private var pageColor: Color {
+        if let background, let color = NSColor(hex: background) {
+            return Color(nsColor: color)
+        }
+        return Color(nsColor: appearance == .dark
+                     ? NSColor(srgbRed: 0x29 / 255, green: 0x29 / 255, blue: 0x29 / 255, alpha: 1)
+                     : .textBackgroundColor)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                line.reduce(Text("")) { text, span in
+                    text + Text(span.0)
+                        .foregroundColor(Color(nsColor: NSColor(hex: span.1) ?? .textColor))
+                }
+                .font(.system(size: 10, design: .monospaced))
+            }
+        }
+        // Inset by the padding, so the box's own width is `width` and its edges
+        // land on the popup's above rather than a few points past them.
+        .frame(width: width - 2 * Self.inset, alignment: .leading)
+        .padding(.vertical, 5)
+        .padding(.horizontal, Self.inset)
+        .background(pageColor)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(.separator, lineWidth: 0.5)
+        }
+        .accessibilityLabel("Sample code in \(syntax.displayName)")
     }
 }
