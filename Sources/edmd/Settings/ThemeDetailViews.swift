@@ -213,8 +213,11 @@ struct GeneralThemeDetail: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 rowLabel("Code syntax")
+                // Runs to the right margin, like the preview under it: the two
+                // are one choice, and a popup stopping short of the sample it
+                // controls left the row looking unfinished beside it.
                 syntaxAssignment
-                    .frame(width: Self.syntaxRowWidth)
+                    .frame(maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -241,9 +244,6 @@ struct GeneralThemeDetail: View {
         if syntaxThemes.contains(where: { $0.name == shipped }) { return shipped }
         return syntaxThemes.first { $0.appearance == theme.appearance }?.name ?? ""
     }
-
-    /// Shared by the popup and the palette beneath it, so the two share an edge.
-    private static let syntaxRowWidth: CGFloat = 200
 
     /// The syntax theme this one shows a palette of — the one it names, or the
     /// one it falls back to when it names none.
