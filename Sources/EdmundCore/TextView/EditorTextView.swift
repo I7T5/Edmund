@@ -790,12 +790,14 @@ public class EditorTextView: NSTextView {
         }
         let clickPoint = convert(event.locationInWindow, from: nil)
         let clickSelection = selectedRange()
-        // A double-click on a cell's empty space shows the table's markdown —
-        // see `tableCellEmptySpace`. A single click out there comes back to the
-        // cell's text instead, as does one AppKit carried into the neighbouring
-        // cell — see `tableCellCaretSnap(at:offset:)`.
-        if event.clickCount == 2, let block = tableCellEmptySpace(at: clickPoint) {
-            activateRawTableEditing(blockIndex: block)
+        // A double-click out in a cell's empty space takes the cell's contents.
+        // There is no word where it landed, and the next unit up from a word,
+        // here, is the cell — which is what a double-click in a spreadsheet
+        // gives you too. A single click out there comes back to the cell's
+        // text instead, as does one AppKit carried into the neighbouring cell
+        // — see `tableCellCaretSnap(at:offset:)`.
+        if event.clickCount == 2, let cell = tableCellEmptySpace(at: clickPoint) {
+            selectCellText(cell)
         } else if clickSelection.length == 0,
                   let snapped = tableCellCaretSnap(at: clickPoint,
                                                    offset: clickSelection.location) {

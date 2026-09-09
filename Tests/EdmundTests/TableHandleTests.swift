@@ -390,10 +390,11 @@ struct TableHandleTests {
         #expect(plain.selectedRange().location == bar)
     }
 
-    /// A double-click on a cell's empty space has no word to take, so it does
-    /// what the `</>` button does and shows the table's markdown.
-    @Test("A double-click on a cell's empty space shows the markdown")
-    func padDoubleClickShowsTheMarkdown() {
+    /// A double-click needs a word, and out in a cell's padding there is none.
+    /// The next unit up is the cell, which is what a double-click in a
+    /// spreadsheet gives you too.
+    @Test("A double-click on a cell's empty space selects the cell's contents")
+    func padDoubleClickSelectsTheCell() {
         // A wide column, so there is real empty space beside a short cell —
         // the case this is for. In a column the width of its own text there is
         // nowhere to put the gesture.
@@ -403,20 +404,29 @@ struct TableHandleTests {
         let ns = editor.rawSource as NSString
         let index = tableIndex(editor)
         guard let grid = editor.tableGrid(blockIndex: index),
-              let box = grid.cellRect(row: 2, column: 0),
-              let cell = editor.tableCell(blockIndex: index, row: 2, column: 0) else {
+              let box = grid.cellRect(row: 2, column: 0) else {
             Issue.record("no grid")
             return
         }
         // Out in the padding, anywhere past the cell's text.
-        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.maxX - 2, y: box.midY)) == index)
-        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.midX, y: box.midY)) == index)
-
+        for x in [box.midX, box.maxX - 2] {
+            #expect(editor.tableCellEmptySpace(at: NSPoint(x: x, y: box.midY)) != nil)
+        }
         // On the text it is an ordinary double-click, whatever it selects.
         #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.minX + 6, y: box.midY)) == nil)
 
-        // And with the markdown already showing there is no grid to hit, so
-        // the gesture cannot toggle it back — the button does that.
+        // What the gesture then does: the cell's contents, without the padding
+        // or the delimiters.
+        guard let cell = editor.tableCellEmptySpace(
+            at: NSPoint(x: box.maxX - 2, y: box.midY)) else {
+            Issue.record("no cell")
+            return
+        }
+        editor.selectCellText(cell)
+        #expect(editor.selectedRange() == ns.range(of: "c21"))
+        #expect(ns.substring(with: editor.selectedRange()) == "c21")
+
+        // A raw table has no grid, so no point resolves to a cell.
         editor.activateRawTableEditing(blockIndex: index)
         #expect(editor.rawTableEditing)
         #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.maxX - 2, y: box.midY)) == nil)

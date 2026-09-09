@@ -456,19 +456,16 @@ extension EditorTextView {
         return tableCellCaretSnap(offset)
     }
 
-    /// The table a double-click should show the markdown of, or nil when the
-    /// click has an ordinary meaning.
+    /// The cell whose empty space a point lands in — past that cell's text but
+    /// still inside its box — or nil when the point is on text or outside a
+    /// table altogether.
     ///
-    /// Decided from where the pointer is, not from what the double-click
-    /// managed to select. There is nothing out in a cell's padding to select —
-    /// and by the time the gesture is over the caret has already been pulled
-    /// back to the cell's text, so asking what came back says "a caret on the
-    /// text" for a click that was nowhere near it.
-    ///
-    /// One direction only. A table already showing its markdown has no grid, so
-    /// no point resolves to a cell and this never fires — the `</>` button is
-    /// what brings it back.
-    func tableCellEmptySpace(at point: NSPoint) -> Int? {
+    /// Decided from where the pointer is, not from what a click managed to
+    /// select. There is nothing out in a cell's padding to select, and by the
+    /// time a gesture is over the caret has already been pulled back to the
+    /// cell's text — so asking what came back says "a caret on the text" for a
+    /// click that was nowhere near it.
+    func tableCellEmptySpace(at point: NSPoint) -> TableCellRef? {
         guard !rawTableEditing, let cell = tableCell(at: point),
               let tlm = textLayoutManager else { return nil }
         let ns = rawSource as NSString
@@ -480,7 +477,7 @@ extension EditorTextView {
         guard end > start,
               let from = tlm.location(tlm.documentRange.location, offsetBy: start),
               let to = tlm.location(tlm.documentRange.location, offsetBy: end),
-              let range = NSTextRange(location: from, end: to) else { return cell.blockIndex }
+              let range = NSTextRange(location: from, end: to) else { return cell }
         let origin = textContainerOrigin
         var box: NSRect?
         tlm.enumerateTextSegments(in: range, type: .standard, options: []) { _, frame, _, _ in
@@ -488,8 +485,8 @@ extension EditorTextView {
             box = box.map { $0.union(rect) } ?? rect
             return true
         }
-        guard let box else { return cell.blockIndex }
-        return point.x > box.maxX + 1 ? cell.blockIndex : nil
+        guard let box else { return cell }
+        return point.x > box.maxX + 1 ? cell : nil
     }
 
     /// A selection trimmed to the text of the cell it lies in, or nil when it
