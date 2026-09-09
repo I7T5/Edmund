@@ -15,6 +15,9 @@ struct TableGridLineTests {
 
     private func loadEditor(_ text: String) -> EditorTextView {
         let editor = makeEditor()
+        // Pinned: the ink threshold below reads a light background, and the
+        // suite would otherwise pass or fail with the time of day.
+        editor.appearance = NSAppearance(named: .aqua)
         editor.updateContentInset()
         editor.loadContent(text)
         ensureFullLayout(editor)

@@ -62,21 +62,38 @@ extension EditorTextView {
         var result: [(rect: NSRect, blockIndex: Int)] = []
         enumerateVisibleLineNumbers { line, capCenterY in
             guard let blockIndex = headerLines[line] else { return }
-            result.append((NSRect(x: rightEdge - size,
+            // The row pill stands between this slot and the table whenever the
+            // caret is in that table, and the margin is barely wider than the
+            // two of them — so the button steps aside by exactly the band the
+            // pill occupies. Only while the pill is really there: with the
+            // caret elsewhere the button keeps the line number's own slot.
+            let shift = self.tableRawButtonSlotIsTaken(blockIndex: blockIndex)
+                ? Self.tableHandleBand : 0
+            result.append((NSRect(x: max(0, rightEdge - size - shift),
                                   y: origin.y + capCenterY - size / 2,
                                   width: size, height: size), blockIndex))
         }
         return result
     }
 
+    /// Whether the row pill is currently occupying the margin beside this
+    /// table, which is the slot the `</>` button would otherwise sit in.
+    func tableRawButtonSlotIsTaken(blockIndex: Int) -> Bool {
+        !rawTableEditing && activeTableCell?.blockIndex == blockIndex
+    }
+
     /// Whether a table's button is currently showing.
     ///
-    /// Hover only. A caret inside the table used to reveal it too, but the row
-    /// handle now claims that same margin slot — so the caret being in a table
-    /// reveals the handles instead, and their menus carry "Edit as Markdown".
-    /// Two affordances, never both at once.
+    /// Hover, or the caret being in the table — including while that table is
+    /// showing its raw markdown, which is how the button toggles back.
+    ///
+    /// It used to hide itself for the table the caret was in, on the grounds
+    /// that the row handle claims the same margin slot. That also made it
+    /// unclickable exactly when someone editing a cell reaches for it: the hit
+    /// test only considers revealed buttons. The two share the margin instead
+    /// — see `tableRawButtonSlotIsTaken`.
     func tableRawButtonIsRevealed(blockIndex: Int) -> Bool {
-        hoveredTableBlock == blockIndex && activeBlockIndexForRawTable() != blockIndex
+        hoveredTableBlock == blockIndex || activeBlockIndexForRawTable() == blockIndex
     }
 
     /// The buttons actually on screen — the only ones that draw, and the only
@@ -246,12 +263,19 @@ extension EditorTextView {
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         let alreadyRaw = rawTableEditing
             && activeBlockIndexForRawTable() == blockIndex
-        rawTableEditing = !alreadyRaw
+        // The caret moves first, and the flag is set after it lands. Moving the
+        // caret into a block it was not already in makes `selectionDidChange`
+        // clear `rawTableEditing` — so setting the flag first meant the very
+        // move that follows it threw it away, and the button did nothing at all
+        // unless the caret happened to be in this table already.
         // Suppressed for the same reason `mouseDown` suppresses it: re-centring
         // the viewport because the user clicked something feels glitchy.
         suppressTypewriterCentering = true
+        activatingRawTable = true
         setSelectedRange(NSRange(location: blocks[blockIndex].range.location, length: 0))
+        activatingRawTable = false
         suppressTypewriterCentering = false
+        rawTableEditing = !alreadyRaw
         restyleBlock(blockIndex, cursorInBlock: 0)
     }
 

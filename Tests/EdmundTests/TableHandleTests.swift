@@ -390,6 +390,59 @@ struct TableHandleTests {
         #expect(plain.selectedRange().location == bar)
     }
 
+    /// The regression the resting rule introduced: it read a direction into a
+    /// click. A caret arriving at a pipe from earlier in the document looked
+    /// like forward motion, so a click near the end of a long cell was sent to
+    /// the beginning of the next column's cell instead of back to its own text.
+    @Test("A click near a cell's end stays in that cell")
+    func clickNearTheEndStaysPut() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        caret(editor, to: "c21")
+        let ns = editor.rawSource as NSString
+        let afterText = ns.range(of: "c21").upperBound
+        let index = tableIndex(editor)
+        guard let grid = editor.tableGrid(blockIndex: index),
+              let box = grid.cellRect(row: 2, column: 0),
+              let cell = editor.tableCell(blockIndex: index, row: 2, column: 0) else {
+            Issue.record("no grid")
+            return
+        }
+        let pipe = cell.contentRange.upperBound
+        // Right against the closing border, with the caret coming from before
+        // it — which is what made the old rule call this forward motion.
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.tableClickPoint = NSPoint(x: box.maxX - 1, y: box.midY)
+        defer { editor.tableClickPoint = nil }
+        editor.setSelectedRange(NSRange(location: pipe, length: 0))
+        #expect(editor.selectedRange() == NSRange(location: afterText, length: 0))
+    }
+
+    /// A drag across a cell's padding sweeps up the pad's kerned space and the
+    /// row's hidden pipe. Both are invisible, so the highlight looks like it
+    /// covers blank space — and a copy takes a delimiter with it.
+    @Test("A selection inside a cell covers its text and nothing else")
+    func selectionStopsAtTheCellText() {
+        let editor = loadEditor("Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c21 | b |\n")
+        caret(editor, to: "c21")
+        let ns = editor.rawSource as NSString
+        let text = ns.range(of: "c21")
+        guard let cell = editor.tableCell(atRawOffset: text.location) else {
+            Issue.record("no cell")
+            return
+        }
+        // From the cell's first character through its closing pipe.
+        editor.setSelectedRange(NSRange(location: cell.contentRange.location,
+                                        length: cell.contentRange.length + 1))
+        #expect(editor.selectedRange() == text)
+        let selected = ns.substring(with: editor.selectedRange())
+        #expect(!selected.contains("|"))
+        #expect(selected == "c21")
+        // A selection already inside the text is left exactly as it is.
+        let inner = NSRange(location: text.location, length: 2)
+        editor.setSelectedRange(inner)
+        #expect(editor.selectedRange() == inner)
+    }
+
     /// A double-click has to find a word. In a cell's padding there is none —
     /// the pad is one kerned space with the row's hidden pipe beside it — so
     /// AppKit selects one of those, and a one-character selection of an

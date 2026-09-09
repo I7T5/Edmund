@@ -222,6 +222,13 @@ extension EditorTextView {
     }
 
     private func tableCellBlock(from: Int, to: Int) -> TableCellBlock? {
+        // A pipe belongs to the cell it opens, so a selection that reaches just
+        // past a cell's padding would otherwise read as spanning two cells and
+        // swallow the neighbour whole. The delimiter closing a cell counts as
+        // that cell's own end.
+        var to = to
+        let ns = rawSource as NSString
+        if to > from, to < ns.length, ns.character(at: to) == 0x7C { to -= 1 }
         guard to >= from, !rawTableEditing,
               let start = tableCell(atRawOffset: from),
               let end = tableCell(atRawOffset: to),
@@ -434,13 +441,41 @@ extension EditorTextView {
         guard offset < ns.length, ns.character(at: offset) == 0x7C,
               !(offset > 0 && ns.character(at: offset - 1) == 0x5C),
               tableCell(atRawOffset: offset) != nil else { return nil }
-        if previous <= offset, let next = tableCell(atRawOffset: offset) {
+        // A click has no direction. It landed in the pad of the cell this pipe
+        // *closes* — that is where the pointer visibly was — so it resolves
+        // backwards however far the caret happens to have come from. Reading a
+        // direction into it is what sent a click near a cell's end to the
+        // beginning of the next column.
+        if tableClickPoint == nil, previous <= offset,
+           let next = tableCell(atRawOffset: offset) {
             // Forwards: the first character of the cell this pipe opens, one
             // space in, which is where `selectCellText` starts a cell too.
             return min(next.contentRange.location + 1, next.contentRange.upperBound)
         }
         // Backwards: the end of the text in the cell this pipe closes.
         return tableCellCaretSnap(offset)
+    }
+
+    /// A selection trimmed to the text of the cell it lies in, or nil when it
+    /// is already clean or is not a single cell's selection.
+    ///
+    /// Dragging across a cell's padding sweeps up the pad's kerned space and
+    /// the row's hidden pipe: invisible characters, so the highlight looks like
+    /// it covers blank space, and a ⌘C takes a delimiter into the clipboard.
+    /// A selection that spans cells is not this — the block logic turns that
+    /// into whole cells — so only a selection inside one cell is trimmed.
+    func tableCellSelectionTrimmed(_ range: NSRange) -> NSRange? {
+        guard range.length > 0, !rawTableEditing,
+              tableCellBlock(for: range) == nil,
+              let cell = tableCell(atRawOffset: range.location) else { return nil }
+        let ns = rawSource as NSString
+        var start = max(range.location, cell.contentRange.location)
+        var end = min(range.upperBound, cell.contentRange.upperBound)
+        // The pad is trailing spaces; the pipe is already outside `contentRange`.
+        while end > start, ns.character(at: end - 1) == 0x20 { end -= 1 }
+        while start < end, ns.character(at: start) == 0x20 { start += 1 }
+        let trimmed = NSRange(location: start, length: max(0, end - start))
+        return trimmed == range ? nil : trimmed
     }
 
     /// Selects every cell between two positions.

@@ -423,6 +423,12 @@ public class EditorTextView: NSTextView {
     /// reverting to a character selection. Reset at every `mouseDown`.
     var tableDragCrossedCells = false
 
+    /// Set while `activateRawTableEditing` is placing the caret at a table's
+    /// first character. That character is a pipe, and the rules below move a
+    /// caret off a pipe — but this one is deliberate, and the table is about to
+    /// stop being rendered anyway.
+    var activatingRawTable = false
+
     /// Where the click now in flight landed, in view coordinates, for as long
     /// as `mouseDown` is running. It is what lets `setSelectedRanges` keep a
     /// caret in the cell the user aimed at: only the point knows which cell
@@ -833,14 +839,21 @@ public class EditorTextView: NSTextView {
         // other placement is ever painted — and so that it holds for every path
         // that sets a selection during the gesture, not just the one that
         // returns through `mouseDown`.
-        if let point = tableClickPoint, ranges.count == 1,
+        if let point = tableClickPoint, !activatingRawTable, ranges.count == 1,
            let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
            let snapped = tableCellCaretSnap(at: point, offset: caret.location) {
             ranges = [NSValue(range: NSRange(location: snapped, length: 0))]
         }
+        // A selection inside one cell covers that cell's text and nothing else:
+        // not the pad, not the hidden pipe. See `tableCellSelectionTrimmed`.
+        if ranges.count == 1, let selection = ranges[0].rangeValue as NSRange?,
+           selection.length > 0, let trimmed = tableCellSelectionTrimmed(selection) {
+            ranges = [NSValue(range: trimmed)]
+        }
         // And wherever it came from, a caret never rests on a hidden pipe.
         // See `tableCellCaretRest`.
-        if ranges.count == 1, let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
+        if !activatingRawTable, ranges.count == 1,
+           let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
            let moved = tableCellCaretRest(caret.location, from: selectedRange().location) {
             ranges = [NSValue(range: NSRange(location: moved, length: 0))]
         }

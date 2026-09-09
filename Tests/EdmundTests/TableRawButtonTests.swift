@@ -53,7 +53,10 @@ struct TableRawButtonTests {
     /// line number for that row would, so it shares the numbers' right edge.
     @Test("The button sits in the line numbers' slot")
     func sitsInTheLineNumberSlot() {
-        let editor = loadEditor(table)
+        // With the caret outside the table: inside it, the row pill takes the
+        // margin and the button steps aside by exactly that band.
+        let editor = loadEditor("lead\n\n\(table)\n")
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
         guard let button = editor.visibleTableRawButtons().first else {
             Issue.record("no button")
             return
@@ -127,8 +130,12 @@ struct TableRawButtonTests {
     /// row and column handles instead, and the row handle wants this exact
     /// margin slot — so the button stands down and its command moves into the
     /// handles' menus as "Edit as Markdown".
-    @Test("The caret inside a table hides its button")
-    func caretInsideHidesTheButton() {
+    /// It used to hide itself for the table the caret was in, so the row pill
+    /// could have the margin. That also took it away from anyone editing a cell
+    /// who wanted the raw markdown — and the hit test only considers a revealed
+    /// button, so it was not clickable either. They share the margin now.
+    @Test("The caret inside a table keeps its button")
+    func caretInsideKeepsTheButton() {
         let editor = loadEditor("lead\n\n\(table)\n")
         guard let button = editor.visibleTableRawButtons().first else {
             Issue.record("no button")
@@ -136,9 +143,10 @@ struct TableRawButtonTests {
         }
         editor.hoveredTableBlock = button.blockIndex
         #expect(editor.revealedTableRawButtons().count == 1)
+        editor.hoveredTableBlock = nil
         editor.setSelectedRange(NSRange(
             location: editor.blocks[button.blockIndex].range.location, length: 0))
-        #expect(editor.revealedTableRawButtons().isEmpty)
+        #expect(editor.revealedTableRawButtons().count == 1)
     }
 
     @Test("A hidden button is not clickable")
