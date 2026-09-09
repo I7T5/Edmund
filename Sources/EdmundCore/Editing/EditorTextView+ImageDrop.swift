@@ -83,6 +83,18 @@ extension EditorTextView {
             // closure just isn't statically annotated as such.
             MainActor.assumeIsolated {
                 guard let self, let doc else { return }
+                // No window to hang the sheet on ⇒ don't ask. `save(withDelegate:)`
+                // on an untitled document falls back to an *application-modal*
+                // Save panel when `windowForSheet` is nil, and a modal loop with
+                // no window server never returns — it froze the whole headless
+                // test suite (every @MainActor test stalled at once; CI ran 18
+                // minutes past its last output and was cancelled). A real
+                // untitled document always has a window, so this only ever fires
+                // headless.
+                guard doc.windowForSheet != nil else {
+                    self.pendingDroppedImages = []
+                    return
+                }
                 doc.save(withDelegate: self,
                          didSave: #selector(EditorTextView.document(_:didSave:contextInfo:)),
                          contextInfo: nil)

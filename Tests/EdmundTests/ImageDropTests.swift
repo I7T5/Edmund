@@ -147,6 +147,29 @@ struct ImageDropTests {
         _ = doc
     }
 
+    /// The deferred save prompt must not run a modal Save panel when there is no
+    /// window to sheet onto. It used to: `save(withDelegate:)` falls back to an
+    /// *application-modal* panel when `windowForSheet` is nil, and that modal
+    /// loop never returns without a window server — one drop test froze every
+    /// `@MainActor` test in the suite and CI was cancelled 18 minutes later.
+    /// Spinning the run loop here is the point: it fires the scheduled block.
+    @Test("A deferred save prompt with no window gives up instead of going modal")
+    func untitledDocumentWithNoWindowDoesNotBlock() {
+        let dir = makeDocDirectory()
+        let png = writePNG("cat.png", in: dir)
+        let (e, doc) = editor(inDocumentAt: nil)
+        _ = e.readSelection(from: pasteboard(with: [png]), type: .fileURL)
+
+        #expect(doc.windowForSheet == nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+
+        // Reaching this line at all is the assertion — a modal panel here would
+        // hang forever rather than fail.
+        #expect(e.pendingDroppedImages.isEmpty)
+        #expect(e.rawSource == "")
+        _ = doc
+    }
+
     /// A cancelled Save drops the pending images and leaves the document alone.
     @Test("Cancelling the save discards the pending drop")
     func cancelledSaveDiscardsTheDrop() {
