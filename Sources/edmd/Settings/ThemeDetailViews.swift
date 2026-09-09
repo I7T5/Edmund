@@ -35,6 +35,10 @@ private struct ColorRow: View {
     /// expected to name, so a checkbox there would be a switch with one
     /// meaningful position.
     var offersSystemColor = false
+    /// The label column's width. Fixed rather than intrinsic so the block's
+    /// total width is a constant this file can hand to the row below it — see
+    /// `GeneralThemeDetail.blockWidth`.
+    var labelWidth: CGFloat
 
     /// The width of the drawn swatch, measured off the rendered pane.
     private static let wellWidth: CGFloat = 40
@@ -71,6 +75,7 @@ private struct ColorRow: View {
     var body: some View {
         GridRow {
             Text("\(label):")
+                .frame(width: labelWidth, alignment: .trailing)
                 .gridColumnAlignment(.trailing)
                 .foregroundStyle(.secondary)
             // The stock color well, so these read as the same control the rest
@@ -163,41 +168,66 @@ struct GeneralThemeDetail: View {
                 })
     }
 
+    /// The two label columns, sized to their own longest label ("Background:"
+    /// and "Highlight:"), and the gap between the pairs. Constants rather than
+    /// intrinsic widths because the row beneath has to match the total, and a
+    /// greedy child cannot ask for it without making the whole block greedy and
+    /// undoing the trailing alignment.
+    private static let inkLabelWidth: CGFloat = 88
+    private static let markLabelWidth: CGFloat = 78
+    private static let columnGap: CGFloat = 36
+    private static let wellColumn: CGFloat = 10 + 40
+
+    private static var blockWidth: CGFloat {
+        inkLabelWidth + wellColumn + columnGap + markLabelWidth + wellColumn
+    }
+
     var body: some View {
+        // Set against the box's trailing edge, as CotEditor's Appearance pane
+        // is. The wells are the thing being compared down the pane, so they
+        // want one edge to line up on; left-aligned they sat in the middle of
+        // the box with the slack all on the right.
+        //
+        // `fixedSize` horizontally is what makes the row below able to match
+        // this block's width: it pins the stack to its ideal width — the width
+        // of the two grids — so a greedy child fills that rather than making
+        // the whole stack greedy and undoing the alignment.
         VStack(alignment: .leading, spacing: 12) {
             // Two columns, as CotEditor's Appearance pane has them: the ink the
             // editor lays down on the left, the surface and what marks it on
             // the right.
-            HStack(alignment: .top, spacing: 28) {
+            HStack(alignment: .top, spacing: Self.columnGap) {
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 6) {
                     ColorRow(label: "Text", hex: color(\.text),
                              systemFallback: .textColor, appearance: theme.appearance,
-                             isEditable: isEditable)
+                             isEditable: isEditable, labelWidth: Self.inkLabelWidth)
                     ColorRow(label: "Invisibles", hex: color(\.invisibles),
                              systemFallback: .tertiaryLabelColor, appearance: theme.appearance,
-                             isEditable: isEditable)
+                             isEditable: isEditable, labelWidth: Self.inkLabelWidth)
                     ColorRow(label: "Background", hex: color(\.background),
                              systemFallback: .textBackgroundColor, appearance: theme.appearance,
-                             isEditable: isEditable)
+                             isEditable: isEditable, labelWidth: Self.inkLabelWidth)
                     ColorRow(label: "Cursor", hex: color(\.cursor),
                              systemFallback: .controlAccentColor, appearance: theme.appearance,
-                             isEditable: isEditable, offersSystemColor: true)
+                             isEditable: isEditable, offersSystemColor: true,
+                             labelWidth: Self.inkLabelWidth)
                 }
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 6) {
                     ColorRow(label: "Checkbox", hex: color(\.checkbox),
                              systemFallback: .controlAccentColor, appearance: theme.appearance,
-                             isEditable: isEditable)
+                             isEditable: isEditable, labelWidth: Self.markLabelWidth)
                     ColorRow(label: "Link", hex: color(\.link),
                              systemFallback: .systemBlue, appearance: theme.appearance,
-                             isEditable: isEditable)
+                             isEditable: isEditable, labelWidth: Self.markLabelWidth)
                     ColorRow(label: "Highlight", hex: color(\.highlight),
                              systemFallback: .systemYellow.withAlphaComponent(0.3),
                              appearance: theme.appearance,
-                             isEditable: isEditable)
+                             isEditable: isEditable, labelWidth: Self.markLabelWidth)
                     ColorRow(label: "Selection", hex: color(\.selection),
                              systemFallback: .systemOrange.withAlphaComponent(0.3),
                              appearance: theme.appearance,
-                             isEditable: isEditable, offersSystemColor: true)
+                             isEditable: isEditable, offersSystemColor: true,
+                             labelWidth: Self.markLabelWidth)
                 }
             }
 
@@ -210,15 +240,19 @@ struct GeneralThemeDetail: View {
             // consequential choice the one thing you had to go looking for.
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 rowLabel("Code syntax")
+                // Runs out to the wells' own trailing edge, so the pane has one
+                // right margin rather than two. Greedy inside a fixed-width
+                // row, which is what keeps it from widening the block.
                 syntaxAssignment
-                    .frame(width: 200)
+                    .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: Self.blockWidth)
             // Set down from the wells by more than the gap between their own
             // rows. It is a row of the same pane, not a section of its own, but
             // at the grid's spacing it read as a ninth color.
             .padding(.top, 8)
         }
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     /// What this theme's code colors resolve to when it names none — so the
