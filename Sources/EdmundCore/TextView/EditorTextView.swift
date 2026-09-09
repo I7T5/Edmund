@@ -885,6 +885,14 @@ public class EditorTextView: NSTextView {
     /// run's boundary; this line shows the truth at ⌘C time.
     public override func copy(_ sender: Any?) {
         traceEdit("copy")
+        // A table's storage is its markdown, so an ordinary copy hands the next
+        // app a row of pipes. See EditorTextView+TableCopy for the two cases
+        // that are worth more than that.
+        if let text = tableCopyText() {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            return
+        }
         super.copy(sender)
     }
 

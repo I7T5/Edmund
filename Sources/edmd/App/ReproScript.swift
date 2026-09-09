@@ -437,6 +437,10 @@ enum ReproScript {
                     window.setFrame(frame, display: true)
                     report("repro resizewindow \(window.frame.size)")
                 }
+            case "copyprobe":
+                schedule(after: delay) { editor in
+                    report("repro copyprobe " + editor.debugCopyProbe())
+                }
             case "clickaudit":
                 // Clicks every cell of every table and reports what came out
                 // wrong. See `debugClickAudit`.

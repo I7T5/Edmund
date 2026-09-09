@@ -746,6 +746,21 @@ extension EditorTextView {
             + " boxes=\(revealedTableRawButtons().map(\.rect))"
     }
 
+    /// Runs a real ⌘C and reports what landed on the pasteboard, then puts back
+    /// whatever was there before. The harness runs on someone's own machine;
+    /// taking their clipboard to check a feature is not a fair trade.
+    public func debugCopyProbe() -> String {
+        let pasteboard = NSPasteboard.general
+        let saved = pasteboard.string(forType: .string)
+        copy(nil)
+        let copied = pasteboard.string(forType: .string) ?? "<nothing>"
+        pasteboard.clearContents()
+        if let saved { pasteboard.setString(saved, forType: .string) }
+        return "sel=\(selectedRanges.map(\.rangeValue)) copied="
+            + copied.replacingOccurrences(of: "\t", with: "<TAB>")
+                .replacingOccurrences(of: "\n", with: "<NL>")
+    }
+
     /// Clicks at a view point through the real `mouseDown` path and reports
     /// what each stage of it decided. CGEvent clicks do not land in the harness
     /// environment, so the mouse-up is posted to the window's queue first and
