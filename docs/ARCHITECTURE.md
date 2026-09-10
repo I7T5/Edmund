@@ -275,13 +275,14 @@ Notable subsystems:
   `CGDisplayScreenSize`). Applied as a symmetric `textContainerInset.width`
   cap: wider windows center the column, narrower ones fill. Recomputed on
   resize and on moving to a differently-scaled display
-  (`NSWindow.didChangeScreenNotification`). Tables bake geometry into styled
+  (`NSWindow.didChangeScreenNotification`). Tables and image overlays bake geometry into styled
   attributes: a coalesced common-mode timer compares the usable container width
-  and restyles table blocks outside the resize pass,
+  and restyles those blocks outside the resize pass,
   including during live resizing. Comparing the inset alone misses narrower
   windows with fixed margins. The refresh preserves the viewport, waits out
   marked text/pending edits, and uses the existing lazy dirty-block path for
-  offscreen work. Image overlays retain their synchronous inset-change refresh.
+  offscreen work. Image sizes are baked at render time (§4 `fragmentOverlay`),
+  so TextKit reflow alone cannot resize them.
 - **Format menu & shortcuts**: pure AppKit (no SwiftUI scene, so SwiftUI
   `Commands` isn't an option). `FormatMenu.swift` is a declarative command
   table (`MenuCommand` + `Shortcut`, each with a stable `id` so a later pass

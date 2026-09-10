@@ -139,9 +139,11 @@ extension EditorTextView {
 
     /// Recomputes the horizontal text inset from the current bounds + max-column cap,
     /// preserving the vertical inset. Usually no recompose — only the inset
-    /// changes and TextKit 2 reflows wrapped text on its own. Tables and image
-    /// overlays bake their widths into attributes and need restyling. Table
-    /// updates are coalesced outside the resize pass.
+    /// changes and TextKit 2 reflows wrapped text on its own. The exceptions
+    /// are tables and image overlays: their scaled-to-fit geometry is baked
+    /// into styled attributes at render time (§4 fragmentOverlay), not
+    /// recomputed at draw time. Restyle them when the usable width changes,
+    /// coalescing updates outside the resize pass.
     public func updateContentInset() {
         let target = Self.horizontalInset(viewWidth: bounds.width,
                                           maxContentWidth: maxContentWidthPoints)
@@ -162,44 +164,40 @@ extension EditorTextView {
         scheduleLineNumberPlacementUpdate()
         // Fixed margins can stay unchanged while the container narrows. Check
         // the usable width after layout, not whether the inset changed.
-        scheduleTableWidthUpdate()
-
-        // Keep the existing synchronous image refresh on inset changes.
-        guard widthChanged else { return }
-        let imageBlocks = IndexSet(blocks.indices.filter { blocks[$0].content.contains("![") })
-        guard !imageBlocks.isEmpty else { return }
-        for idx in imageBlocks { blocks[idx].isStyled = false }
-        recomposeDirty(imageBlocks, cursorInRaw: currentCursorInRaw(), settingSelection: true)
+        scheduleContentWidthUpdate()
     }
 
     /// A common-mode timer runs during live resizing as well as after it, and
     /// coalesces resize bursts without restyling from inside `setFrameSize`.
-    func scheduleTableWidthUpdate() {
-        guard !tableWidthUpdateScheduled else { return }
-        tableWidthUpdateScheduled = true
+    func scheduleContentWidthUpdate() {
+        guard !contentWidthUpdateScheduled else { return }
+        contentWidthUpdateScheduled = true
         let timer = Timer(timeInterval: 1.0 / 60, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.tableWidthUpdateScheduled = false
-                self.updateTableWidths()
+                self.contentWidthUpdateScheduled = false
+                self.updateContentWidths()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    func updateTableWidths() {
+    func updateContentWidths() {
         let width = availableContentWidth
         guard width > 0 else { return }
-        if let previous = lastStyledTableWidth, abs(width - previous) <= 0.5 { return }
+        if let previous = lastStyledContentWidth, abs(width - previous) <= 0.5 { return }
         // Marked text can leave storage ahead of the block model. Keep the
         // width pending until composition commits, without touching attributes.
         guard !isUpdating, !hasMarkedText(),
               (textStorage as? EditorTextStorage)?.pendingEdit == nil else {
-            scheduleTableWidthUpdate()
+            scheduleContentWidthUpdate()
             return
         }
-        lastStyledTableWidth = width
-        let dirty = IndexSet(blocks.indices.filter { blocks[$0].kind == .table })
+        lastStyledContentWidth = width
+        let dirty = IndexSet(blocks.indices.filter {
+            blocks[$0].kind == .table || blocks[$0].content.contains("![")
+                || blocks[$0].content.localizedCaseInsensitiveContains("<img")
+        })
         guard !dirty.isEmpty else { return }
         preservingViewportAnchor {
             recomposeDirty(dirty, cursorInRaw: currentCursorInRaw())

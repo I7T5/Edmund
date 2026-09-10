@@ -142,7 +142,7 @@ struct TableResizeTests {
         editor.setFrameSize(NSSize(width: 800, height: 300))
         editor.loadContent("before\n\n" + Array(repeating: source, count: 20).joined(separator: "\n\n"))
         drainAllStyling(editor)
-        editor.updateTableWidths()
+        editor.updateContentWidths()
         drainAllStyling(editor)
         let lastTable = try #require(editor.blocks.lastIndex { $0.kind == .table })
 
@@ -150,7 +150,7 @@ struct TableResizeTests {
         editor.setFrameSize(NSSize(width: 350, height: editor.frame.height))
         // Drive the worker before the idle drain gets a turn, so this checks
         // scroll promotion rather than accidentally relying on idle styling.
-        editor.updateTableWidths()
+        editor.updateContentWidths()
         #expect(!editor.blocks[lastTable].isStyled)
         ensureFullLayout(editor)
         editor.sizeToFit()
