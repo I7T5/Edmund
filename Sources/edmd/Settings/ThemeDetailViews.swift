@@ -564,7 +564,11 @@ private struct SyntaxSample: View {
     let background: String?
     let appearance: ThemeAppearance
 
-    private static let inset: CGFloat = 7
+    /// The gap between the code and the box around it. Enough that the text is
+    /// not touching its own border — a code block in the editor has margins,
+    /// and a preview with none reads as cramped — but no more: this is a
+    /// specimen, and padding it out would make it a panel.
+    private static let inset: CGFloat = 10
 
     /// Four thrones and a long winter, which is as much Narnia as a sample can
     /// borrow: names and places carry no copyright, where a line of the prose
@@ -653,7 +657,7 @@ private struct SyntaxSample: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 5)
+        .padding(.vertical, 8)
         .padding(.horizontal, Self.inset)
         .background(Color(nsColor: pageColor))
         .clipShape(RoundedRectangle(cornerRadius: 4))
