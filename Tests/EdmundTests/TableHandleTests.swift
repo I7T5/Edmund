@@ -408,17 +408,31 @@ struct TableHandleTests {
             Issue.record("no grid")
             return
         }
-        // Out in the padding, anywhere past the cell's text.
-        for x in [box.midX, box.maxX - 2] {
-            #expect(editor.tableCellEmptySpace(at: NSPoint(x: x, y: box.midY)) != nil)
+        guard let ref = editor.tableCell(blockIndex: index, row: 2, column: 0) else {
+            Issue.record("no cell")
+            return
         }
+        let text = editor.tableCellTextRange(ref)
+        // Out in the padding, at either end of it. The hit index is what AppKit
+        // rounds the pointer to: the trailing space at the near end, the row's
+        // hidden pipe at the far end — both past the cell's text, which is the
+        // whole point. Neither end may be read as a click on the text.
+        for (x, hit) in [(box.midX, text.upperBound),
+                         (box.maxX - 2, ref.contentRange.upperBound)] {
+            #expect(editor.tableCellEmptySpace(at: NSPoint(x: x, y: box.midY),
+                                               hit: hit) != nil)
+        }
+        // No glyph under the pointer at all is empty space too.
+        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.maxX - 2, y: box.midY),
+                                           hit: nil) != nil)
         // On the text it is an ordinary double-click, whatever it selects.
-        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.minX + 6, y: box.midY)) == nil)
+        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.minX + 6, y: box.midY),
+                                           hit: text.location) == nil)
 
         // What the gesture then does: the cell's contents, without the padding
         // or the delimiters.
         guard let cell = editor.tableCellEmptySpace(
-            at: NSPoint(x: box.maxX - 2, y: box.midY)) else {
+            at: NSPoint(x: box.maxX - 2, y: box.midY), hit: nil) else {
             Issue.record("no cell")
             return
         }
@@ -429,7 +443,8 @@ struct TableHandleTests {
         // A raw table has no grid, so no point resolves to a cell.
         editor.activateRawTableEditing(blockIndex: index)
         #expect(editor.rawTableEditing)
-        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.maxX - 2, y: box.midY)) == nil)
+        #expect(editor.tableCellEmptySpace(at: NSPoint(x: box.maxX - 2, y: box.midY),
+                                           hit: nil) == nil)
     }
 
     /// The regression the resting rule introduced: it read a direction into a

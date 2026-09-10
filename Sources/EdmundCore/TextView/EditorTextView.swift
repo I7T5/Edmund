@@ -771,6 +771,9 @@ public class EditorTextView: NSTextView {
         // across the click's activate-the-table restyle because it is a raw
         // source offset (storage == rawSource).
         let wrappedCellCaret = wrappedCellCharIndex(at: event)
+        // AppKit's own answer to "which character is under the pointer", taken
+        // before the gesture runs and moves the selection out from under it.
+        let clickHit = clickCharIndex(at: event)
         // A fresh gesture starts inside whatever cell it lands in.
         tableDragCrossedCells = false
         // Held for the whole gesture so that every selection AppKit installs —
@@ -796,7 +799,14 @@ public class EditorTextView: NSTextView {
         // gives you too. A single click out there comes back to the cell's
         // text instead, as does one AppKit carried into the neighbouring cell
         // — see `tableCellCaretSnap(at:offset:)`.
-        if event.clickCount == 2, let cell = tableCellEmptySpace(at: clickPoint) {
+        let emptySpace = tableCellEmptySpace(at: clickPoint, hit: clickHit)
+        if event.clickCount >= 2 {
+            traceEdit("tableDoubleClick clicks=\(event.clickCount) x=\(Int(clickPoint.x))"
+                + " hit=\(clickHit.map(String.init) ?? "nil")"
+                + " cell=\(emptySpace.map { "r\($0.row)c\($0.column)" } ?? "nil")"
+                + " sel=\(clickSelection)")
+        }
+        if event.clickCount == 2, let cell = emptySpace {
             selectCellText(cell)
         } else if clickSelection.length == 0,
                   let snapped = tableCellCaretSnap(at: clickPoint,

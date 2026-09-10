@@ -456,37 +456,43 @@ extension EditorTextView {
         return tableCellCaretSnap(offset)
     }
 
-    /// The cell whose empty space a point lands in — past that cell's text but
-    /// still inside its box — or nil when the point is on text or outside a
-    /// table altogether.
+    /// The cell a click landed in without landing on its text, or nil when it
+    /// landed on the text or outside a table.
     ///
-    /// Decided from where the pointer is, not from what a click managed to
-    /// select. There is nothing out in a cell's padding to select, and by the
-    /// time a gesture is over the caret has already been pulled back to the
-    /// cell's text — so asking what came back says "a caret on the text" for a
-    /// click that was nowhere near it.
-    func tableCellEmptySpace(at point: NSPoint) -> TableCellRef? {
-        guard !rawTableEditing, let cell = tableCell(at: point),
-              let tlm = textLayoutManager else { return nil }
-        let ns = rawSource as NSString
-        var start = cell.contentRange.location
-        var end = cell.contentRange.upperBound
-        while end > start, ns.character(at: end - 1) == 0x20 { end -= 1 }
-        while start < end, ns.character(at: start) == 0x20 { start += 1 }
-        // A cell with no text at all is empty space from edge to edge.
-        guard end > start,
-              let from = tlm.location(tlm.documentRange.location, offsetBy: start),
-              let to = tlm.location(tlm.documentRange.location, offsetBy: end),
-              let range = NSTextRange(location: from, end: to) else { return cell }
+    /// Two independent readings, and the click has to be on the text by both to
+    /// count as an ordinary one. AppKit's own hit index is the first: a cell's
+    /// padding is a single kerned glyph with the row's hidden pipe beside it,
+    /// so every offset from the last text character onward is out in the blank,
+    /// however far across the pad the pointer actually is. The text's drawn box
+    /// is the second, and it is the one that knows where the pointer is rather
+    /// than which glyph AppKit rounded it to.
+    ///
+    /// Neither alone has been enough: the hit index reads the same at both ends
+    /// of a wide pad, and the box has to be measured through the layout, which
+    /// is not always the geometry the click was tested against.
+    func tableCellEmptySpace(at point: NSPoint, hit: Int?) -> TableCellRef? {
+        guard !rawTableEditing, let cell = tableCell(at: point) else { return nil }
+        let text = tableCellTextRange(cell)
+        let hitIsOnText = hit.map { $0 >= text.location && $0 < text.upperBound } ?? false
+        guard hitIsOnText, let box = tableCellTextBox(text) else { return cell }
+        return point.x > box.maxX + 1 ? cell : nil
+    }
+
+    /// The drawn box of a range, in view coordinates, or nil when it has no
+    /// laid-out extent.
+    private func tableCellTextBox(_ range: NSRange) -> NSRect? {
+        guard range.length > 0, let tlm = textLayoutManager,
+              let from = tlm.location(tlm.documentRange.location, offsetBy: range.location),
+              let to = tlm.location(tlm.documentRange.location, offsetBy: range.upperBound),
+              let textRange = NSTextRange(location: from, end: to) else { return nil }
         let origin = textContainerOrigin
         var box: NSRect?
-        tlm.enumerateTextSegments(in: range, type: .standard, options: []) { _, frame, _, _ in
+        tlm.enumerateTextSegments(in: textRange, type: .standard, options: []) { _, frame, _, _ in
             let rect = frame.offsetBy(dx: origin.x, dy: origin.y)
             box = box.map { $0.union(rect) } ?? rect
             return true
         }
-        guard let box else { return cell }
-        return point.x > box.maxX + 1 ? cell : nil
+        return box
     }
 
     /// A selection trimmed to the text of the cell it lies in, or nil when it

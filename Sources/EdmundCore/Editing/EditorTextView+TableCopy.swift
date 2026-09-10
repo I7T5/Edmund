@@ -28,8 +28,18 @@ extension EditorTextView {
     /// A cell's content without the padding the column added or the spaces the
     /// author typed around it.
     func tableCellText(_ cell: TableCellRef) -> String {
-        (rawSource as NSString).substring(with: cell.contentRange)
-            .trimmingCharacters(in: .whitespaces)
+        (rawSource as NSString).substring(with: tableCellTextRange(cell))
+    }
+
+    /// Where that content lives. Empty — length zero, at the cell's start —
+    /// for a cell holding nothing but padding.
+    func tableCellTextRange(_ cell: TableCellRef) -> NSRange {
+        let ns = rawSource as NSString
+        var start = cell.contentRange.location
+        var end = min(cell.contentRange.upperBound, ns.length)
+        while end > start, ns.character(at: end - 1) == 0x20 { end -= 1 }
+        while start < end, ns.character(at: start) == 0x20 { start += 1 }
+        return NSRange(location: start, length: end - start)
     }
 
     /// The selected cells as tab-separated rows.
