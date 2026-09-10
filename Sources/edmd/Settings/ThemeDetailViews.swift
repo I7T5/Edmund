@@ -575,8 +575,12 @@ struct SyntaxThemeDetail: View {
 /// background, which is the combination the reader will really see.
 ///
 /// The spans are fixed rather than run through `CodeHighlighter`: the scanner
-/// is internal to EdmundCore, and this is a sample, not a claim about
-/// tokenization. The lines are chosen to reach nine of the ten scopes.
+/// is internal to EdmundCore, and this is a sample of the theme's colors, not a
+/// claim about how any language is tokenized. It shows all ten scopes,
+/// including two the shipped definitions rarely emit — `attribute` (no bundled
+/// language lists any) and `variable` (only AppleScript does) — because a theme
+/// carries a color for each, and the preview would otherwise leave those two
+/// unanswerable.
 private struct SyntaxSample: View {
     let syntax: SyntaxTheme
     let background: String?
@@ -584,19 +588,30 @@ private struct SyntaxSample: View {
 
     private static let inset: CGFloat = 7
 
-    /// Chosen for coverage: attribute, keyword, variable, type, number on the
-    /// first line; command, string, comment on the second, with punctuation
-    /// left plain. Short enough not to wrap at the popup's width.
+    /// Four thrones and a long winter, which is as much Narnia as a sample can
+    /// borrow: names and places carry no copyright, where a line of the prose
+    /// would.
+    ///
+    /// A declaration then a call, which between them reach all ten scopes:
+    /// attribute, keyword, variable, type, number and value on the first line;
+    /// command, string and comment on the second, with punctuation left plain.
+    ///
+    /// Both lines run long on purpose. The box is the width of the pane, and a
+    /// short line in a wide box reads as a fragment rather than as code.
     private var lines: [[(String, String)]] {
         [[("@State", syntax.attribute), (" ", syntax.plain),
           ("var", syntax.keyword), (" ", syntax.plain),
-          ("count", syntax.variable), (": ", syntax.plain),
+          ("thrones", syntax.variable), (": ", syntax.plain),
           ("Int", syntax.type), (" = ", syntax.plain),
-          ("42", syntax.number)],
+          ("4", syntax.number), (", ", syntax.plain),
+          ("isWinter", syntax.variable), (": ", syntax.plain),
+          ("Bool", syntax.type), (" = ", syntax.plain),
+          ("true", syntax.value)],
          [("print", syntax.command), ("(", syntax.plain),
-          ("\"Hi\"", syntax.string), (", ", syntax.plain),
-          ("count", syntax.variable), (")  ", syntax.plain),
-          ("// ready", syntax.comment)]]
+          ("\"Cair Paravel\"", syntax.string), (", ", syntax.plain),
+          ("thrones", syntax.variable), (", ", syntax.plain),
+          ("isWinter", syntax.variable), (")   ", syntax.plain),
+          ("// every scope, once", syntax.comment)]]
     }
 
     private var pageColor: NSColor {
