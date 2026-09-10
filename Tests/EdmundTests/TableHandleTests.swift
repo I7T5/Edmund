@@ -329,6 +329,40 @@ struct TableHandleTests {
         #expect(editor.tableCellCaretSnap(at: onText, offset: afterText) == nil)
     }
 
+    /// The cell has to be taken as the selection is installed, not once the
+    /// gesture is over. `super.mouseDown` does not return until the mouse comes
+    /// up and it paints while it tracks, so a selection installed afterwards is
+    /// one the user watches replace whatever AppKit put there first — which is
+    /// the caret flash this gesture was reported for.
+    @Test("A blank-space double-click takes the cell in flight")
+    func padDoubleClickIsInstalledInFlight() {
+        let editor = loadEditor("Intro.\n\n| a rather wide heading | c2 |\n"
+            + "| --- | --- |\n| c21 | b |\n")
+        caret(editor, to: "c21")
+        let ns = editor.rawSource as NSString
+        let index = tableIndex(editor)
+        guard let grid = editor.tableGrid(blockIndex: index),
+              let box = grid.cellRect(row: 2, column: 0),
+              let cell = editor.tableCell(blockIndex: index, row: 2, column: 0) else {
+            Issue.record("no grid")
+            return
+        }
+        editor.tableClickPoint = NSPoint(x: box.maxX - 2, y: box.midY)
+        editor.tableClickCount = 2
+        editor.tableClickHit = cell.contentRange.upperBound
+        defer {
+            editor.tableClickPoint = nil
+            editor.tableClickCount = 0
+            editor.tableClickHit = nil
+        }
+        // Whatever AppKit installs for that click — a caret out at the cell's
+        // far edge is what it installed in the report — comes out as the cell.
+        for stray in [cell.contentRange.upperBound, cell.contentRange.upperBound + 1] {
+            editor.setSelectedRange(NSRange(location: stray, length: 0))
+            #expect(editor.selectedRange() == ns.range(of: "c21"))
+        }
+    }
+
     /// The correction has to happen as the selection is installed, not after
     /// the gesture. `super.mouseDown` does not return until the mouse comes up
     /// and it paints while it tracks, so a caret corrected afterwards is one

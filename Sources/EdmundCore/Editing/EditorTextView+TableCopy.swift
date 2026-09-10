@@ -42,6 +42,16 @@ extension EditorTextView {
         return NSRange(location: start, length: end - start)
     }
 
+    /// The selection a cell's contents deserve: its text, or — for a cell with
+    /// none — a caret one space in, where typing keeps `|  |` padded as it
+    /// fills. The range `selectCellText` installs, without the scrolling.
+    func tableCellSelectionRange(_ cell: TableCellRef) -> NSRange {
+        let text = tableCellTextRange(cell)
+        guard text.length == 0 else { return text }
+        let inset = min(cell.contentRange.location + 1, cell.contentRange.upperBound)
+        return NSRange(location: inset, length: 0)
+    }
+
     /// The selected cells as tab-separated rows.
     ///
     /// The separator row has no cells to look up, so it drops out of a block

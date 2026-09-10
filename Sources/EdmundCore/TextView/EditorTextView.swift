@@ -429,6 +429,13 @@ public class EditorTextView: NSTextView {
     /// stop being rendered anyway.
     var activatingRawTable = false
 
+    /// How many clicks the gesture in flight is, and which character AppKit
+    /// hit — held for the same span as `tableClickPoint`, and for the same
+    /// reason: `setSelectedRanges` is where a selection can still be corrected
+    /// before anyone sees it, and it knows neither on its own.
+    var tableClickCount = 0
+    var tableClickHit: Int?
+
     /// Where the click now in flight landed, in view coordinates, for as long
     /// as `mouseDown` is running. It is what lets `setSelectedRanges` keep a
     /// caret in the cell the user aimed at: only the point knows which cell
@@ -782,10 +789,14 @@ public class EditorTextView: NSTextView {
         // up, and it paints while it tracks, so a correction made after it
         // returns is a correction the user watches happen.
         tableClickPoint = convert(event.locationInWindow, from: nil)
+        tableClickCount = event.clickCount
+        tableClickHit = clickHit
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
         tableClickPoint = nil
+        tableClickCount = 0
+        tableClickHit = nil
         // Only a plain click: a drag or a double-click made a real selection,
         // and honouring those would collapse it.
         if let wrappedCellCaret, selectedRange().length == 0 {
@@ -808,6 +819,7 @@ public class EditorTextView: NSTextView {
                 + " sel=\(clickSelection)")
         }
         if event.clickCount == 2, let cell = emptySpace {
+            // Already installed in flight; this is the scroll and the last word.
             selectCellText(cell)
         } else if clickSelection.length == 0,
                   let snapped = tableCellCaretSnap(at: clickPoint,
@@ -839,6 +851,15 @@ public class EditorTextView: NSTextView {
         // which cells a Copy would take. It is installed as one range per row —
         // see EditorTextView+TableHandles for why that matters.
         var ranges = ranges
+        // A double-click out in a cell's empty space takes the cell, and takes
+        // it here rather than once the gesture is over: `super.mouseDown` does
+        // not return until the mouse comes up and it paints while it tracks, so
+        // a selection installed afterwards is one the user watches replace
+        // whatever AppKit put there first. See `tableCellEmptySpace`.
+        if let point = tableClickPoint, tableClickCount == 2, !activatingRawTable,
+           let cell = tableCellEmptySpace(at: point, hit: tableClickHit) {
+            ranges = [NSValue(range: tableCellSelectionRange(cell))]
+        }
         // A caret placed by the click in flight belongs to the cell that click
         // landed in. Corrected here, where the selection is installed, so no
         // other placement is ever painted — and so that it holds for every path
