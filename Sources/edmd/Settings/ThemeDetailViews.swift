@@ -555,10 +555,15 @@ private struct SyntaxSample: View {
     /// enough to share. It also puts the sample in the shape code is actually
     /// written in: a note above the thing it describes.
     ///
+    /// It says something the code does not — four thrones, and nobody on them.
+    /// A comment restating the line under it ("still winter" over
+    /// `isWinter = true`) is a comment carrying no information, which is a poor
+    /// advertisement for the color it is there to show.
+    ///
     /// The lines run long on purpose. The box is the width of the pane, and a
     /// short line in a wide box reads as a fragment rather than as code.
     private var lines: [[(String, String)]] {
-        [[("// still winter in Narnia", syntax.comment)],
+        [[("// thrones stand empty", syntax.comment)],
          [("@State", syntax.attribute), (" ", syntax.plain),
           ("var", syntax.keyword), (" ", syntax.plain),
           ("thrones", syntax.variable), (": ", syntax.plain),
