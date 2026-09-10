@@ -36,9 +36,15 @@ func distributeColumnWidths(natural: [CGFloat], available: CGFloat,
     guard !overIdx.isEmpty else { return natural }
     let remaining = max(0, available - usedByUnderShare)
     let perOverShare = remaining / CGFloat(overIdx.count)
+    // `minWidth` is a preference, not a guarantee. Past a certain column count
+    // it cannot be met and still fit — ten columns want ten minimums the row
+    // has no room for — and a table that runs off the page is worse than one
+    // with narrow columns, because narrow columns wrap and an overhang does
+    // not. So the floor gives way to the share when the two disagree.
+    let floor = min(minWidth, perOverShare)
     var result = natural
     for ci in overIdx {
-        result[ci] = max(minWidth, min(natural[ci], perOverShare))
+        result[ci] = max(floor, min(natural[ci], perOverShare))
     }
     return result
 }

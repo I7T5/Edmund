@@ -612,7 +612,14 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         let tallest = resolvedCellWraps
             .map { $0.lines.reduce(0) { $0 + $1.typographicBounds.height } }
             .max() ?? 0
-        return max(0, tallest - super.layoutFragmentFrame.height)
+        // Measured against the row's own *line* height, not the whole fragment:
+        // the fragment also carries the row's vertical padding, and a row whose
+        // cells all overflow has no visible characters left to give its line any
+        // height at all. Comparing against the fragment then hides the whole
+        // shortfall behind the padding, and the row collapses onto it — which is
+        // what a header of long labels did, while the data rows beside it grew.
+        let lineHeight = textLineFragments.reduce(0) { $0 + $1.typographicBounds.height }
+        return max(0, tallest - lineHeight)
     }
 
     required init?(coder: NSCoder) {
