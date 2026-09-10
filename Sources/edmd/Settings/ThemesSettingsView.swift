@@ -288,7 +288,7 @@ struct ThemesSettingsView: View {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     section("Editor", isExpanded: $editorExpanded, count: editorThemes.count) {
                         ForEach(editorThemes, id: \.name) { theme in
-                            row(theme.label, selection: .editor(theme.name),
+                            row(ThemeStore.shared.label(for: theme), selection: .editor(theme.name),
                                 dot: isActive(theme), appearance: theme.appearance)
                         }
                     }
@@ -300,7 +300,7 @@ struct ThemesSettingsView: View {
                     // reserved, so these rows line up with the dotted ones.
                     section("Code Syntax", isExpanded: $syntaxExpanded, count: syntaxThemes.count) {
                         ForEach(syntaxThemes, id: \.name) { theme in
-                            row(theme.label, selection: .syntax(theme.name),
+                            row(ThemeStore.shared.label(for: theme), selection: .syntax(theme.name),
                                 dot: nil, appearance: theme.appearance)
                         }
                     }

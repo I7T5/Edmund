@@ -1,0 +1,16 @@
+{
+  "name": "dendrobates-dark",
+  "displayName": "Dendrobates",
+  "appearance": "dark",
+
+  "plain": "#e6e6e6",
+  "keyword": "#40adff",
+  "command": "#ff8a66",
+  "type": "#cca543",
+  "attribute": "#91cc14",
+  "variable": "#d96caa",
+  "value": "#2aab9c",
+  "number": "#a357d9",
+  "string": "#7f9299",
+  "comment": "#ff4d58"
+}

@@ -30,6 +30,21 @@ public final class ThemeStore {
     private var syntaxByName: [String: SyntaxTheme] = [:]
     private var generalOrdered: [GeneralTheme] = []
     private var syntaxOrdered: [SyntaxTheme] = []
+    /// Display names carried by more than one appearance, per kind. Only these
+    /// need "(Light)"/"(Dark)" after them to be told apart.
+    private var ambiguousGeneralNames: Set<String> = []
+    private var ambiguousSyntaxNames: Set<String> = []
+
+    private static func ambiguous(_ pairs: [(String, ThemeAppearance)]) -> Set<String> {
+        var seen: [String: ThemeAppearance] = [:]
+        var clashing: Set<String> = []
+        for (name, appearance) in pairs {
+            if let first = seen[name], first != appearance { clashing.insert(name) }
+            seen[name] = appearance
+        }
+        return clashing
+    }
+
     private var userNames: Set<String> = []
     /// Every name the app ships with, whether or not a user file is currently
     /// shadowing it. This is what makes "restore" possible: without it, an
@@ -74,8 +89,14 @@ public final class ThemeStore {
 
         generalByName = generals
         syntaxByName = syntaxes
-        generalOrdered = generalList.sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
-        syntaxOrdered = syntaxList.sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+        generalOrdered = generalList.sorted {
+            $0.qualifiedLabel.localizedCaseInsensitiveCompare($1.qualifiedLabel) == .orderedAscending
+        }
+        syntaxOrdered = syntaxList.sorted {
+            $0.qualifiedLabel.localizedCaseInsensitiveCompare($1.qualifiedLabel) == .orderedAscending
+        }
+        ambiguousGeneralNames = Self.ambiguous(generalList.map { ($0.displayName, $0.appearance) })
+        ambiguousSyntaxNames = Self.ambiguous(syntaxList.map { ($0.displayName, $0.appearance) })
         userNames = users
         bundledNames = bundled
         sourceURLs = sources
@@ -110,6 +131,23 @@ public final class ThemeStore {
     }
 
     // MARK: UI queries
+
+    /// What to call a theme in a list.
+    ///
+    /// The appearance is appended only when it is doing work — when another
+    /// theme of the same kind shares the display name. "Solarized" comes in
+    /// both, so both are qualified; "Tomorrow Night" is the only theme of its
+    /// name, and saying "(Dark)" after it would be telling the reader something
+    /// the name already tells them.
+    public func label(for theme: GeneralTheme) -> String {
+        ambiguousGeneralNames.contains(theme.displayName)
+            ? theme.qualifiedLabel : theme.displayName
+    }
+
+    public func label(for theme: SyntaxTheme) -> String {
+        ambiguousSyntaxNames.contains(theme.displayName)
+            ? theme.qualifiedLabel : theme.displayName
+    }
 
     public func generalThemes() -> [GeneralTheme] { generalOrdered }
     public func syntaxThemes() -> [SyntaxTheme] { syntaxOrdered }

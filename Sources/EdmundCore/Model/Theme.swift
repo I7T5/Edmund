@@ -58,8 +58,13 @@ public struct GeneralTheme: Codable, Sendable, Equatable {
 
     public var syntaxTheme: String?
 
-    /// Sidebar label: "Anura (Dark)".
-    public var label: String {
+    /// The display name with its appearance spelled out — "Solarized (Dark)".
+    ///
+    /// Only worth showing when another theme shares the display name, which is
+    /// `ThemeStore.label(for:)`'s job; a theme that is the only one of its name
+    /// says "Tomorrow Night", not "Tomorrow Night (Dark)". Kept here because
+    /// sorting wants one stable key per theme whether or not it is ambiguous.
+    public var qualifiedLabel: String {
         "\(displayName) (\(appearance == .dark ? "Dark" : "Light"))"
     }
 
@@ -93,7 +98,8 @@ public struct SyntaxTheme: Codable, Sendable, Equatable {
     public var string: String
     public var comment: String
 
-    public var label: String {
+    /// See `GeneralTheme.qualifiedLabel`.
+    public var qualifiedLabel: String {
         "\(displayName) (\(appearance == .dark ? "Dark" : "Light"))"
     }
 

@@ -1,0 +1,16 @@
+{
+  "name": "dendrobates",
+  "displayName": "Dendrobates",
+  "appearance": "light",
+
+  "plain": "#000000",
+  "keyword": "#005493",
+  "command": "#bf4a26",
+  "type": "#b07e00",
+  "attribute": "#577c03",
+  "variable": "#a63777",
+  "value": "#177368",
+  "number": "#631a95",
+  "string": "#5a676c",
+  "comment": "#991a22"
+}

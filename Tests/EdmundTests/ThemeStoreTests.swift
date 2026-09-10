@@ -32,10 +32,14 @@ struct ThemeStoreTests {
         #expect(syntaxes.isSuperset(of: ["tomorrow", "one-dark"]))
     }
 
-    @Test("Themes label with their appearance suffix")
-    func labels() {
-        #expect(ThemeStore.shared.general(dark: false).label == "Classic (Light)")
-        #expect(ThemeStore.shared.syntax(dark: true)?.label == "One Dark (Dark)")
+    @Test("Themes label with their appearance suffix only when it is needed")
+    func labels() throws {
+        let store = ThemeStore.shared
+        // Classic ships in both, so the suffix separates them.
+        #expect(store.label(for: store.general(dark: false)) == "Classic (Light)")
+        // One Dark is the only theme of its name — One Light is a name of its
+        // own — so it says what it is called and nothing more.
+        #expect(store.label(for: try #require(store.syntax(dark: true))) == "One Dark")
     }
 
     // MARK: Syntax color parity
@@ -181,6 +185,48 @@ struct ThemeStoreTests {
             try store.deleteUserTheme(named: "classic-light")
         }
         #expect(store.generalThemes().contains { $0.name == "classic-light" })
+    }
+
+    /// "(Light)"/"(Dark)" earns its place only when it separates two themes of
+    /// the same name. Solarized ships in both, so both say which; Tomorrow
+    /// Night is the only theme called that, and a suffix there would tell the
+    /// reader what the name already says.
+    @Test("An appearance suffix appears only where it disambiguates")
+    func labelsQualifyOnlyWhenAmbiguous() throws {
+        let store = ThemeStore.shared
+        let syntax = store.syntaxThemes()
+
+        let solarized = syntax.filter { $0.displayName == "Solarized" }
+        #expect(solarized.count == 2)
+        for theme in solarized {
+            #expect(store.label(for: theme) == theme.qualifiedLabel)
+        }
+
+        for name in ["Tomorrow", "Tomorrow Night", "One Light", "One Dark"] {
+            let theme = try #require(syntax.first { $0.displayName == name })
+            #expect(store.label(for: theme) == name)
+        }
+
+        // The editor themes shipped in pairs from the start.
+        for theme in store.generalThemes() where theme.displayName == "Classic" {
+            #expect(store.label(for: theme) == theme.qualifiedLabel)
+        }
+    }
+
+    /// Every bundled theme is loadable and complete. A color that failed to
+    /// parse would fall back silently at render time, so the check is here.
+    @Test("Every bundled syntax theme parses to ten usable colors")
+    func bundledSyntaxThemesAreComplete() throws {
+        for theme in ThemeStore.shared.syntaxThemes() {
+            for (scope, hex) in [("plain", theme.plain), ("keyword", theme.keyword),
+                                 ("command", theme.command), ("type", theme.type),
+                                 ("attribute", theme.attribute), ("variable", theme.variable),
+                                 ("value", theme.value), ("number", theme.number),
+                                 ("string", theme.string), ("comment", theme.comment)] {
+                #expect(NSColor(hex: hex) != nil,
+                        "\(theme.name).\(scope) is not a color: \(hex)")
+            }
+        }
     }
 
     // MARK: Writing

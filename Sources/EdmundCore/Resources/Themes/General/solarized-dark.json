@@ -1,0 +1,16 @@
+{
+  "name": "solarized-dark",
+  "displayName": "Solarized",
+  "appearance": "dark",
+
+  "text": "#93a1a1",
+  "invisibles": "#586e75",
+  "checkbox": null,
+  "link": "#268bd2",
+  "highlight": "#073642",
+  "background": "#002b36",
+  "selection": null,
+  "cursor": null,
+
+  "syntaxTheme": "solarized-code-dark"
+}

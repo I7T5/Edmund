@@ -436,7 +436,10 @@ struct GeneralThemeDetail: View {
 
     private var assignedSyntaxLabel: String? {
         guard let assigned = theme.syntaxTheme else { return nil }
-        return syntaxThemes.first { $0.name == assigned }?.label ?? assigned
+        guard let theme = syntaxThemes.first(where: { $0.name == assigned }) else {
+            return assigned
+        }
+        return ThemeStore.shared.label(for: theme)
     }
 }
 
@@ -657,7 +660,11 @@ private struct SyntaxSample: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
+        // Less above than below: the first line is the comment, and a dimmed
+        // line leaves more apparent air over it than an inked one does. Equal
+        // padding measured equal and looked top-heavy.
+        .padding(.top, 6)
+        .padding(.bottom, 8)
         .padding(.horizontal, Self.inset)
         .background(Color(nsColor: pageColor))
         .clipShape(RoundedRectangle(cornerRadius: 4))
