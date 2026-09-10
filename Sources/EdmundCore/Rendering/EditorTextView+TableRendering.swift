@@ -9,6 +9,11 @@ extension EditorTextView {
 
     /// Styles the `.table` content for one span. The caller has already
     /// bounds-checked `span.fullRange` against `result`.
+    /// Every row wraps its overflowing cells, the row holding the caret
+    /// included: the caret follows the drawn text through
+    /// `DecoratedTextLayoutFragment.cellWrapRects` (see
+    /// EditorTextView+TableCellCaret), so nothing has to run long to stay
+    /// editable.
     func styleTableSpan(_ result: NSMutableAttributedString,
                         span: SyntaxHighlighter.Span,
                         cursorInToken: Bool) {
@@ -47,10 +52,8 @@ extension EditorTextView {
             // are row-owned, see the transplant below); tall math or image
             // overlays get no extra line height in cells. A wrapped (overflowing)
             // cell is drawn from a detached scratch text layout rather than the
-            // live glyph run, so click-to-caret placement inside it is
-            // approximate while the table is non-active — clicking anywhere in
-            // the cell still enters the table and lands the caret at the raw
-            // source's nearest position once active.
+            // live glyph run, so its caret, selection and vertical movement all
+            // come from that layout instead (EditorTextView+TableCellCaret).
             let headerCells = splitTableRow(lines[0])
             let numCols = headerCells.count
             guard numCols > 0 else { return }
@@ -153,8 +156,14 @@ extension EditorTextView {
                     ps.paragraphSpacingBefore = 0
                     ps.paragraphSpacing = 0
                 } else {
+                    // The header row reserves the band its column handle sits
+                    // in, above everything the table draws. Unconditionally, so
+                    // that clicking into a table never shifts the page — the
+                    // cost is a little more air above every table.
                     ps.paragraphSpacingBefore = cellVPad + ((i == 0)
-                        ? bodyParagraphStyle.paragraphSpacingBefore : 0)
+                        ? max(bodyParagraphStyle.paragraphSpacingBefore,
+                              Self.tableHandleBand)
+                        : 0)
                     ps.paragraphSpacing = cellVPad
                 }
                 result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
@@ -164,10 +173,10 @@ extension EditorTextView {
                                                      width: totalWidth,
                                                      leftInset: cellHPad,
                                                      separator: i == 1,
-                                                     // No rule under the last row: the
-                                                     // table's bottom edge is open, like
-                                                     // its left and right edges.
-                                                     bottomBorder: i > 1 && i < lines.count - 1)),
+                                                     // Including the last row: the table
+                                                     // is closed on all four sides.
+                                                     bottomBorder: i > 1,
+                                                     topInset: i == 0 ? Self.tableHandleBand : 0)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)

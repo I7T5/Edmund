@@ -11,6 +11,13 @@ extension EditorTextView {
         // text, so it has to repaint on every caret move, including the ones
         // that bail out of restyling. Marks only the numbers' strip.
         invalidateLineNumbers()
+        // A caret inside a table cell too wide for its column is drawn by hand,
+        // because AppKit's would sit on the cell's hidden characters rather than
+        // its visible text. See EditorTextView+TableCellCaret.
+        updateWrappedCaret()
+        // The row and column handles hang off the caret's cell, so they move
+        // with it and nothing else invalidates them.
+        invalidateTableHandles()
         // A selection change landing mid-recompose is the drift signature
         // (issue #156); the stack names the AppKit path that moved the caret.
         if isUpdating { traceSelectionOrigin() }
@@ -29,6 +36,11 @@ extension EditorTextView {
         let sel = selectedRange()
         let rawOffset = sel.location
         let newActiveIndex = blockIndexForRawOffset(rawOffset)
+
+        // Showing a table raw is a per-table request made with its `</>`
+        // button, so leaving the table takes it back — otherwise the next
+        // table the caret entered would come up raw too.
+        if newActiveIndex != activeBlockIndex { rawTableEditing = false }
 
         if newActiveIndex != activeBlockIndex && !pendingRecompose {
             pendingRecompose = true

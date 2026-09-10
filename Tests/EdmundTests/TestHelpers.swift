@@ -59,6 +59,16 @@ func ensureFullLayout(_ editor: EditorTextView) {
     tlm.ensureLayout(for: tlm.documentRange)
 }
 
+/// Runs a viewport layout pass, which is what publishes
+/// `textViewportLayoutController.viewportRange`. `ensureFullLayout` alone does
+/// not: it lays fragments out but never runs the viewport controller, so
+/// anything that walks the viewport the way the draw pass does (line numbers,
+/// the tables' raw-editing buttons) sees no viewport at all headless.
+@MainActor
+func layOutViewport(_ editor: EditorTextView) {
+    editor.textLayoutManager?.textViewportLayoutController.layoutViewport()
+}
+
 // MARK: - Input Simulation
 
 /// Simulate typing a string character-by-character through the full

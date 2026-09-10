@@ -15,6 +15,7 @@ import WebKit
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
 ///   backspace <n>     press delete n times (300ms apart)
+///   enter             press Return (insertNewline: list continuation, table rows)
 ///   tab / backtab     indent / dedent the selected list line(s)
 ///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
 ///                     recentering, so a block can be driven off-screen)
@@ -26,10 +27,14 @@ import WebKit
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
 ///   logtoolbar        log every toolbar item's identifier and enabled state
+///   celltype <text>   type into the open table-cell card
 ///   logwindows        log each visible window's id, for `screencapture -l`
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
+///   handlemenu row|column  open a table handle's menu via its real hit test
+///   cellmenu <needle>  right-click menu for the cell holding <needle>
+///   selectcells r0,c0,r1,c1  select that block of table cells
 ///   assertsource <s>  PASS iff <s> appears in the document
 @MainActor
 enum ReproScript {
@@ -138,6 +143,12 @@ enum ReproScript {
                 }
             case "return":
                 schedule(after: delay) { $0.insertText("\n", replacementRange: NSRange(location: NSNotFound, length: 0)) }
+                delay += 0.05
+            case "enter":
+                // The Return *key*, which AppKit routes to `insertNewline` — a
+                // different path from `return` above, and the only one that
+                // reaches list continuation and table row stepping.
+                schedule(after: delay) { $0.insertNewline(nil) }
                 delay += 0.05
             case "tab":
                 schedule(after: delay) { $0.insertTab(nil) }
@@ -266,6 +277,34 @@ enum ReproScript {
                         NSLog("WEBSTATE \(v.map(String.init(describing:)) ?? "nil") err=\(e.map(String.init(describing:)) ?? "none")")
                     }
                 }
+            case "cellpopup":
+                // Opens the table cell editor on a raw offset, in-process. The
+                // card is driven by a real mouse click in the app; there is no
+                // way to synthesize one here that lands, because a background
+                // app cannot take focus. This is the seam that lets the card be
+                // seen at all from a script.
+                schedule(after: delay) { editor in
+                    guard let cell = editor.reproTableCell(atRawOffset: Int(arg) ?? 0) else {
+                        report("repro cellpopup no cell at \(arg)")
+                        return
+                    }
+                    editor.reproOpenTableCellEditor(cell)
+                    report("repro cellpopup opened at \(arg)")
+                }
+            case "cellstep":
+                // Tab / Shift-Tab equivalent: move the open card along the row.
+                schedule(after: delay) { editor in
+                    editor.reproStepTableCellEditor(by: Int(arg) ?? 1)
+                    report("repro cellstep \(arg)")
+                }
+            case "celltype":
+                // The card is key while it is up, so `type` — which aims at the
+                // document's editor — would land in the wrong view.
+                for ch in arg {
+                    let s = String(ch)
+                    schedule(after: delay) { $0.reproTypeInCellEditor(s) }
+                    delay += 0.08
+                }
             case "logwindows":
                 // `NSWindow.windowNumber` is the CGWindowID `screencapture -l`
                 // takes. Reporting it is the only way to grab a window from a
@@ -349,6 +388,99 @@ enum ReproScript {
                     }
                     report("repro clickicon \(arg) enabled=\(button.isEnabled)")
                     button.performClick(nil)
+                }
+            case "handlemenu":
+                // Opens a table row/column handle's menu through the real hit
+                // test, at the pill's own centre. `popUp` runs its own event
+                // loop, so nothing after this fires until the menu is dismissed.
+                schedule(after: delay) { editor in
+                    report("repro handlemenu \(arg) "
+                        + editor.debugOpenTableHandleMenu(column: arg == "column"))
+                }
+            case "cellmenu":
+                // The right-click menu for the cell holding <needle>, through
+                // `menu(for:)` — so the cell outline and the appended Table
+                // section come from the real path. Also modal; see above.
+                schedule(after: delay) { editor in
+                    report("repro cellmenu \(arg) " + editor.debugOpenTableCellMenu(needle: arg))
+                }
+            case "activate":
+                // Makes the window key. AppKit draws an *unemphasized* selection
+                // in an inactive window and ignores `selectedTextAttributes`
+                // there, so anything about the selection's appearance has to be
+                // checked with the window actually focused.
+                schedule(after: delay) { editor in
+                    NSApp.activate(ignoringOtherApps: true)
+                    editor.window?.makeKeyAndOrderFront(nil)
+                    editor.window?.makeFirstResponder(editor)
+                    report("repro activate key=\(editor.window?.isKeyWindow == true)")
+                }
+            case "caretpositions":
+                schedule(after: delay) { editor in
+                    report("repro caretpositions " + editor.debugCaretPositions(needle: arg))
+                }
+            case "tablerules":
+                schedule(after: delay) { editor in
+                    report("repro tablerules\n" + editor.debugTableRules())
+                }
+            case "resizewindow":
+                // "resizewindow w,h" — the window geometry is part of the
+                // repro: column widths, and therefore the pad each cell
+                // carries, come out of the content width.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count == 2, let window = editor.window else {
+                        report("repro resizewindow: want w,h"); return
+                    }
+                    var frame = window.frame
+                    frame.size = NSSize(width: n[0], height: n[1])
+                    window.setFrame(frame, display: true)
+                    report("repro resizewindow \(window.frame.size)")
+                }
+            case "menuitems":
+                // "menuitems row" / "menuitems column" — what is on a pill's
+                // menu once it is on screen, injected entries included.
+                schedule(after: delay) { editor in
+                    report("repro menuitems " + editor.debugTableHandleMenuItems(
+                        column: arg.hasPrefix("col")))
+                }
+            case "copyprobe":
+                schedule(after: delay) { editor in
+                    report("repro copyprobe " + editor.debugCopyProbe())
+                }
+            case "clickaudit":
+                // Clicks every cell of every table and reports what came out
+                // wrong. See `debugClickAudit`.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Int($0) }
+                    let rows = n.count == 2 ? n[0]...n[1] : nil
+                    report("repro clickaudit " + editor.debugClickAudit(rows: rows))
+                }
+            case "clickprobe":
+                // "clickprobe x y" — a real click at a view point, with a
+                // report of what every stage of `mouseDown` decided.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count == 2 || n.count == 3 else {
+                        report("repro clickprobe: want x,y[,clicks]"); return
+                    }
+                    report("repro clickprobe " + editor.debugClickProbe(
+                        x: n[0], y: n[1], clicks: n.count == 3 ? Int(n[2]) : 1))
+                }
+            case "hovertable":
+                schedule(after: delay) { editor in
+                    report("repro hovertable " + editor.debugHoverTable())
+                }
+            case "selectcells":
+                // `selectcells r0,c0,r1,c1` — the selection a drag across those
+                // cells would leave, so a screenshot can show the box.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Int($0) }
+                    guard n.count == 4 else {
+                        report("repro selectcells: want r0,c0,r1,c1"); return
+                    }
+                    report("repro selectcells " + editor.debugSelectTableCells(
+                        fromRow: n[0], fromColumn: n[1], toRow: n[2], toColumn: n[3]))
                 }
             case "assertsource":
                 schedule(after: delay) { editor in

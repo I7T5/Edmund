@@ -129,6 +129,9 @@ extension EditorTextView {
     /// Markdown Font menu (Bold, Italic, Highlight, Comments, …) so right-click
     /// offers the same commands as Format ▸ Font.
     public override func menu(for event: NSEvent) -> NSMenu? {
+        // A right-click on a row/column handle is that handle's menu, not the
+        // editor's — the pointer is out in the margin, over no text at all.
+        if let handle = tableHandleHit(at: event) { return tableHandleMenu(handle) }
         guard let menu = super.menu(for: event) else { return nil }
         if let provider = Self.contextFontMenuProvider,
            let fontItem = menu.items.first(where: { item in
@@ -138,7 +141,31 @@ extension EditorTextView {
            }) {
             fontItem.submenu = provider()
         }
+        attachTableSection(to: menu, for: event)
         return menu
+    }
+
+    /// A right-click inside a rendered table cell appends a Table submenu of
+    /// the row and column operations. Everything else about the standard menu
+    /// is left alone — including the selection: a right-click used to select
+    /// the whole cell so Cut/Copy would take it, but silently moving the
+    /// selection under a menu the user only meant to open is a surprise, and
+    /// the cell box is now reserved for a real drag across cells.
+    private func attachTableSection(to menu: NSMenu, for event: NSEvent) {
+        guard !rawTableEditing,
+              let offset = wrappedCellCharIndex(at: event) ?? clickCharIndex(at: event),
+              let cell = tableCell(atRawOffset: offset) else { return }
+
+        let submenu = NSMenu(title: "Table")
+        // Only this submenu: the standard items around it rely on AppKit's own
+        // validation, while these carry their guards on the item already.
+        submenu.autoenablesItems = false
+        addTableItems(to: submenu, blockIndex: cell.blockIndex,
+                      row: cell.row, column: cell.column, axis: nil)
+        let item = NSMenuItem(title: "Table", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        menu.addItem(.separator())
+        menu.addItem(item)
     }
 
     // MARK: - Menu validation

@@ -52,6 +52,13 @@ extension EditorTextView {
     // MARK: - Key Overrides
 
     public override func insertTab(_ sender: Any?) {
+        // In a table, Tab steps to the next cell rather than indenting — and
+        // is swallowed at the last cell rather than falling through, since a
+        // literal tab in a row is never what was meant.
+        if inlineTableCell != nil {
+            stepTableCell(by: 1)
+            return
+        }
         guard let (startBlock, endBlock) = affectedListBlockRange() else {
             super.insertTab(sender)
             return
@@ -60,6 +67,10 @@ extension EditorTextView {
     }
 
     public override func insertBacktab(_ sender: Any?) {
+        if inlineTableCell != nil {
+            stepTableCell(by: -1)
+            return
+        }
         guard let (startBlock, endBlock) = affectedListBlockRange() else {
             return
         }

@@ -84,8 +84,13 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// table's left edge. `bottomBorder` draws a full-width line at this
         /// row's bottom edge — the grid line between data rows (the header/
         /// separator boundary already gets its line from `separator`).
+        /// `topInset` holds the borders off the top of the fragment, which the
+        /// header row uses to reserve the band its column handle sits in
+        /// (see EditorTextView+TableHandles) — without it the verticals would
+        /// run up through the handle.
         case tableRow(columnXOffsets: [CGFloat], width: CGFloat,
-                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool)
+                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool,
+                      topInset: CGFloat)
         /// Horizontal hairline across the text column, drawn `centerOffset`
         /// points below the fragment's vertical center. The offset compensates
         /// for adjacent text sitting at its baseline (low in its line box), so
@@ -142,11 +147,12 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
             hasher.combine(color)
             hasher.combine(width)
         case .tableRow(let offsets, let width, let leftInset,
-                       let separator, let bottomBorder):
+                       let separator, let bottomBorder, let topInset):
             hasher.combine(3)
             hasher.combine(offsets)
             hasher.combine(width)
             hasher.combine(leftInset)
+            hasher.combine(topInset)
             hasher.combine(separator)
             hasher.combine(bottomBorder)
         case .horizontalRule(let color, let centerOffset):
@@ -507,6 +513,94 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 guard index >= 0 else { return nil }
                 return wrap.charStart + index
             }
+        }
+        return nil
+    }
+
+    /// The inverse of `cellWrapCharacterIndex`: fragment-local rects covering
+    /// the part of `range` (paragraph-relative) that falls inside a wrapped
+    /// cell's drawn text, one rect per visual line it spans. A zero-length
+    /// range yields the caret's single zero-width rect. Empty when the range
+    /// touches no wrapped cell, which is every row whose cells all fit.
+    ///
+    /// Both line-fragment index APIs count in the scratch string's own
+    /// coordinates, not the line's (verified: `characterIndex(for:)` at the
+    /// left edge of the second line returns that line's first index, not 0),
+    /// so `charStart` is the only shift needed either way.
+    func cellWrapRects(forParagraphRange range: NSRange) -> [CGRect] {
+        for (wrap, lines) in resolvedCellWraps where !lines.isEmpty {
+            let cell = NSRange(location: wrap.charStart, length: wrap.styled.length)
+            // A caret sitting on either edge belongs to the cell; a selection
+            // has to actually overlap it.
+            let local: NSRange
+            if range.length == 0 {
+                guard range.location >= cell.location,
+                      range.location <= cell.upperBound else { continue }
+                local = NSRange(location: range.location - wrap.charStart, length: 0)
+            } else {
+                let hit = NSIntersectionRange(range, cell)
+                guard hit.length > 0 else { continue }
+                local = NSRange(location: hit.location - wrap.charStart, length: hit.length)
+            }
+
+            var rects: [CGRect] = []
+            var top = cellWrapTopInset
+            for line in lines {
+                let height = line.typographicBounds.height
+                let lineRange = line.characterRange
+                let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth,
+                                            align: wrap.align)
+                defer { top += height }
+                if local.length == 0 {
+                    // The caret goes on the first line that can hold it, which
+                    // at a soft break is the line it broke *from* — the same
+                    // line a click at that point would have resolved to.
+                    guard local.location < lineRange.upperBound
+                            || line === lines.last else { continue }
+                    let x = line.locationForCharacter(
+                        at: min(local.location, lineRange.upperBound)).x
+                    return [CGRect(x: wrap.x + dx + x, y: top, width: 0, height: height)]
+                }
+                let hit = NSIntersectionRange(local, lineRange)
+                guard hit.length > 0 else { continue }
+                let from = line.locationForCharacter(at: hit.location).x
+                let to = line.locationForCharacter(at: hit.upperBound).x
+                rects.append(CGRect(x: wrap.x + dx + from, y: top,
+                                    width: to - from, height: height))
+            }
+            if !rects.isEmpty { return rects }
+        }
+        return []
+    }
+
+    /// The paragraph offset one visual line up (`-1`) or down (`+1`) from
+    /// `offset`, inside the wrapped cell holding it. Nil when the offset is not
+    /// in a wrapped cell or the move would leave it — the caller then hands the
+    /// key back to ordinary vertical movement, which walks to the row above or
+    /// below.
+    func cellWrapOffset(fromParagraphOffset offset: Int, lineDelta: Int) -> Int? {
+        for (wrap, lines) in resolvedCellWraps where !lines.isEmpty {
+            let cell = NSRange(location: wrap.charStart, length: wrap.styled.length)
+            guard offset >= cell.location, offset <= cell.upperBound else { continue }
+            let local = offset - wrap.charStart
+            guard let index = lines.firstIndex(where: {
+                local < $0.characterRange.upperBound
+            }) ?? (lines.indices.last) else { return nil }
+            let target = index + lineDelta
+            guard lines.indices.contains(target) else { return nil }
+            let here = lines[index], there = lines[target]
+            // Alignment shifts each line independently, so the x has to be
+            // taken back out of the source line's shift and into the target's.
+            let dxHere = cellWrapLineOffset(here, contentWidth: wrap.contentWidth,
+                                            align: wrap.align)
+            let dxThere = cellWrapLineOffset(there, contentWidth: wrap.contentWidth,
+                                             align: wrap.align)
+            let x = here.locationForCharacter(
+                at: min(local, here.characterRange.upperBound)).x
+            let hit = there.characterIndex(
+                for: CGPoint(x: x + dxHere - dxThere, y: there.typographicBounds.midY))
+            guard hit >= 0 else { return nil }
+            return wrap.charStart + hit
         }
         return nil
     }
@@ -914,11 +1008,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.fill(CGRect(x: point.x - width + decoration.inset, y: barTop,
                                 width: width, height: barHeight))
 
-        case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
+        case .tableRow(let xOffsets, let width, let leftInset, let separator,
+                       let bottomBorder, let topInset):
             // Offsets are text-relative; the fragment's origin is the text start.
             let borderColor = chromeLineColor
-            context.setStrokeColor(borderColor.cgColor)
-            context.setLineWidth(1)
             // Column borders are FILLED at exactly one device pixel rather than
             // stroked: a 1pt stroke straddling a pixel boundary lands on two
             // device rows on a Retina display, which made the verticals read
@@ -928,22 +1021,34 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
             let hairline = 1 / scale
             context.setFillColor(borderColor.cgColor)
-            for x in xOffsets {
-                let lineX = (((point.x + x) * scale).rounded()) / scale
-                context.fill(CGRect(x: lineX, y: point.y,
-                                    width: hairline, height: frame.height))
+            // The table is closed on all four sides, like Notes': the two outer
+            // verticals join the column borders, and the header carries the top
+            // rule the way the last row carries the bottom one. A closed grid is
+            // also what lets a cell-selection box stand on a real line wherever
+            // it is drawn, rather than floating at an open edge.
+            for x in [0] + xOffsets + [width - leftInset] {
+                let lineX = (((point.x + x - (x == 0 ? leftInset : 0)) * scale).rounded()) / scale
+                context.fill(CGRect(x: lineX, y: point.y + topInset,
+                                    width: hairline, height: frame.height - topInset))
             }
-            if separator {
-                let y = round(point.y + frame.height / 2) + 0.5
-                context.move(to: CGPoint(x: point.x - leftInset, y: y))
-                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
+            // Filled at one device pixel, exactly like the column borders above
+            // — a 1pt stroke is two device rows on a Retina display, which is
+            // what made the row rules read twice the weight of the verticals
+            // they meet. The whole grid is one hairline now.
+            func rule(atY y: CGFloat) {
+                let lineY = ((y * scale).rounded()) / scale
+                context.fill(CGRect(x: point.x - leftInset, y: lineY,
+                                    width: width, height: hairline))
             }
-            if bottomBorder {
-                let y = round(point.y + frame.height) + 0.5
-                context.move(to: CGPoint(x: point.x - leftInset, y: y))
-                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
-            }
-            context.strokePath()
+            // `topInset` is reserved only by the header row, so it also says
+            // which row owns the table's top edge.
+            if topInset > 0 { rule(atY: point.y + topInset) }
+            if separator { rule(atY: point.y + frame.height / 2) }
+            // Inside the drawing row, not below it: the row beneath repaints on
+            // its own (a caret move restyles one row and dirties only its
+            // rect), and it would erase a line it knows nothing about — the row
+            // that owns the line never being asked to draw it again.
+            if bottomBorder { rule(atY: point.y + frame.height - hairline) }
 
         case .horizontalRule(let color, let centerOffset):
             // Filled at a fixed 3 device pixels (1.5pt on Retina) rather than

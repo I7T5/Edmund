@@ -94,10 +94,29 @@ func splitTableRow(_ line: String) -> [String] {
     return parts
 }
 
-/// Returns `(start, end)` character ranges for each cell in a table line.
-/// Works with or without outer pipes. `start` is the first content char,
-/// `end` is one past the last content char (i.e., the next pipe or line end).
-func cellRanges(in line: NSString) -> [(start: Int, end: Int)] {
+/// Cell ranges for a table line with *empty* cells kept — `columnSpans` and
+/// `cellRanges` differ on `||` alone.
+///
+/// The renderer drops an empty cell and numbers its columns accordingly, which
+/// is self-consistent for drawing. A structural edit cannot afford that: asked
+/// to delete column 2 of `| a || b |` it would delete `b`, having never counted
+/// the empty one. Everything outside the renderer — `TableCellRef`, the row and
+/// column handles, the add/delete operations — counts columns this way instead,
+/// which is also how `splitTableRow` counts them.
+func columnSpans(in line: NSString) -> [(start: Int, end: Int)] {
+    var edges = pipeEdges(in: line)
+    guard !edges.isEmpty else { return [] }
+    var result: [(start: Int, end: Int)] = []
+    for ei in 0..<(edges.count - 1) {
+        result.append((edges[ei] + 1, edges[ei + 1]))
+    }
+    return result
+}
+
+/// The pipe positions a row's cells sit between, with virtual edges standing in
+/// for a missing outer pipe. Shared by `cellRanges` and `columnSpans`, which
+/// differ only in what they do with an empty span.
+private func pipeEdges(in line: NSString) -> [Int] {
     var pipePos: [Int] = []
     for ci in 0..<line.length {
         guard line.character(at: ci) == 0x7C else { continue }
@@ -106,8 +125,6 @@ func cellRanges(in line: NSString) -> [(start: Int, end: Int)] {
         pipePos.append(ci)
     }
     guard !pipePos.isEmpty else { return [] }
-
-    // Build edge list: either the pipe position or a virtual -1/length sentinel.
     var edges: [Int] = []
     if pipePos[0] == 0 {
         edges.append(contentsOf: pipePos)
@@ -118,12 +135,12 @@ func cellRanges(in line: NSString) -> [(start: Int, end: Int)] {
     if pipePos.last != line.length - 1 {
         edges.append(line.length)
     }
+    return edges
+}
 
-    var result: [(start: Int, end: Int)] = []
-    for ei in 0..<(edges.count - 1) {
-        let s = edges[ei] + 1
-        let e = edges[ei + 1]
-        if e > s { result.append((s, e)) }
-    }
-    return result
+/// Returns `(start, end)` character ranges for each cell in a table line.
+/// Works with or without outer pipes. `start` is the first content char,
+/// `end` is one past the last content char (i.e., the next pipe or line end).
+func cellRanges(in line: NSString) -> [(start: Int, end: Int)] {
+    columnSpans(in: line).filter { $0.end > $0.start }
 }

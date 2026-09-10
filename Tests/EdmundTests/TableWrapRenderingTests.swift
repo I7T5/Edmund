@@ -228,7 +228,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(let offsets, _, _, _, _)? =
+            if case .tableRow(let offsets, _, _, _, _, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 offsetsPerRow.append(offsets)
             }
@@ -240,7 +240,7 @@ struct TableWrapRenderingTests {
         #expect(offsetsPerRow.dropFirst().allSatisfy { $0 == offsetsPerRow[0] })
     }
 
-    @Test("Interior data rows get a bottom grid line; header, separator and last row don't")
+    @Test("Every data row gets a bottom grid line, the last one included")
     func bottomBorderOnDataRowsOnly() {
         let editor = makeEditor()
         let styled = editor.styleBlock("| a | b |\n|---|---|\n| x | y |\n| p | q |", cursorPosition: nil)
@@ -248,7 +248,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(_, _, _, _, let bottomBorder)? =
+            if case .tableRow(_, _, _, _, let bottomBorder, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 bottoms.append(bottomBorder)
             }
@@ -256,9 +256,11 @@ struct TableWrapRenderingTests {
             guard nl.location != NSNotFound else { break }
             lineStart = nl.upperBound
         }
-        // Rows: header, separator, "x | y", "p | q". The last row draws no
-        // bottom rule — the table's bottom edge is open.
-        #expect(bottoms == [false, false, true, false])
+        // Rows: header, separator, "x | y", "p | q". The last row draws its
+        // rule too — the table is closed on all four sides, like Notes'. The
+        // header's own top rule rides its `topInset`, not this flag, and the
+        // separator draws the header divider through its middle instead.
+        #expect(bottoms == [false, false, true, true])
     }
 
     @Test("distributeColumnWidths keeps under-fair-share columns, clamps the rest")

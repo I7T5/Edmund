@@ -475,6 +475,103 @@ public class EditorTextView: NSTextView {
     /// UTF-16 offsets of each line's first character; see `lineStarts`.
     var lineStartsCache: [Int]?
 
+    /// Block index of the table the pointer is over, or nil. Together with the
+    /// caret being inside a table, this is what reveals the `</>` button — the
+    /// margin stays empty until one of the two is true. See
+    /// EditorTextView+TableRawButton.
+    var hoveredTableBlock: Int?
+
+    /// Whether the pointer is on the revealed `</>` button itself, which draws
+    /// its hover highlight.
+    var tableRawButtonHovered = false
+
+    /// The row/column handle under the pointer, and the bands the handles were
+    /// last drawn in — the handles follow the caret, so a caret move has to
+    /// repaint where they were as well as where they now are.
+    /// See EditorTextView+TableHandles.
+    var hoveredTableHandle: TableHandle?
+    var lastTableHandleBands: [NSRect] = []
+
+    /// Whether a multi-cell table selection was up at the last selection
+    /// change, so the box can be repainted away when it goes.
+    /// See EditorTextView+TableHandles.
+    var tableCellSelectionWasActive = false
+
+    /// A block of cells is marked by its box alone, so AppKit's text highlight
+    /// is switched off while one is up. These hold the attributes to put back,
+    /// and whether they are currently swapped out.
+    lazy var defaultSelectedTextAttributes: [NSAttributedString.Key: Any]
+        = selectedTextAttributes
+    var tableCellHighlightSuppressed = false
+
+    /// Whether the drag in progress has left the cell it started in. Once it
+    /// has, coming back to a single cell selects that cell whole rather than
+    /// reverting to a character selection. Reset at every `mouseDown`.
+    var tableDragCrossedCells = false
+
+    /// Set while `activateRawTableEditing` is placing the caret at a table's
+    /// first character. That character is a pipe, and the rules below move a
+    /// caret off a pipe — but this one is deliberate, and the table is about to
+    /// stop being rendered anyway.
+    var activatingRawTable = false
+
+    /// How many clicks the gesture in flight is, and which character AppKit
+    /// hit — held for the same span as `tableClickPoint`, and for the same
+    /// reason: `setSelectedRanges` is where a selection can still be corrected
+    /// before anyone sees it, and it knows neither on its own.
+    var tableClickCount = 0
+    var tableClickHit: Int?
+
+    /// Where the click now in flight landed, in view coordinates, for as long
+    /// as `mouseDown` is running. It is what lets `setSelectedRanges` keep a
+    /// caret in the cell the user aimed at: only the point knows which cell
+    /// that was, and by then the point is long gone from the call stack.
+    /// See `tableCellCaretSnap(at:offset:)`.
+    var tableClickPoint: NSPoint?
+
+    /// The pointer-tracking area behind `hoveredTableBlock`.
+    var tableHoverTrackingArea: NSTrackingArea?
+
+    /// The open popup cell editor, and the cell it is editing. See
+    /// EditorTextView+TableCellEditor.
+    var cellEditorPanel: CellEditorPanel?
+    var editingTableCell: TableCellRef?
+
+    /// Set once the popup has been dragged off the table into a free-floating
+    /// window: it stops tracking the table and grows its own close box.
+    var isCellEditorDetached = false
+
+    /// True while a table is deliberately showing its raw markdown, which the
+    /// `</>` button asks for. A caret inside a table no longer implies raw —
+    /// the table stays rendered and the cell is edited in place — so this is
+    /// the only way back to the pipes, for the structural edits (adding a
+    /// column, fixing a separator row) that in-place editing cannot express.
+    var rawTableEditing = false
+
+    /// The caret Edmund draws itself, inside a table cell too wide for its
+    /// column: its blink phase, where it was last drawn (so the old position
+    /// can be invalidated when it moves) and the timer running the blink.
+    /// AppKit's own caret is switched off while this one is up — it would draw
+    /// at the column's left edge, where the cell's hidden characters are.
+    /// See EditorTextView+TableCellCaret.
+    var wrappedCaretOn = false
+    var wrappedCaretRect: NSRect?
+    var wrappedCaretTimer: Timer?
+
+    /// The card's top edge in view coordinates, fixed for as long as it points
+    /// at one cell. Nil re-reads it from the row on the next placement.
+    var cellEditorAnchorY: CGFloat?
+
+    /// True once this popup session has pushed its undo snapshot. Typing in the
+    /// popup rewrites the cell on every keystroke so the table reflows live, and
+    /// without this every keystroke would also be its own undo step.
+    var cellEditorDidSnapshot = false
+
+    /// Ends the edit when the document window stops being key, and keeps the
+    /// attached popup under its table while the view scrolls.
+    var cellEditorKeyObserver: NSObjectProtocol?
+    var cellEditorScrollObserver: NSObjectProtocol?
+
     // MARK: - Derived Visual Properties
 
     /// The app accent: the macOS system accent (`controlAccentColor`), which
@@ -740,6 +837,37 @@ public class EditorTextView: NSTextView {
                 return
             }
         }
+        // A table's `</>` button hangs in the margin outside the text column,
+        // where AppKit has nothing to select — so this takes the click whole and
+        // never reaches `super`. See EditorTextView+TableRawButton.
+        if let tableBlock = tableRawButtonHit(at: event) {
+            activateRawTableEditing(blockIndex: tableBlock)
+            return
+        }
+        // A row/column handle hangs in the same margin, and in the band above
+        // the table. Same reasoning: nothing there to select, so it takes the
+        // click whole. See EditorTextView+TableHandles.
+        if let handle = tableHandleHit(at: event) {
+            showTableHandleMenu(handle, with: event)
+            return
+        }
+        // A dot on a cell selection's corner drags the selection wider. AppKit's
+        // tracking would anchor on the click and start a fresh selection, so
+        // this takes the gesture whole. See EditorTextView+TableHandles.
+        if let grab = tableCellSelectionAnchor(at: convert(event.locationInWindow, from: nil)) {
+            trackTableCellSelection(from: grab.anchor, blockIndex: grab.block.blockIndex)
+            return
+        }
+        // An open popup ends on any click that isn't on its own table. The
+        // popover is `.applicationDefined`, so nothing else does this.
+        dismissCellEditorIfClickIsOutside(event)
+        // EXPERIMENT (inline table editing): the popover no longer takes the
+        // click. A table now stays rendered with the caret inside it, so the
+        // click falls through to ordinary caret placement in the real text.
+        if false, let cell = tableCellForCellEditor(at: event) {
+            openTableCellEditor(cell)
+            return
+        }
         // A wrapped table cell is drawn from a detached layout, so AppKit's own
         // hit-testing can only ever land on the hidden characters underneath it
         // (all of which sit at one x). Resolve the click against the drawn text
@@ -748,13 +876,53 @@ public class EditorTextView: NSTextView {
         // across the click's activate-the-table restyle because it is a raw
         // source offset (storage == rawSource).
         let wrappedCellCaret = wrappedCellCharIndex(at: event)
+        // AppKit's own answer to "which character is under the pointer", taken
+        // before the gesture runs and moves the selection out from under it.
+        let clickHit = clickCharIndex(at: event)
+        // A fresh gesture starts inside whatever cell it lands in.
+        tableDragCrossedCells = false
+        // Held for the whole gesture so that every selection AppKit installs —
+        // the first one included — is corrected as it goes in rather than
+        // afterwards. `super.mouseDown` does not return until the mouse comes
+        // up, and it paints while it tracks, so a correction made after it
+        // returns is a correction the user watches happen.
+        tableClickPoint = convert(event.locationInWindow, from: nil)
+        tableClickCount = event.clickCount
+        tableClickHit = clickHit
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
+        tableClickPoint = nil
+        tableClickCount = 0
+        tableClickHit = nil
         // Only a plain click: a drag or a double-click made a real selection,
         // and honouring those would collapse it.
         if let wrappedCellCaret, selectedRange().length == 0 {
             setSelectedRange(NSRange(location: wrappedCellCaret, length: 0))
+        }
+        let clickPoint = convert(event.locationInWindow, from: nil)
+        let clickSelection = selectedRange()
+        // A double-click out in a cell's empty space takes the cell's contents.
+        // There is no word where it landed, and the next unit up from a word,
+        // here, is the cell — which is what a double-click in a spreadsheet
+        // gives you too. A single click out there comes back to the cell's
+        // text instead, as does one AppKit carried into the neighbouring cell
+        // — see `tableCellCaretSnap(at:offset:)`.
+        let emptySpace = tableCellEmptySpace(at: clickPoint, hit: clickHit)
+        if event.clickCount >= 2 {
+            traceEdit("tableDoubleClick clicks=\(event.clickCount) x=\(Int(clickPoint.x))"
+                + " hit=\(clickHit.map(String.init) ?? "nil")"
+                + " grid=\(tableGridDiagnostic(at: clickPoint, hit: clickHit))"
+                + " cell=\(emptySpace.map { "r\($0.row)c\($0.column)" } ?? "nil")"
+                + " sel=\(clickSelection)")
+        }
+        if event.clickCount == 2, let cell = emptySpace {
+            // Already installed in flight; this is the scroll and the last word.
+            selectCellText(cell)
+        } else if clickSelection.length == 0,
+                  let snapped = tableCellCaretSnap(at: clickPoint,
+                                                   offset: clickSelection.location) {
+            setSelectedRange(NSRange(location: snapped, length: 0))
         }
         // `super.mouseDown` returns only after the whole tracking loop (drag +
         // mouse-up) finishes; `sel` in this line is the gesture's net result.
@@ -776,7 +944,75 @@ public class EditorTextView: NSTextView {
         if stillSelecting, let first = ranges.first?.rangeValue {
             traceEdit("dragTick sel'={\(first.location),\(first.length)}")
         }
+        // A drag that crosses from one table cell into another selects whole
+        // cells, the way Notes does: a selection that stops mid-cell cannot say
+        // which cells a Copy would take. It is installed as one range per row —
+        // see EditorTextView+TableHandles for why that matters.
+        var ranges = ranges
+        // A double-click out in a cell's empty space takes the cell, and takes
+        // it here rather than once the gesture is over: `super.mouseDown` does
+        // not return until the mouse comes up and it paints while it tracks, so
+        // a selection installed afterwards is one the user watches replace
+        // whatever AppKit put there first. See `tableCellEmptySpace`.
+        if let point = tableClickPoint, tableClickCount == 2, !activatingRawTable,
+           let cell = tableCellEmptySpace(at: point, hit: tableClickHit) {
+            ranges = [NSValue(range: tableCellSelectionRange(cell))]
+        }
+        // A caret placed by the click in flight belongs to the cell that click
+        // landed in. Corrected here, where the selection is installed, so no
+        // other placement is ever painted — and so that it holds for every path
+        // that sets a selection during the gesture, not just the one that
+        // returns through `mouseDown`.
+        if let point = tableClickPoint, !activatingRawTable, ranges.count == 1,
+           let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
+           let snapped = tableCellCaretSnap(at: point, offset: caret.location) {
+            ranges = [NSValue(range: NSRange(location: snapped, length: 0))]
+        }
+        // A selection inside one cell covers that cell's text and nothing else:
+        // not the pad, not the hidden pipe. See `tableCellSelectionTrimmed`.
+        if ranges.count == 1, let selection = ranges[0].rangeValue as NSRange?,
+           selection.length > 0, let trimmed = tableCellSelectionTrimmed(selection) {
+            ranges = [NSValue(range: trimmed)]
+        }
+        // And wherever it came from, a caret never rests on a hidden pipe.
+        // See `tableCellCaretRest`.
+        if !activatingRawTable, ranges.count == 1,
+           let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
+           let moved = tableCellCaretRest(caret.location, from: selectedRange().location) {
+            ranges = [NSValue(range: NSRange(location: moved, length: 0))]
+        }
+        // A drag across cells is a rectangle between where it started and where
+        // the pointer is now — read off the grid rather than off the character
+        // range it happens to have swept. See `tableCellBlock(fromPoint:toPoint:)`.
+        if let anchorPoint = tableClickPoint, ranges.count == 1,
+           let first = ranges[0].rangeValue as NSRange?, first.length > 0,
+           let window,
+           case let pointer = convert(window.mouseLocationOutsideOfEventStream, from: nil),
+           let block = tableCellBlock(fromPoint: anchorPoint, toPoint: pointer) {
+            tableDragCrossedCells = true
+            let perRow = tableCellSelectionRanges(block)
+            if !perRow.isEmpty { ranges = perRow }
+        }
+        if ranges.count == 1, let first = ranges[0].rangeValue as NSRange? {
+            if let block = tableCellBlock(for: first) {
+                tableDragCrossedCells = true
+                let perRow = tableCellSelectionRanges(block)
+                if !perRow.isEmpty { ranges = perRow }
+            } else if tableDragCrossedCells, first.length > 0,
+                      let cell = tableCell(atRawOffset: first.location) {
+                // Back inside a single cell after having left it: Notes
+                // reselects that cell whole rather than the sliver the pointer
+                // happens to be over, so the gesture reads as picking cells
+                // throughout rather than switching back to picking characters.
+                ranges = [NSValue(range: cell.contentRange)]
+            }
+        }
+        // Before `super`: AppKit resolves the highlight's colour as it installs
+        // the selection, so attributes set afterwards only land at the *next*
+        // change.
+        setTableCellHighlight(suppressed: tableCellBlock(forRanges: ranges) != nil)
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        updateTableCellSelectionChrome()
     }
 
     /// The range actually copied, for the "selection over rendered math copies
@@ -785,6 +1021,14 @@ public class EditorTextView: NSTextView {
     /// run's boundary; this line shows the truth at ⌘C time.
     public override func copy(_ sender: Any?) {
         traceEdit("copy")
+        // A table's storage is its markdown, so an ordinary copy hands the next
+        // app a row of pipes. See EditorTextView+TableCopy for the two cases
+        // that are worth more than that.
+        if let text = tableCopyText() {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            return
+        }
         super.copy(sender)
     }
 
