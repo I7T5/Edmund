@@ -429,10 +429,10 @@ extension EditorTextView {
                             select: NSRange(location: sel.location + 4, length: 0))
     }
 
-    /// Image ▸ Attach File…: pick an image on disk and insert `![](path)` for it.
-    /// Unlike `formatImage`, which only lays down empty syntax, this one knows the
-    /// destination — so the caret lands in the *alt-text* slot, the part still
-    /// missing.
+    /// Image ▸ Attach File…: pick an image on disk and insert
+    /// `![alt text](path)` for it. Unlike `formatImage`, which only lays down
+    /// empty syntax, this one knows the destination — so the selection lands on
+    /// the *alt-text* placeholder, the part still missing.
     @objc public func formatAttachImage(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
@@ -444,13 +444,29 @@ extension EditorTextView {
         insertImage(at: url)
     }
 
-    /// Inserts `![](destination)` for `url` at the caret. Split from the panel
-    /// above so the path logic is testable without UI.
-    public func insertImage(at url: URL) {
+    /// The alt text `insertImage` lays down. Selected after the insert, so the
+    /// first keystroke replaces it — the destination is already known, the alt
+    /// text is the part still missing.
+    static let imageAltPlaceholder = "alt text"
+
+    /// Inserts `![alt text](destination)` for `url` at the caret. Split from the
+    /// panel above so the path logic is testable without UI.
+    public func insertImage(at url: URL) { insertImages(at: [url]) }
+
+    /// Inserts one `![alt text](destination)` per URL at the caret, blank-line
+    /// separated so each image is its own block (adjacent lines would parse as
+    /// a single paragraph). The *first* image's alt text ends up selected.
+    /// A drop of several files from Finder is the multi-URL case.
+    public func insertImages(at urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let alt = Self.imageAltPlaceholder
+        let replacement = urls
+            .map { "![" + alt + "](" + imageDestination(for: $0) + ")" }
+            .joined(separator: "\n\n")
         let sel = selectedRange()
-        applyFormattingEdit(rawRange: sel,
-                            replacement: "![](" + imageDestination(for: url) + ")",
-                            select: NSRange(location: sel.location + 2, length: 0))
+        applyFormattingEdit(rawRange: sel, replacement: replacement,
+                            select: NSRange(location: sel.location + 2,
+                                            length: (alt as NSString).length))
     }
 
     /// The destination to write into `![](…)`: relative to the document's own

@@ -24,6 +24,17 @@ public struct EditorTheme: Equatable, Sendable {
     /// Whether editor text is antialiased (a single editor-wide setting).
     public var antialias: Bool
 
+    /// Per-script font overrides: script → macOS font family name. Empty means
+    /// no cascade — the editor and Read mode behave exactly as before (system
+    /// fallback picks covering fonts).
+    public var fontCascade: [FontCascadeScript: String]
+
+    /// Per-script size overrides: script → multiplier of the run's point size
+    /// (absent = 1.0). Ratios, not points, so zoom and body-size changes scale
+    /// the cascade for free; Read mode carries the same ratio via the
+    /// @font-face `size-adjust` descriptor, keeping Edit and Read in step.
+    public var fontCascadeSizeRatios: [FontCascadeScript: Double]
+
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
     public var linkBlueHex: String
@@ -43,7 +54,8 @@ public struct EditorTheme: Equatable, Sendable {
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
                 standardLigatures: Bool = true, monospaceLigatures: Bool = false,
-                antialias: Bool = true) {
+                antialias: Bool = true, fontCascade: [FontCascadeScript: String] = [:],
+                fontCascadeSizeRatios: [FontCascadeScript: Double] = [:]) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.linkBlueHex = linkBlueHex
@@ -57,6 +69,8 @@ public struct EditorTheme: Equatable, Sendable {
         self.standardLigatures = standardLigatures
         self.monospaceLigatures = monospaceLigatures
         self.antialias = antialias
+        self.fontCascade = fontCascade
+        self.fontCascadeSizeRatios = fontCascadeSizeRatios
     }
 
     // MARK: - Defaults
@@ -187,6 +201,8 @@ public struct EditorTheme: Equatable, Sendable {
         static let mathNumberHex = "EditorMathNumberHex"
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
+        static let fontCascade = "EditorFontCascade"
+        static let fontCascadeSizeRatios = "EditorFontCascadeSizeRatios"
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {
@@ -219,6 +235,36 @@ public struct EditorTheme: Equatable, Sendable {
         let paragraphSpacingBefore: CGFloat = d.object(forKey: Keys.paragraphSpacingBefore) != nil
             ? CGFloat(d.float(forKey: Keys.paragraphSpacingBefore))
             : def.paragraphSpacingBefore
+        // Unknown script keys are dropped so a cascade written by a newer (or
+        // older) build with a different curated list still loads cleanly.
+        let fontCascade: [FontCascadeScript: String] = {
+            guard let raw = d.dictionary(forKey: Keys.fontCascade) as? [String: String] else {
+                return [:]
+            }
+            var cascade: [FontCascadeScript: String] = [:]
+            for (key, family) in raw {
+                if let script = FontCascadeScript(rawValue: key), !family.isEmpty {
+                    cascade[script] = family
+                }
+            }
+            return cascade
+        }()
+        // Same discipline as the families: unknown scripts dropped, ratios
+        // clamped to the stepper's range, and 1.0 treated as unset (the
+        // settings UI removes the entry instead of storing it).
+        let fontCascadeSizeRatios: [FontCascadeScript: Double] = {
+            guard let raw = d.dictionary(forKey: Keys.fontCascadeSizeRatios) else {
+                return [:]
+            }
+            var ratios: [FontCascadeScript: Double] = [:]
+            for (key, value) in raw {
+                guard let script = FontCascadeScript(rawValue: key),
+                      let number = value as? NSNumber else { continue }
+                let ratio = min(2.0, max(0.5, number.doubleValue))
+                if abs(ratio - 1.0) >= 0.001 { ratios[script] = ratio }
+            }
+            return ratios
+        }()
 
         return EditorTheme(
             fontName: fontName,
@@ -233,7 +279,9 @@ public struct EditorTheme: Equatable, Sendable {
             monospaceFontSize: monospaceFontSize,
             standardLigatures: standardLigatures,
             monospaceLigatures: monospaceLigatures,
-            antialias: antialias
+            antialias: antialias,
+            fontCascade: fontCascade,
+            fontCascadeSizeRatios: fontCascadeSizeRatios
         )
     }
 
@@ -252,6 +300,10 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(mathNumberHex, forKey: Keys.mathNumberHex)
         d.set(Float(lineSpacing), forKey: Keys.lineSpacing)
         d.set(Float(paragraphSpacingBefore), forKey: Keys.paragraphSpacingBefore)
+        d.set(Dictionary(uniqueKeysWithValues: fontCascade.map { ($0.key.rawValue, $0.value) }),
+              forKey: Keys.fontCascade)
+        d.set(Dictionary(uniqueKeysWithValues: fontCascadeSizeRatios.map { ($0.key.rawValue, $0.value) }),
+              forKey: Keys.fontCascadeSizeRatios)
     }
 }
 

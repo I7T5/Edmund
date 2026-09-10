@@ -71,8 +71,9 @@ enum HTMLTheme {
             ? "\(trim(CGFloat(maxContentWidthPoints)))px" : "none"
 
         return """
+        \(cascadeFontFaceBlocks(theme))
         :root {
-          --body-font: \(cssFontStack(theme.fontName, generic: "serif"));
+          --body-font: \(cascadeStackPrefix(theme))\(cssFontStack(theme.fontName, generic: "serif"));
           --body-size: \(trim(theme.fontSize))px;
           --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
           --mono-size: \(trim(theme.monospaceFontSize))px;
@@ -415,6 +416,50 @@ enum HTMLTheme {
     """
 
     // MARK: Helpers
+
+    /// One @font-face block per configured cascade script, mapping a synthetic
+    /// family name to the user's installed family (`src: local()`, which
+    /// WKWebView honors) scoped to the script's unicode-range. A plain ordered
+    /// font-family list is NOT enough here: WebKit picks the first listed font
+    /// that covers a glyph, so a body font that happens to cover Han would
+    /// shadow the user's Han choice — diverging from the editor, where the
+    /// cascade wins over coverage. The unicode-range fence makes the synthetic
+    /// family win only inside its script, exactly like the editor.
+    private static func cascadeFontFaceBlocks(_ theme: EditorTheme) -> String {
+        theme.fontCascade
+            .sorted { $0.key.rawValue < $1.key.rawValue }   // deterministic CSS
+            .map { script, family in
+                // size-adjust carries the script's size ratio (× the run's
+                // size in the editor) so a per-script size reads identically
+                // in both modes and scales with --body-size for free.
+                // Omitted at 1.0, keeping the no-override CSS byte-identical.
+                let ratio = theme.fontCascadeSizeRatios[script] ?? 1.0
+                let sizeAdjust = abs(ratio - 1.0) < 0.001
+                    ? "" : " size-adjust: \(trim(CGFloat(ratio * 100)))%;"
+                return """
+                @font-face { font-family: "\(cascadeFamilyName(script))"; src: local("\(family)");\
+                \(sizeAdjust) unicode-range: \(script.cssUnicodeRange); }
+                """
+            }
+            .joined(separator: "\n")
+    }
+
+    /// The cascade entries that lead the `--body-font` stack, e.g.
+    /// `"edmund-cascade-han", "edmund-cascade-emoji", ` — empty when the theme
+    /// has no cascade, keeping the stack byte-identical to pre-cascade CSS.
+    private static func cascadeStackPrefix(_ theme: EditorTheme) -> String {
+        theme.fontCascade
+            .sorted { $0.key.rawValue < $1.key.rawValue }
+            .map { "\"\(cascadeFamilyName($0.key))\", " }
+            .joined()
+    }
+
+    /// Synthetic family name for one script's @font-face block. Deliberately
+    /// not the user's family name: a real family in the stack without the
+    /// unicode-range fence would swallow Latin too.
+    private static func cascadeFamilyName(_ script: FontCascadeScript) -> String {
+        "edmund-cascade-\(script.rawValue)"
+    }
 
     /// A CSS font stack: the (possibly multi-word) macOS family name quoted, then
     /// a system fallback and a generic. WKWebView resolves installed families

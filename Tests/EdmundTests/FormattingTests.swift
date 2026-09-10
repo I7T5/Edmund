@@ -725,24 +725,45 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         _ = doc
     }
 
-    @Test func insertsSyntaxWithCaretInAltSlot() {
+    @Test func insertsSyntaxWithAltPlaceholderSelected() {
         let (e, doc) = editorInDocument(at: "/notes/journal.md")
         e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
-        #expect(e.rawSource == "![](cat.png)")
-        #expect(e.selectedRange() == NSRange(location: 2, length: 0))  // "![|](cat.png)"
+        #expect(e.rawSource == "![alt text](cat.png)")
+        // "![<alt text>](cat.png)" — typing replaces the placeholder.
+        #expect(e.selectedRange() == NSRange(location: 2, length: 8))
         _ = doc
     }
 
     @Test func insertsAtTheCaretWithinExistingText() {
         let (e, doc) = editorInDocument(at: "/notes/journal.md", "see ", NSRange(location: 4, length: 0))
         e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
-        #expect(e.rawSource == "see ![](cat.png)")
+        #expect(e.rawSource == "see ![alt text](cat.png)")
+        #expect(e.selectedRange() == NSRange(location: 6, length: 8))
+        _ = doc
+    }
+
+    /// A Finder drag of several files inserts one image per block.
+    @Test func insertsMultipleImagesBlankLineSeparated() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        e.insertImages(at: [URL(fileURLWithPath: "/notes/cat.png"),
+                            URL(fileURLWithPath: "/notes/dog.png")])
+        #expect(e.rawSource == "![alt text](cat.png)\n\n![alt text](dog.png)")
+        // The first image's placeholder is the one selected.
+        #expect(e.selectedRange() == NSRange(location: 2, length: 8))
+        _ = doc
+    }
+
+    @Test func insertingNoImagesIsANoOp() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md", "hi", NSRange(location: 2, length: 0))
+        e.insertImages(at: [])
+        #expect(e.rawSource == "hi")
         _ = doc
     }
 
     @Test func storageMatchesOracleAfterInsert() {
         let (e, doc) = editorInDocument(at: "/notes/journal.md", "see ", NSRange(location: 4, length: 0))
         e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
+        #expect(e.rawSource == "see ![alt text](cat.png)")
         drainAllStyling(e)
         assertMatchesFullRecomposeOracle(e)
         _ = doc

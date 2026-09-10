@@ -12,6 +12,13 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
     @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
+    @AppStorage(AppSettings.Key.fontsByScriptExpanded) private var fontsByScriptExpanded = false
+
+    /// Every label in the pane gets this fixed width, so the "Fonts by script"
+    /// rows can appear/disappear without re-sizing the Grid's label column
+    /// (which would slide every row sideways as the section opens). Sized to
+    /// fit the pane's widest label ("Max content width:").
+    static let labelColumnWidth: CGFloat = 130
 
     // MARK: - Unit helpers
 
@@ -50,10 +57,15 @@ struct AppearanceSettingsView: View {
     }
 
     var body: some View {
+        // Every column-2 cell is maxWidth: .infinity: the 544pt content box is
+        // wider than the collapsed content, and the Grid hands the slack to
+        // whichever column can grow. If that is the label column, opening
+        // "Fonts by script" (whose rows out-width the rest) takes the slack
+        // back and every column-2 control slides sideways.
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
             GridRow {
                 Text("Appearance:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 Picker("", selection: $appearanceMode) {
                     ForEach(AppSettings.AppearanceMode.displayOrder) { Text($0.label).tag($0) }
                 }
@@ -61,11 +73,12 @@ struct AppearanceSettingsView: View {
                 .horizontalRadioGroupLayout()
                 .labelsHidden()
                 .onChange(of: appearanceMode) { AppSettings.applyAppearance() }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GridRow {
                 Text("Max content width:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 HStack(spacing: 8) {
                     ContentWidthSlider(
                         cmValue: $maxContentWidthCm,
@@ -91,6 +104,7 @@ struct AppearanceSettingsView: View {
                         .buttonStyle(.plain)
                         .help("Switch between centimetres and inches")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .onChange(of: maxContentWidthCm) { applyContentWidthToOpenDocuments() }
             }
 
@@ -100,7 +114,7 @@ struct AppearanceSettingsView: View {
 
             GridRow {
                 Text("Standard font:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.standardSummary,
                             font: fonts.standardFont,
@@ -113,11 +127,12 @@ struct AppearanceSettingsView: View {
                         Toggle("Ligatures", isOn: $fonts.standardLigatures)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GridRow {
                 Text("Monospaced font:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 VStack(alignment: .leading, spacing: 6) {
                     fontRow(summary: fonts.monospaceSummary,
                             font: fonts.monospaceFont,
@@ -130,11 +145,12 @@ struct AppearanceSettingsView: View {
                         Toggle("Ligatures", isOn: $fonts.monospaceLigatures)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GridRow {
                 Text("Line height:")
-                    .gridColumnAlignment(.trailing)
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 HStack(spacing: 6) {
                     let lineHeight = Binding(get: { Double(fonts.lineHeight) },
                                              set: { fonts.setLineHeight(CGFloat($0)) })
@@ -145,7 +161,14 @@ struct AppearanceSettingsView: View {
                         .labelsHidden()
                     Text("times")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+
+            fontCascadeSection
         }
         .settingsPanePadding()
     }
@@ -233,5 +256,87 @@ private struct ContentWidthSlider: NSViewRepresentable {
             if snapped != sender.doubleValue { sender.doubleValue = snapped }
             parent.cmValue = parent.displayToCm(snapped)
         }
+    }
+}
+
+// MARK: - Fonts by script (per-script cascade)
+
+extension AppearanceSettingsView {
+
+    /// The collapsed-by-default "Fonts by script" section: one row per script
+    /// with a preview field, a point-size stepper, and a Select… button (the
+    /// same row shape as Standard/Monospaced above).
+    ///
+    /// The rows live in the pane's OWN Grid — hosting the section inside a
+    /// `gridCellColumns(2)` cell feeds the section's width back into the
+    /// columns it spans and slides every row in the pane sideways as the
+    /// section opens. Two further rules keep that true (both were learned the
+    /// hard way): labels are a fixed width, and EVERY column-2 cell in the
+    /// pane is `maxWidth: .infinity` (see `body`) so the label column can
+    /// never absorb the collapsed pane's slack. Expanding the section then
+    /// only grows the pane vertically.
+    @ViewBuilder
+    var fontCascadeSection: some View {
+        GridRow {
+            Text("Fonts by script:")
+                .frame(width: Self.labelColumnWidth, alignment: .trailing)
+            Button(action: { fontsByScriptExpanded.toggle() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: fontsByScriptExpanded
+                          ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                    Text("A dedicated font per writing system")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.static)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help("A dedicated font per writing system. Unset scripts use the system fallback. Right-click Select… to reset a script.")
+        }
+
+        if fontsByScriptExpanded {
+            ForEach(FontCascadeScript.allCases, id: \.self) { script in
+                GridRow {
+                    Text("\(script.label):")
+                        .frame(width: Self.labelColumnWidth, alignment: .trailing)
+                    HStack(spacing: 8) {
+                        // Same row shape as the Standard/Monospaced rows above:
+                        // family + absolute point size in the 240pt field, a
+                        // bare stepper, Select…. The stored model stays a ratio
+                        // of the body size — the row converts at the boundary
+                        // (see FontSettings.cascadePointSize).
+                        AntialiasingText(fonts.cascadeSummary(for: script))
+                            .antialiasDisabled(!fonts.antialias)
+                            .font(nsFont: fonts.previewFont(for: script))
+                            .frame(width: 240)
+                        Stepper("", value: cascadePointsBinding(for: script),
+                                in: fonts.cascadePointSizeRange, step: 1)
+                            .labelsHidden()
+                            // A ratio with no family drives nothing — no
+                            // resolver font, no @font-face — so say so.
+                            .disabled(fonts.cascadeFonts[script] == nil)
+                        Button("Select…") { fonts.selectCascadeFont(script) }
+                            .fixedSize()
+                            // The only way to un-set a script's font — the
+                            // row is too tight for a permanent button. Named
+                            // in the section header's tooltip.
+                            .contextMenu {
+                                Button("Reset") { fonts.setCascadeFont(script, family: nil) }
+                                    .disabled(fonts.cascadeFonts[script] == nil)
+                            }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    /// Two-way binding between the row's point-size stepper and the stored
+    /// ratio (display = body size × ratio; see FontSettings.cascadePointSize).
+    private func cascadePointsBinding(for script: FontCascadeScript) -> Binding<Double> {
+        Binding(
+            get: { fonts.cascadePointSize(for: script) },
+            set: { fonts.setCascadePointSize(script, points: $0) }
+        )
     }
 }

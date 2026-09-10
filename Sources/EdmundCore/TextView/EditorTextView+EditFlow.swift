@@ -132,7 +132,7 @@ extension EditorTextView {
     private func syncRawSourceFromDisplay() {
         guard let ts = textStorage else { return }
 
-        let oldIndentUnit = listIndentUnit
+        let oldDepths = listDepths
         rawSource = ts.string
         let sel = selectedRange()
         let cursorRaw = min(sel.location, (rawSource as NSString).length)
@@ -218,13 +218,9 @@ extension EditorTextView {
             dirty.insert(newActive)
         }
 
-        // listIndentUnit is document-global: when it changes, the rendered
-        // indentation of every list block changes with it.
-        if listIndentUnit != oldIndentUnit {
-            for (i, block) in blocks.enumerated() where block.kind == .listItem {
-                dirty.insert(i)
-            }
-        }
+        // A list line's depth comes from the column stack over the lines above
+        // it, so typing into one item's indent re-depths the items below.
+        dirty.formUnion(listDepthChanges(from: oldDepths))
 
         // A changed link definition can flip any reference link (even a bare
         // `[label]` shortcut) elsewhere in the document, so restyle every block
