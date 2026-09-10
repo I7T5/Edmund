@@ -106,6 +106,41 @@ extension EditorTextView {
         scrollRangeToVisible(selectedRange())
     }
 
+    // MARK: - The padding a row keeps around its pipes
+
+    /// Whether the character at `offset` is one of the spaces a table row keeps
+    /// either side of a pipe.
+    ///
+    /// They are markdown's convention, not content: `|c21|` and `| c21 |` render
+    /// identically, and every table this editor writes uses the spaced form. A
+    /// caret cannot rest out there (see `tableCellCaretRest`), so the only way
+    /// to reach one is a delete aimed past the end of a cell's text — which is
+    /// a keystroke meant for the text, not for the delimiter beyond it.
+    ///
+    /// Content is never protected: only a space, and only one standing directly
+    /// against a pipe. The separator row has no cells to look up, so its dashes
+    /// are left alone entirely.
+    func tableCellPadding(at offset: Int) -> Bool {
+        guard !rawTableEditing, offset >= 0 else { return false }
+        let ns = rawSource as NSString
+        guard offset < ns.length, ns.character(at: offset) == 0x20,
+              tableCell(atRawOffset: offset) != nil else { return false }
+        let before = offset > 0 ? ns.character(at: offset - 1) : 0
+        let after = offset + 1 < ns.length ? ns.character(at: offset + 1) : 0
+        return before == 0x7C || after == 0x7C
+    }
+
+    /// Forward-delete stops at a cell's text rather than eating the padding
+    /// beyond it. A selection is left alone: deleting a range the user actually
+    /// made is theirs to mean. Backspace does the same, but its override lives
+    /// with auto-pairing (EditorTextView+AutoPairs), which already owns it —
+    /// one method, one override.
+    public override func deleteForward(_ sender: Any?) {
+        guard selectedRange().length > 0
+                || !tableCellPadding(at: selectedRange().location) else { return }
+        super.deleteForward(sender)
+    }
+
     /// The index of the last cell in a row, or nil if the row has none.
     private func lastColumn(blockIndex: Int, row: Int) -> Int? {
         var last: Int?

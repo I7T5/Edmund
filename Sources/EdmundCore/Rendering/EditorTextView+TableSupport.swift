@@ -94,6 +94,56 @@ func splitTableRow(_ line: String) -> [String] {
     return parts
 }
 
+/// A table row rewritten to markdown's conventional skeleton: one leading and
+/// one trailing pipe, and exactly one space either side of every pipe.
+///
+/// Cell *content* is untouched — this fixes the delimiters around it and
+/// nothing else, so a table never has its text reflowed, re-wrapped or
+/// re-aligned by being tidied. An escaped `\|` is content, not a delimiter
+/// (GFM Example 200), on the way in and on the way out.
+///
+/// Deliberately not `splitTableRow`: that one drops a whitespace-only first or
+/// last cell to cope with outer pipes, which would silently delete a genuinely
+/// empty leading or trailing cell and change the row's column count. The outer
+/// pipes are stripped structurally here — because they are there, not because
+/// what they surround looks empty.
+func normalizedTableRow(_ line: String) -> String {
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
+    guard trimmed.contains("|") else { return line }
+    var body = Substring(trimmed)
+    if body.hasPrefix("|") { body = body.dropFirst() }
+    if body.hasSuffix("|"), !body.hasSuffix("\\|") { body = body.dropLast() }
+
+    var cells: [String] = []
+    var current = ""
+    var prevWasBackslash = false
+    for ch in body {
+        if ch == "|" && !prevWasBackslash {
+            cells.append(current.trimmingCharacters(in: .whitespaces))
+            current = ""
+        } else {
+            current.append(ch)
+        }
+        prevWasBackslash = (ch == "\\") && !prevWasBackslash
+    }
+    cells.append(current.trimmingCharacters(in: .whitespaces))
+    return "| " + cells.joined(separator: " | ") + " |"
+}
+
+/// A whole table block rewritten row by row, or nil when every row is already
+/// conventional — so a caller can tell "nothing to do" from "no change" without
+/// comparing the strings itself, and never files an undo step for a no-op.
+func normalizedTableBlock(_ text: String) -> String? {
+    var changed = false
+    let rows = text.components(separatedBy: "\n").map { line -> String in
+        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return line }
+        let normalized = normalizedTableRow(line)
+        if normalized != line { changed = true }
+        return normalized
+    }
+    return changed ? rows.joined(separator: "\n") : nil
+}
+
 /// Cell ranges for a table line with *empty* cells kept — `columnSpans` and
 /// `cellRanges` differ on `||` alone.
 ///
