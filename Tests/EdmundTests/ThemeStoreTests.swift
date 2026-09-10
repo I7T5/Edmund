@@ -229,6 +229,57 @@ struct ThemeStoreTests {
         }
     }
 
+    /// The code block's page comes from the code theme now, and Edit mode and
+    /// Read mode have to land on the same one — two renderers reading one
+    /// value is exactly the pair that drifts when nobody is looking.
+    ///
+    /// Driven through the editor theme, because that is what decides: an editor
+    /// theme's own assignment wins over the standalone active-syntax name.
+    @Test("Edit and Read agree on the code block background")
+    func codeBackgroundMatchesAcrossModes() throws {
+        let store = ThemeStore.shared
+        let saved = store.activeGeneralLight
+        defer { store.activeGeneralLight = saved }
+
+        // Solarized names its own page; Classic's Tomorrow names none.
+        for (editorTheme, expected) in [("solarized-light", "#eee8d5"),
+                                        ("classic-light",
+                                         SyntaxTheme.defaultBackgroundHex(dark: false))] {
+            store.activeGeneralLight = editorTheme
+            let resolved = store.syntax(dark: false)?.background
+                ?? SyntaxTheme.defaultBackgroundHex(dark: false)
+            #expect(resolved.lowercased() == expected.lowercased(),
+                    "Edit mode resolved \(resolved) for \(editorTheme)")
+
+            let theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,
+                                    codeHex: "#8A2425",
+                                    lineSpacing: 4, paragraphSpacingBefore: 2)
+            let css = HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: false)
+            #expect(css.contains("--code-bg: \(expected);"),
+                    "Read mode did not use \(expected) for \(editorTheme)")
+        }
+    }
+
+    /// A copy that lost the original's page would be a copy of a different
+    /// theme — the same trap `duplicate` has for every field it rebuilds.
+    @Test("Duplicating a code theme carries its background")
+    func duplicateKeepsSyntaxBackground() throws {
+        let store = ThemeStore.shared
+        var made: [String] = []
+        defer {
+            for name in made {
+                try? FileManager.default.removeItem(
+                    at: ThemeStore.userDirectory(.syntax).appendingPathComponent("\(name).json"))
+            }
+            store.reload()
+        }
+
+        let copy = try store.duplicate("solarized-code-light")
+        made.append(copy)
+        let made_ = try #require(store.syntaxThemes().first { $0.name == copy })
+        #expect(made_.background == "#eee8d5")
+    }
+
     // MARK: Writing
 
     /// The inheritance model rides on this. A color a theme does not set is

@@ -281,7 +281,8 @@ public final class ThemeStore {
                                 command: theme.command, type: theme.type,
                                 attribute: theme.attribute, variable: theme.variable,
                                 value: theme.value, number: theme.number,
-                                string: theme.string, comment: theme.comment)
+                                string: theme.string, comment: theme.comment,
+                                background: theme.background)
             try save(theme)
             return copy
         }

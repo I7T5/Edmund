@@ -12,5 +12,7 @@
   "value": "#d33682",
   "number": "#cb4b16",
   "string": "#859900",
-  "comment": "#586e75"
+  "comment": "#586e75",
+
+  "background": "#073642"
 }

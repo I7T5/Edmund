@@ -503,13 +503,37 @@ struct SyntaxThemeDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SyntaxSample(syntax: theme,
-                         background: ThemeStore.shared
-                             .general(dark: theme.appearance == .dark).background,
+                         background: theme.background,
                          appearance: theme.appearance)
 
             VStack(alignment: .leading, spacing: 10) {
                 wellRow(Array(Self.scopes.prefix(5)))
                 wellRow(Array(Self.scopes.suffix(5)))
+            }
+
+            // On its own line under the inks, because it is not one of them:
+            // the ten above are what code is written in, this is what it is
+            // written on. The switch closes the row the way the editor pane's
+            // do, and gives the lone well something to sit opposite.
+            Divider()
+                .padding(.top, 2)
+
+            HStack(alignment: .wellCenter, spacing: 8) {
+                ColorCell(label: "Background", hex: backgroundBinding,
+                          systemFallback: defaultBackground,
+                          appearance: theme.appearance,
+                          isEditable: isEditable)
+                Toggle("Default background", isOn: Binding(
+                    get: { theme.background == nil },
+                    set: { useDefault in
+                        var edited = theme
+                        edited.background = useDefault
+                            ? nil : defaultBackground.hexString
+                        onChange(edited)
+                    }))
+                    .controlSize(.small)
+                    .disabled(!isEditable)
+                    .fixedSize()
             }
         }
         .padding(16)
@@ -530,6 +554,25 @@ struct SyntaxThemeDetail: View {
                           isEditable: isEditable)
             }
         }
+    }
+
+    /// The shipped code-block page for this theme's appearance — what the well
+    /// shows, greyed, while the theme names none of its own.
+    private var defaultBackground: NSColor {
+        NSColor(hex: SyntaxTheme.defaultBackgroundHex(dark: theme.appearance == .dark))
+            ?? .textBackgroundColor
+    }
+
+    /// Unlike the ten scopes, this one is genuinely optional, so it passes nil
+    /// through rather than swallowing it: writing a color is what unchecks the
+    /// box beside it.
+    private var backgroundBinding: Binding<String?> {
+        Binding(get: { theme.background },
+                set: { new in
+                    var edited = theme
+                    edited.background = new
+                    onChange(edited)
+                })
     }
 
     /// A scope's color as an optional binding, which is what `ColorCell` takes.

@@ -47,7 +47,10 @@ enum HTMLTheme {
         let darkRule = "#555555"
         // #2a2a2a sat one level above the #292929 page background — code blocks
         // and table header rows had no visible tint at all in dark mode.
-        let codeBg = dark ? "#333333" : "#f4f4f4"
+        // The code theme's own page when it names one, so a block looks the
+        // same read as it does written.
+        let codeBg = ThemeStore.shared.syntax(dark: dark)?.background
+            ?? SyntaxTheme.defaultBackgroundHex(dark: dark)
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
         // *between* lines on top of the font's natural line height. That natural

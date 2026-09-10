@@ -82,6 +82,14 @@ public struct GeneralTheme: Codable, Sendable, Equatable {
 /// scanner produced no token for. All required — a syntax theme with holes
 /// would render half a code block in the wrong color.
 public struct SyntaxTheme: Codable, Sendable, Equatable {
+    /// The code-block page when a theme names none. The values Edmund has always
+    /// drawn; kept here so Edit mode and Read mode's `--code-bg` cannot drift,
+    /// which is what the comment on `EditorTextView.codeBlockBackground` was
+    /// guarding by hand.
+    public static func defaultBackgroundHex(dark: Bool) -> String {
+        dark ? "#333333" : "#f4f4f4"
+    }
+
     public let name: String
     /// See `GeneralTheme.displayName` — renaming touches this, never `name`.
     public var displayName: String
@@ -97,6 +105,17 @@ public struct SyntaxTheme: Codable, Sendable, Equatable {
     public var number: String
     public var string: String
     public var comment: String
+
+    /// The page a fenced code block sits on. Optional, unlike the ten scope
+    /// colors: a code theme is a set of inks first, and a theme that names no
+    /// page gets the editor's own — which is what every theme written before
+    /// this field did, and still does.
+    ///
+    /// It belongs to the code theme rather than the editor theme because the
+    /// block is the code theme's subject: Solarized's cream and One Dark's
+    /// charcoal are part of those designs, and pinning them to the editor theme
+    /// would mean a code theme could never bring its own.
+    public var background: String?
 
     /// See `GeneralTheme.qualifiedLabel`.
     public var qualifiedLabel: String {
