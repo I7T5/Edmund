@@ -440,6 +440,19 @@ struct TableHandleTests {
         #expect(editor.selectedRange() == ns.range(of: "c21"))
         #expect(ns.substring(with: editor.selectedRange()) == "c21")
 
+        // The grid is not always able to supply a cell for the block under the
+        // pointer — in a real document it returns nothing often enough that the
+        // gesture cannot depend on it. A point nowhere near the table stands in
+        // for that here: the offset AppKit hit still resolves the pad.
+        let nowhere = NSPoint(x: -500, y: -500)
+        #expect(editor.tableCell(at: nowhere) == nil)
+        #expect(editor.tableCellEmptySpace(at: nowhere,
+                                           hit: ref.contentRange.upperBound)?.contentRange
+                == ref.contentRange)
+        // Still not a licence to fire on text: an offset on the text is on the
+        // text whatever the pointer is doing.
+        #expect(editor.tableCellEmptySpace(at: nowhere, hit: text.location) == nil)
+
         // A raw table has no grid, so no point resolves to a cell.
         editor.activateRawTableEditing(blockIndex: index)
         #expect(editor.rawTableEditing)

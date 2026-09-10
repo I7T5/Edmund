@@ -803,6 +803,7 @@ public class EditorTextView: NSTextView {
         if event.clickCount >= 2 {
             traceEdit("tableDoubleClick clicks=\(event.clickCount) x=\(Int(clickPoint.x))"
                 + " hit=\(clickHit.map(String.init) ?? "nil")"
+                + " grid=\(tableGridDiagnostic(at: clickPoint, hit: clickHit))"
                 + " cell=\(emptySpace.map { "r\($0.row)c\($0.column)" } ?? "nil")"
                 + " sel=\(clickSelection)")
         }

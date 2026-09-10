@@ -459,23 +459,61 @@ extension EditorTextView {
     /// The cell a click landed in without landing on its text, or nil when it
     /// landed on the text or outside a table.
     ///
-    /// Two independent readings, and the click has to be on the text by both to
-    /// count as an ordinary one. AppKit's own hit index is the first: a cell's
-    /// padding is a single kerned glyph with the row's hidden pipe beside it,
-    /// so every offset from the last text character onward is out in the blank,
-    /// however far across the pad the pointer actually is. The text's drawn box
-    /// is the second, and it is the one that knows where the pointer is rather
-    /// than which glyph AppKit rounded it to.
+    /// The cell comes from the grid when the grid can supply one, and from the
+    /// offset AppKit hit when it cannot. That fallback is not belt-and-braces:
+    /// in a real document the grid lookup returns nothing for the block under
+    /// the pointer often enough that it cannot be the only route, while the
+    /// offset route demonstrably resolves the same pad correctly — it is what
+    /// the caret correction has been running on all along.
     ///
-    /// Neither alone has been enough: the hit index reads the same at both ends
-    /// of a wide pad, and the box has to be measured through the layout, which
-    /// is not always the geometry the click was tested against.
+    /// Then "did it land on the text": an offset outside the cell's text is out
+    /// in the padding, whichever side. An offset inside it is on the text
+    /// unless the pointer is past the text's drawn box, which catches the pad
+    /// glyph AppKit rounds back onto the last character.
     func tableCellEmptySpace(at point: NSPoint, hit: Int?) -> TableCellRef? {
-        guard !rawTableEditing, let cell = tableCell(at: point) else { return nil }
+        guard !rawTableEditing,
+              let cell = tableCell(at: point) ?? hit.flatMap(tableCellHoldingOffset)
+        else { return nil }
         let text = tableCellTextRange(cell)
-        let hitIsOnText = hit.map { $0 >= text.location && $0 < text.upperBound } ?? false
-        guard hitIsOnText, let box = tableCellTextBox(text) else { return cell }
+        guard let hit, hit >= text.location, hit < text.upperBound else { return cell }
+        guard let box = tableCellTextBox(text) else { return nil }
         return point.x > box.maxX + 1 ? cell : nil
+    }
+
+    /// Why the grid did or did not resolve a cell for a point — named rather
+    /// than inferred, because a log of a real click could not say otherwise and
+    /// a synthesised one does not reproduce the failure. Read under the verbose
+    /// trace; every branch is a guard in `tableGrid` or `tableCell(at:)`.
+    func tableGridDiagnostic(at point: NSPoint, hit: Int?) -> String {
+        guard let hit, let index = blockIndexForRawOffset(hit) else { return "noBlock" }
+        guard index < blocks.count else { return "badIndex" }
+        guard blocks[index].kind == .table else { return "notTable" }
+        guard let grid = tableGrid(blockIndex: index) else { return "noGrid" }
+        guard let bounds = grid.bounds else { return "noBounds" }
+        guard bounds.contains(point) else {
+            return "outside(x\(Int(bounds.minX))-\(Int(bounds.maxX))"
+                + ",y\(Int(bounds.minY))-\(Int(bounds.maxY)))"
+        }
+        guard let position = tableCellPosition(at: point, blockIndex: index) else {
+            return "noPosition(rows\(grid.rows.count),cols\(grid.columns))"
+        }
+        return tableCell(blockIndex: index, row: position.row, column: position.column) == nil
+            ? "noCell(r\(position.row)c\(position.column))"
+            : "ok(r\(position.row)c\(position.column))"
+    }
+
+    /// The cell an offset stands in, padding included. A pipe belongs to the
+    /// cell it *opens*, so an offset sitting at one cell's very end resolves to
+    /// the next one — step back a character to get the cell whose padding the
+    /// pointer is really in. The same rule `tableCellCaretSnap` uses.
+    private func tableCellHoldingOffset(_ offset: Int) -> TableCellRef? {
+        var found = tableCell(atRawOffset: offset)
+        if found.map({ offset < $0.contentRange.location }) ?? true, offset > 0 {
+            found = tableCell(atRawOffset: offset - 1)
+        }
+        guard let cell = found, offset >= cell.contentRange.location,
+              offset <= cell.contentRange.upperBound else { return nil }
+        return cell
     }
 
     /// The drawn box of a range, in view coordinates, or nil when it has no
