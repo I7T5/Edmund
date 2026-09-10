@@ -48,7 +48,15 @@ extension EditorTextView {
     /// The grid of the table at `blockIndex`, or nil when there isn't one to
     /// draw against: a non-table block, a table showing its raw markdown (the
     /// pipes are visible, there is no grid), or one that isn't laid out yet.
-    func tableGrid(blockIndex: Int) -> TableGrid? {
+    /// - Parameter ensuringLayout: force the rows to be laid out before their
+    ///   frames are read. Off by default because this is called from the draw
+    ///   pass, where forcing layout re-enters the viewport layout controller
+    ///   and blanks the view. On from the click paths, where it is safe — and
+    ///   necessary: a click restyles the block it lands in, and a fragment that
+    ///   has been invalidated and not yet laid out again reports a frame with
+    ///   no height at all, which collapses the whole grid to a zero-height band
+    ///   and makes every point look like it is outside the table.
+    func tableGrid(blockIndex: Int, ensuringLayout: Bool = false) -> TableGrid? {
         guard blockIndex < blocks.count, blocks[blockIndex].kind == .table,
               !(rawTableEditing && activeBlockIndexForRawTable() == blockIndex),
               let tlm = textLayoutManager,
@@ -59,7 +67,9 @@ extension EditorTextView {
         let origin = textContainerOrigin
         var rows: [NSRect] = []
         var textOriginX: CGFloat?
-        tlm.enumerateTextLayoutFragments(from: range.location, options: []) { fragment in
+        let options: NSTextLayoutFragment.EnumerationOptions =
+            ensuringLayout ? [.ensuresLayout] : []
+        tlm.enumerateTextLayoutFragments(from: range.location, options: options) { fragment in
             guard fragment.rangeInElement.location.compare(range.endLocation)
                     == .orderedAscending else { return false }
             let frame = fragment.layoutFragmentFrame
@@ -68,6 +78,11 @@ extension EditorTextView {
             return true
         }
         guard !rows.isEmpty, let textOriginX else { return nil }
+        // Fragments that have been invalidated and not laid out again report a
+        // frame with no height, which collapses every row onto one line. That
+        // is not a grid — it is the absence of one, and saying so beats handing
+        // back a zero-height band that no point can ever be inside.
+        guard let last = rows.last, last.maxY > rows[0].minY + 0.5 else { return nil }
 
         // The decoration's offsets are relative to the row's *text* start, which
         // is the fragment's own minX (the frame hugs the laid-out text). Every

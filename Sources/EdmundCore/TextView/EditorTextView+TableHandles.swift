@@ -330,8 +330,10 @@ extension EditorTextView {
     /// The cell of `blockIndex` under a view point, clamped into the table so a
     /// drag that wanders outside it still extends to the nearest edge. Never
     /// the separator row, which holds no text to select.
-    func tableCellPosition(at point: NSPoint, blockIndex: Int) -> (row: Int, column: Int)? {
-        guard let grid = tableGrid(blockIndex: blockIndex), !grid.rows.isEmpty,
+    func tableCellPosition(at point: NSPoint, blockIndex: Int,
+                           ensuringLayout: Bool = false) -> (row: Int, column: Int)? {
+        guard let grid = tableGrid(blockIndex: blockIndex, ensuringLayout: ensuringLayout),
+              !grid.rows.isEmpty,
               grid.columns > 0 else { return nil }
         var row = grid.rows.firstIndex { point.y < $0.maxY } ?? grid.rows.count - 1
         if row == 1 { row = point.y < grid.rows[1].midY ? 0 : 2 }
@@ -347,9 +349,13 @@ extension EditorTextView {
     /// pad hit-tests as the *next* cell's first character.
     func tableCell(at point: NSPoint) -> TableCellRef? {
         for (i, block) in blocks.enumerated() where block.kind == .table {
-            guard let grid = tableGrid(blockIndex: i), let bounds = grid.bounds,
+            // Layout forced: this runs on the click paths, and the click has
+            // just restyled the block it landed in. See `tableGrid`.
+            guard let grid = tableGrid(blockIndex: i, ensuringLayout: true),
+                  let bounds = grid.bounds,
                   bounds.contains(point),
-                  let position = tableCellPosition(at: point, blockIndex: i) else { continue }
+                  let position = tableCellPosition(at: point, blockIndex: i,
+                                                   ensuringLayout: true) else { continue }
             return tableCell(blockIndex: i, row: position.row, column: position.column)
         }
         return nil
