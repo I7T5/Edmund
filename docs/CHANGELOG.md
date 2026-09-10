@@ -3,10 +3,20 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-10
+
+### Added
+- Table editing within cells, row/column actions, copy as spreadsheet date
+- Image drag and drop
 
 ### Changed
-- Deleting an opening bracket or quote now removes its auto-inserted partner too, while the two are still next to each other
+- Deleting opening parentheses/quotes automatically removes corresponding closing character if they are adjacent when pairing setting is on
+- Automatically detect required indent instead of relying on settings tab size when tabbing on nested lists
+
+### Fixed
+- Indent list selection sometimes indents the non-selected
+- PDFs end in `.pdf` instead of `.md.pdf`
+
 
 ## [0.5.0] - 2026-08-22
 
