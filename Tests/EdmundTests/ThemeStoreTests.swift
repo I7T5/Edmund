@@ -350,6 +350,40 @@ struct ThemeStoreTests {
         #expect(store.isUserTheme(mine))
     }
 
+    /// A theme can name a syntax theme that is not there — deleted here, its
+    /// file removed in the Finder, or an editor theme shared by someone whose
+    /// syntax themes you do not have. Code has to keep its colors through that:
+    /// a nil here would render a fenced block in no theme at all.
+    @Test("An editor theme naming a missing syntax theme still resolves")
+    func danglingSyntaxReferenceFallsBack() throws {
+        let store = ThemeStore.shared
+        let directory = ThemeStore.userDirectory(.general)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let name = "test-dangling-\(UUID().uuidString.prefix(8))"
+        let url = directory.appendingPathComponent("\(name).json")
+        let savedLight = store.activeGeneralLight
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            store.activeGeneralLight = savedLight
+            store.reload()
+        }
+
+        let json = """
+        {"name": "\(name)", "displayName": "Test", "appearance": "light",
+         "text": null, "invisibles": null, "checkbox": null, "link": null,
+         "highlight": null, "background": null, "selection": null,
+         "cursor": null, "syntaxTheme": "no-such-theme"}
+        """
+        try json.write(to: url, atomically: true, encoding: .utf8)
+        store.reload()
+        store.activeGeneralLight = name
+
+        let resolved = try #require(store.syntax(dark: false))
+        // Whichever theme it lands on, it must be a real one with real colors.
+        #expect(resolved.name != "no-such-theme")
+        #expect(!resolved.keyword.isEmpty)
+    }
+
     // MARK: Overrides
 
     /// An editor theme that pins a syntax theme wins over the General row's

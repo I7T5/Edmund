@@ -343,8 +343,32 @@ struct GeneralThemeDetail: View {
     /// The syntax theme this one shows a palette of — the one it names, or the
     /// one it falls back to when it names none.
     private var previewedSyntax: SyntaxTheme? {
-        let name = theme.syntaxTheme ?? resolvedSyntaxName
-        return syntaxThemes.first { $0.name == name }
+        syntaxThemes.first { $0.name == effectiveSyntaxName }
+    }
+
+    /// The syntax theme this pane is really showing: the one this theme names
+    /// while that theme still exists, and otherwise the same fallback the
+    /// editor itself uses.
+    ///
+    /// A name can go missing — the theme was deleted here, or its file was
+    /// removed in the Finder, or the editor theme arrived from someone whose
+    /// syntax themes you do not have. `ThemeStore.syntax(dark:)` has always
+    /// coped with that, so the editor kept drawing; the pane did not, and
+    /// showed an empty popup over a vanished preview for a theme that was
+    /// rendering perfectly two panes away.
+    ///
+    /// Read-time, not repaired on delete: rewriting every editor theme that
+    /// named the departing one would be a destructive edit to themes the user
+    /// did not touch, and it would forget the assignment for good if the theme
+    /// came back. Picking anything in the popup writes a real name, so the
+    /// dangling reference is repaired the moment the user says what it should
+    /// have been.
+    private var effectiveSyntaxName: String {
+        if let named = theme.syntaxTheme,
+           syntaxThemes.contains(where: { $0.name == named }) {
+            return named
+        }
+        return resolvedSyntaxName
     }
 
     /// The tag for the trailing "New Theme…" item. A tag no theme can carry —
@@ -359,7 +383,7 @@ struct GeneralThemeDetail: View {
     private var syntaxAssignment: some View {
         if isEditable {
             Picker("", selection: Binding(
-                get: { theme.syntaxTheme ?? resolvedSyntaxName },
+                get: { effectiveSyntaxName },
                 set: { new in
                     // Not a value to store — a command. Making one is the
                     // pane's job: it has to create the theme, assign it here
