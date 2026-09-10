@@ -148,10 +148,13 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   `NSColor(hex:)` or `calibratedWhite:` — the calibrated space renders visibly
   lighter than the hex it was given (same trap as `editorBackgroundColor`).
 - **Hairlines are filled, not stroked.** A 1pt stroke straddles a pixel
-  boundary and covers *two* device rows on Retina, so stroked table verticals
-  read twice as heavy as the row rules beside them. Table column borders fill
-  exactly one device pixel and the `---` rule fills three. The backing scale
-  comes from `context.convertToDeviceSpace(CGSize(width: 1, height: 1))` —
+  boundary and covers *two* device rows on Retina, so a stroked line reads
+  twice as heavy as a filled one beside it. The whole table grid — column
+  borders *and* row rules — fills exactly one device pixel; the `---` rule
+  fills three. The verticals were filled first and the row rules left stroked,
+  which is what put the heavier weight around a table once the grid was closed
+  on all four sides. The backing scale comes from
+  `context.convertToDeviceSpace(CGSize(width: 1, height: 1))` —
   `context.ctm.a` reports 1 even at 2x.
 - **Image overlays only work on single-line fragments.** An *image* on a
   *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it
@@ -183,6 +186,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Text storage | `TextView/EditorTextStorage.swift` — `NSTextStorage` subclass whose `fixAttributes` does **font substitution only**. The editor manages every attribute on every character (incl. custom keys like `.blockDecoration`/`.fragmentOverlay`), so AppKit's usual attribute fixing would fight it. Also carries the `pendingEdit` that drives incremental reparse (§4) and the bypassed-edit heal (§8). |
 | Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout gated at render via `calloutInfo`), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Syntax pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
+| Table editing (interactive) | `TextView/EditorTextView+TableHandles.swift` (row/column ⋯ pills and their menus, the cell-selection box and its corner dots, and every rule about where a caret may rest in a table), `TextView/EditorTextView+TableRawButton.swift` (the `</>` toggle: revealed by hover *or* the caret being in the table, sharing the line-number margin with the row pill), `Rendering/EditorTextView+TableGeometry.swift` (`TableGrid` — row rects and column edges read back off the `.tableRow` decoration), `Editing/EditorTextView+TableStructure.swift` (add/delete row and column), `Editing/EditorTextView+TableCopy.swift` (⌘C: a cell's own text, or a selected block as tab-separated rows for a spreadsheet). The gestures and their traps: §8. |
 | Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: no characters inserted, TextKit 2 only. `EditorTextView.invisibles` ← `AppSettings.invisiblesConfig`; Settings ▸ Edit. Mechanism: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | List indent guides | Faint vertical hairlines on list items: one per *ancestor* level spanning the item, plus the item's own column beside its wrapped continuation lines. Offsets from `listGuideOffsets(depth:slotWidth:)` (`Rendering/EditorTextView+ListRendering.swift`), written to `.listGuides` **whether or not the setting is on** — the fragment gates the drawing, so toggling is a re-vend, never a restyle. `EditorTextView.showListIndentGuides`; Settings ▸ Edit. Geometry traps (container-relative offsets, `lineFragmentPadding`): [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Line numbers | `TextView/EditorTextView+LineNumbers.swift` — source line numbers (Settings ▸ Edit ▸ Lines, off by default), `EditorTextView.showLineNumbers`. **Two placements over one walk**, and the placement is **not** a setting: it follows whether the margin can hold them (beside the content by default, a `LineNumberRulerView` at the window edge otherwise). Also home to `line(forOffset:)`/`offset(forLine:)`, binary-searching the cached `lineStarts`. Editor-only; never printed. Placement rules, the macOS 14 SIGSEGV, draw rules and the tabular-figure face: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
@@ -835,6 +839,38 @@ Notable subsystems:
   the parser chokes past it until the next `{`). Use `/* */`. Cost a whole
   round of "why doesn't this CSS change do anything" — see
   `docs/investigations/math-ratex-weight-investigation.md` Round 1.
+- **Correct a click's selection in `setSelectedRanges`, not after
+  `super.mouseDown`.** `super.mouseDown` runs the whole tracking loop and does
+  not return until the mouse comes *up* — and it paints while it tracks. A
+  correction applied after it returns is one the user watches happen: the caret
+  sits in the wrong place for the length of the click and then jumps. Every
+  table click rule (the caret off a cell's padding, the blank-space
+  double-click, the drag-across-cells block) is applied to the `ranges` going
+  in, so the first selection installed is the right one and there is no
+  intermediate state to paint. `tableClickPoint`/`tableClickCount`/
+  `tableClickHit` carry the gesture's facts for exactly that span, because
+  `setSelectedRanges` knows none of them on its own.
+- **Read the table grid with layout forced on the click paths.**
+  `tableGrid` enumerates the rows' layout fragments, and enumerating with no
+  options does **not** force layout. A click restyles the block it lands in, so
+  by the time the grid is read those fragments can be invalidated and not laid
+  out again — and an unlaid-out fragment reports a frame with *no height*,
+  collapsing the whole grid onto one line (`bounds` y18–18) so that no point is
+  ever inside the table. Every geometric lookup then fails silently and the
+  caret rules fall back to offset-only paths that cannot tell one cell's pad
+  from the next cell's start. `tableGrid(blockIndex:ensuringLayout:)` forces it
+  for the click paths; the draw pass must not (forcing layout there re-enters
+  the viewport layout controller and blanks the view), and a collapsed grid is
+  reported as *no* grid rather than a zero-height one.
+- **A cell's padding is one kerned glyph, and the hidden pipe sits in the
+  middle of it.** The column's slack is split between the cell's trailing space
+  and the row's closing pipe, so that pipe draws at the visual midpoint of the
+  blank space — and AppKit hit-tests both like any glyph, splitting each
+  advance at its midpoint. That is why a click in a cell's empty space could
+  land anywhere from the cell's text end to the *next* cell's first character
+  depending on which half of the pad it was in, and why a caret resting on the
+  pipe looks like it is floating in mid-cell. Judge such a click by the cell
+  the *point* is in, never by the offset alone.
 - **The format bar has no alignment buttons** (left/center/right/justify),
   despite being the natural home for them, per an explicit decision with the
   maintainer: block-alignment has no Markdown representation, so the buttons
@@ -935,10 +971,15 @@ Notable subsystems:
   cell has to match both or it draws a pad right of, and a hair above, the
   in-line cells beside it. Column widths also leave the row a little slack
   at the container edge, or a right-aligned column's glyphs reach the edge
-  and force-wrap the row. Interior data rows draw a full-width bottom grid line (`.tableRow`'s
-  `bottomBorder`) — the header/body boundary already gets its line from
-  `separator`, and the last row draws none, so the table's bottom edge is open
-  like its left and right edges.
+  and force-wrap the row. The table is closed on all four sides, after Notes': every data row
+  draws a full-width bottom grid line (`.tableRow`'s `bottomBorder`, the last
+  row included), the header/body boundary gets its line from `separator`, the
+  header carries the top rule on its `topInset`, and the two outer verticals
+  join the column borders. **A row's bottom rule is drawn inside the row that
+  owns it**, not on the far side of the boundary: the editor repaints one row
+  at a time, so a line lying in the next row's rect is one that row erases
+  without knowing it was there — and it disappears until something forces a
+  full redraw.
 - *(Track larger roadmap items in README/ROADMAP; track code-debt here.)*
 
 ---
