@@ -111,6 +111,25 @@ private struct ColorRow: View {
     }
 }
 
+/// The vertical middle of a color *well*, ignoring the name under it.
+///
+/// A control at the end of a row of cells wants to line up with the swatches,
+/// which are what the eye follows across; centering it on the whole cell put it
+/// half a label lower than the colors it sits beside.
+/// Pinned so a cell can say where its well's middle is without measuring, and
+/// at file scope because an alignment guide's closure is `@Sendable` — a static
+/// on the view is main-actor-isolated and out of its reach.
+private let colorWellHeight: CGFloat = 22
+
+private extension VerticalAlignment {
+    struct WellCenter: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat {
+            d[VerticalAlignment.center]
+        }
+    }
+    static let wellCenter = VerticalAlignment(WellCenter.self)
+}
+
 /// One color as a well with its name beneath it.
 ///
 /// The name goes under rather than beside because four of these have to fit
@@ -148,13 +167,17 @@ private struct ColorCell: View {
             ColorPicker("", selection: swatch, supportsOpacity: false)
                 .labelsHidden()
                 .disabled(!isEditable)
-                .frame(width: Self.wellWidth)
+                .frame(width: Self.wellWidth, height: colorWellHeight)
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize()
         }
         .frame(width: Self.cellWidth)
+        // The well sits at the top of the cell, so its middle is half a well
+        // down — said here rather than measured, which is why the height above
+        // is pinned.
+        .alignmentGuide(.wellCenter) { _ in colorWellHeight / 2 }
     }
 }
 
@@ -221,7 +244,7 @@ struct GeneralThemeDetail: View {
             // label reads as governing all of them. Under a single well the
             // owner was obvious; here it has to be said.
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: Self.cellGap) {
+                HStack(alignment: .wellCenter, spacing: Self.cellGap) {
                     ColorCell(label: "Text", hex: color(\.text),
                               systemFallback: .textColor, appearance: theme.appearance,
                               isEditable: isEditable)
@@ -237,7 +260,7 @@ struct GeneralThemeDetail: View {
                     systemColorBox("System cursor", color(\.cursor),
                                    fallback: .controlAccentColor)
                 }
-                HStack(alignment: .center, spacing: Self.cellGap) {
+                HStack(alignment: .wellCenter, spacing: Self.cellGap) {
                     ColorCell(label: "Checkbox", hex: color(\.checkbox),
                               systemFallback: .controlAccentColor, appearance: theme.appearance,
                               isEditable: isEditable)
@@ -291,9 +314,10 @@ struct GeneralThemeDetail: View {
 
     fileprivate static let cellGap: CGFloat = 8
 
-    /// The system-color box for one role, closing its row. Vertically centered
-    /// on the cells beside it — well plus label — rather than pinned to the
-    /// wells' line, which left it riding high above a two-line neighbour.
+    /// The system-color box for one role, closing its row. Centered on the
+    /// wells beside it rather than on the whole cell: the swatches are the line
+    /// the eye follows across, and centering on cell-plus-label dropped it half
+    /// a label below them.
     private func systemColorBox(_ title: String, _ hex: Binding<String?>,
                                 fallback: NSColor) -> some View {
         Toggle(title, isOn: Binding(
@@ -424,67 +448,24 @@ private func summary(_ font: NSFont) -> String {
 
 // MARK: - Syntax theme
 
-/// Owns the shared `NSColorPanel` while a code scope is being edited.
+/// A syntax theme: two lines of code drawn in it, then its ten scope colors.
 ///
-/// One panel exists per app, so the row that opened it last is the one it
-/// edits — rebinding target and action on each open is how AppKit expects this
-/// to work. The binding is dropped when the pane goes away, so a panel left
-/// open afterwards cannot fire into a stale closure.
-@MainActor
-private final class ScopeColorPanel: NSObject, ObservableObject {
-    /// Which scope is open, so the list can mark the row whose color the panel
-    /// is currently showing.
-    @Published var editing: String?
-    private var onChange: ((NSColor) -> Void)?
-    /// `NSColorPanel` exposes `setTarget` but not `target`, so whether we are
-    /// still the one it calls has to be remembered rather than asked.
-    private var isBound = false
-
-    func open(_ scope: String, color: NSColor, onChange: @escaping (NSColor) -> Void) {
-        editing = scope
-        self.onChange = onChange
-        isBound = true
-        let panel = NSColorPanel.shared
-        panel.showsAlpha = false
-        panel.color = color
-        panel.setTarget(self)
-        panel.setAction(#selector(colorChanged(_:)))
-        panel.makeKeyAndOrderFront(nil)
-    }
-
-    func release() {
-        editing = nil
-        onChange = nil
-        guard isBound else { return }
-        isBound = false
-        let panel = NSColorPanel.shared
-        panel.setTarget(nil)
-        panel.setAction(nil)
-    }
-
-    @objc private func colorChanged(_ sender: NSColorPanel) {
-        onChange?(sender.color)
-    }
-}
-
-/// The code scopes, one per row, each drawn in its own color on the page the
-/// theme will actually be read against — Xcode's Themes pane, which previews
-/// itself rather than carrying a preview alongside.
+/// The sample answers the question the colors are for — whether this theme is
+/// legible — so the ten controls beneath it no longer have to. That is what
+/// makes wells the right shape here: with the sample carrying the preview, a
+/// scope name drawn in its own color would be doing two jobs at once, and it
+/// never signalled that it could be clicked.
 ///
-/// Clicking a row opens the color panel on that scope. There are ten of them,
-/// so ten wells would be ten controls competing with the colors they set; the
-/// row *is* the control, and the color it shows is the value.
+/// Five across, twice: ten cells at 58pt plus the gaps come to 322 in a 376pt
+/// column, which is what the editor theme's four-wide rows could not manage
+/// once a checkbox joined them.
 struct SyntaxThemeDetail: View {
     let theme: SyntaxTheme
     let isEditable: Bool
     let onChange: (SyntaxTheme) -> Void
 
-    @StateObject private var panel = ScopeColorPanel()
-    @State private var hovered: String?
-
-    /// One column, in reading order rather than alphabetical: plain text
-    /// first, since it is what everything the scanner produced no token for
-    /// falls back to.
+    /// Reading order rather than alphabetical: plain text first, since it is
+    /// what everything the scanner produced no token for falls back to.
     private static let scopes: [(String, WritableKeyPath<SyntaxTheme, String>)] = [
         ("Plain Text", \.plain), ("Keywords", \.keyword), ("Commands", \.command),
         ("Types", \.type), ("Attributes", \.attribute), ("Variables", \.variable),
@@ -492,78 +473,51 @@ struct SyntaxThemeDetail: View {
         ("Comments", \.comment),
     ]
 
-    /// The page this theme's code sits on: the editor theme's background for
-    /// the same appearance, so the contrast shown here is the contrast you get.
-    private var page: Color {
-        let general = ThemeStore.shared.general(dark: theme.appearance == .dark)
-        if let hex = general.background, let color = NSColor(hex: hex) {
-            return Color(nsColor: color)
-        }
-        var resolved = NSColor.textBackgroundColor
-        NSAppearance(named: theme.appearance == .dark ? .darkAqua : .aqua)?
-            .performAsCurrentDrawingAppearance {
-                resolved = NSColor.textBackgroundColor.usingColorSpace(.deviceRGB)
-                    ?? .textBackgroundColor
-            }
-        return Color(nsColor: resolved)
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Self.scopes, id: \.0) { label, path in
-                row(label, path)
+        VStack(alignment: .leading, spacing: 12) {
+            SyntaxSample(syntax: theme,
+                         background: ThemeStore.shared
+                             .general(dark: theme.appearance == .dark).background,
+                         appearance: theme.appearance)
+
+            VStack(alignment: .leading, spacing: 10) {
+                wellRow(Array(Self.scopes.prefix(5)))
+                wellRow(Array(Self.scopes.suffix(5)))
             }
         }
-        .padding(.vertical, 8)
-        // No border, no rounded corners, no inset: the page fills the detail
-        // box the way the editor fills its window. A framed slab would read as
-        // a preview *of* the theme sitting inside the pane; this reads as the
-        // pane being the theme.
+        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(page)
-        .onDisappear { panel.release() }
-        // Another theme in the same pane is another set of colors; the panel
-        // would otherwise keep writing into the one that opened it.
-        .onChange(of: theme.name) { _, _ in panel.release() }
     }
 
-    private func row(_ label: String,
-                     _ path: WritableKeyPath<SyntaxTheme, String>) -> some View {
-        let isOpen = panel.editing == label
-        return Text(label)
-            // Monospaced: every one of these names stands for something that
-            // only ever appears inside a code block.
-            .font(.system(size: 12, design: .monospaced))
-            .foregroundStyle(Color(nsColor: NSColor(hex: theme[keyPath: path]) ?? .textColor))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .frame(height: 22)
-            .background(rowFill(isOpen: isOpen, isHovered: hovered == label))
-            .contentShape(Rectangle())
-            .onHover { inside in hovered = inside ? label : (hovered == label ? nil : hovered) }
-            .onTapGesture { open(label, path) }
-            .accessibilityAddTraits(.isButton)
-            .accessibilityHint("Opens the color panel for \(label)")
-    }
-
-    /// Drawn over the theme's own page, so the cue is translucent rather than a
-    /// system fill: an opaque selection color would hide the contrast the row
-    /// exists to show.
-    private func rowFill(isOpen: Bool, isHovered: Bool) -> Color {
-        if isOpen { return Color.accentColor.opacity(0.30) }
-        if isHovered && isEditable { return Color.primary.opacity(0.08) }
-        return .clear
-    }
-
-    private func open(_ label: String, _ path: WritableKeyPath<SyntaxTheme, String>) {
-        guard isEditable else { return }
-        let current = NSColor(hex: theme[keyPath: path]) ?? .textColor
-        panel.open(label, color: current) { picked in
-            var edited = theme
-            edited[keyPath: path] = picked.hexString
-            onChange(edited)
+    private func wellRow(
+        _ scopes: [(String, WritableKeyPath<SyntaxTheme, String>)]
+    ) -> some View {
+        HStack(alignment: .wellCenter, spacing: 8) {
+            ForEach(scopes, id: \.0) { label, path in
+                ColorCell(label: label, hex: hex(path),
+                          // Every scope names a color outright — there is no
+                          // "use the system's" for code, so the fallback is
+                          // only what a malformed hex falls back to.
+                          systemFallback: .textColor,
+                          appearance: theme.appearance,
+                          isEditable: isEditable)
+            }
         }
     }
+
+    /// A scope's color as an optional binding, which is what `ColorCell` takes.
+    /// A syntax theme's colors are never nil — every scope is required — so the
+    /// nil case cannot arise and a write of nil is ignored rather than encoded.
+    private func hex(_ path: WritableKeyPath<SyntaxTheme, String>) -> Binding<String?> {
+        Binding(get: { theme[keyPath: path] },
+                set: { new in
+                    guard let new else { return }
+                    var edited = theme
+                    edited[keyPath: path] = new
+                    onChange(edited)
+                })
+    }
+
 }
 
 /// Two lines of code drawn in a syntax theme, on the editor theme's own page.
@@ -592,6 +546,10 @@ private struct SyntaxSample: View {
     /// borrow: names and places carry no copyright, where a line of the prose
     /// would.
     ///
+    /// The comment is a comment, not a note about the sample: a reader sees
+    /// this as code, and "every scope, once" explained the specimen to whoever
+    /// wrote it rather than saying anything to whoever is looking.
+    ///
     /// A declaration then a call, which between them reach all ten scopes:
     /// attribute, keyword, variable, type, number and value on the first line;
     /// command, string and comment on the second, with punctuation left plain.
@@ -611,14 +569,24 @@ private struct SyntaxSample: View {
           ("\"Cair Paravel\"", syntax.string), (", ", syntax.plain),
           ("thrones", syntax.variable), (", ", syntax.plain),
           ("isWinter", syntax.variable), (")   ", syntax.plain),
-          ("// every scope, once", syntax.comment)]]
+          ("// thrones stand empty", syntax.comment)]]
     }
 
     private var pageColor: NSColor {
         if let background, let color = NSColor(hex: background) { return color }
-        return appearance == .dark
-            ? NSColor(srgbRed: 0x29 / 255, green: 0x29 / 255, blue: 0x29 / 255, alpha: 1)
-            : .textBackgroundColor
+        if appearance == .dark {
+            return NSColor(srgbRed: 0x29 / 255, green: 0x29 / 255, blue: 0x29 / 255, alpha: 1)
+        }
+        // Resolved against the THEME's appearance, not the window's.
+        // `textBackgroundColor` is semantic, so a light theme previewed in a
+        // dark Settings window drew its page dark — the one combination where
+        // the preview showed a page the theme never has.
+        var resolved = NSColor.textBackgroundColor
+        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+            resolved = NSColor.textBackgroundColor.usingColorSpace(.deviceRGB)
+                ?? .textBackgroundColor
+        }
+        return resolved
     }
 
     /// The pane's own surface, resolved for the appearance the Settings window
