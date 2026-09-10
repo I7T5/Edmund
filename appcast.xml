@@ -326,5 +326,33 @@
                        length="14163541"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.6.0</title>
+            <pubDate>Thu, 10 Sep 2026 17:22:54 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<h3>Added</h3>
+<ul>
+<li>Table editing within cells, row/column actions, copy as spreadsheet date</li>
+<li>Image drag and drop</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Deleting opening parentheses/quotes automatically removes corresponding closing character if they are adjacent when pairing setting is on</li>
+<li>Automatically detect required indent instead of relying on settings tab size when tabbing on nested lists</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Indent list selection sometimes indents the non-selected</li>
+<li>PDFs end in <code>.pdf</code> instead of <code>.md.pdf</code></li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.6.0/Edmund-0.6.0.dmg"
+                       sparkle:version="14"
+                       sparkle:shortVersionString="0.6.0"
+                       sparkle:edSignature="PrkcbiR1QkivRYU6By2XJ+l7JNpYDAqLnZexnLFIEnDA02di32x85DIcmZhVrHk5HGlCu3ZE9soyR5/DMpx0BA=="
+                       length="14345445"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
