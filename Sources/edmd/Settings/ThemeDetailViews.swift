@@ -546,18 +546,20 @@ private struct SyntaxSample: View {
     /// borrow: names and places carry no copyright, where a line of the prose
     /// would.
     ///
-    /// The comment is a comment, not a note about the sample: a reader sees
-    /// this as code, and "every scope, once" explained the specimen to whoever
-    /// wrote it rather than saying anything to whoever is looking.
+    /// A comment, then a declaration, then a call — which between them reach
+    /// all ten scopes: comment on the first line; attribute, keyword, variable,
+    /// type, number and value on the second; command and string on the third,
+    /// with punctuation left plain.
     ///
-    /// A declaration then a call, which between them reach all ten scopes:
-    /// attribute, keyword, variable, type, number and value on the first line;
-    /// command, string and comment on the second, with punctuation left plain.
+    /// The comment gets a line of its own, where a trailing one had to be short
+    /// enough to share. It also puts the sample in the shape code is actually
+    /// written in: a note above the thing it describes.
     ///
-    /// Both lines run long on purpose. The box is the width of the pane, and a
+    /// The lines run long on purpose. The box is the width of the pane, and a
     /// short line in a wide box reads as a fragment rather than as code.
     private var lines: [[(String, String)]] {
-        [[("@State", syntax.attribute), (" ", syntax.plain),
+        [[("// still winter in Narnia", syntax.comment)],
+         [("@State", syntax.attribute), (" ", syntax.plain),
           ("var", syntax.keyword), (" ", syntax.plain),
           ("thrones", syntax.variable), (": ", syntax.plain),
           ("Int", syntax.type), (" = ", syntax.plain),
@@ -568,8 +570,7 @@ private struct SyntaxSample: View {
          [("print", syntax.command), ("(", syntax.plain),
           ("\"Cair Paravel\"", syntax.string), (", ", syntax.plain),
           ("thrones", syntax.variable), (", ", syntax.plain),
-          ("isWinter", syntax.variable), (")   ", syntax.plain),
-          ("// thrones stand empty", syntax.comment)]]
+          ("isWinter", syntax.variable), (")", syntax.plain)]]
     }
 
     private var pageColor: NSColor {
