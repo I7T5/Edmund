@@ -278,8 +278,10 @@ Notable subsystems:
   (`NSWindow.didChangeScreenNotification`). Tables and image overlays bake geometry into styled
   attributes: a coalesced common-mode timer compares the usable container width
   and restyles those blocks outside the resize pass,
-  including during live resizing. Comparing the inset alone misses narrower
-  windows with fixed margins. The refresh preserves the viewport, waits out
+  including during live resizing, at most 30 times per second. The pending
+  one-shot timer applies the final width after the drag ends. Comparing the
+  inset alone misses narrower windows with fixed margins. The refresh
+  preserves the viewport, waits out
   marked text/pending edits, and uses the existing lazy dirty-block path for
   offscreen work. Image sizes are baked at render time (§4 `fragmentOverlay`),
   so TextKit reflow alone cannot resize them.

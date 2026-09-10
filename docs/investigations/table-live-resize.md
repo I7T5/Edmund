@@ -1,6 +1,9 @@
 # Table live-resize check — PR #290
 
-Measured on 2026-09-10 with the image-overlay follow-up to `5d7f007`.
+Measured on 2026-09-10 with the image-overlay follow-up to `5d7f007`,
+using the original 60 Hz scheduling interval. The subsequent review follow-up
+reduces scheduling to 30 Hz; the timings below have not been remeasured at that
+cadence and do not demonstrate its performance.
 Release build (`swift build -c release`), Swift 6.3.3, macOS 26.6.2,
 M3 Max (14 CPU cores), 36 GB RAM. An isolated app bundle opened a generated
 95,000 UTF-16-unit Markdown document in Edit mode, with eight two-column

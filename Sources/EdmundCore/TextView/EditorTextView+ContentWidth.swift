@@ -169,10 +169,13 @@ extension EditorTextView {
 
     /// A common-mode timer runs during live resizing as well as after it, and
     /// coalesces resize bursts without restyling from inside `setFrameSize`.
+    /// Cap updates at 30 Hz to leave time for layout and drawing between
+    /// restyles. The pending timer also applies the latest width after a drag
+    /// ends; subsequent resizes must not cancel or postpone it.
     func scheduleContentWidthUpdate() {
         guard !contentWidthUpdateScheduled else { return }
         contentWidthUpdateScheduled = true
-        let timer = Timer(timeInterval: 1.0 / 60, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 30, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.contentWidthUpdateScheduled = false
