@@ -38,8 +38,14 @@ struct AntialiasingText: NSViewRepresentable {
         nsView.alignment = alignment
         (nsView as? AntialiasingTextField)?.antialiasDisabled = antialiasDisabled
         (nsView as? AntialiasingTextField)?.clickThrough = clickThrough
-        nsView.isBordered = !isPlain
-        nsView.drawsBackground = !isPlain
+        // Only ever written when opting OUT of the bezel. `NSTextField(string:)`
+        // comes up bezeled, and `isBordered = true` is not the same thing — it
+        // is the flat square border — so writing it on the default path turned
+        // the font rows' fields into something they had never been.
+        if isPlain {
+            nsView.isBordered = false
+            nsView.drawsBackground = false
+        }
     }
 
     /// Sets whether antialiasing is disabled when drawing the text.

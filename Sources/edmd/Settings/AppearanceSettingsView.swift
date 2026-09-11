@@ -182,13 +182,10 @@ struct AppearanceSettingsView: View {
     @ViewBuilder
     private func fontRow(summary: String, font: NSFont, antialias: Bool,
                          size: Binding<Double>, select: @escaping () -> Void) -> some View {
-        // Baseline, not center: the label beside this row sits on the text
-        // drawn inside the field, not on the field's midpoint.
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(spacing: 8) {
             AntialiasingText(summary)
                 .antialiasDisabled(!antialias)
                 .font(nsFont: font)
-                .baselineAligned()
                 .frame(width: 240)
             Stepper("", value: size, in: 8...72, step: 1)
                 .labelsHidden()
