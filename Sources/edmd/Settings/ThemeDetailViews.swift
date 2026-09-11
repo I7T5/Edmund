@@ -305,9 +305,7 @@ struct GeneralThemeDetail: View {
             // the popup's width it read as an attachment hanging off the
             // control rather than as the bottom of the pane.
             if let syntax = previewedSyntax {
-                SyntaxSample(syntax: syntax,
-                             background: theme.background,
-                             appearance: theme.appearance)
+                SyntaxSample(syntax: syntax)
             }
         }
     }
@@ -502,9 +500,7 @@ struct SyntaxThemeDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SyntaxSample(syntax: theme,
-                         background: theme.background,
-                         appearance: theme.appearance)
+            SyntaxSample(syntax: theme)
 
             VStack(alignment: .leading, spacing: 10) {
                 wellRow(Array(Self.scopes.prefix(5)))
@@ -607,8 +603,6 @@ struct SyntaxThemeDetail: View {
 /// unanswerable.
 private struct SyntaxSample: View {
     let syntax: SyntaxTheme
-    let background: String?
-    let appearance: ThemeAppearance
 
     /// The gap between the code and the box around it. Enough that the text is
     /// not touching its own border — a code block in the editor has margins,
@@ -652,21 +646,18 @@ private struct SyntaxSample: View {
           ("isWinter", syntax.variable), (")", syntax.plain)]]
     }
 
+    /// The box the code will really sit on: the theme's own page when it names
+    /// one, else the shipped code-block default — the same two values
+    /// `EditorTextView.codeBlockBackground` resolves, in the same order.
+    ///
+    /// Not the editor's page. A block is drawn on its own surface, and a
+    /// preview on white showed a Solarized or One Dark block on a page it is
+    /// never drawn on. Both defaults are literal hexes, so there is no semantic
+    /// color here to resolve against the wrong appearance.
     private var pageColor: NSColor {
-        if let background, let color = NSColor(hex: background) { return color }
-        if appearance == .dark {
-            return NSColor(srgbRed: 0x29 / 255, green: 0x29 / 255, blue: 0x29 / 255, alpha: 1)
-        }
-        // Resolved against the THEME's appearance, not the window's.
-        // `textBackgroundColor` is semantic, so a light theme previewed in a
-        // dark Settings window drew its page dark — the one combination where
-        // the preview showed a page the theme never has.
-        var resolved = NSColor.textBackgroundColor
-        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
-            resolved = NSColor.textBackgroundColor.usingColorSpace(.deviceRGB)
-                ?? .textBackgroundColor
-        }
-        return resolved
+        let hex = syntax.background
+            ?? SyntaxTheme.defaultBackgroundHex(dark: syntax.appearance == .dark)
+        return NSColor(hex: hex) ?? .textBackgroundColor
     }
 
     /// The pane's own surface, resolved for the appearance the Settings window

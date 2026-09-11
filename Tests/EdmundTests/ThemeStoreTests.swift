@@ -240,6 +240,12 @@ struct ThemeStoreTests {
         let store = ThemeStore.shared
         let saved = store.activeGeneralLight
         defer { store.activeGeneralLight = saved }
+        // Start from what ships. A run killed mid-test leaves its shadow files
+        // behind, and a stale shadow of either theme here would make this
+        // assert against someone else's edit.
+        try? store.restoreBuiltIn(named: "solarized-code-light")
+        try? store.restoreBuiltIn(named: "solarized-light")
+        store.reload()
 
         // Solarized names its own page; Classic's Tomorrow names none.
         for (editorTheme, expected) in [("solarized-light", "#eee8d5"),
@@ -273,6 +279,11 @@ struct ThemeStoreTests {
             }
             store.reload()
         }
+
+        // Same reason as above: the copy is of whatever is loaded, and a stale
+        // shadow would make it a copy of the wrong thing.
+        try? store.restoreBuiltIn(named: "solarized-code-light")
+        store.reload()
 
         let copy = try store.duplicate("solarized-code-light")
         made.append(copy)
