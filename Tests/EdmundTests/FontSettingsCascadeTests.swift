@@ -83,6 +83,31 @@ struct FontSettingsCascadeTests {
         #expect(fonts.cascadeSizeRatios[.han] == nil)
     }
 
+    /// One size for the whole preset: the standard size is the anchor, and
+    /// the monospaced size and every per-script ratio keep their proportion to
+    /// it. A scale that moved only the body would silently change the
+    /// relationship between prose and code.
+    @Test("Scaling every size keeps the faces in proportion")
+    func scaleAllKeepsProportions() throws {
+        let snapshot = snapshotThemeDefaults()
+        defer { restoreThemeDefaults(snapshot) }
+
+        let fonts = FontSettings()
+        fonts.setStandardSize(16)
+        fonts.setMonospaceSize(14)
+        fonts.setCascadeFont(.han, family: "Helvetica")
+        fonts.setCascadePointSize(.han, points: 20)   // ratio 1.25
+
+        fonts.scaleAllSizes(toStandard: 20)
+
+        #expect(fonts.standardFont.pointSize == 20)
+        // 14 × 1.25 = 17.5, rounded to a whole point.
+        #expect(fonts.monospaceFont.pointSize == 18)
+        // The ratio is untouched, so the script follows the body on its own.
+        #expect(fonts.cascadeSizeRatio(for: .han) == 1.25)
+        #expect(fonts.cascadePointSize(for: .han) == 25)
+    }
+
     @Test("The stepper's point range is the ratio clamp rendered against the body size")
     func stepperRangeTracksBodySize() {
         let snapshot = snapshotThemeDefaults()

@@ -206,6 +206,31 @@ final class FontSettings: NSObject, ObservableObject {
         applyToDocuments(updated)
     }
 
+    /// Scales every size at once — both faces directly, and the per-script
+    /// sizes through their ratios, which are relative to the body and so
+    /// follow for free — keeping the proportions between them. This is what a
+    /// single "text size" means on a pane whose faces have sizes of their own:
+    /// the standard size is the anchor, and the rest move with it.
+    ///
+    /// One write, not one per face: a preset would otherwise be saved twice
+    /// and every document repainted twice for what is one change.
+    func scaleAllSizes(toStandard size: CGFloat) {
+        let clamped = max(8, min(72, size.rounded()))
+        let factor = clamped / standardFont.pointSize
+        guard factor.isFinite, factor > 0, clamped != standardFont.pointSize else { return }
+        standardFont = NSFont(descriptor: standardFont.fontDescriptor, size: clamped) ?? standardFont
+        let mono = max(8, min(72, (monospaceFont.pointSize * factor).rounded()))
+        monospaceFont = NSFont(descriptor: monospaceFont.fontDescriptor, size: mono) ?? monospaceFont
+        var updated = theme
+        updated.fontName = standardFont.fontName
+        updated.fontSize = standardFont.pointSize
+        updated.lineSpacing = max(0, (lineHeight - 1) * standardFont.pointSize)
+        updated.monospaceFontName = monospaceFont.fontName
+        updated.monospaceFontSize = monospaceFont.pointSize
+        theme = updated
+        commit(updated)
+    }
+
     /// Whether the typography still holds what Edmund ships with.
     var isDefault: Bool { theme == .default }
 
