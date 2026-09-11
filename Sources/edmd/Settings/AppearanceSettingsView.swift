@@ -19,6 +19,9 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.themeFont) private var fontTheme = AppSettings.DefaultTheme.font
 
     @State private var fontThemes: [FontTheme] = []
+    /// The tag for the popup's trailing "New Font Theme…" item. A tag no theme
+    /// can carry — names come from filenames — so picking it is unambiguous.
+    private static let newThemeTag = "\u{0}new"
     @State private var renamingTheme = false
     @State private var newThemeName = ""
 
@@ -124,10 +127,21 @@ struct AppearanceSettingsView: View {
                     // three boxes share one edge.
                     Picker("", selection: $fontTheme) {
                         ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
+                        Divider()
+                        // The same trailing item the code-syntax popup has:
+                        // making one belongs with choosing one. It starts from
+                        // what is on screen — the selected preset always is —
+                        // and asks for a name straight away, which is the one
+                        // thing a copy cannot supply for itself.
+                        Text("New Font Theme…").tag(Self.newThemeTag)
                     }
                     .labelsHidden()
                     .frame(width: 240)
-                    .onChange(of: fontTheme) { _, name in
+                    .onChange(of: fontTheme) { previous, name in
+                        if name == Self.newThemeTag {
+                            newTheme(from: previous)
+                            return
+                        }
                         guard let chosen = fontThemes.first(where: { $0.name == name }) else { return }
                         fonts.apply(preset: chosen)
                     }
@@ -229,7 +243,7 @@ struct AppearanceSettingsView: View {
     /// the picker they act on.
     private var fontThemeMenu: some View {
         Menu {
-            Button("Duplicate…") { duplicateTheme() }
+            Button("Duplicate") { duplicateTheme() }
             Button("Rename…") {
                 newThemeName = fontThemes.first { $0.name == fontTheme }?.displayName ?? ""
                 renamingTheme = true
@@ -255,6 +269,22 @@ struct AppearanceSettingsView: View {
         guard let copy = try? ThemeStore.shared.duplicate(fontTheme) else { return }
         fontThemes = ThemeStore.shared.fontThemes()
         fontTheme = copy
+    }
+
+    /// A copy of `source` — the preset that was selected when "New Font
+    /// Theme…" was picked, and so exactly the typography on screen — selected
+    /// and put up for naming. Selecting it is what moves the popup off the
+    /// sentinel; `onChange` then applies it, a no-op, since it already is what
+    /// is live.
+    private func newTheme(from source: String) {
+        guard let copy = try? ThemeStore.shared.duplicate(source) else {
+            fontTheme = source
+            return
+        }
+        fontThemes = ThemeStore.shared.fontThemes()
+        fontTheme = copy
+        newThemeName = ""
+        renamingTheme = true
     }
 
     private func commitThemeRename() {
@@ -526,7 +556,9 @@ extension AppearanceSettingsView {
             }
             .buttonStyle(.plain)
             .disabled(!isSet)
-            .help(scriptTooltip(script, preview))
+            // Dimmed with the ligature box, not the whole row: the Default
+            // switch is live either way and must not look otherwise.
+            .opacity(isSet ? 1 : 0.55)
 
             // Against the trailing edge, as Default is against the leading one:
             // each edge column belongs to its edge. Centred, a 14pt box floated
@@ -536,8 +568,12 @@ extension AppearanceSettingsView {
                 .controlSize(.small)
                 .frame(width: Self.ligatureColumnWidth, alignment: .trailing)
                 .disabled(!isSet)
+                .opacity(isSet ? 1 : 0.55)
         }
-        .opacity(isSet ? 1 : 0.55)
+        // On the row, not the button: a tooltip on a Button whose label holds a
+        // click-through NSTextField did not show while the button was enabled.
+        // The Default switch keeps its own, which wins where the two overlap.
+        .help(scriptTooltip(script, preview))
     }
 
     /// "Chinese (Han): Songti SC, 16 pt" — the script, then the face and size
