@@ -12,7 +12,6 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
     @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
-    @AppStorage(AppSettings.Key.fontsByScriptExpanded) private var fontsByScriptExpanded = false
 
     /// Every label in the pane gets this fixed width, so the "Fonts by script"
     /// rows can appear/disappear without re-sizing the Grid's label column
@@ -164,10 +163,6 @@ struct AppearanceSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            GridRow {
-                Divider().gridCellColumns(2)
-            }
-
             fontCascadeSection
         }
         .settingsPanePadding()
@@ -263,80 +258,161 @@ private struct ContentWidthSlider: NSViewRepresentable {
 
 extension AppearanceSettingsView {
 
-    /// The collapsed-by-default "Fonts by script" section: one row per script
-    /// with a preview field, a point-size stepper, and a Select… button (the
-    /// same row shape as Standard/Monospaced above).
+    /// The "Fonts by script" group: a bordered, scrolling list of one row per
+    /// script, in the shape of the Syntax pane's "Available syntaxes" box.
     ///
-    /// The rows live in the pane's OWN Grid — hosting the section inside a
-    /// `gridCellColumns(2)` cell feeds the section's width back into the
-    /// columns it spans and slides every row in the pane sideways as the
-    /// section opens. Two further rules keep that true (both were learned the
-    /// hard way): labels are a fixed width, and EVERY column-2 cell in the
-    /// pane is `maxWidth: .infinity` (see `body`) so the label column can
-    /// never absorb the collapsed pane's slack. Expanding the section then
-    /// only grows the pane vertically.
+    /// A list rather than nine more form rows. Per-script fonts are overrides
+    /// to the Standard/Monospaced fonts above, not nine more top-level
+    /// settings, and nine right-aligned form labels made them read as the
+    /// latter — while making this pane far taller than the other six. Inside
+    /// the box the script name is the row's first column, so the group reads as
+    /// one object beside a single label.
+    ///
+    /// The box still lives in the pane's OWN Grid cell, and every column-2 cell
+    /// in the pane stays `maxWidth: .infinity` (see `body`) so the label column
+    /// can never absorb the pane's slack and slide every row sideways.
     @ViewBuilder
     var fontCascadeSection: some View {
-        GridRow {
+        GridRow(alignment: .top) {
             Text("Fonts by script:")
                 .frame(width: Self.labelColumnWidth, alignment: .trailing)
-            Button(action: { fontsByScriptExpanded.toggle() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: fontsByScriptExpanded
-                          ? "chevron.down" : "chevron.right")
-                        .font(.caption.weight(.semibold))
-                    Text("A dedicated font per writing system")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.static)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .help("A dedicated font per writing system. Unset scripts use the system fallback. Right-click Select… to reset a script.")
-        }
-
-        if fontsByScriptExpanded {
-            ForEach(FontCascadeScript.allCases, id: \.self) { script in
-                GridRow {
-                    Text("\(script.label):")
-                        .frame(width: Self.labelColumnWidth, alignment: .trailing)
-                    HStack(spacing: 8) {
-                        // Same row shape as the Standard/Monospaced rows above:
-                        // family + absolute point size in the 240pt field, a
-                        // bare stepper, Select…. The stored model stays a ratio
-                        // of the body size — the row converts at the boundary
-                        // (see FontSettings.cascadePointSize).
-                        AntialiasingText(fonts.cascadeSummary(for: script))
-                            .antialiasDisabled(!fonts.antialias)
-                            .font(nsFont: fonts.previewFont(for: script))
-                            .frame(width: 240)
-                        Stepper("", value: cascadePointsBinding(for: script),
-                                in: fonts.cascadePointSizeRange, step: 1)
-                            .labelsHidden()
-                            // A ratio with no family drives nothing — no
-                            // resolver font, no @font-face — so say so.
-                            .disabled(fonts.cascadeFonts[script] == nil)
-                        Button("Select…") { fonts.selectCascadeFont(script) }
-                            .fixedSize()
-                            // The only way to un-set a script's font — the
-                            // row is too tight for a permanent button. Named
-                            // in the section header's tooltip.
-                            .contextMenu {
-                                Button("Reset") { fonts.setCascadeFont(script, family: nil) }
-                                    .disabled(fonts.cascadeFonts[script] == nil)
-                            }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+                // Pull the label onto the box's first row of text.
+                .padding(.top, 5)
+            scriptFontBox
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help("Click a script to choose its font, right-click to reset it. Unset scripts use the system fallback.")
         }
     }
 
-    /// Two-way binding between the row's point-size stepper and the stored
-    /// ratio (display = body size × ratio; see FontSettings.cascadePointSize).
-    private func cascadePointsBinding(for script: FontCascadeScript) -> Binding<Double> {
+    /// Box width, and one script row's height. Five rows are visible and the
+    /// remaining four scroll — the same 5-row window the Syntax pane's box uses.
+    /// Narrower than it was with a third column: two columns in a 380pt box
+    /// left a stretch of nothing down the middle.
+    private var scriptBoxWidth: CGFloat { 300 }
+    /// The Syntax pane's row height, so the two boxes read as the same kind
+    /// of list. 28 was sized to a body-size sample; the sample is drawn small
+    /// now, and the tooltip carries the size.
+    private var scriptRowHeight: CGFloat { 20 }
+
+    /// Column widths and the leading/trailing inset, shared by the header cells
+    /// and the rows beneath them so each title sits over its own column. Same
+    /// arrangement as the Key Bindings pane's hand-built header.
+    private static let ligatureColumnWidth: CGFloat = 62
+    private static let scriptRowInset: CGFloat = 6
+
+    /// A plain List still insets its row content by this much after
+    /// `listRowInsets` is set, so the header adds it to keep the column titles
+    /// above their values. Key Bindings' hand-built header carries the same
+    /// constant for the same reason.
+    private static let scriptListInset: CGFloat = 8
+
+    /// Header over the list. A hand-built one rather than a `Table`, for the
+    /// reason Key Bindings gives: `Table` draws a separator under every row and
+    /// offers no way to turn them off.
+    private var scriptFontBox: some View {
+        VStack(spacing: 0) {
+            scriptListHeader
+            Divider()
+            scriptFontList
+        }
+        .frame(width: scriptBoxWidth)
+        .settingsSurfaceBackground()
+        .border(.separator)
+    }
+
+    private var scriptListHeader: some View {
+        HStack(spacing: 8) {
+            Text("Script")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Ligatures")
+                .frame(width: Self.ligatureColumnWidth, alignment: .center)
+        }
+        .padding(.horizontal, Self.scriptRowInset + Self.scriptListInset)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(height: 20)
+    }
+
+    private var scriptFontList: some View {
+        List {
+            ForEach(FontCascadeScript.allCases, id: \.self) { script in
+                scriptRow(script)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 1, leading: Self.scriptRowInset,
+                                              bottom: 1, trailing: Self.scriptRowInset))
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, scriptRowHeight)
+        .contentMargins(.vertical, 0, for: .scrollContent)
+        .frame(height: scriptRowHeight * 5)
+    }
+
+    /// One script's row, under the two column titles: a sample of the script
+    /// drawn in its own face, and the ligature switch.
+    ///
+    /// The sample stands in for an English script name. "Chinese (Han)" told a
+    /// reader nothing the glyphs do not, and the sample says the one thing the
+    /// name could not: which face the script is actually being rendered in.
+    ///
+    /// The family and size are on the tooltip rather than in a column of their
+    /// own. A row's font is worth being able to check, but it is not worth a
+    /// third of the box's width on nine rows most people never set — and the
+    /// sample already shows the size, drawn at it.
+    ///
+    /// The sample IS the font button; there is no separate one. Dimmed until
+    /// the script is set, so a row still says whether its face is a choice or
+    /// the fallback — which is the one thing the vanished column carried.
+    @ViewBuilder
+    private func scriptRow(_ script: FontCascadeScript) -> some View {
+        let isSet = fonts.cascadeFonts[script] != nil
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Button { fonts.selectCascadeFont(script) } label: {
+                AntialiasingText(script.sample)
+                    .plain()
+                    .antialiasDisabled(!fonts.antialias)
+                    // The face at a list's size, not the body's. A 16pt sample
+                    // is what made the rows 28pt tall; the size is a number on
+                    // the tooltip, and the face is what the sample is for.
+                    .font(nsFont: fonts.previewFont(for: script).map {
+                        NSFont(descriptor: $0.fontDescriptor, size: 12) ?? $0
+                    })
+                    .alignment(.left)
+                    .clickThrough()
+                    .baselineAligned()
+                    .opacity(isSet ? 1 : 0.7)
+                    .frame(maxWidth: .infinity)
+                    // The field draws no farther than its glyphs, so without
+                    // this only the sample itself is clickable, not the rest of
+                    // the column it sits in.
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            // Where the family and size went. Named even when unset — it is
+            // then the system fallback the editor will really use, which is
+            // worth being able to check.
+            .help("\(script.label) — \(fonts.cascadeSummary(for: script))")
+            // Still the only way to un-set a script's font; the row has no
+            // room for a permanent button. Named in the box's tooltip.
+            .contextMenu {
+                Button("Reset") { fonts.setCascadeFont(script, family: nil) }
+                    .disabled(!isSet)
+            }
+            Toggle("", isOn: cascadeLigaturesBinding(for: script))
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(width: Self.ligatureColumnWidth, alignment: .center)
+                // A ligature switch with no family drives nothing.
+                .disabled(!isSet)
+        }
+    }
+
+    private func cascadeLigaturesBinding(for script: FontCascadeScript) -> Binding<Bool> {
         Binding(
-            get: { fonts.cascadePointSize(for: script) },
-            set: { fonts.setCascadePointSize(script, points: $0) }
+            get: { fonts.cascadeLigatures(for: script) },
+            set: { fonts.setCascadeLigatures(script, on: $0) }
         )
     }
+
 }

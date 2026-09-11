@@ -34,6 +34,11 @@ public struct EditorTheme: Equatable, Sendable {
     /// the cascade for free; Read mode carries the same ratio via the
     /// @font-face `size-adjust` descriptor, keeping Edit and Read in step.
     public var fontCascadeSizeRatios: [FontCascadeScript: Double]
+    /// Per-script ligature switches (script → on). Absent = on, matching the
+    /// standard font's default. Edit mode only: Read mode reaches a script
+    /// through an `@font-face` unicode-range, and CSS has no per-range ligature
+    /// switch to hang this on.
+    public var fontCascadeLigatures: [FontCascadeScript: Bool]
 
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
@@ -54,7 +59,8 @@ public struct EditorTheme: Equatable, Sendable {
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
                 standardLigatures: Bool = true, monospaceLigatures: Bool = false,
                 antialias: Bool = true, fontCascade: [FontCascadeScript: String] = [:],
-                fontCascadeSizeRatios: [FontCascadeScript: Double] = [:]) {
+                fontCascadeSizeRatios: [FontCascadeScript: Double] = [:],
+                fontCascadeLigatures: [FontCascadeScript: Bool] = [:]) {
         self.fontName = fontName
         self.fontSize = fontSize
         self.codeHex = codeHex
@@ -69,6 +75,7 @@ public struct EditorTheme: Equatable, Sendable {
         self.antialias = antialias
         self.fontCascade = fontCascade
         self.fontCascadeSizeRatios = fontCascadeSizeRatios
+        self.fontCascadeLigatures = fontCascadeLigatures
     }
 
     // MARK: - Defaults
@@ -121,7 +128,7 @@ public struct EditorTheme: Equatable, Sendable {
     /// latter is what drives programming ligatures like Fira Code's `=>`/`==`.
     /// Baking it into the font (rather than the `.ligature` attribute) is what the
     /// editor's TextKit 2 pipeline reliably honors.
-    private static func applyingLigatures(_ on: Bool, to font: NSFont) -> NSFont {
+    static func applyingLigatures(_ on: Bool, to font: NSFont) -> NSFont {
         guard !on else { return font }
         let kContextualAlternatesType = 36
         let kContextualAlternatesOffSelector = 1
@@ -202,6 +209,7 @@ public struct EditorTheme: Equatable, Sendable {
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
         static let fontCascade = "EditorFontCascade"
         static let fontCascadeSizeRatios = "EditorFontCascadeSizeRatios"
+        static let fontCascadeLigatures = "EditorFontCascadeLigatures"
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {
@@ -260,6 +268,19 @@ public struct EditorTheme: Equatable, Sendable {
             }
             return ratios
         }()
+        // Only the "off" entries are stored; an absent script means ligatures on.
+        let fontCascadeLigatures: [FontCascadeScript: Bool] = {
+            guard let raw = d.dictionary(forKey: Keys.fontCascadeLigatures) else {
+                return [:]
+            }
+            var flags: [FontCascadeScript: Bool] = [:]
+            for (key, value) in raw {
+                guard let script = FontCascadeScript(rawValue: key),
+                      let number = value as? NSNumber else { continue }
+                if !number.boolValue { flags[script] = false }
+            }
+            return flags
+        }()
 
         return EditorTheme(
             fontName: fontName,
@@ -275,7 +296,8 @@ public struct EditorTheme: Equatable, Sendable {
             monospaceLigatures: monospaceLigatures,
             antialias: antialias,
             fontCascade: fontCascade,
-            fontCascadeSizeRatios: fontCascadeSizeRatios
+            fontCascadeSizeRatios: fontCascadeSizeRatios,
+            fontCascadeLigatures: fontCascadeLigatures
         )
     }
 
@@ -297,6 +319,8 @@ public struct EditorTheme: Equatable, Sendable {
               forKey: Keys.fontCascade)
         d.set(Dictionary(uniqueKeysWithValues: fontCascadeSizeRatios.map { ($0.key.rawValue, $0.value) }),
               forKey: Keys.fontCascadeSizeRatios)
+        d.set(Dictionary(uniqueKeysWithValues: fontCascadeLigatures.map { ($0.key.rawValue, $0.value) }),
+              forKey: Keys.fontCascadeLigatures)
     }
 }
 

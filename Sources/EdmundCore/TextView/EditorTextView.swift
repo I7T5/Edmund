@@ -178,7 +178,8 @@ public class EditorTextView: NSTextView {
     private func syncCascadeResolver() {
         (textStorage as? EditorTextStorage)?.cascadeResolver =
             FontCascadeResolver(cascade: theme.fontCascade,
-                                sizeRatios: theme.fontCascadeSizeRatios)
+                                sizeRatios: theme.fontCascadeSizeRatios,
+                                ligatures: theme.fontCascadeLigatures)
     }
 
     /// Styling touches these values for every block. Reusing the immutable
