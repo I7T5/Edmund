@@ -39,13 +39,8 @@ extension EditorTextView {
             let tableStr = tableNS.substring(with: span.fullRange)
             let lines = tableStr.components(separatedBy: "\n")
 
-            // Room to breathe inside a cell. At 0.3/0.15 the text all but
-            // touched the column border it sits against; half an em beside it
-            // and a quarter above and below reads like a table rather than
-            // like text with lines drawn through it, and stays close to the
-            // row height Notes uses at the same body size.
-            let cellHPad = bodyFont.pointSize * 0.5
-            let cellVPad = bodyFont.pointSize * 0.25
+            let cellHPad = bodyFont.pointSize * 0.3
+            let cellVPad = bodyFont.pointSize * 0.15
 
             // --- Style each cell's inline markdown and measure the result ---
             // Each cell runs through styleBlock so `**bold**`, `code`, links,

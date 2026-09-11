@@ -521,6 +521,10 @@ public class EditorTextView: NSTextView {
     /// before anyone sees it, and it knows neither on its own.
     var tableClickCount = 0
     var tableClickHit: Int?
+    /// Where the click in flight lands in a wrapped cell's *drawn* text, when
+    /// it lands in one — resolved against the scratch layout before the gesture
+    /// runs, since AppKit's own hit test can only find the hidden characters.
+    var tableClickWrappedCaret: Int?
 
     /// Where the click now in flight landed, in view coordinates, for as long
     /// as `mouseDown` is running. It is what lets `setSelectedRanges` keep a
@@ -889,12 +893,14 @@ public class EditorTextView: NSTextView {
         tableClickPoint = convert(event.locationInWindow, from: nil)
         tableClickCount = event.clickCount
         tableClickHit = clickHit
+        tableClickWrappedCaret = wrappedCellCaret
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
         tableClickPoint = nil
         tableClickCount = 0
         tableClickHit = nil
+        tableClickWrappedCaret = nil
         // Only a plain click: a drag or a double-click made a real selection,
         // and honouring those would collapse it.
         if let wrappedCellCaret, selectedRange().length == 0 {
@@ -957,6 +963,14 @@ public class EditorTextView: NSTextView {
         if let point = tableClickPoint, tableClickCount == 2, !activatingRawTable,
            let cell = tableCellEmptySpace(at: point, hit: tableClickHit) {
             ranges = [NSValue(range: tableCellSelectionRange(cell))]
+        }
+        // A click on a wrapped cell's drawn text goes to the character it
+        // landed on there. Installed in flight for the same reason as
+        // everything else here: applied after the gesture it was a second
+        // answer, and the caret visibly jumped from the first one to it.
+        if let wrapped = tableClickWrappedCaret, !activatingRawTable, ranges.count == 1,
+           let caret = ranges[0].rangeValue as NSRange?, caret.length == 0 {
+            ranges = [NSValue(range: NSRange(location: wrapped, length: 0))]
         }
         // A caret placed by the click in flight belongs to the cell that click
         // landed in. Corrected here, where the selection is installed, so no
