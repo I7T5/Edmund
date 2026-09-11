@@ -10,6 +10,8 @@ import AppKit
 @Suite("Font presets", .serialized)
 @MainActor
 struct FontPresetTests {
+    init() { ThemeScratch.activate() }
+
 
     /// `UserDefaults.standard` and `ThemeStore.shared` are process-global, so
     /// each test puts back what it found.

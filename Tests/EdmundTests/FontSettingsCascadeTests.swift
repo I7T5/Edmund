@@ -12,6 +12,8 @@ import EdmundCore
 @MainActor
 @Suite("Font settings — cascade rows", .serialized)
 struct FontSettingsCascadeTests {
+    init() { ThemeScratch.activate() }
+
 
     /// The keys `EditorTheme.save()` writes (`EditorTheme.Keys` is private).
     private static let themeKeys = [

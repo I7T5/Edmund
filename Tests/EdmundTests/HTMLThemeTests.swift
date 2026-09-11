@@ -5,6 +5,8 @@ import AppKit
 @Suite("HTMLTheme — CSS emission")
 @MainActor
 struct HTMLThemeTests {
+    init() { ThemeScratch.activate() }
+
 
     private func css(dark: Bool) -> String {
         let theme = EditorTheme(fontName: "Iowan Old Style", fontSize: 16,

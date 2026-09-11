@@ -10,6 +10,8 @@ import AppKit
 @MainActor
 @Suite("Settings pane width")
 struct SettingsPaneWidthTests {
+    init() { ThemeScratch.activate() }
+
 
     private func fittingWidth(_ view: some View) -> CGFloat {
         let hosting = NSHostingController(rootView: view)

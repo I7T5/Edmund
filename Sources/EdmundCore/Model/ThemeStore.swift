@@ -349,13 +349,24 @@ public final class ThemeStore {
 
     /// The canonical, update-proof home for user themes:
     /// ~/Library/Application Support/Edmund/Themes/{General,Syntax,Font}.
-    public static func userDirectory(_ kind: Kind) -> URL {
+    /// The directory user themes live under; `userDirectory(_:)` appends the
+    /// kind. Settable so the test suite can point it at a scratch directory:
+    /// left at the real one, tests read the user's own themes — a shadow of
+    /// a built-in they had edited made a "shipped values" test fail — and
+    /// write into it, where a run killed mid-test leaves its files behind for
+    /// the app to load.
+    // ponytail: single-thread (main) use, same as the store itself.
+    nonisolated(unsafe) public static var userThemesRoot: URL = {
         let base = (try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: false))
             ?? FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Application Support", isDirectory: true)
-        return base.appendingPathComponent("Edmund/Themes/\(kind.rawValue)", isDirectory: true)
+        return base.appendingPathComponent("Edmund/Themes", isDirectory: true)
+    }()
+
+    public static func userDirectory(_ kind: Kind) -> URL {
+        userThemesRoot.appendingPathComponent(kind.rawValue, isDirectory: true)
     }
 
     private static func load<T: Decodable>(_ type: T.Type, bundled subdirectory: String) -> [(T, URL)] {

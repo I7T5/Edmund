@@ -15,6 +15,8 @@ import AppKit
 @Suite("Theme store — parity with the pre-theme palette", .serialized)
 @MainActor
 struct ThemeStoreTests {
+    init() { ThemeScratch.activate() }
+
 
     private let allTokens: [CodeHighlighter.TokenType?] = [
         nil, .keyword, .command, .type, .attribute,
