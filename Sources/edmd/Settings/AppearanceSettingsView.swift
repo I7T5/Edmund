@@ -23,6 +23,10 @@ struct AppearanceSettingsView: View {
     /// can carry — names come from filenames — so picking it is unambiguous.
     private static let newThemeTag = "\u{0}new"
     @State private var renamingTheme = false
+    /// The script row the pointer last picked. Selection, not state: nothing
+    /// reads it but the highlight, which is what tells a reader the box is a
+    /// table and a double click will do something.
+    @State private var selectedScript: FontCascadeScript?
     @State private var newThemeName = ""
 
     /// Every label in the pane gets this fixed width, so the "Fonts by script"
@@ -473,7 +477,9 @@ extension AppearanceSettingsView {
             Text("Ligatures")
                 .frame(width: Self.ligatureColumnWidth, alignment: .trailing)
         }
-        .padding(.horizontal, Self.scriptRowInset + Self.scriptListInset)
+        // The rows carry 4pt of their own for the selection highlight to inset
+        // into; the titles take the same so they stay over their columns.
+        .padding(.horizontal, Self.scriptRowInset + Self.scriptListInset + 4)
         .font(.caption)
         .foregroundStyle(.secondary)
         .frame(height: 20)
@@ -519,6 +525,7 @@ extension AppearanceSettingsView {
     private func scriptRow(_ script: FontCascadeScript) -> some View {
         let isSet = fonts.cascadeFonts[script] != nil
         let preview = fonts.previewFont(for: script)
+        let isSelected = selectedScript == script
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Toggle("", isOn: Binding(
                 get: { !isSet },
@@ -530,39 +537,31 @@ extension AppearanceSettingsView {
                 .frame(width: Self.defaultColumnWidth, alignment: .leading)
                 .help("Use the standard font for \(script.label)")
 
-            Button { fonts.selectCascadeFont(script) } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    AntialiasingText(script.sample)
-                        .plain()
-                        .antialiasDisabled(!fonts.antialias)
-                        // The face at a list's size, not the body's; the size
-                        // itself is the number beside it.
-                        .font(nsFont: preview.map {
-                            NSFont(descriptor: $0.fontDescriptor, size: 12) ?? $0
-                        })
-                        .alignment(.left)
-                        .clickThrough()
-                        .baselineAligned()
-                        .fixedSize()
-                    Text("\(Int(fonts.cascadePointSize(for: script).rounded()))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // Text draws no farther than its glyphs, so without this only
-                // the sample is clickable, not the rest of its column.
-                .contentShape(Rectangle())
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                AntialiasingText(script.sample)
+                    .plain()
+                    .antialiasDisabled(!fonts.antialias)
+                    // The face at a list's size, not the body's; the size
+                    // itself is the number beside it.
+                    .font(nsFont: preview.map {
+                        NSFont(descriptor: $0.fontDescriptor, size: 12) ?? $0
+                    })
+                    .alignment(.left)
+                    .clickThrough()
+                    .baselineAligned()
+                    .fixedSize()
+                Text("\(Int(fonts.cascadePointSize(for: script).rounded()))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
-            .buttonStyle(.plain)
-            .disabled(!isSet)
+            .frame(maxWidth: .infinity, alignment: .leading)
             // Dimmed with the ligature box, not the whole row: the Default
             // switch is live either way and must not look otherwise.
             .opacity(isSet ? 1 : 0.55)
 
             // Against the trailing edge, as Default is against the leading one:
-            // each edge column belongs to its edge. Centred, a 14pt box floated
-            // in 56pt with air on both sides and nothing to line up on.
+            // each edge column belongs to its edge.
             Toggle("", isOn: cascadeLigaturesBinding(for: script))
                 .labelsHidden()
                 .controlSize(.small)
@@ -570,9 +569,26 @@ extension AppearanceSettingsView {
                 .disabled(!isSet)
                 .opacity(isSet ? 1 : 0.55)
         }
-        // On the row, not the button: a tooltip on a Button whose label holds a
-        // click-through NSTextField did not show while the button was enabled.
-        // The Default switch keeps its own, which wins where the two overlap.
+        .padding(.horizontal, 4)
+        .background(isSelected ? Color.accentColor.opacity(0.18) : .clear,
+                    in: RoundedRectangle(cornerRadius: 4))
+        // A table row, the way NSTableView has always behaved: one click
+        // selects, a double click acts — here, opens the font panel, as Font
+        // Book does — and the menu is on the right button. No Button wrapping
+        // the sample: single-click-to-open was not the convention, and a
+        // Button is what was keeping the tooltip from showing.
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            guard isSet else { return }
+            fonts.selectCascadeFont(script)
+        }
+        .onTapGesture(count: 1) { selectedScript = script }
+        .contextMenu {
+            Button("Choose Font…") { fonts.selectCascadeFont(script) }
+                .disabled(!isSet)
+            Button("Reset to Default") { fonts.setCascadeFont(script, family: nil) }
+                .disabled(!isSet)
+        }
         .help(scriptTooltip(script, preview))
     }
 

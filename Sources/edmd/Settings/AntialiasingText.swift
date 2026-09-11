@@ -5,6 +5,13 @@ import AppKit
 /// antialiasing control — the bezeled font-display field used in the Appearance
 /// settings (mirrors CotEditor's `AntialiasingText`).
 struct AntialiasingText: NSViewRepresentable {
+    /// A plain field's height, and where in it the text's baseline sits — the
+    /// same distance from the top for every font, so that a column of samples
+    /// in different faces shares one baseline. 13 in 18 leaves room above for
+    /// a CJK ascender at 12pt and room below for a Latin descender.
+    static let plainHeight: CGFloat = 18
+    static let plainBaseline: CGFloat = 13
+
     private var text: String
     private var antialiasDisabled = false
     private var font: NSFont?
@@ -21,14 +28,19 @@ struct AntialiasingText: NSViewRepresentable {
         nsView.isEditable = false
         nsView.isSelectable = false
         nsView.lineBreakMode = .byTruncatingMiddle
-        nsView.allowsExpansionToolTips = true
+        // Not for a plain field: it sits in a list row that carries a tooltip
+        // of its own, and the expansion tooltip registers its own tracking area
+        // over the same rect — one that shows nothing while the text fits, and
+        // so ate the row's.
+        nsView.allowsExpansionToolTips = !isPlain
         nsView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         // Pin a fixed, stable height so a 16pt preview fits with a little
         // breathing room. (Deriving it from `frame.height` collapses the field —
         // the frame is zero-height before Auto Layout has sized it.) A plain
         // field lives in a 20pt list row and draws at 12pt, so it takes less.
-        nsView.heightAnchor.constraint(equalToConstant: isPlain ? 18 : 24).isActive = true
+        nsView.heightAnchor.constraint(
+            equalToConstant: isPlain ? Self.plainHeight : 24).isActive = true
 
         return nsView
     }
@@ -39,6 +51,7 @@ struct AntialiasingText: NSViewRepresentable {
         nsView.alignment = alignment
         (nsView as? AntialiasingTextField)?.antialiasDisabled = antialiasDisabled
         (nsView as? AntialiasingTextField)?.clickThrough = clickThrough
+        (nsView as? AntialiasingTextField)?.fixedBaseline = isPlain ? Self.plainBaseline : nil
         // Only ever written when opting OUT of the bezel. `NSTextField(string:)`
         // comes up bezeled, and `isBordered = true` is not the same thing — it
         // is the flat square border — so writing it on the default path turned
@@ -72,11 +85,15 @@ struct AntialiasingText: NSViewRepresentable {
     /// `@Sendable`, so it cannot reach the view's own main-actor state (nor
     /// carry an NSFont across). Two CGFloats are all the arithmetic needs.
     func baselineAligned() -> some View {
+        // A plain field puts its baseline at one fixed offset whatever the
+        // font, so it reports that and nothing has to be measured.
+        let fixed: CGFloat? = isPlain ? Self.plainBaseline : nil
         let metrics: (titleHeight: CGFloat, ascender: CGFloat)? = font.map {
             (NSAttributedString(string: text, attributes: [.font: $0]).size().height,
              $0.ascender)
         }
         return alignmentGuide(.firstTextBaseline) { dimensions in
+            if let fixed { return fixed }
             guard let metrics else { return dimensions[.firstTextBaseline] }
             let top = ((dimensions.height - metrics.titleHeight) / 2).rounded(.up)
             return top + metrics.ascender
@@ -135,6 +152,13 @@ private final class AntialiasingTextField: NSTextField {
     /// `allowsExpansionToolTips` can show a truncated name on hover.
     var clickThrough = false
 
+    /// When set, the cell puts the text's baseline this far from the top
+    /// instead of centring the line box. Centring is right for one field on
+    /// its own; in a column of fields drawn in different faces it lands each
+    /// baseline somewhere different, because each face has its own line
+    /// height — and a column reads as a column only when its baselines agree.
+    var fixedBaseline: CGFloat?
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         clickThrough ? nil : super.hitTest(point)
     }
@@ -154,8 +178,15 @@ private final class AntialiasingTextField: NSTextField {
 private final class CenteringTextFieldCell: NSTextFieldCell {
     override func titleRect(forBounds rect: NSRect) -> NSRect {
         var titleRect = super.titleRect(forBounds: rect)
-        let titleSize = attributedStringValue.size()
-        titleRect.origin.y = (rect.minY + (rect.height - titleSize.height) / 2).rounded(.up)
+        if let baseline = (controlView as? AntialiasingTextField)?.fixedBaseline,
+           let font {
+            // The field is flipped, so y grows downward: the top of the line
+            // box goes an ascender above the baseline.
+            titleRect.origin.y = (rect.minY + baseline - font.ascender).rounded()
+        } else {
+            let titleSize = attributedStringValue.size()
+            titleRect.origin.y = (rect.minY + (rect.height - titleSize.height) / 2).rounded(.up)
+        }
         titleRect.size.height = rect.height - titleRect.origin.y
         return titleRect
     }
