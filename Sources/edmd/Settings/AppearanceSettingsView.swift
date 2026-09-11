@@ -441,7 +441,7 @@ extension AppearanceSettingsView {
             Text("Script")
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("Ligatures")
-                .frame(width: Self.ligatureColumnWidth, alignment: .center)
+                .frame(width: Self.ligatureColumnWidth, alignment: .trailing)
         }
         .padding(.horizontal, Self.scriptRowInset + Self.scriptListInset)
         .font(.caption)
@@ -528,10 +528,13 @@ extension AppearanceSettingsView {
             .disabled(!isSet)
             .help(scriptTooltip(script, preview))
 
+            // Against the trailing edge, as Default is against the leading one:
+            // each edge column belongs to its edge. Centred, a 14pt box floated
+            // in 56pt with air on both sides and nothing to line up on.
             Toggle("", isOn: cascadeLigaturesBinding(for: script))
                 .labelsHidden()
                 .controlSize(.small)
-                .frame(width: Self.ligatureColumnWidth, alignment: .center)
+                .frame(width: Self.ligatureColumnWidth, alignment: .trailing)
                 .disabled(!isSet)
         }
         .opacity(isSet ? 1 : 0.55)
