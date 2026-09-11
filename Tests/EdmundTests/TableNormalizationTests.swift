@@ -149,6 +149,60 @@ struct TableNormalizationTests {
         #expect(editor.rawSource == before)
     }
 
+    /// Backspace and forward-delete were the obvious paths; ⌥⌫ (delete word)
+    /// and ⌘⌫ (delete to line start) were not, and a table row is one line, so
+    /// ⌘⌫ would have taken every pipe before the caret. All of them route
+    /// through `shouldChangeText`, which is where the structure is guarded now.
+    @Test("Word and line deletes cannot take a pipe")
+    func wordAndLineDeletesSpareTheStructure() {
+        for action in [#selector(NSTextView.deleteWordBackward(_:)),
+                       #selector(NSTextView.deleteWordForward(_:)),
+                       #selector(NSTextView.deleteToBeginningOfLine(_:)),
+                       #selector(NSTextView.deleteToEndOfLine(_:))] {
+            let editor = loadEditor("Intro.\n\n| aa | bb |\n| --- | --- |\n| c21 | d22 |\n")
+            let ns = editor.rawSource as NSString
+            let before = editor.rawSource
+            // Caret in the middle of a body cell, where a word/line delete would
+            // otherwise run past the cell into the delimiters.
+            let mid = ns.range(of: "c21").location + 1
+            editor.setSelectedRange(NSRange(location: mid, length: 0))
+            editor.perform(action, with: nil)
+            #expect(editor.rawSource.components(separatedBy: "|").count
+                    == before.components(separatedBy: "|").count,
+                    "\(action) changed the pipe count")
+        }
+    }
+
+    /// Selecting across a pipe and deleting — or typing over the selection —
+    /// would merge two cells. The structural characters are protected whatever
+    /// the replacement is.
+    @Test("A delete or type-over spanning a pipe is refused")
+    func editAcrossAPipeIsRefused() {
+        let editor = loadEditor("Intro.\n\n| aa | bb |\n| --- | --- |\n| c21 | d22 |\n")
+        let ns = editor.rawSource as NSString
+        let from = ns.range(of: "c21").location + 1     // inside c21
+        let to = ns.range(of: "d22").location + 1       // inside d22, across the pipe
+        let before = editor.rawSource
+        editor.setSelectedRange(NSRange(location: from, length: to - from))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource == before, "a cross-pipe delete went through")
+        editor.setSelectedRange(NSRange(location: from, length: to - from))
+        editor.insertText("x", replacementRange: editor.selectedRange())
+        #expect(editor.rawSource == before, "a cross-pipe type-over went through")
+    }
+
+    /// The escaped pipe in a cell is content, and deletes like any character.
+    @Test("An escaped pipe in a cell still deletes")
+    func escapedPipeDeletes() {
+        let editor = loadEditor("Intro.\n\n| a | b |\n| --- | --- |\n| x\\|y | d |\n")
+        let ns = editor.rawSource as NSString
+        let esc = ns.range(of: "\\|")   // the two-character escaped pipe
+        editor.setSelectedRange(esc)
+        #expect(!editor.deletionHitsTableStructure(esc))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource.contains("| xy | d |"))
+    }
+
     /// Outside a table the same characters are ordinary text.
     @Test("A space beside a pipe in prose is not padding")
     func proseIsNotPadding() {

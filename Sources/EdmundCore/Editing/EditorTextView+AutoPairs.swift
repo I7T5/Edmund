@@ -75,10 +75,6 @@ extension EditorTextView {
     /// stays put.
     public override func deleteBackward(_ sender: Any?) {
         let target = selectedRange()
-        // A table row's padding is not content: backspace stops at a cell's
-        // text rather than eating the space beyond it. See `tableCellPadding`
-        // (EditorTextView+TableInlineEditing), which also guards forward delete.
-        if target.length == 0, tableCellPadding(at: target.location - 1) { return }
         guard autoCloseBracketsEnabled,
               !hasMarkedText(),
               target.length == 0,

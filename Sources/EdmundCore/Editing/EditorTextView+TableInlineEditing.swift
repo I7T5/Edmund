@@ -130,15 +130,35 @@ extension EditorTextView {
         return before == 0x7C || after == 0x7C
     }
 
-    /// Forward-delete stops at a cell's text rather than eating the padding
-    /// beyond it. A selection is left alone: deleting a range the user actually
-    /// made is theirs to mean. Backspace does the same, but its override lives
-    /// with auto-pairing (EditorTextView+AutoPairs), which already owns it —
-    /// one method, one override.
-    public override func deleteForward(_ sender: Any?) {
-        guard selectedRange().length > 0
-                || !tableCellPadding(at: selectedRange().location) else { return }
-        super.deleteForward(sender)
+    /// Whether the character at `offset` is a table's structural pipe — a `|`
+    /// that separates or bounds cells, not an escaped `\|` in content.
+    func tableStructuralPipe(at offset: Int) -> Bool {
+        guard !rawTableEditing, offset >= 0 else { return false }
+        let ns = rawSource as NSString
+        guard offset < ns.length, ns.character(at: offset) == 0x7C,
+              !(offset > 0 && ns.character(at: offset - 1) == 0x5C),
+              blockIndexForRawOffset(offset).map({ blocks[$0].kind == .table }) ?? false
+        else { return false }
+        return true
+    }
+
+    /// Whether removing `range` would take a pipe or the padding beside one with
+    /// it. Every delete command (backspace, forward, ⌥⌫ word, ⌘⌫ line, cut) and
+    /// any type-over of a selection reaches the storage through
+    /// `shouldChangeText`, which consults this — so the structure is protected
+    /// once, whatever key produced the edit, rather than one override per
+    /// selector. Content is never protected: only the pipes and the single
+    /// space standing against each.
+    func deletionHitsTableStructure(_ range: NSRange) -> Bool {
+        guard !rawTableEditing, range.length > 0 else { return false }
+        let ns = rawSource as NSString
+        let upper = min(range.upperBound, ns.length)
+        var i = max(0, range.location)
+        while i < upper {
+            if tableStructuralPipe(at: i) || tableCellPadding(at: i) { return true }
+            i += 1
+        }
+        return false
     }
 
     /// The index of the last cell in a row, or nil if the row has none.
