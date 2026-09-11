@@ -584,6 +584,13 @@ extension AppearanceSettingsView {
         }
         .onTapGesture(count: 1) { selectedScript = script }
         .contextMenu {
+            // The face and size the row is drawn in, as Mail's recipient menu
+            // opens with the address: a disabled first item naming what the
+            // commands below act on. Here for the reader the tooltip never
+            // reached, and named even when unset — that is the fallback the
+            // editor will really use.
+            Text(fontDescription(preview))
+            Divider()
             Button("Choose Font…") { fonts.selectCascadeFont(script) }
                 .disabled(!isSet)
             Button("Reset to Default") { fonts.setCascadeFont(script, family: nil) }
@@ -592,12 +599,17 @@ extension AppearanceSettingsView {
         .help(scriptTooltip(script, preview))
     }
 
-    /// "Chinese (Han): Songti SC, 16 pt" — the script, then the face and size
-    /// it will really be drawn in, which for an unset script is the fallback.
-    private func scriptTooltip(_ script: FontCascadeScript, _ font: NSFont?) -> String {
-        guard let font else { return script.label }
+    /// "Songti SC, 16 pt" — the face and size a row is really drawn in, which
+    /// for an unset script is the fallback.
+    private func fontDescription(_ font: NSFont?) -> String {
+        guard let font else { return "System font" }
         let family = font.familyName ?? font.displayName ?? font.fontName
-        return "\(script.label): \(family), \(Int(font.pointSize.rounded())) pt"
+        return "\(family), \(Int(font.pointSize.rounded())) pt"
+    }
+
+    /// "Chinese (Han): Songti SC, 16 pt" — the script, then its font.
+    private func scriptTooltip(_ script: FontCascadeScript, _ font: NSFont?) -> String {
+        "\(script.label): \(fontDescription(font))"
     }
 
     private func cascadeLigaturesBinding(for script: FontCascadeScript) -> Binding<Bool> {
