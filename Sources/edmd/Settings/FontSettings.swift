@@ -34,6 +34,22 @@ final class FontSettings: NSObject, ObservableObject {
     static let minCascadeSizeRatio = 0.5
     static let maxCascadeSizeRatio = 2.0
 
+    /// The font preset the Appearance pane's picker names. Edits are written
+    /// into it as well as into the `Editor*` keys, so the preset the picker
+    /// names always *is* what is on screen — there is no "modified" state to
+    /// explain, and no way to silently diverge from it.
+    ///
+    /// Antialiasing is the exception, being a display setting rather than
+    /// typography: it never reaches a preset.
+    var editingPreset: String?
+
+    /// Set while `apply(preset:)` is assigning the published mirrors. Each of
+    /// those carries a `didSet` that commits, and committing writes the preset
+    /// back — so without this, merely *choosing* a bundled preset saved a user
+    /// copy of it, which then reads as an edited built-in and offers itself to
+    /// Restore Defaults.
+    private var isApplying = false
+
     private var theme: EditorTheme
     private enum Target { case standard, monospace, cascade(FontCascadeScript) }
     private var target: Target = .standard
@@ -118,8 +134,7 @@ final class FontSettings: NSObject, ObservableObject {
         updated.monospaceFontName = monospaceFont.fontName
         updated.monospaceFontSize = monospaceFont.pointSize
         theme = updated
-        updated.save()
-        applyToDocuments(updated)
+        commit(updated)
     }
 
     private func applyLigatures() {
@@ -127,14 +142,15 @@ final class FontSettings: NSObject, ObservableObject {
         updated.standardLigatures = standardLigatures
         updated.monospaceLigatures = monospaceLigatures
         theme = updated
-        updated.save()
-        applyToDocuments(updated)
+        commit(updated)
     }
 
     private func applyAntialias() {
         var updated = theme
         updated.antialias = antialias
         theme = updated
+        // Not `commit`: antialiasing is a display setting, not typography, and
+        // a preset never carries it.
         updated.save()
         applyToDocuments(updated)
     }
@@ -145,9 +161,53 @@ final class FontSettings: NSObject, ObservableObject {
         updated.fontSize = standardFont.pointSize
         updated.lineSpacing = max(0, (lineHeight - 1) * standardFont.pointSize)
         theme = updated
+        commit(updated)
+    }
+
+    /// Where an edit goes: into the preset the picker names, and into the live
+    /// settings and every open document. The selected preset *is* the one in
+    /// force, so there is only ever one destination.
+    private func commit(_ updated: EditorTheme) {
+        syncPreset()
         updated.save()
         applyToDocuments(updated)
     }
+
+    /// Mirrors the live values into the preset the picker names, if any.
+    private func syncPreset() {
+        guard !isApplying, let name = editingPreset,
+              let existing = ThemeStore.shared.fontThemes().first(where: { $0.name == name })
+        else { return }
+        try? ThemeStore.shared.save(
+            theme.fontTheme(name: name, displayName: existing.displayName))
+    }
+
+    /// Puts a preset in force: its values become the `Editor*` keys and every
+    /// open document is repainted. Choosing one in the picker is choosing it.
+    func apply(preset: FontTheme) {
+        isApplying = true
+        defer { isApplying = false }
+        editingPreset = preset.name
+        let updated = theme.applying(preset)
+        theme = updated
+        standardFont = updated.bodyFont
+        monospaceFont = updated.monospaceFont()
+        standardLigatures = updated.standardLigatures
+        monospaceLigatures = updated.monospaceLigatures
+        cascadeFonts = updated.fontCascade
+        cascadeSizeRatios = updated.fontCascadeSizeRatios
+        cascadeLigatures = updated.fontCascadeLigatures
+        let size = updated.bodyFont.pointSize
+        lineHeight = size > 0 ? max(1, min(3, (size + updated.lineSpacing) / size)) : 1
+        updated.save()
+        // Deliberately no `syncPreset()`: this is applying a preset, not
+        // editing one. Writing it back would save a user copy of a bundled
+        // preset merely because it had been *chosen*.
+        applyToDocuments(updated)
+    }
+
+    /// Whether the typography still holds what Edmund ships with.
+    var isDefault: Bool { theme == .default }
 
     private func applyToDocuments(_ theme: EditorTheme) {
         for case let document as Document in NSDocumentController.shared.documents {
@@ -198,8 +258,7 @@ final class FontSettings: NSObject, ObservableObject {
         cascadeSizeRatios = updated.fontCascadeSizeRatios
         cascadeLigatures = updated.fontCascadeLigatures
         theme = updated
-        updated.save()
-        applyToDocuments(updated)
+        commit(updated)
     }
 
     /// Sets (or clears, at 1.0) a script's size ratio and broadcasts live.
@@ -213,8 +272,7 @@ final class FontSettings: NSObject, ObservableObject {
         }
         cascadeSizeRatios = updated.fontCascadeSizeRatios
         theme = updated
-        updated.save()
-        applyToDocuments(updated)
+        commit(updated)
     }
 
     /// A script's size ratio; 1.0 when unset.
@@ -237,8 +295,7 @@ final class FontSettings: NSObject, ObservableObject {
         }
         cascadeLigatures = updated.fontCascadeLigatures
         theme = updated
-        updated.save()
-        applyToDocuments(updated)
+        commit(updated)
     }
 
     /// A script's displayed point size: the stored ratio rendered against the

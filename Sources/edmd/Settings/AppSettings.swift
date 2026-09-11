@@ -95,6 +95,10 @@ enum AppSettings {
         static let themeGeneralDark  = "settings.themes.generalDark"
         static let themeSyntaxLight  = "settings.themes.syntaxLight"
         static let themeSyntaxDark   = "settings.themes.syntaxDark"
+        /// The font preset in force. Named `settings.themes.*` for continuity
+        /// with the four above and because `ThemeStore` loads it; it is chosen
+        /// in Appearance, and no color theme names it.
+        static let themeFont         = "settings.themes.font"
         // Whether the "Fonts by script" section at the foot of the Appearance
         // pane is expanded (per-script cascade rows).
         static let fontsByScriptExpanded = "settings.appearance.fontsByScriptExpanded"
@@ -462,6 +466,9 @@ enum AppSettings {
         static let generalDark = "classic-dark"
         static let syntaxLight = "tomorrow"
         static let syntaxDark = "one-dark"
+        /// The shipped typography, saved as a preset — picking it changes
+        /// nothing, which is what makes it the one the picker starts on.
+        static let font = "iowan"
     }
 
     static var generalThemeLight: String {
@@ -480,6 +487,53 @@ enum AppSettings {
         get { themeName(Key.themeSyntaxDark, default: DefaultTheme.syntaxDark) }
         set { UserDefaults.standard.set(newValue, forKey: Key.themeSyntaxDark) }
     }
+    static var fontTheme: String {
+        get { themeName(Key.themeFont, default: DefaultTheme.font) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeFont) }
+    }
+
+    /// Gives the Appearance pane's picker a preset to name, once, for anyone
+    /// arriving from a build without them.
+    ///
+    /// The picker has no "none" state — a preset is always in force — so a user
+    /// who never touched their fonts can be pointed at the one holding the
+    /// shipped values. A user who *did* has theirs in the `Editor*` keys, which
+    /// the chosen preset is about to override; capture them as a preset of
+    /// their own first. Dropping them onto a bundled one would change their
+    /// editor on upgrade with no way back.
+    ///
+    /// Keyed on the setting being absent rather than a version number: that is
+    /// exactly the condition, and it stays true for a user who skips releases.
+    static func migrateFontThemeSelection() {
+        guard UserDefaults.standard.string(forKey: Key.themeFont) == nil else { return }
+
+        // Compared as presets so only the fields one carries count — a changed
+        // accent color is no reason to seed. The names cancel.
+        let probe = "probe"
+        let current = EditorTheme.load().fontTheme(name: probe, displayName: probe)
+        guard current != EditorTheme.default.fontTheme(name: probe, displayName: probe) else {
+            fontTheme = DefaultTheme.font
+            return
+        }
+
+        var name = "custom-fonts"
+        var suffix = 2
+        while ThemeStore.shared.kind(ofThemeNamed: name) != nil {
+            name = "custom-fonts-\(suffix)"
+            suffix += 1
+        }
+        do {
+            try ThemeStore.shared.save(
+                EditorTheme.load().fontTheme(name: name, displayName: "Custom"))
+            fontTheme = name
+        } catch {
+            // The fonts stay as they were in the `Editor*` keys; only the
+            // picker is left pointing at the shipped preset.
+            Log.error("Seeding a font preset from the saved fonts failed: \(error)", category: .app)
+            fontTheme = DefaultTheme.font
+        }
+    }
+
     /// The bundled editor themes were `default-light` / `default-dark` before
     /// they were named Classic. A stored selection still pointing at an old
     /// name resolves to nothing: the editor falls back and keeps drawing, but
@@ -507,6 +561,7 @@ enum AppSettings {
     static func applyThemes() {
         ThemeStore.shared.reload()
         migrateRenamedThemes()
+        migrateFontThemeSelection()
         ThemeStore.shared.activeGeneralLight = generalThemeLight
         ThemeStore.shared.activeGeneralDark = generalThemeDark
         ThemeStore.shared.activeSyntaxLight = syntaxThemeLight

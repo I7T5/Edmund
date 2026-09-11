@@ -97,6 +97,83 @@ public struct EditorTheme: Equatable, Sendable {
         return t
     }()
 
+    // MARK: - Font Presets
+
+    /// This theme with `font`'s faces, sizes and line height layered on top.
+    ///
+    /// Order matters: line height is authored as a multiple of the body size
+    /// but stored as extra leading in points, so it has to be scaled by the
+    /// size the theme actually ends up with, not the one it started from.
+    ///
+    /// An empty face or a non-positive size is ignored rather than applied — a
+    /// hand-written JSON missing a value should fall back to what is there, not
+    /// set the editor in a zero-point font. The exception is
+    /// `monospaceFontName`, where empty is a real value meaning the system
+    /// monospaced font.
+    public func applying(_ font: FontTheme) -> EditorTheme {
+        var t = self
+        if !font.fontName.isEmpty { t.fontName = font.fontName }
+        if font.fontSize > 0 { t.fontSize = CGFloat(font.fontSize) }
+        t.monospaceFontName = font.monospaceFontName
+        if font.monospaceFontSize > 0 { t.monospaceFontSize = CGFloat(font.monospaceFontSize) }
+        t.lineSpacing = max(0, (CGFloat(font.lineHeight) - 1) * t.fontSize)
+        t.standardLigatures = font.standardLigatures
+        t.monospaceLigatures = font.monospaceLigatures
+        // Assigned whole, like the faces: a font theme is a complete set, so an
+        // empty cascade in the theme means *no* per-script overrides rather
+        // than "keep whatever the base had".
+        t.fontCascade = font.scriptCascade
+        t.fontCascadeSizeRatios = font.scriptSizeRatios
+        t.fontCascadeLigatures = font.scriptLigatures
+        return t
+    }
+
+    /// This theme's faces, sizes and line height as a font theme — the inverse
+    /// of `applying(_:)`, used to save the live values into a preset.
+    ///
+    /// Line height converts back from points to the multiple a font theme
+    /// stores, and is clamped to the range the pane's stepper allows so a
+    /// hand-set `EditorLineSpacing` cannot seed a theme the UI refuses to show.
+    public func fontTheme(name: String, displayName: String) -> FontTheme {
+        let multiple = fontSize > 0
+            ? min(3, max(1, (fontSize + lineSpacing) / fontSize))
+            : 1
+        return FontTheme(name: name, displayName: displayName,
+                         fontName: fontName, fontSize: Double(fontSize),
+                         monospaceFontName: monospaceFontName,
+                         monospaceFontSize: Double(monospaceFontSize),
+                         lineHeight: Double(multiple),
+                         standardLigatures: standardLigatures,
+                         monospaceLigatures: monospaceLigatures,
+                         cascade: fontCascade.reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
+                         cascadeSizeRatios: fontCascadeSizeRatios
+                             .reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
+                         cascadeLigatures: fontCascadeLigatures
+                             .reduce(into: [:]) { $0[$1.key.rawValue] = $1.value })
+    }
+
+    /// Whether `font` actually draws common ligatures, so a checkbox offering to
+    /// turn them off is wired to something.
+    ///
+    /// Asks by shaping rather than by reading the feature table. Every face
+    /// tested advertises the AAT ligature type with a common-ligatures selector
+    /// — Monaco and Menlo included, neither of which has a single ligature — so
+    /// the table answers "yes" for everything and settles nothing. Laying out a
+    /// known pair and counting glyphs is the behaviour the checkbox actually
+    /// governs: if "fi" comes back as one glyph, the face has the ligature.
+    @MainActor public static func hasLigatures(_ font: NSFont) -> Bool {
+        // Two pairs, because a face may carry one and not the other.
+        ["fi", "fl"].contains { pair in
+            let text = NSAttributedString(string: pair,
+                                          attributes: [.font: font, .ligature: 1])
+            let runs = CTLineGetGlyphRuns(CTLineCreateWithAttributedString(text))
+                as? [CTRun] ?? []
+            let glyphs = runs.reduce(0) { $0 + CTRunGetGlyphCount($1) }
+            // Fewer glyphs than characters means the pair was combined.
+            return glyphs < pair.count
+        }
+    }
+
     // MARK: - Derived Properties
 
     @MainActor public var bodyFont: NSFont {

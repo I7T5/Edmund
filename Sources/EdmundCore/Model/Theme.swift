@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Themes
 //
-// Two JSON-backed theme kinds, both loaded by `ThemeStore`:
+// Two JSON-backed theme kinds, plus a font preset, all loaded by `ThemeStore`:
 //
 //   - `GeneralTheme` colors the editor chrome (ink, page, selection, caret,
 //     invisibles, checkbox, links).
@@ -11,6 +11,11 @@ import Foundation
 //
 // Both declare the appearance they are legible on, and the app keeps one active
 // theme per appearance per kind, swapping on light ↔ dark.
+//
+// `FontTheme` below is typography, but it is not one of those two: it is a
+// preset chosen globally in Settings ▸ Appearance. No editor theme names it, so
+// the light↔dark switch cannot change the reader's typeface — that hazard came
+// from the assignment, not from presets existing.
 //
 // A `nil` color means "use the platform default for this role" — the "Use
 // system color" checkbox in Settings ▸ Themes. It is not the same as absent
@@ -138,5 +143,131 @@ public struct SyntaxTheme: Codable, Sendable, Equatable {
         case .string:     return string
         case .comment:    return comment
         }
+    }
+}
+
+// MARK: - Font Theme
+
+/// A typographic preset: both faces, their sizes and ligatures, the line
+/// height, and the per-script cascade.
+///
+/// A *preset*, not a theme an editor theme names. One is chosen globally in
+/// Settings ▸ Appearance and that is the only relation it has to anything —
+/// nothing assigns it, nothing inherits it, and switching a color theme cannot
+/// change it. It exists because per-script fonts make a typographic setup
+/// large: eleven values before the nine scripts, thirty-two after, which is far
+/// too much to rebuild by hand to move between a CJK writing setup and a
+/// code-heavy one.
+///
+/// The five typographic fields are required, as `SyntaxTheme`'s colors are: a
+/// font theme is a complete set. The later additions default instead, so a
+/// theme written before they existed still loads.
+public struct FontTheme: Codable, Sendable, Equatable {
+    public let name: String
+    /// See `GeneralTheme.displayName` — renaming touches this, never `name`.
+    public var displayName: String
+
+    public var fontName: String
+    public var fontSize: Double
+    /// Empty means the system monospaced font, matching `EditorTheme`.
+    public var monospaceFontName: String
+    public var monospaceFontSize: Double
+    /// A multiple of the body size, as Settings ▸ Appearance shows it.
+    public var lineHeight: Double
+
+    public var standardLigatures: Bool
+    public var monospaceLigatures: Bool
+
+    /// Per-script overrides: family, a multiple of the run's size, and whether
+    /// the face's ligatures are on.
+    ///
+    /// Keyed by `FontCascadeScript.rawValue` rather than by the enum, so the
+    /// JSON is an object someone can type — a dictionary with enum keys encodes
+    /// as a flat `[key, value, key, value]` array, and these files are meant to
+    /// be hand-authored. The `script*` accessors convert, and drop keys this
+    /// build does not know, exactly as `EditorTheme.load` does for the same
+    /// data in settings.
+    public var cascade: [String: String]
+    public var cascadeSizeRatios: [String: Double]
+    /// Only the "off" entries matter; absent is on, as in `EditorTheme`.
+    public var cascadeLigatures: [String: Bool]
+
+    /// The cascade as `EditorTheme` holds it, unknown scripts dropped.
+    public var scriptCascade: [FontCascadeScript: String] {
+        var out: [FontCascadeScript: String] = [:]
+        for (key, family) in cascade where !family.isEmpty {
+            if let script = FontCascadeScript(rawValue: key) { out[script] = family }
+        }
+        return out
+    }
+
+    /// The ratios as `EditorTheme` holds them: unknown scripts dropped, and
+    /// each clamped to the range the pane allows, so a hand-edited file cannot
+    /// ask for a size the UI could never have produced.
+    public var scriptSizeRatios: [FontCascadeScript: Double] {
+        var out: [FontCascadeScript: Double] = [:]
+        for (key, ratio) in cascadeSizeRatios {
+            if let script = FontCascadeScript(rawValue: key) {
+                out[script] = min(2.0, max(0.5, ratio))
+            }
+        }
+        return out
+    }
+
+    public var scriptLigatures: [FontCascadeScript: Bool] {
+        var out: [FontCascadeScript: Bool] = [:]
+        for (key, on) in cascadeLigatures where !on {
+            if let script = FontCascadeScript(rawValue: key) { out[script] = false }
+        }
+        return out
+    }
+
+    /// No appearance suffix, unlike the other two kinds: there is only ever one
+    /// row per font theme.
+    public var label: String { displayName }
+
+    public init(name: String, displayName: String,
+                fontName: String, fontSize: Double,
+                monospaceFontName: String, monospaceFontSize: Double,
+                lineHeight: Double,
+                standardLigatures: Bool = true, monospaceLigatures: Bool = false,
+                cascade: [String: String] = [:],
+                cascadeSizeRatios: [String: Double] = [:],
+                cascadeLigatures: [String: Bool] = [:]) {
+        self.name = name
+        self.displayName = displayName
+        self.fontName = fontName
+        self.fontSize = fontSize
+        self.monospaceFontName = monospaceFontName
+        self.monospaceFontSize = monospaceFontSize
+        self.lineHeight = lineHeight
+        self.standardLigatures = standardLigatures
+        self.monospaceLigatures = monospaceLigatures
+        self.cascade = cascade
+        self.cascadeSizeRatios = cascadeSizeRatios
+        self.cascadeLigatures = cascadeLigatures
+    }
+
+    /// Written by hand because the synthesized decoder ignores a property's
+    /// default value: a missing key is an error to it, so every bundled and
+    /// hand-authored theme predating the later fields would stop loading.
+    /// The five original fields stay required — a font theme is a complete set,
+    /// and a file without a body face is a file with a typo in it.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        displayName = try c.decode(String.self, forKey: .displayName)
+        fontName = try c.decode(String.self, forKey: .fontName)
+        fontSize = try c.decode(Double.self, forKey: .fontSize)
+        monospaceFontName = try c.decode(String.self, forKey: .monospaceFontName)
+        monospaceFontSize = try c.decode(Double.self, forKey: .monospaceFontSize)
+        lineHeight = try c.decode(Double.self, forKey: .lineHeight)
+        standardLigatures = try c.decodeIfPresent(Bool.self, forKey: .standardLigatures) ?? true
+        monospaceLigatures = try c.decodeIfPresent(Bool.self, forKey: .monospaceLigatures) ?? false
+        cascade = try c.decodeIfPresent([String: String].self, forKey: .cascade) ?? [:]
+        cascadeSizeRatios = try c.decodeIfPresent(
+            [String: Double].self, forKey: .cascadeSizeRatios) ?? [:]
+        cascadeLigatures = try c.decodeIfPresent(
+            [String: Bool].self, forKey: .cascadeLigatures) ?? [:]
     }
 }

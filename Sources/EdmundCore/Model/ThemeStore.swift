@@ -30,6 +30,8 @@ public final class ThemeStore {
     private var syntaxByName: [String: SyntaxTheme] = [:]
     private var generalOrdered: [GeneralTheme] = []
     private var syntaxOrdered: [SyntaxTheme] = []
+    private var fontByName: [String: FontTheme] = [:]
+    private var fontOrdered: [FontTheme] = []
     /// Display names carried by more than one appearance, per kind. Only these
     /// need "(Light)"/"(Dark)" after them to be told apart.
     private var ambiguousGeneralNames: Set<String> = []
@@ -62,6 +64,8 @@ public final class ThemeStore {
         var syntaxes: [String: SyntaxTheme] = [:]
         var generalList: [GeneralTheme] = []
         var syntaxList: [SyntaxTheme] = []
+        var fonts: [String: FontTheme] = [:]
+        var fontList: [FontTheme] = []
         var users: Set<String> = []
         var bundled: Set<String> = []
         var sources: [String: URL] = [:]
@@ -82,13 +86,25 @@ public final class ThemeStore {
             if user { users.insert(theme.name) } else { bundled.insert(theme.name) }
         }
 
+        func addFont(_ theme: FontTheme, url: URL, user: Bool) {
+            if let i = fontList.firstIndex(where: { $0.name == theme.name }) { fontList[i] = theme }
+            else { fontList.append(theme) }
+            fonts[theme.name] = theme
+            sources[theme.name] = url
+            if user { users.insert(theme.name) } else { bundled.insert(theme.name) }
+        }
+
         for (t, url) in Self.load(GeneralTheme.self, bundled: "Themes/General") { addGeneral(t, url: url, user: false) }
         for (t, url) in Self.load(GeneralTheme.self, user: Self.userDirectory(.general)) { addGeneral(t, url: url, user: true) }
         for (t, url) in Self.load(SyntaxTheme.self, bundled: "Themes/Syntax") { addSyntax(t, url: url, user: false) }
         for (t, url) in Self.load(SyntaxTheme.self, user: Self.userDirectory(.syntax)) { addSyntax(t, url: url, user: true) }
+        for (t, url) in Self.load(FontTheme.self, bundled: "Themes/Font") { addFont(t, url: url, user: false) }
+        for (t, url) in Self.load(FontTheme.self, user: Self.userDirectory(.font)) { addFont(t, url: url, user: true) }
 
         generalByName = generals
         syntaxByName = syntaxes
+        fontByName = fonts
+        fontOrdered = fontList.sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
         generalOrdered = generalList.sorted {
             $0.qualifiedLabel.localizedCaseInsensitiveCompare($1.qualifiedLabel) == .orderedAscending
         }
@@ -151,6 +167,7 @@ public final class ThemeStore {
 
     public func generalThemes() -> [GeneralTheme] { generalOrdered }
     public func syntaxThemes() -> [SyntaxTheme] { syntaxOrdered }
+    public func fontThemes() -> [FontTheme] { fontOrdered }
 
 
     public func isUserTheme(_ name: String) -> Bool { userNames.contains(name) }
@@ -219,6 +236,7 @@ public final class ThemeStore {
     public func kind(ofThemeNamed name: String) -> Kind? {
         if generalByName[name] != nil { return .general }
         if syntaxByName[name] != nil { return .syntax }
+        if fontByName[name] != nil { return .font }
         return nil
     }
 
@@ -228,6 +246,10 @@ public final class ThemeStore {
 
     public func save(_ theme: SyntaxTheme) throws {
         try write(theme, kind: .syntax, name: theme.name)
+    }
+
+    public func save(_ theme: FontTheme) throws {
+        try write(theme, kind: .font, name: theme.name)
     }
 
     /// Writes a theme into the user directory and reloads.
@@ -286,6 +308,21 @@ public final class ThemeStore {
             try save(theme)
             return copy
         }
+        if var theme = fontByName[name] {
+            let copy = uniqueName(basedOn: name)
+            theme = FontTheme(name: copy, displayName: theme.displayName + " copy",
+                              fontName: theme.fontName, fontSize: theme.fontSize,
+                              monospaceFontName: theme.monospaceFontName,
+                              monospaceFontSize: theme.monospaceFontSize,
+                              lineHeight: theme.lineHeight,
+                              standardLigatures: theme.standardLigatures,
+                              monospaceLigatures: theme.monospaceLigatures,
+                              cascade: theme.cascade,
+                              cascadeSizeRatios: theme.cascadeSizeRatios,
+                              cascadeLigatures: theme.cascadeLigatures)
+            try save(theme)
+            return copy
+        }
         throw DuplicateError.notFound
     }
 
@@ -307,10 +344,11 @@ public final class ThemeStore {
     public enum Kind: String {
         case general = "General"
         case syntax = "Syntax"
+        case font = "Font"
     }
 
     /// The canonical, update-proof home for user themes:
-    /// ~/Library/Application Support/Edmund/Themes/{General,Syntax}.
+    /// ~/Library/Application Support/Edmund/Themes/{General,Syntax,Font}.
     public static func userDirectory(_ kind: Kind) -> URL {
         let base = (try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,

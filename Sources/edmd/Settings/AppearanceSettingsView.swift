@@ -12,6 +12,15 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
     @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
+    /// The font preset in force. Always names one: everything below the divider
+    /// is its contents, and a picker reading blank while the fonts are set
+    /// would say nothing true. Choosing one here is choosing it — there is no
+    /// separate "use this" step.
+    @AppStorage(AppSettings.Key.themeFont) private var fontTheme = AppSettings.DefaultTheme.font
+
+    @State private var fontThemes: [FontTheme] = []
+    @State private var renamingTheme = false
+    @State private var newThemeName = ""
 
     /// Every label in the pane gets this fixed width, so the "Fonts by script"
     /// rows can appear/disappear without re-sizing the Grid's label column
@@ -108,6 +117,26 @@ struct AppearanceSettingsView: View {
             }
 
             GridRow {
+                Text("Font theme:")
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
+                HStack(spacing: 8) {
+                    // 240 to match the font rows' preview field below, so the
+                    // three boxes share one edge.
+                    Picker("", selection: $fontTheme) {
+                        ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 240)
+                    .onChange(of: fontTheme) { _, name in
+                        guard let chosen = fontThemes.first(where: { $0.name == name }) else { return }
+                        fonts.apply(preset: chosen)
+                    }
+                    fontThemeMenu
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GridRow {
                 Divider().gridCellColumns(2)
             }
 
@@ -166,6 +195,70 @@ struct AppearanceSettingsView: View {
             fontCascadeSection
         }
         .settingsPanePadding()
+        .onAppear {
+            fontThemes = ThemeStore.shared.fontThemes()
+            // Told, not applied: the values are already live, and re-applying
+            // on every visit would overwrite an edit made since.
+            fonts.editingPreset = fontTheme
+        }
+        .alert("Rename Font Theme", isPresented: $renamingTheme) {
+            TextField("Name", text: $newThemeName)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") { commitThemeRename() }
+        }
+    }
+
+    /// Duplicate / Rename / Delete — what the Themes pane's footer gives its
+    /// own lists. A menu rather than a row of buttons: these are rare beside
+    /// the picker they act on.
+    private var fontThemeMenu: some View {
+        Menu {
+            Button("Duplicate…") { duplicateTheme() }
+            Button("Rename…") {
+                newThemeName = fontThemes.first { $0.name == fontTheme }?.displayName ?? ""
+                renamingTheme = true
+            }
+                // A built-in keeps the name it ships under; Duplicate is the
+                // way to one with your own name on it.
+                .disabled(ThemeStore.shared.isBuiltIn(fontTheme))
+            Divider()
+            Button("Delete", role: .destructive) { deleteTheme() }
+                // A bundled theme lives inside the app: there is nothing to
+                // delete, and removing the last one would leave the picker with
+                // nothing to name.
+                .disabled(!ThemeStore.shared.isUserTheme(fontTheme) || fontThemes.count < 2)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Manage font themes")
+    }
+
+    private func duplicateTheme() {
+        guard let copy = try? ThemeStore.shared.duplicate(fontTheme) else { return }
+        fontThemes = ThemeStore.shared.fontThemes()
+        fontTheme = copy
+    }
+
+    private func commitThemeRename() {
+        let trimmed = newThemeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              var theme = fontThemes.first(where: { $0.name == fontTheme }) else { return }
+        // The display name only: `name` is the filename and the value stored in
+        // settings, so moving it would orphan the selection.
+        theme.displayName = trimmed
+        try? ThemeStore.shared.save(theme)
+        fontThemes = ThemeStore.shared.fontThemes()
+    }
+
+    private func deleteTheme() {
+        let going = fontTheme
+        guard let next = fontThemes.first(where: { $0.name != going }) else { return }
+        fontTheme = next.name
+        fonts.apply(preset: next)
+        try? ThemeStore.shared.deleteUserTheme(named: going)
+        fontThemes = ThemeStore.shared.fontThemes()
     }
 
     /// Pushes a content-width change to every open editor live, converting cm
