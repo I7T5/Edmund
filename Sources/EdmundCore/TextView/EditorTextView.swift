@@ -897,38 +897,23 @@ public class EditorTextView: NSTextView {
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
+        let clickPoint = tableClickPoint ?? convert(event.locationInWindow, from: nil)
+        let wasDoubleClick = tableClickCount == 2
         tableClickPoint = nil
         tableClickCount = 0
         tableClickHit = nil
         tableClickWrappedCaret = nil
-        // Only a plain click: a drag or a double-click made a real selection,
-        // and honouring those would collapse it.
-        if let wrappedCellCaret, selectedRange().length == 0 {
-            setSelectedRange(NSRange(location: wrappedCellCaret, length: 0))
-        }
-        let clickPoint = convert(event.locationInWindow, from: nil)
-        let clickSelection = selectedRange()
-        // A double-click out in a cell's empty space takes the cell's contents.
-        // There is no word where it landed, and the next unit up from a word,
-        // here, is the cell — which is what a double-click in a spreadsheet
-        // gives you too. A single click out there comes back to the cell's
-        // text instead, as does one AppKit carried into the neighbouring cell
-        // — see `tableCellCaretSnap(at:offset:)`.
-        let emptySpace = tableCellEmptySpace(at: clickPoint, hit: clickHit)
-        if event.clickCount >= 2 {
-            traceEdit("tableDoubleClick clicks=\(event.clickCount) x=\(Int(clickPoint.x))"
-                + " hit=\(clickHit.map(String.init) ?? "nil")"
-                + " grid=\(tableGridDiagnostic(at: clickPoint, hit: clickHit))"
-                + " cell=\(emptySpace.map { "r\($0.row)c\($0.column)" } ?? "nil")"
-                + " sel=\(clickSelection)")
-        }
-        if event.clickCount == 2, let cell = emptySpace {
-            // Already installed in flight; this is the scroll and the last word.
-            selectCellText(cell)
-        } else if clickSelection.length == 0,
-                  let snapped = tableCellCaretSnap(at: clickPoint,
-                                                   offset: clickSelection.location) {
-            setSelectedRange(NSRange(location: snapped, length: 0))
+        // Every single-click correction — the wrapped-cell caret, the snap out
+        // of a cell's padding, the resting rule — is applied *in flight* by
+        // `setSelectedRanges` while `super.mouseDown` tracks, so the final
+        // placement is installed exactly once and there is nothing to re-apply
+        // here. Re-applying it after the gesture fired a second selection change
+        // and the caret visibly jumped from one to the other. Only the
+        // double-click scroll survives: it moves nothing, just brings the cell
+        // it already selected into view.
+        if wasDoubleClick, selectedRange().length > 0,
+           let cell = tableCellEmptySpace(at: clickPoint, hit: clickHit) {
+            scrollRangeToVisible(tableCellSelectionRange(cell))
         }
         // `super.mouseDown` returns only after the whole tracking loop (drag +
         // mouse-up) finishes; `sel` in this line is the gesture's net result.
