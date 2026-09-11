@@ -506,6 +506,11 @@ struct SyntaxThemeDetail: View {
                 wellRow(Array(Self.scopes.prefix(5)))
                 wellRow(Array(Self.scopes.suffix(5)))
             }
+            // The stack's 12 is the same gap the editor pane puts between its
+            // popup and this sample, but it reads tighter here: a well is a
+            // solid block with no chrome of its own, where a popup carries its
+            // inset inside its bezel. A few points make the two look alike.
+            .padding(.top, 4)
 
             // On its own line under the inks, because it is not one of them:
             // the ten above are what code is written in, this is what it is
