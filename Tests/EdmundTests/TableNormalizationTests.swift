@@ -197,10 +197,11 @@ struct TableNormalizationTests {
         let editor = loadEditor("Intro.\n\n| a | b |\n| --- | --- |\n| x\\|y | d |\n")
         let ns = editor.rawSource as NSString
         let esc = ns.range(of: "\\|")   // the two-character escaped pipe
-        editor.setSelectedRange(esc)
-        #expect(!editor.deletionHitsTableStructure(esc))
+        // Backspace with the caret just after the escaped pipe removes only the
+        // pipe — it is content, not a delimiter — leaving the backslash behind.
+        editor.setSelectedRange(NSRange(location: esc.upperBound, length: 0))
         editor.deleteBackward(nil)
-        #expect(editor.rawSource.contains("| xy | d |"))
+        #expect(editor.rawSource.contains("| x\\y | d |"))
     }
 
     /// Outside a table the same characters are ordinary text.

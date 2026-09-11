@@ -83,6 +83,47 @@ struct TableColumnLayoutTests {
                 "the header collapsed against the plain one")
     }
 
+    /// A click in a wrapped cell's blank space below the text lands the caret
+    /// at the end of the cell's text — wherever along that blank strip it fell.
+    /// This is what an unwrapped cell already does; the two were inconsistent,
+    /// with a wrapped cell instead taking the character sitting above the click.
+    @Test("A click below a wrapped cell's text goes to the text end")
+    func clickBelowWrappedTextGoesToEnd() throws {
+        let editor = loadEditor(Self.truthTable)
+        guard let tlm = editor.textLayoutManager,
+              let index = editor.blocks.firstIndex(where: { $0.kind == .table }),
+              let grid = editor.tableGrid(blockIndex: index),
+              // column 6 header "(not A) or (not B)" wraps to several lines
+              let cell = editor.tableCell(blockIndex: index, row: 0, column: 6),
+              let box = grid.cellRect(row: 0, column: 6),
+              let location = tlm.location(tlm.documentRange.location,
+                                          offsetBy: cell.contentRange.location),
+              let fragment = tlm.textLayoutFragment(for: location) as? DecoratedTextLayoutFragment,
+              let paragraph = fragment.textElement?.elementRange?.location else {
+            Issue.record("no wrapped cell")
+            return
+        }
+        let base = tlm.offset(from: tlm.documentRange.location, to: paragraph)
+        let text = editor.tableCellTextRange(cell)
+        let textEnd = text.upperBound
+        let origin = editor.textContainerOrigin
+        let frame = fragment.layoutFragmentFrame
+        // The x-band the drawn text actually occupies (a click outside it, in
+        // the cell's side padding, is handled by the grid snap, not this path).
+        let firstLine = try #require(
+            editor.wrappedCellRects(for: NSRange(location: text.location, length: 0)).first)
+        let bandLeft = firstLine.minX
+        let bandRight = box.maxX - (box.maxX - bandLeft) * 0.15
+        // Along the bottom blank strip, within the text band: left, middle,
+        // right. Each must land at the end of the text, not the char above.
+        let y = box.maxY - 2
+        for x in [bandLeft + 2, (bandLeft + bandRight) / 2, bandRight] {
+            let local = CGPoint(x: x - origin.x - frame.minX, y: y - origin.y - frame.minY)
+            let hit = fragment.cellWrapCharacterIndex(for: local).map { base + $0 }
+            #expect(hit == textEnd, "click at x=\(Int(x)) landed at \(hit ?? -1), not \(textEnd)")
+        }
+    }
+
     /// Cell contents are inset from the border they sit against, rather than
     /// touching it.
     @Test("Cell text is inset from its column border")

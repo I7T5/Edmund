@@ -501,9 +501,17 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 let height = line.typographicBounds.height
                 // Past the last line means the click was in the row's bottom
                 // padding — that still belongs to the last line.
-                guard point.y < top + height || li == lines.count - 1 else {
+                let belowLastLine = point.y >= top + height
+                guard !belowLastLine || li == lines.count - 1 else {
                     top += height
                     continue
+                }
+                // A click below the last line goes to the end of the cell's
+                // text, not to whatever character happens to sit above the
+                // point — the same place an unwrapped cell's blank space sends
+                // it. Only a click *on* a line's own vertical band resolves by x.
+                if belowLastLine {
+                    return wrap.charStart + line.characterRange.upperBound
                 }
                 let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth, align: wrap.align)
                 // The line's own bounds carry the scratch container's stacking
