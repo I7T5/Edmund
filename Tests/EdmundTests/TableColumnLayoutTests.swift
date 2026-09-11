@@ -116,4 +116,117 @@ struct TableColumnLayoutTests {
         #expect(box.minX - grid.columnEdges[0] >= 4,
                 "text starts \(box.minX - grid.columnEdges[0])pt from the border")
     }
+
+    /// A ten-column truth table: narrow columns, every header cell wrapped, the
+    /// data cells not. Everything below was measured against this one table.
+    private static let truthTable = """
+        Intro.
+
+        | A | B | not A | not B | not(A and B) | not(A or B) | (not A) or (not B) | A or (not B) | (not B) or B | (not B) and B |
+        | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+        | T | T | F | F | F | F | F | T | T | F |
+        | T | F | F | T | T | F | T | T | T | F |
+        | F | T | T | F | T | F | T | F | T | F |
+        | F | F | T | T | T | T | T | T | T | F |
+
+        """
+
+    /// The row's paragraph is indented by the cell pad so the left border can
+    /// stand outside the text, and that indent has to come out of the width
+    /// budget. When it did not, the row's advance exactly filled the line and
+    /// the closing pipe wrapped — dragging the last cell's text down under the
+    /// first cell once the window was a little narrower.
+    @Test("A row's text never wraps onto a second line")
+    func rowTextStaysOnOneLine() {
+        let editor = loadEditor(Self.truthTable)
+        guard let tlm = editor.textLayoutManager,
+              let index = editor.blocks.firstIndex(where: { $0.kind == .table }),
+              let range = editor.blockTextRange(editor.blocks[index].range, tlm) else {
+            Issue.record("no table")
+            return
+        }
+        var row = 0
+        tlm.enumerateTextLayoutFragments(from: range.location, options: [.ensuresLayout]) { fragment in
+            guard fragment.rangeInElement.location.compare(range.endLocation) == .orderedAscending
+            else { return false }
+            // The last row also absorbs the document's trailing empty line,
+            // which is a second fragment of its own and not a wrap.
+            let lines = fragment.textLineFragments.filter { $0.characterRange.length > 0 }
+            #expect(lines.count == 1, "row \(row) laid out on \(lines.count) lines")
+            row += 1
+            return true
+        }
+        #expect(row == 6)
+    }
+
+    /// The padding is not content and does not go into a wrapped cell's scratch
+    /// layout: in a narrow column a leading space could take the first line by
+    /// itself, and that cell's text then started a line lower than the cells
+    /// beside it.
+    @Test("Wrapped and unwrapped header cells start on the same line")
+    func headerCellsShareATop() {
+        let editor = loadEditor(Self.truthTable)
+        guard let tlm = editor.textLayoutManager,
+              let index = editor.blocks.firstIndex(where: { $0.kind == .table }),
+              let grid = editor.tableGrid(blockIndex: index) else {
+            Issue.record("no grid")
+            return
+        }
+        var tops: [CGFloat] = []
+        for column in 0..<grid.columns {
+            guard let cell = editor.tableCell(blockIndex: index, row: 0, column: column) else { continue }
+            let text = editor.tableCellTextRange(cell)
+            if let wrapped = editor.wrappedCellRects(for: NSRange(location: text.location,
+                                                                  length: 0)).first {
+                tops.append(wrapped.minY)
+            } else if let from = tlm.location(tlm.documentRange.location, offsetBy: text.location),
+                      let to = tlm.location(tlm.documentRange.location, offsetBy: text.upperBound),
+                      let range = NSTextRange(location: from, end: to) {
+                let origin = editor.textContainerOrigin
+                tlm.enumerateTextSegments(in: range, type: .standard, options: []) { _, f, _, _ in
+                    tops.append(f.minY + origin.y); return false
+                }
+            }
+        }
+        #expect(tops.count == grid.columns)
+        if let first = tops.first {
+            for top in tops { #expect(abs(top - first) < 1, "a header cell starts \(top - first)pt off") }
+        }
+    }
+
+    /// `NSTextLineFragment.characterIndex(for:)` names the character under the
+    /// point; a click puts the caret at the nearer edge of it. Without the
+    /// midpoint rule every click on the right half of a letter in a wrapped
+    /// cell landed one character early.
+    @Test("A click in a wrapped cell rounds at the glyph's midpoint")
+    func wrappedCellClickRoundsAtTheMidpoint() {
+        let editor = loadEditor(Self.truthTable)
+        guard let tlm = editor.textLayoutManager,
+              let index = editor.blocks.firstIndex(where: { $0.kind == .table }),
+              let cell = editor.tableCell(blockIndex: index, row: 0, column: 4) else {
+            Issue.record("no cell")
+            return
+        }
+        let text = editor.tableCellTextRange(cell)
+        for k in 0..<3 {
+            let offset = text.location + k
+            guard let glyph = editor.wrappedCellRects(for: NSRange(location: offset, length: 1)).first,
+                  let location = tlm.location(tlm.documentRange.location, offsetBy: offset),
+                  let fragment = tlm.textLayoutFragment(for: location) as? DecoratedTextLayoutFragment,
+                  let paragraph = fragment.textElement?.elementRange?.location else {
+                Issue.record("no glyph at \(k)")
+                continue
+            }
+            let base = tlm.offset(from: tlm.documentRange.location, to: paragraph)
+            let origin = editor.textContainerOrigin
+            let frame = fragment.layoutFragmentFrame
+            func hit(_ x: CGFloat) -> Int? {
+                fragment.cellWrapCharacterIndex(for: CGPoint(x: x - origin.x - frame.minX,
+                                                             y: glyph.midY - origin.y - frame.minY))
+                    .map { base + $0 }
+            }
+            #expect(hit(glyph.minX + 1) == offset)        // left half: before it
+            #expect(hit(glyph.maxX - 1) == offset + 1)    // right half: after it
+        }
+    }
 }

@@ -509,8 +509,20 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 // The line's own bounds carry the scratch container's stacking
                 // offset; only its x matters here, so probe at its own midY.
                 let local = CGPoint(x: point.x - wrap.x - dx, y: line.typographicBounds.midY)
-                let index = line.characterIndex(for: local)
+                var index = line.characterIndex(for: local)
                 guard index >= 0 else { return nil }
+                // `characterIndex(for:)` names the character *under* the point,
+                // which is not where a click puts a caret: AppKit's insertion
+                // rule rounds at the glyph's midpoint, so a click on the right
+                // half of a letter lands after it. Without this every such
+                // click came out one character early.
+                let lineEnd = line.characterRange.upperBound
+                if index < lineEnd {
+                    let left = line.locationForCharacter(at: index).x
+                    let right = index + 1 <= lineEnd
+                        ? line.locationForCharacter(at: index + 1).x : left
+                    if right > left, local.x > (left + right) / 2 { index += 1 }
+                }
                 return wrap.charStart + index
             }
         }
