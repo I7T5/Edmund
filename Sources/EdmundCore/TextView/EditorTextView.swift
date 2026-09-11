@@ -988,11 +988,11 @@ public class EditorTextView: NSTextView {
            selection.length > 0, let trimmed = tableCellSelectionTrimmed(selection) {
             ranges = [NSValue(range: trimmed)]
         }
-        // And wherever it came from, a caret never rests on a hidden pipe.
-        // See `tableCellCaretRest`.
+        // And wherever it came from, a caret never rests in a cell's padding
+        // or on a pipe — before or after it. See `tableCellCaretResting`.
         if !activatingRawTable, ranges.count == 1,
            let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
-           let moved = tableCellCaretRest(caret.location, from: selectedRange().location) {
+           let moved = tableCellCaretResting(caret.location, from: selectedRange().location) {
             ranges = [NSValue(range: NSRange(location: moved, length: 0))]
         }
         // A drag across cells is a rectangle between where it started and where

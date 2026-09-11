@@ -455,6 +455,50 @@ struct TableHandleTests {
         #expect(plain.selectedRange().location == bar)
     }
 
+    /// The whole invariant, walked: from every offset in a table, arrowing one
+    /// step in either direction lands the caret on a cell's text — never in the
+    /// padding beside a pipe, never on a pipe. `previous` is the step's origin,
+    /// so the resting rule reads the direction the way an arrow key would.
+    @Test("No arrow step ever rests the caret in padding or on a pipe")
+    func noArrowStepRestsInDeadSpace() {
+        let editor = loadEditor("Intro.\n\n| aa | bb | cc |\n| --- | --- | --- |\n"
+            + "| x | longer | z |\n|  | q |  |\n")
+        let ns = editor.rawSource as NSString
+        guard let index = editor.blocks.firstIndex(where: { $0.kind == .table }) else {
+            Issue.record("no table")
+            return
+        }
+        let table = editor.blocks[index].range
+        // Every offset a caret could be moved to inside the table, stepped from
+        // each side. The separator row is skipped: its dashes are ordinary text.
+        for target in table.location...table.upperBound {
+            for previous in [target - 1, target + 1] {
+                guard let landing = editor.tableCellCaretResting(target, from: previous) else {
+                    // No correction: the target must itself be a live position.
+                    if let cell = editor.tableCell(atRawOffset: target), cell.row != 1 {
+                        let live = editor.tableCellLiveRange(cell)
+                        #expect(target >= live.lower && target <= live.upper,
+                                "offset \(target) rests uncorrected outside the text")
+                    }
+                    continue
+                }
+                // A correction must land on some cell's live text.
+                guard let cell = editor.tableCell(atRawOffset: landing) else {
+                    Issue.record("landing \(landing) is not in any cell")
+                    continue
+                }
+                let live = editor.tableCellLiveRange(cell)
+                #expect(landing >= live.lower && landing <= live.upper,
+                        "step \(previous)->\(target) landed at \(landing), in dead space")
+                // Never on a pipe. (An empty cell's one caret spot is a pad
+                // space by necessity — there is no text — so a pad landing is
+                // only wrong when it is outside the cell's live range, which the
+                // check above already covers.)
+                #expect(!editor.tableStructuralPipe(at: landing))
+            }
+        }
+    }
+
     /// A double-click needs a word, and out in a cell's padding there is none.
     /// The next unit up is the cell, which is what a double-click in a
     /// spreadsheet gives you too.

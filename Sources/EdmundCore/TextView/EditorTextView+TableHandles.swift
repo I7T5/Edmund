@@ -441,25 +441,53 @@ extension EditorTextView {
     /// edit. Which way it was heading decides where it goes — backwards to the
     /// text it just left, forwards to the text it was reaching for — so this
     /// never traps an arrow key mid-row.
-    func tableCellCaretRest(_ offset: Int, from previous: Int) -> Int? {
-        guard !rawTableEditing, offset >= 0 else { return nil }
-        let ns = rawSource as NSString
-        guard offset < ns.length, ns.character(at: offset) == 0x7C,
-              !(offset > 0 && ns.character(at: offset - 1) == 0x5C),
-              tableCell(atRawOffset: offset) != nil else { return nil }
-        // A click has no direction. It landed in the pad of the cell this pipe
-        // *closes* — that is where the pointer visibly was — so it resolves
-        // backwards however far the caret happens to have come from. Reading a
-        // direction into it is what sent a click near a cell's end to the
-        // beginning of the next column.
-        if tableClickPoint == nil, previous <= offset,
-           let next = tableCell(atRawOffset: offset) {
-            // Forwards: the first character of the cell this pipe opens, one
-            // space in, which is where `selectCellText` starts a cell too.
-            return min(next.contentRange.location + 1, next.contentRange.upperBound)
+    /// The caret positions a cell allows: from just before its first visible
+    /// character to just after its last. An all-blank cell keeps a single
+    /// position one space in, the rule `selectCellText` uses so typing keeps
+    /// `|  |` padded as it fills.
+    func tableCellLiveRange(_ cell: TableCellRef) -> (lower: Int, upper: Int) {
+        let text = tableCellTextRange(cell)
+        guard text.length > 0 else {
+            let p = min(cell.contentRange.location + 1, cell.contentRange.upperBound)
+            return (p, p)
         }
-        // Backwards: the end of the text in the cell this pipe closes.
-        return tableCellCaretSnap(offset)
+        return (text.location, text.upperBound)
+    }
+
+    /// Where a caret at `offset` should really rest, or nil when it is already
+    /// on a cell's text. A caret must never sit in the padding a row keeps
+    /// around its pipes, nor on a pipe — before *or* after it — whatever put it
+    /// there: a click, an arrow, or a selection AppKit fixed up after an edit.
+    ///
+    /// A click lands on the text of the cell it hit: the point already chose the
+    /// cell, so a pad position snaps to that cell's near edge and never crosses
+    /// into a neighbour. An arrow has a direction — `previous` is where the
+    /// caret came from — so a pad position moves the way the caret was heading,
+    /// to the next cell's text going forward or the previous cell's going back,
+    /// stepping over the dead run of pad, pipe and pad in one press.
+    func tableCellCaretResting(_ offset: Int, from previous: Int) -> Int? {
+        guard !rawTableEditing, offset >= 0,
+              let cell = tableCell(atRawOffset: offset) else { return nil }
+        let live = tableCellLiveRange(cell)
+        if offset >= live.lower && offset <= live.upper { return nil }
+        let isClick = tableClickPoint != nil
+        let forward = previous <= offset
+        if offset < live.lower {
+            // Leading pad, or the pipe that opens this cell.
+            if isClick || forward { return live.lower }
+            if let prev = tableCell(blockIndex: cell.blockIndex, row: cell.row,
+                                    column: cell.column - 1) {
+                return tableCellLiveRange(prev).upper
+            }
+            return live.lower
+        }
+        // Trailing pad, or the pipe that closes this cell.
+        if isClick || !forward { return live.upper }
+        if let next = tableCell(blockIndex: cell.blockIndex, row: cell.row,
+                                column: cell.column + 1) {
+            return tableCellLiveRange(next).lower
+        }
+        return live.upper
     }
 
     /// The cell a click landed in without landing on its text, or nil when it

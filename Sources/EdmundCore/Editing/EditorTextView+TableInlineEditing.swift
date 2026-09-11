@@ -113,7 +113,7 @@ extension EditorTextView {
     ///
     /// They are markdown's convention, not content: `|c21|` and `| c21 |` render
     /// identically, and every table this editor writes uses the spaced form. A
-    /// caret cannot rest out there (see `tableCellCaretRest`), so the only way
+    /// caret cannot rest out there (see `tableCellCaretResting`), so the only way
     /// to reach one is a delete aimed past the end of a cell's text — which is
     /// a keystroke meant for the text, not for the delimiter beyond it.
     ///
