@@ -289,7 +289,10 @@ extension AppearanceSettingsView {
     /// Narrower than it was with a third column: two columns in a 380pt box
     /// left a stretch of nothing down the middle.
     private var scriptBoxWidth: CGFloat { 300 }
-    private var scriptRowHeight: CGFloat { 28 }
+    /// The Syntax pane's row height, so the two boxes read as the same kind
+    /// of list. 28 was sized to a body-size sample; the sample is drawn small
+    /// now, and the tooltip carries the size.
+    private var scriptRowHeight: CGFloat { 20 }
 
     /// Column widths and the leading/trailing inset, shared by the header cells
     /// and the rows beneath them so each title sits over its own column. Same
@@ -335,8 +338,8 @@ extension AppearanceSettingsView {
             ForEach(FontCascadeScript.allCases, id: \.self) { script in
                 scriptRow(script)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 2, leading: Self.scriptRowInset,
-                                              bottom: 2, trailing: Self.scriptRowInset))
+                    .listRowInsets(EdgeInsets(top: 1, leading: Self.scriptRowInset,
+                                              bottom: 1, trailing: Self.scriptRowInset))
             }
         }
         .listStyle(.plain)
@@ -369,7 +372,12 @@ extension AppearanceSettingsView {
                 AntialiasingText(script.sample)
                     .plain()
                     .antialiasDisabled(!fonts.antialias)
-                    .font(nsFont: fonts.previewFont(for: script))
+                    // The face at a list's size, not the body's. A 16pt sample
+                    // is what made the rows 28pt tall; the size is a number on
+                    // the tooltip, and the face is what the sample is for.
+                    .font(nsFont: fonts.previewFont(for: script).map {
+                        NSFont(descriptor: $0.fontDescriptor, size: 12) ?? $0
+                    })
                     .alignment(.left)
                     .clickThrough()
                     .baselineAligned()

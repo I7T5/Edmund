@@ -26,8 +26,9 @@ struct AntialiasingText: NSViewRepresentable {
 
         // Pin a fixed, stable height so a 16pt preview fits with a little
         // breathing room. (Deriving it from `frame.height` collapses the field —
-        // the frame is zero-height before Auto Layout has sized it.)
-        nsView.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        // the frame is zero-height before Auto Layout has sized it.) A plain
+        // field lives in a 20pt list row and draws at 12pt, so it takes less.
+        nsView.heightAnchor.constraint(equalToConstant: isPlain ? 18 : 24).isActive = true
 
         return nsView
     }
