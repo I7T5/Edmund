@@ -119,6 +119,12 @@ struct SettingsSidebarRow: View {
     /// What the dot does and is called — "Enabled", "Active for Light", …
     let dotAccessibilityLabel: String
     let onDotTap: () -> Void
+    /// The name's size. Body by default — the size a list of things you
+    /// enable, like Extensions, has always used. Themes passes `.subheadline`,
+    /// the size Xcode's Themes list uses, so its rows sit level with the
+    /// "Theme" caption above them and the section headers between them; that
+    /// is a choice about a list of colour schemes, not about every sidebar.
+    var font: Font = .body
 
     /// Explicit colors, not `.primary`/`.secondary`: the selection fill is drawn
     /// by hand by the caller, so nothing else is going to adjust the label for
@@ -153,12 +159,7 @@ struct SettingsSidebarRow: View {
                 .accessibilityAddTraits(.isButton)
 
             Text(name)
-                // The size Xcode's Themes list uses, which is also the size of
-                // the "Theme" caption above these rows and of the section
-                // headers between them — one text size for the whole sidebar
-                // (misc/frontend-refs/settings-xcode-themes.png). At body size
-                // a row shouted next to its own header.
-                .font(.subheadline)
+                .font(font)
                 .foregroundStyle(labelColor)
                 .lineLimit(1)
         }
