@@ -526,6 +526,14 @@ public class EditorTextView: NSTextView {
     /// runs, since AppKit's own hit test can only find the hidden characters.
     var tableClickWrappedCaret: Int?
 
+    /// Set while a keystroke is being inserted. The table caret-resting rule
+    /// pulls a caret out of a cell's trailing pad, which is right for a click
+    /// or an arrow but wrong for typing: a space typed at the end of a cell's
+    /// text lands in that pad, and yanking the caret back off it meant the
+    /// space could never be typed at all. A caret an insertion just placed is
+    /// where the user put it, so resting stands down while this is set.
+    var isInsertingText = false
+
     /// Where the click now in flight landed, in view coordinates, for as long
     /// as `mouseDown` is running. It is what lets `setSelectedRanges` keep a
     /// caret in the cell the user aimed at: only the point knows which cell
@@ -973,9 +981,12 @@ public class EditorTextView: NSTextView {
            selection.length > 0, let trimmed = tableCellSelectionTrimmed(selection) {
             ranges = [NSValue(range: trimmed)]
         }
-        // And wherever it came from, a caret never rests in a cell's padding
-        // or on a pipe — before or after it. See `tableCellCaretResting`.
-        if !activatingRawTable, ranges.count == 1,
+        // And wherever it came from — except a keystroke — a caret never rests
+        // in a cell's padding or on a pipe, before or after it. Typing is the
+        // exception: a space typed at a cell's end lands in the trailing pad,
+        // and pulling the caret back off it would eat the space. See
+        // `tableCellCaretResting` and `isInsertingText`.
+        if !activatingRawTable, !isInsertingText, ranges.count == 1,
            let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
            let moved = tableCellCaretResting(caret.location, from: selectedRange().location) {
             ranges = [NSValue(range: NSRange(location: moved, length: 0))]

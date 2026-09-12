@@ -154,6 +154,27 @@ struct TableInlineEditingTests {
         #expect(editor.wrappedCellVerticalOffset(lineDelta: 1) == nil)
     }
 
+    // MARK: - Typing
+
+    /// A space typed at the end of a cell's text must land — you cannot write a
+    /// two-word header otherwise. The caret-resting rule pulls a caret out of a
+    /// cell's trailing pad for a click or an arrow, but a keystroke is exempt:
+    /// the space it just typed is content-in-progress, not pad to step over.
+    @Test("A space can be typed inside a cell")
+    func spaceTypesInsideACell() {
+        let editor = loadEditor(doc)
+        let end = (doc as NSString).range(of: "col1").upperBound
+        editor.setSelectedRange(NSRange(location: end, length: 0))
+        for ch in ["X", " ", "Y"] {
+            editor.insertText(ch, replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+        // The space is in the content, between the two typed characters.
+        #expect(editor.rawSource.contains("| col1X Y "))
+        // The caret advanced past all three, not stuck before the space.
+        let ns = editor.rawSource as NSString
+        #expect(editor.selectedRange().location == ns.range(of: "col1X Y").upperBound)
+    }
+
     // MARK: - Return: down a row, or a new one
 
     @Test("Return moves to the cell below and selects it")
@@ -166,14 +187,25 @@ struct TableInlineEditingTests {
         #expect((editor.rawSource as NSString).substring(with: editor.selectedRange()) == "c21")
     }
 
-    /// The header's row below is the first body row — row 1 is the separator.
-    @Test("Return from the header skips the separator row")
-    func returnFromTheHeaderSkipsTheSeparator() {
+    /// Return from the header inserts a fresh body row directly below it — under
+    /// the separator (row 1) — and lands in it, rather than stepping into the
+    /// row that was already there. It keeps the column the caret was in.
+    @Test("Return from the header inserts a new body row and enters it")
+    func returnFromTheHeaderInsertsARow() {
         let editor = loadEditor(doc)
         let caret = (doc as NSString).range(of: "col2").location
         editor.setSelectedRange(NSRange(location: caret, length: 0))
         editor.insertNewline(nil)
-        #expect((editor.rawSource as NSString).substring(with: editor.selectedRange()) == "c12")
+        let ns = editor.rawSource as NSString
+        // A new empty row now sits between the separator and the old first row.
+        #expect(editor.rawSource.contains("| ---- | ---- |\n|  |  |\n| c11 | c12 |"))
+        // The caret is in that new row, in the header's column (col2).
+        let line = ns.lineRange(for: editor.selectedRange())
+        #expect(ns.substring(with: line).trimmingCharacters(in: .newlines) == "|  |  |")
+        #expect(editor.selectedRange().location == line.location + 5)   // second column
+        // The old rows are untouched.
+        #expect(editor.rawSource.contains("| c11 | c12 |"))
+        #expect(editor.rawSource.contains("| c21 | c22 |"))
     }
 
     @Test("Return on the last row adds one")
