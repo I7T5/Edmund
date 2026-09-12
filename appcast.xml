@@ -367,7 +367,7 @@
 </ul>
 <h3>Changed</h3>
 <ul>
-<li>Tables: Pasting tables</li>
+<li>Tables: Automatically insert pipes when pasting incomplete tables</li>
 <li>Tables: Users cannot merge columns by deleting pipes</li>
 <li>Tables: Users cannot remove the padding space before and after pipes</li>
 </ul>

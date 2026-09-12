@@ -12,7 +12,7 @@ Various table editing fixes.
 - Tables: Caret jumps to start of cell and jumps back if you click at the end
 
 ### Changed
-- Tables: Pasting tables
+- Tables: Automatically insert pipes when pasting incomplete tables
 - Tables: Users cannot merge columns by deleting pipes
 - Tables: Users cannot remove the padding space before and after pipes
 
