@@ -492,6 +492,12 @@ public class EditorTextView: NSTextView {
     var hoveredTableHandle: TableHandle?
     var lastTableHandleBands: [NSRect] = []
 
+    /// The bands the `</>` buttons were last drawn in. The button steps aside
+    /// for the row pill when the header row is active, so a caret move relocates
+    /// it — and where it was has to repaint too, or the old position ghosts.
+    /// See EditorTextView+TableRawButton.
+    var lastTableRawButtonBands: [NSRect] = []
+
     /// Whether a multi-cell table selection was up at the last selection
     /// change, so the box can be repainted away when it goes.
     /// See EditorTextView+TableHandles.

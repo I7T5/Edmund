@@ -123,6 +123,17 @@ extension EditorTextView {
         visibleTableRawButtons().filter { tableRawButtonIsRevealed(blockIndex: $0.blockIndex) }
     }
 
+    /// Repaints where the `</>` buttons are and where they were, so the button
+    /// relocating past the row pill on a caret move leaves no ghost behind.
+    /// Called on every selection change, beside `invalidateTableHandles`; like
+    /// it, the "were" bands come from the last draw, never recorded here.
+    func invalidateTableRawButtons() {
+        for band in revealedTableRawButtons().map({ tableRawButtonHitBox($0.rect) })
+            + lastTableRawButtonBands {
+            setNeedsDisplay(band)
+        }
+    }
+
     /// Line numbers something else in the margin is standing in for, so the
     /// numbers' own draw can leave those rows to it: a revealed `</>` button,
     /// or the active row's handle. Both sit within `lineNumberPadding` of where
@@ -151,7 +162,13 @@ extension EditorTextView {
     /// Draws the `</>` buttons. Called from `drawBackground(in:)` — they occupy
     /// margin the text never uses, so nothing has to move to make room.
     func drawTableRawButtons(in rect: NSRect) {
-        let boxes = revealedTableRawButtons().filter { $0.rect.intersects(rect) }
+        let revealed = revealedTableRawButtons()
+        // Where the buttons are on screen now, so the next caret move (which can
+        // relocate one past the row pill) knows what to repaint. Recorded from
+        // the draw, like the handles' bands, since only a draw knows what
+        // actually reached the screen.
+        lastTableRawButtonBands = revealed.map { tableRawButtonHitBox($0.rect) }
+        let boxes = revealed.filter { $0.rect.intersects(rect) }
         guard !boxes.isEmpty else { return }
         // ponytail: the symbol image is rebuilt per draw. It is one small
         // template image per visible table; give it a cache only if it shows up

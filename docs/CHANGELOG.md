@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ### Fixed
 - Print and Export as PDF no longer keep the `.md` extension in the PDF filename
+- Tables: the `</>` button no longer leaves a ghost when it steps aside for the row pill
 - Tables: a single-dash delimiter row (`- | -`) now renders as a table instead of a bullet list
 - Nested emphasis (italic inside bold, or bold inside italic) now renders
 
