@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+### Added
+- Tables: Return on a header's separator row fills in the table — pads the separator to the header widths and adds a body row to type in
+
 ### Fixed
 - Print and Export as PDF no longer keep the `.md` extension in the PDF filename
 - Tables: a single-dash delimiter row (`- | -`) now renders as a table instead of a bullet list
