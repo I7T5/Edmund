@@ -70,6 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         #if DEBUG
         ReproScript.runIfRequested()
+        SettingsRender.runIfRequested()
         #endif
     }
 

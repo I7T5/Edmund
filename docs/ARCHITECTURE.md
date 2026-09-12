@@ -575,6 +575,12 @@ Notable subsystems:
   windows, state restoration) —
   `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
   and relaunch.
+- **Settings panes render offscreen** (DEBUG builds): `.build/debug/edmd
+  -debug.render pane:Appearance -debug.renderOut out.png [-debug.renderDark YES]
+  -debug.disableUpdater YES` — also `editor:<name>` / `syntax:<name>` for a
+  theme's detail box (`Sources/edmd/App/SettingsRender.swift`). Live
+  `screencapture` has never worked for these panes; use this, don't
+  hand-build a scaffold.
 - **Counting an app's windows is the flakiest measurement in this repo — don't
   trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
   `winid.swift` uses) lists windows the app has already *closed*, so a stale
