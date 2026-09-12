@@ -730,6 +730,8 @@ extension EditorTextView {
             item("Add Row Above", TableOperation(.insertRow, blockIndex, row, column))
             item("Add Row Below", TableOperation(.insertRow, blockIndex,
                                                  row == 0 ? 2 : row + 1, column))
+            // A divider sets the destructive Delete apart from the two adds.
+            menu.addItem(.separator())
             item("Delete Row", TableOperation(.deleteRow, blockIndex, row, column),
                  enabled: canDeleteTableRow(blockIndex: blockIndex, row: row))
         }
@@ -737,6 +739,7 @@ extension EditorTextView {
         if axis != .row {
             item("Add Column Before", TableOperation(.insertColumn, blockIndex, row, column))
             item("Add Column After", TableOperation(.insertColumn, blockIndex, row, column + 1))
+            menu.addItem(.separator())
             item("Delete Column", TableOperation(.deleteColumn, blockIndex, row, column),
                  enabled: canDeleteTableColumn(blockIndex: blockIndex, column: column))
         }

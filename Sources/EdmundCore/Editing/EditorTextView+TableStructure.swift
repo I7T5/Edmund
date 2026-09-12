@@ -184,18 +184,59 @@ extension EditorTextView {
 
     // MARK: - Delete on a cell selection
 
-    /// Delete pressed while a block of cells is selected: the cells' contents
-    /// are cleared, the grid left intact — Apple Notes' behaviour, and the one
-    /// this table chrome is modelled on. Removing whole rows or columns is a
-    /// deliberate act with its own affordance, the row/column pill's menu
-    /// (Delete Row / Delete Column); a drag-and-delete never destroys structure.
-    /// A 2-column table makes this unavoidable anyway — any horizontal selection
-    /// there covers "every column", so keying row deletion off that would delete
-    /// a row the user only meant to clear. Returns false when no block of cells
-    /// is selected, so an ordinary delete runs.
+    /// Delete pressed while a block of cells is selected, after Apple Notes:
+    /// a *complete* row or column selection whose cells are already empty is
+    /// removed; every other case clears the cells' contents and leaves the grid
+    /// intact. So the first Delete empties a full row/column and a second one
+    /// removes it — and the "already empty" gate is what lets a two-column table
+    /// tell "clear this row" from "delete it", since there any horizontal
+    /// selection covers every column. The whole table (every row *and* column)
+    /// only ever clears; removing the block is a separate operation. Returns
+    /// false when no block of cells is selected, so an ordinary delete runs.
     func handleTableCellSelectionDelete() -> Bool {
-        guard let block = tableCellSelection else { return false }
+        guard let block = tableCellSelection,
+              let lines = tableLines(blockIndex: block.blockIndex) else { return false }
+        let lastRow = lines.count - 1
+        let cols = tableColumnCount(blockIndex: block.blockIndex)
+        let allRows = block.rows.lowerBound == 0 && block.rows.upperBound >= lastRow
+        let allCols = block.columns.lowerBound == 0 && block.columns.upperBound >= cols - 1
+
+        if tableCellsAreEmpty(block) {
+            if allCols && !allRows {            // complete, empty row(s) → delete them
+                for row in block.rows.reversed() where row != 1 {
+                    deleteTableRow(blockIndex: block.blockIndex, row: row,
+                                   column: block.columns.lowerBound)
+                }
+                return true
+            }
+            if allRows && !allCols {            // complete, empty column(s) → delete them
+                for column in block.columns.reversed() {
+                    deleteTableColumn(blockIndex: block.blockIndex, column: column,
+                                      row: block.rows.lowerBound)
+                }
+                return true
+            }
+        }
         clearTableCells(block)
+        return true
+    }
+
+    /// Whether every selected cell (the separator row aside) is already empty —
+    /// the condition Notes uses to turn a second Delete into a row/column
+    /// removal rather than another clear.
+    func tableCellsAreEmpty(_ block: TableCellBlock) -> Bool {
+        guard let lines = tableLines(blockIndex: block.blockIndex) else { return false }
+        for row in block.rows where row != 1 && lines.indices.contains(row) {
+            let ns = lines[row] as NSString
+            let spans = columnSpans(in: ns)
+            for column in block.columns where column < spans.count {
+                let span = spans[column]
+                let text = ns.substring(with: NSRange(location: span.start,
+                                                      length: span.end - span.start))
+                    .trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty { return false }
+            }
+        }
         return true
     }
 
@@ -216,8 +257,12 @@ extension EditorTextView {
             lines[row] = mut as String
         }
         replaceTable(blockIndex: block.blockIndex, lines: lines)
-        landInCell(blockIndex: block.blockIndex, row: block.rows.lowerBound,
-                   column: block.columns.lowerBound)
+        // Keep the cells selected, not a caret: clearing doesn't change the
+        // grid, and holding the selection is what lets a second Delete on a now-
+        // empty complete row/column remove it (the Notes two-press behaviour).
+        selectTableCells(blockIndex: block.blockIndex,
+                         from: (block.rows.lowerBound, block.columns.lowerBound),
+                         to: (block.rows.upperBound, block.columns.upperBound))
     }
 
     // MARK: - Finishing a header + separator

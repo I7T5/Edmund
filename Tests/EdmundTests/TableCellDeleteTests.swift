@@ -2,10 +2,10 @@ import Testing
 import AppKit
 @testable import EdmundCore
 
-/// Delete with a block of cells selected clears those cells' contents and
-/// leaves the grid intact — Apple Notes' behaviour. Removing whole rows or
-/// columns is the pill menu's job (Delete Row / Delete Column), not the delete
-/// key's, so a drag-and-delete never destroys structure.
+/// Delete with a block of cells selected, after Apple Notes: a complete row or
+/// column whose cells are already empty is removed; every other case clears the
+/// cells' contents and keeps them selected. So the first Delete empties a full
+/// row/column and a second removes it.
 
 @Suite("Table cell-selection delete")
 @MainActor
@@ -89,6 +89,50 @@ struct TableCellDeleteTests {
         let t2 = table(editor)
         #expect(editor.tableColumnCount(blockIndex: t2) == 3)
         #expect(editor.tableLines(blockIndex: t2)?.count == 5)
+    }
+
+    @Test("An empty complete column is deleted")
+    func emptyColumnDeletes() {
+        let editor = makeEditor()
+        editor.updateContentInset()
+        editor.loadContent("| a |  | c |\n| --- | --- | --- |\n| 1 |  | 3 |\n| 4 |  | 6 |\n")
+        ensureFullLayout(editor); layOutViewport(editor)
+        let t = table(editor)
+        editor.selectTableCells(blockIndex: t, from: (0, 1), to: (3, 1))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource.contains("| a | c |"))
+        #expect(editor.rawSource.contains("| 1 | 3 |"))
+        #expect(editor.tableColumnCount(blockIndex: table(editor)) == 2)
+    }
+
+    @Test("An empty complete row is deleted")
+    func emptyRowDeletes() {
+        let editor = makeEditor()
+        editor.updateContentInset()
+        editor.loadContent("| a | b |\n| --- | --- |\n|  |  |\n| 4 | 5 |\n")
+        ensureFullLayout(editor); layOutViewport(editor)
+        let t = table(editor)
+        editor.selectTableCells(blockIndex: t, from: (2, 0), to: (2, 1))
+        editor.deleteBackward(nil)
+        #expect(!editor.rawSource.contains("|  |  |"))
+        #expect(editor.rawSource.contains("| 4 | 5 |"))
+        #expect(editor.tableLines(blockIndex: table(editor))?.count == 3)  // header, sep, one body
+    }
+
+    /// The Notes two-press: a full row with content clears on the first Delete
+    /// (and stays selected), then is removed on the second.
+    @Test("Two Deletes clear then remove a full row")
+    func twoPressRemovesRow() {
+        let editor = loadEditor()
+        let t = table(editor)
+        editor.selectTableCells(blockIndex: t, from: (2, 0), to: (2, 2))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource.contains("|  |  |  |\n| 4 | 5 | 6 |"))  // cleared
+        #expect(editor.tableCellSelection != nil, "the cells lost their selection")
+        editor.deleteBackward(nil)
+        #expect(!editor.rawSource.contains("|  |  |  |"))                // removed
+        #expect(editor.rawSource.contains("| 4 | 5 | 6 |"))
+        #expect(editor.tableLines(blockIndex: table(editor))?.count == 4)  // one row fewer
     }
 
     @Test("One undo restores the table")
