@@ -268,8 +268,9 @@ extension EditorTextView {
     // MARK: - Finishing a header + separator
 
     /// Return pressed on a table that is still just a header and its separator:
-    /// pad the separator's dash runs to the header columns' widths and drop in
-    /// one empty body row to type into, landing the caret in its first cell.
+    /// finish it to the canonical aligned form — columns padded to their widest
+    /// cell, the separator's dashes filling each column — and drop in one empty
+    /// body row to type into, landing the caret in its first cell.
     ///
     /// This is the "autocomplete a table once the header and the `-|-` are
     /// there" affordance. Return from the header row is already handled
@@ -286,44 +287,20 @@ extension EditorTextView {
         let separatorStart = block.range.location + (lines[0] as NSString).length + 1
         guard selectedRange().location >= separatorStart else { return false }
 
-        let padded = paddedSeparatorLine(header: lines[0], separator: lines[1])
-        // Match the header's pipe style, exactly as insertTableRow does, so a
-        // table written without outer pipes doesn't gain them here.
+        // Match the header's pipe style so a table written without outer pipes
+        // doesn't gain them; an empty body row's cells are filled out to the
+        // column widths by the pretty-align pass.
         let outer = lines[0].trimmingCharacters(in: .whitespaces).hasPrefix("|")
         let columns = columnSpans(in: lines[0] as NSString).count
         guard columns > 0 else { return false }
-        let cells = Array(repeating: "  ", count: columns).joined(separator: "|")
-        let body = outer ? "|\(cells)|" : cells
+        let emptyBody = outer
+            ? "|" + String(repeating: "  |", count: columns)
+            : Array(repeating: "  ", count: columns).joined(separator: "|")
 
-        replaceTable(blockIndex: blockIndex, lines: [lines[0], padded, body])
+        let pretty = prettyAlignedTableLines([lines[0], lines[1], emptyBody])
+        replaceTable(blockIndex: blockIndex, lines: pretty)
         landInCell(blockIndex: blockIndex, row: 2, column: 0)
         return true
-    }
-
-    /// A separator line whose dash run in each column is as wide as that
-    /// column's header text, `:` alignment markers kept and the run floored at
-    /// three dashes so a short header stays valid GFM. The column count follows
-    /// the header, which also tidies a ragged separator.
-    private func paddedSeparatorLine(header: String, separator: String) -> String {
-        let h = header as NSString
-        let widths = columnSpans(in: h).map { span -> Int in
-            h.substring(with: NSRange(location: span.start, length: span.end - span.start))
-                .trimmingCharacters(in: .whitespaces).count
-        }
-        let s = separator as NSString
-        let existing = columnSpans(in: s).map { span -> String in
-            s.substring(with: NSRange(location: span.start, length: span.end - span.start))
-                .trimmingCharacters(in: .whitespaces)
-        }
-        let cells = widths.indices.map { i -> String in
-            let marker = i < existing.count ? existing[i] : ""
-            let lead = marker.hasPrefix(":")
-            let trail = marker.count > 1 && marker.hasSuffix(":")
-            let dashes = max(1, max(3, widths[i]) - (lead ? 1 : 0) - (trail ? 1 : 0))
-            return (lead ? ":" : "") + String(repeating: "-", count: dashes) + (trail ? ":" : "")
-        }
-        let joined = cells.joined(separator: " | ")
-        return header.trimmingCharacters(in: .whitespaces).hasPrefix("|") ? "| \(joined) |" : joined
     }
 
     // MARK: - Shared

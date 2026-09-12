@@ -150,6 +150,59 @@ func normalizedTableBlock(_ text: String) -> String? {
     return changed ? rows.joined(separator: "\n") : nil
 }
 
+/// A table reformatted to the canonical aligned ("pretty") form: every column
+/// as wide as its widest cell (min 3), cells trailing-padded so the pipes line
+/// up, and the separator's dashes filling each column with its alignment colons
+/// kept. The column count follows the header, and the header's pipe style
+/// (outer pipes or not) is preserved. Unlike `normalizedTableRow` this
+/// deliberately reflows the cells — it is for the autofill paths that build a
+/// table for the user, not for tidying pasted content.
+func prettyAlignedTableLines(_ lines: [String]) -> [String] {
+    guard let header = lines.first else { return lines }
+    let outer = header.trimmingCharacters(in: .whitespaces).hasPrefix("|")
+    let cols = columnSpans(in: header as NSString).count
+    guard cols > 0 else { return lines }
+
+    func cells(_ line: String) -> [String] {
+        let ns = line as NSString
+        return columnSpans(in: ns).map {
+            ns.substring(with: NSRange(location: $0.start, length: $0.end - $0.start))
+                .trimmingCharacters(in: .whitespaces)
+        }
+    }
+    // Column widths from every row but the separator, floored at three so the
+    // separator stays valid GFM.
+    var widths = [Int](repeating: 3, count: cols)
+    for (i, line) in lines.enumerated() where i != 1 {
+        let c = cells(line)
+        for col in 0..<min(c.count, cols) { widths[col] = max(widths[col], c[col].count) }
+    }
+    let markers: [String] = lines.count > 1 ? cells(lines[1]) : []
+
+    func join(_ parts: [String]) -> String {
+        let joined = parts.joined(separator: " | ")
+        return outer ? "| \(joined) |" : joined
+    }
+    func bodyRow(_ texts: [String]) -> String {
+        join((0..<cols).map { col in
+            let t = col < texts.count ? texts[col] : ""
+            return t + String(repeating: " ", count: max(0, widths[col] - t.count))
+        })
+    }
+    func separatorRow() -> String {
+        join((0..<cols).map { col in
+            let m = col < markers.count ? markers[col] : ""
+            let lead = m.hasPrefix(":")
+            let trail = m.count > 1 && m.hasSuffix(":")
+            let dashes = max(1, widths[col] - (lead ? 1 : 0) - (trail ? 1 : 0))
+            return (lead ? ":" : "") + String(repeating: "-", count: dashes) + (trail ? ":" : "")
+        })
+    }
+    return lines.enumerated().map { i, line in
+        i == 1 ? separatorRow() : bodyRow(cells(line))
+    }
+}
+
 /// Cell ranges for a table line with *empty* cells kept — `columnSpans` and
 /// `cellRanges` differ on `||` alone.
 ///

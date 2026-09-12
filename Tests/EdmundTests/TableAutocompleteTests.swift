@@ -31,28 +31,30 @@ struct TableAutocompleteTests {
         let sep = (doc as NSString).range(of: "| - | - |")
         editor.setSelectedRange(NSRange(location: sep.location, length: 0))
         editor.insertNewline(nil)
-        // "Name" is 4 wide, "Age" is 3 — the dashes match.
-        #expect(editor.rawSource.contains("| Name | Age |\n| ---- | --- |\n|  |  |"))
-        // The caret is in the new body row's first cell.
+        // Canonical aligned form: separator dashes fill each column, the empty
+        // body row is padded to the column widths so the pipes line up.
+        #expect(editor.rawSource.contains("| Name | Age |\n| ---- | --- |\n|      |     |"))
+        // The caret is in the new body row's first cell, one space in.
         let ns = editor.rawSource as NSString
         let line = ns.lineRange(for: editor.selectedRange())
-        #expect(ns.substring(with: line).trimmingCharacters(in: .newlines) == "|  |  |")
-        #expect(editor.selectedRange().location == line.location + 2)   // one space in
+        #expect(ns.substring(with: line).trimmingCharacters(in: .newlines) == "|      |     |")
+        #expect(editor.selectedRange().location == line.location + 2)
     }
 
-    /// A short header still yields a valid GFM run — three dashes, not one.
-    @Test("A header narrower than three keeps three dashes")
+    /// A short header column is widened to three (the separator's minimum), and
+    /// the header cells are trailing-padded to match.
+    @Test("A header narrower than three is widened to three")
     func flooredAtThree() {
         let doc = "| a | bb |\n| - | - |\n"
         let editor = loadEditor(doc)
         let sep = (doc as NSString).range(of: "| - | - |")
         editor.setSelectedRange(NSRange(location: sep.location, length: 0))
         editor.insertNewline(nil)
-        #expect(editor.rawSource.contains("| a | bb |\n| --- | --- |\n"))
+        #expect(editor.rawSource.contains("| a   | bb  |\n| --- | --- |\n|     |     |"))
     }
 
-    /// Alignment markers survive the padding: `:-` stays left-anchored, `-:`
-    /// right, `:-:` centred — only the dash run between them grows.
+    /// Alignment markers survive the align: `:-` stays left-anchored, `-:`
+    /// right, `:-:` centred — only the dash run between them fills the column.
     @Test("Alignment colons are kept")
     func keepsAlignment() {
         let doc = "| Left | Mid | Right |\n| :- | :-: | -: |\n"
@@ -61,7 +63,7 @@ struct TableAutocompleteTests {
         editor.setSelectedRange(NSRange(location: sep.location, length: 0))
         editor.insertNewline(nil)
         // Left=4 → `:---`, Mid=3 → `:-:`, Right=5 → `----:`.
-        #expect(editor.rawSource.contains("| :--- | :-: | ----: |"))
+        #expect(editor.rawSource.contains("| Left | Mid | Right |\n| :--- | :-: | ----: |"))
     }
 
     /// A table written without outer pipes must not gain them here either.
@@ -72,8 +74,12 @@ struct TableAutocompleteTests {
         let sep = (doc as NSString).range(of: "- | -")
         editor.setSelectedRange(NSRange(location: sep.location, length: 0))
         editor.insertNewline(nil)
-        #expect(editor.rawSource.contains("a | b\n--- | ---\n  |  "))
-        #expect(!editor.rawSource.contains("|  |  |"))
+        let rows = editor.rawSource.components(separatedBy: "\n").filter { $0.contains("|") }
+        #expect(rows.count == 3)                                    // header, separator, body
+        #expect(rows.allSatisfy { !$0.hasPrefix("|") })            // no outer pipes gained
+        #expect(Set(rows.map(\.count)).count == 1)                 // aligned: equal widths
+        #expect(rows[0].hasPrefix("a"))                            // header content kept
+        #expect(rows[1].allSatisfy { "-| ".contains($0) })        // separator is dashes
     }
 
     /// Only a body-less table autocompletes. With a body row already present,

@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [Unreleased]
 
 ### Added
-- Tables: Return on a header's separator row fills in the table — pads the separator to the header widths and adds a body row to type in
+- Tables: Return on a header's separator row fills in the table in canonical aligned form — columns padded to their widest cell, the separator's dashes filling each column — and adds a body row to type in
 - Tables: Delete on a cell selection clears the cells; a second Delete on an empty complete row or column removes it
 - Tables: a divider now sets Delete apart from the add operations in the row/column menu
 
