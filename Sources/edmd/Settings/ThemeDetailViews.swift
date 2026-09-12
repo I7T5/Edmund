@@ -396,8 +396,10 @@ struct GeneralThemeDetail: View {
                 ForEach(syntaxThemes.filter { $0.appearance == theme.appearance }, id: \.name) {
                     Text($0.displayName).tag($0.name)
                 }
-                // No rule above it: it belongs with the themes it is a way of
-                // getting another of.
+                Divider()
+                // A rule above it, as the font-theme popup has: it makes a
+                // theme rather than naming one, and the rule is what says so
+                // before the ellipsis does.
                 //
                 // "New Theme…", not "Custom…": the ellipsis promises something
                 // opens, and what it makes is a theme like the ones above it,
@@ -516,8 +518,13 @@ struct SyntaxThemeDetail: View {
             // the ten above are what code is written in, this is what it is
             // written on. The switch closes the row the way the editor pane's
             // do, and gives the lone well something to sit opposite.
+            // Two points either side, not just above: the wells carry their
+            // names under them, so the rule wants a touch more room than the
+            // stack's spacing gives — and the same amount below as above, or
+            // the well beneath reads as tighter to the rule than the wells
+            // over it.
             Divider()
-                .padding(.top, 2)
+                .padding(.vertical, 2)
 
             HStack(alignment: .wellCenter, spacing: 8) {
                 ColorCell(label: "Background", hex: backgroundBinding,
