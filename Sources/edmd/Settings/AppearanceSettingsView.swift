@@ -12,7 +12,22 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
     @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
-    @AppStorage(AppSettings.Key.fontsByScriptExpanded) private var fontsByScriptExpanded = false
+    /// The font preset in force. Always names one: everything below the divider
+    /// is its contents, and a picker reading blank while the fonts are set
+    /// would say nothing true. Choosing one here is choosing it — there is no
+    /// separate "use this" step.
+    @AppStorage(AppSettings.Key.themeFont) private var fontTheme = AppSettings.DefaultTheme.font
+
+    @State private var fontThemes: [FontTheme] = []
+    /// The tag for the popup's trailing "New Font Theme…" item. A tag no theme
+    /// can carry — names come from filenames — so picking it is unambiguous.
+    private static let newThemeTag = "\u{0}new"
+    @State private var renamingTheme = false
+    /// The script row the pointer last picked. Selection, not state: nothing
+    /// reads it but the highlight, which is what tells a reader the box is a
+    /// table and a double click will do something.
+    @State private var selectedScript: FontCascadeScript?
+    @State private var newThemeName = ""
 
     /// Every label in the pane gets this fixed width, so the "Fonts by script"
     /// rows can appear/disappear without re-sizing the Grid's label column
@@ -109,6 +124,50 @@ struct AppearanceSettingsView: View {
             }
 
             GridRow {
+                Text("Font theme:")
+                    .frame(width: Self.labelColumnWidth, alignment: .trailing)
+                HStack(spacing: 8) {
+                    // 240 to match the font rows' preview field below, so the
+                    // three boxes share one edge.
+                    Picker("", selection: $fontTheme) {
+                        ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
+                        Divider()
+                        // The same trailing item the code-syntax popup has:
+                        // making one belongs with choosing one. It starts from
+                        // what is on screen — the selected preset always is —
+                        // and asks for a name straight away, which is the one
+                        // thing a copy cannot supply for itself.
+                        Text("New Font Theme…").tag(Self.newThemeTag)
+                    }
+                    .labelsHidden()
+                    .frame(width: 240)
+                    .onChange(of: fontTheme) { previous, name in
+                        if name == Self.newThemeTag {
+                            newTheme(from: previous)
+                            return
+                        }
+                        guard let chosen = fontThemes.first(where: { $0.name == name }) else { return }
+                        fonts.apply(preset: chosen)
+                    }
+                    // One size for the whole preset, the way iA Writer and
+                    // Obsidian offer one: the standard size is the anchor, and
+                    // the monospaced and per-script sizes scale with it. No
+                    // field of its own — it sits where the font rows' steppers
+                    // sit, and the numbers in the fields below are its readout,
+                    // which is what makes a nudge here legible. The rows below
+                    // still change each on its own.
+                    Stepper("", value: Binding(
+                        get: { Double(fonts.standardFont.pointSize) },
+                        set: { fonts.scaleAllSizes(toStandard: CGFloat($0)) }),
+                        in: 8...72, step: 1)
+                        .labelsHidden()
+                        .help("Scale every font size together")
+                    fontThemeMenu
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GridRow {
                 Divider().gridCellColumns(2)
             }
 
@@ -164,13 +223,99 @@ struct AppearanceSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            GridRow {
-                Divider().gridCellColumns(2)
-            }
-
             fontCascadeSection
         }
+        // The tab is wider than this grid, and all of the slack was landing on
+        // the right. Nudged so the block sits nearer the middle of it.
+        .padding(.leading, 20)
         .settingsPanePadding()
+        .onAppear {
+            fontThemes = ThemeStore.shared.fontThemes()
+            // Told, not applied: the values are already live, and re-applying
+            // on every visit would overwrite an edit made since.
+            fonts.editingPreset = fontTheme
+        }
+        .alert("Rename Font Theme", isPresented: $renamingTheme) {
+            TextField("Name", text: $newThemeName)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") { commitThemeRename() }
+        }
+    }
+
+    /// Duplicate / Rename / Delete — what the Themes pane's footer gives its
+    /// own lists. A menu rather than a row of buttons: these are rare beside
+    /// the picker they act on.
+    private var fontThemeMenu: some View {
+        Menu {
+            Button("Duplicate") { duplicateTheme() }
+            Button("Rename…") {
+                newThemeName = fontThemes.first { $0.name == fontTheme }?.displayName ?? ""
+                renamingTheme = true
+            }
+                // A built-in keeps the name it ships under; Duplicate is the
+                // way to one with your own name on it.
+                .disabled(ThemeStore.shared.isBuiltIn(fontTheme))
+            Divider()
+            Button("Delete", role: .destructive) { deleteTheme() }
+                // A bundled theme lives inside the app: there is nothing to
+                // delete, and removing the last one would leave the picker with
+                // nothing to name.
+                .disabled(!ThemeStore.shared.isUserTheme(fontTheme) || fontThemes.count < 2)
+        } label: {
+            // System Settings' own "more" button: the circled ellipsis in the
+            // secondary tint, with no chevron — it is a button that opens a
+            // menu, not a popup showing a value.
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        // `tint`, not `foregroundStyle`: the borderless menu button draws its
+        // label in the control tint and ignores the label's own style.
+        .tint(.secondary)
+        .fixedSize()
+        .help("Manage font themes")
+    }
+
+    private func duplicateTheme() {
+        guard let copy = try? ThemeStore.shared.duplicate(fontTheme) else { return }
+        fontThemes = ThemeStore.shared.fontThemes()
+        fontTheme = copy
+    }
+
+    /// A copy of `source` — the preset that was selected when "New Font
+    /// Theme…" was picked, and so exactly the typography on screen — selected
+    /// and put up for naming. Selecting it is what moves the popup off the
+    /// sentinel; `onChange` then applies it, a no-op, since it already is what
+    /// is live.
+    private func newTheme(from source: String) {
+        guard let copy = try? ThemeStore.shared.duplicate(source) else {
+            fontTheme = source
+            return
+        }
+        fontThemes = ThemeStore.shared.fontThemes()
+        fontTheme = copy
+        newThemeName = ""
+        renamingTheme = true
+    }
+
+    private func commitThemeRename() {
+        let trimmed = newThemeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              var theme = fontThemes.first(where: { $0.name == fontTheme }) else { return }
+        // The display name only: `name` is the filename and the value stored in
+        // settings, so moving it would orphan the selection.
+        theme.displayName = trimmed
+        try? ThemeStore.shared.save(theme)
+        fontThemes = ThemeStore.shared.fontThemes()
+    }
+
+    private func deleteTheme() {
+        let going = fontTheme
+        guard let next = fontThemes.first(where: { $0.name != going }) else { return }
+        fontTheme = next.name
+        fonts.apply(preset: next)
+        try? ThemeStore.shared.deleteUserTheme(named: going)
+        fontThemes = ThemeStore.shared.fontThemes()
     }
 
     /// Pushes a content-width change to every open editor live, converting cm
@@ -263,80 +408,222 @@ private struct ContentWidthSlider: NSViewRepresentable {
 
 extension AppearanceSettingsView {
 
-    /// The collapsed-by-default "Fonts by script" section: one row per script
-    /// with a preview field, a point-size stepper, and a Select… button (the
-    /// same row shape as Standard/Monospaced above).
+    /// The "Fonts by script" group: a bordered, scrolling list of one row per
+    /// script, in the shape of the Syntax pane's "Available syntaxes" box.
     ///
-    /// The rows live in the pane's OWN Grid — hosting the section inside a
-    /// `gridCellColumns(2)` cell feeds the section's width back into the
-    /// columns it spans and slides every row in the pane sideways as the
-    /// section opens. Two further rules keep that true (both were learned the
-    /// hard way): labels are a fixed width, and EVERY column-2 cell in the
-    /// pane is `maxWidth: .infinity` (see `body`) so the label column can
-    /// never absorb the collapsed pane's slack. Expanding the section then
-    /// only grows the pane vertically.
+    /// A list rather than nine more form rows. Per-script fonts are overrides
+    /// to the Standard/Monospaced fonts above, not nine more top-level
+    /// settings, and nine right-aligned form labels made them read as the
+    /// latter — while making this pane far taller than the other six. Inside
+    /// the box the script name is the row's first column, so the group reads as
+    /// one object beside a single label.
+    ///
+    /// The box still lives in the pane's OWN Grid cell, and every column-2 cell
+    /// in the pane stays `maxWidth: .infinity` (see `body`) so the label column
+    /// can never absorb the pane's slack and slide every row sideways.
     @ViewBuilder
     var fontCascadeSection: some View {
-        GridRow {
+        GridRow(alignment: .top) {
             Text("Fonts by script:")
                 .frame(width: Self.labelColumnWidth, alignment: .trailing)
-            Button(action: { fontsByScriptExpanded.toggle() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: fontsByScriptExpanded
-                          ? "chevron.down" : "chevron.right")
-                        .font(.caption.weight(.semibold))
-                    Text("A dedicated font per writing system")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.static)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .help("A dedicated font per writing system. Unset scripts use the system fallback. Right-click Select… to reset a script.")
-        }
-
-        if fontsByScriptExpanded {
-            ForEach(FontCascadeScript.allCases, id: \.self) { script in
-                GridRow {
-                    Text("\(script.label):")
-                        .frame(width: Self.labelColumnWidth, alignment: .trailing)
-                    HStack(spacing: 8) {
-                        // Same row shape as the Standard/Monospaced rows above:
-                        // family + absolute point size in the 240pt field, a
-                        // bare stepper, Select…. The stored model stays a ratio
-                        // of the body size — the row converts at the boundary
-                        // (see FontSettings.cascadePointSize).
-                        AntialiasingText(fonts.cascadeSummary(for: script))
-                            .antialiasDisabled(!fonts.antialias)
-                            .font(nsFont: fonts.previewFont(for: script))
-                            .frame(width: 240)
-                        Stepper("", value: cascadePointsBinding(for: script),
-                                in: fonts.cascadePointSizeRange, step: 1)
-                            .labelsHidden()
-                            // A ratio with no family drives nothing — no
-                            // resolver font, no @font-face — so say so.
-                            .disabled(fonts.cascadeFonts[script] == nil)
-                        Button("Select…") { fonts.selectCascadeFont(script) }
-                            .fixedSize()
-                            // The only way to un-set a script's font — the
-                            // row is too tight for a permanent button. Named
-                            // in the section header's tooltip.
-                            .contextMenu {
-                                Button("Reset") { fonts.setCascadeFont(script, family: nil) }
-                                    .disabled(fonts.cascadeFonts[script] == nil)
-                            }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+                // Pull the label onto the box's first row of text.
+                .padding(.top, 5)
+            scriptFontBox
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help("Fonts for scripts the standard font does not cover")
         }
     }
 
-    /// Two-way binding between the row's point-size stepper and the stored
-    /// ratio (display = body size × ratio; see FontSettings.cascadePointSize).
-    private func cascadePointsBinding(for script: FontCascadeScript) -> Binding<Double> {
+    /// Box width, and one script row's height. Five rows are visible and the
+    /// remaining four scroll — the same 5-row window the Syntax pane's box uses.
+    /// Narrower than it was with a third column: two columns in a 380pt box
+    /// left a stretch of nothing down the middle.
+    /// The font rows' preview fields are 240, and this sits under them; one
+    /// edge for all three.
+    private var scriptBoxWidth: CGFloat { 240 }
+    /// The Syntax pane's row height, so the two boxes read as the same kind
+    /// of list. 28 was sized to a body-size sample; the sample is drawn small
+    /// now, and the tooltip carries the size.
+    private var scriptRowHeight: CGFloat { 20 }
+
+    /// Column widths and the leading/trailing inset, shared by the header cells
+    /// and the rows beneath them so each title sits over its own column. Same
+    /// arrangement as the Key Bindings pane's hand-built header.
+    private static let ligatureColumnWidth: CGFloat = 56
+    /// Sized to its title; the checkbox sits at the column's leading edge under
+    /// the D, the way a checkbox column reads in a table.
+    private static let defaultColumnWidth: CGFloat = 44
+    private static let scriptRowInset: CGFloat = 6
+
+    /// A plain List still insets its row content by this much after
+    /// `listRowInsets` is set, so the header adds it to keep the column titles
+    /// above their values. Key Bindings' hand-built header carries the same
+    /// constant for the same reason.
+    private static let scriptListInset: CGFloat = 8
+
+    /// Header over the list. A hand-built one rather than a `Table`, for the
+    /// reason Key Bindings gives: `Table` draws a separator under every row and
+    /// offers no way to turn them off.
+    private var scriptFontBox: some View {
+        VStack(spacing: 0) {
+            scriptListHeader
+            Divider()
+            scriptFontList
+        }
+        .frame(width: scriptBoxWidth)
+        .settingsSurfaceBackground()
+        .border(.separator)
+    }
+
+    private var scriptListHeader: some View {
+        HStack(spacing: 8) {
+            Text("Default")
+                .frame(width: Self.defaultColumnWidth, alignment: .leading)
+            Text("Script")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Ligatures")
+                .frame(width: Self.ligatureColumnWidth, alignment: .trailing)
+        }
+        // The rows carry 4pt of their own for the selection highlight to inset
+        // into; the titles take the same so they stay over their columns.
+        .padding(.horizontal, Self.scriptRowInset + Self.scriptListInset + 4)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(height: 20)
+    }
+
+    private var scriptFontList: some View {
+        List {
+            ForEach(FontCascadeScript.allCases, id: \.self) { script in
+                scriptRow(script)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 1, leading: Self.scriptRowInset,
+                                              bottom: 1, trailing: Self.scriptRowInset))
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, scriptRowHeight)
+        .contentMargins(.vertical, 0, for: .scrollContent)
+        .frame(height: scriptRowHeight * 5)
+    }
+
+    /// One script's row, under the two column titles: a sample of the script
+    /// drawn in its own face, and the ligature switch.
+    ///
+    /// The sample stands in for an English script name. "Chinese (Han)" told a
+    /// reader nothing the glyphs do not, and the sample says the one thing the
+    /// name could not: which face the script is actually being rendered in.
+    ///
+    /// The family and size are on the tooltip rather than in a column of their
+    /// own. A row's font is worth being able to check, but it is not worth a
+    /// third of the box's width on nine rows most people never set — and the
+    /// sample already shows the size, drawn at it.
+    ///
+    /// One script: whether it takes the default, then its sample with the size
+    /// it is drawn at, then its ligatures. The sample IS the font button.
+    ///
+    /// The Default switch is the row's own state made visible. With it on the
+    /// rest of the row is disabled — there is no font to have ligatures, and
+    /// the sample shows what the fallback will draw — and turning it off is
+    /// what makes the row editable, seeding the font from that same fallback
+    /// so nothing jumps.
+    @ViewBuilder
+    private func scriptRow(_ script: FontCascadeScript) -> some View {
+        let isSet = fonts.cascadeFonts[script] != nil
+        let preview = fonts.previewFont(for: script)
+        let isSelected = selectedScript == script
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Toggle("", isOn: Binding(
+                get: { !isSet },
+                set: { useDefault in
+                    fonts.setCascadeFont(script, family: useDefault ? nil : preview?.familyName)
+                }))
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(width: Self.defaultColumnWidth, alignment: .leading)
+                .help("Use the standard font for \(script.label)")
+
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                AntialiasingText(script.sample)
+                    .plain()
+                    .antialiasDisabled(!fonts.antialias)
+                    // The face at a list's size, not the body's; the size
+                    // itself is the number beside it.
+                    .font(nsFont: preview.map {
+                        NSFont(descriptor: $0.fontDescriptor, size: 12) ?? $0
+                    })
+                    .alignment(.left)
+                    .clickThrough()
+                    .baselineAligned()
+                    .fixedSize()
+                Text("\(Int(fonts.cascadePointSize(for: script).rounded()))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Dimmed with the ligature box, not the whole row: the Default
+            // switch is live either way and must not look otherwise.
+            .opacity(isSet ? 1 : 0.55)
+
+            // Against the trailing edge, as Default is against the leading one:
+            // each edge column belongs to its edge.
+            Toggle("", isOn: cascadeLigaturesBinding(for: script))
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(width: Self.ligatureColumnWidth, alignment: .trailing)
+                .disabled(!isSet)
+                .opacity(isSet ? 1 : 0.55)
+        }
+        .padding(.horizontal, 4)
+        .background(isSelected ? Color.accentColor.opacity(0.18) : .clear,
+                    in: RoundedRectangle(cornerRadius: 4))
+        // A table row, the way NSTableView has always behaved: one click
+        // selects, a double click acts — here, opens the font panel, as Font
+        // Book does — and the menu is on the right button. No Button wrapping
+        // the sample: single-click-to-open was not the convention, and a
+        // Button is what was keeping the tooltip from showing.
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            guard isSet else { return }
+            fonts.selectCascadeFont(script)
+        }
+        .onTapGesture(count: 1) { selectedScript = script }
+        .contextMenu {
+            // The face and size the row is drawn in, as Mail's recipient menu
+            // opens with the address: a disabled first item naming what the
+            // commands below act on. Here for the reader the tooltip never
+            // reached, and named even when unset — that is the fallback the
+            // editor will really use.
+            Text(fontDescription(preview))
+            Divider()
+            Button("Choose Font…") { fonts.selectCascadeFont(script) }
+                .disabled(!isSet)
+            Button("Reset to Default") { fonts.setCascadeFont(script, family: nil) }
+                .disabled(!isSet)
+        }
+        .help(scriptTooltip(script, preview))
+    }
+
+    /// "Songti SC, 16 pt" — the face and size a row is really drawn in, which
+    /// for an unset script is the fallback.
+    private func fontDescription(_ font: NSFont?) -> String {
+        guard let font else { return "System font" }
+        let family = font.familyName ?? font.displayName ?? font.fontName
+        return "\(family), \(Int(font.pointSize.rounded())) pt"
+    }
+
+    /// "Chinese (Han): Songti SC, 16 pt" — the script, then its font.
+    private func scriptTooltip(_ script: FontCascadeScript, _ font: NSFont?) -> String {
+        "\(script.label): \(fontDescription(font))"
+    }
+
+    private func cascadeLigaturesBinding(for script: FontCascadeScript) -> Binding<Bool> {
         Binding(
-            get: { fonts.cascadePointSize(for: script) },
-            set: { fonts.setCascadePointSize(script, points: $0) }
+            get: { fonts.cascadeLigatures(for: script) },
+            set: { fonts.setCascadeLigatures(script, on: $0) }
         )
     }
+
 }

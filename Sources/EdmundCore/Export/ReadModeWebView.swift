@@ -204,12 +204,15 @@ public final class ReadModeWebView: WKWebView {
     /// Opens the Web Inspector on this read view. Wired to the View-menu item
     /// ("Inspect Reader", ⌥⌘I) via `Document.toggleReaderInspector`.
     @objc public func showWebInspector(_ sender: Any?) {
-        webInspector?.perform(Selector(("show")))
+        // `NSSelectorFromString`, not `#selector`: these are WebKit's own
+        // private inspector methods, which we never declare, so there is
+        // nothing for `#selector` to point at.
+        webInspector?.perform(NSSelectorFromString("show"))
     }
 
     /// Closes the Web Inspector, leaving the read view in place.
     @objc public func hideWebInspector(_ sender: Any?) {
-        webInspector?.perform(Selector(("hide")))
+        webInspector?.perform(NSSelectorFromString("hide"))
     }
 
     /// Append "Inspect Element" (⌥⌘I) to the web view's right-click menu.

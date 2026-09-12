@@ -353,11 +353,7 @@ class Document: NSDocument, HeadingNavigable {
         guard let editor else { return }
         zoomFactor = min(Self.zoomRange.upperBound, max(Self.zoomRange.lowerBound, factor))
 
-        let base = EditorTheme.load(from: editor.themeDefaults)
-        var zoomed = base
-        zoomed.fontSize = base.fontSize * zoomFactor
-        zoomed.monospaceFontSize = base.monospaceFontSize * zoomFactor
-        editor.applyTheme(zoomed, persist: false)
+        editor.setZoom(zoomFactor)
 
         let screen = editor.window?.screen ?? NSScreen.main
         editor.maxContentWidthPoints = (screen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000) * zoomFactor

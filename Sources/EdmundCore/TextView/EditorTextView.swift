@@ -220,6 +220,17 @@ public class EditorTextView: NSTextView {
     /// domain (and from each other under parallel execution).
     public var themeDefaults: UserDefaults = .standard
 
+    /// The persisted General-row values: what `applyTheme` saves, and what the
+    /// active general theme's overrides and the zoom are applied *to*. `theme`
+    /// is this after `resolveTheme()`, so neither a theme's font nor a zoom step
+    /// can leak back into the saved settings.
+    private var baseTheme: EditorTheme = .load()
+
+    /// Zoom multiplier layered on top of the resolved theme. Lives here rather
+    /// than only on the document because a theme swap or an appearance flip
+    /// re-derives the font, and would otherwise snap a zoomed view back to 100%.
+    public private(set) var zoomFactor: CGFloat = 1
+
     public var theme: EditorTheme = .load() {
         didSet {
             cachedBodyFont = nil
@@ -233,13 +244,17 @@ public class EditorTextView: NSTextView {
     }
 
     /// Pushes the theme's per-script font choices into the text storage.
-    /// Called from theme.didSet (live changes via applyTheme — which already
-    /// recomposes, so no extra layout invalidation is needed here) and once
-    /// from commonInit, since didSet does not fire for the initial value.
+    ///
+    /// Only from `theme.didSet` — live changes arrive via `applyTheme`, which
+    /// already recomposes, so no extra layout invalidation is needed here.
+    /// `commonInit` used to call it a second time because `didSet` does not
+    /// fire for a property's initial value; it no longer needs to, since
+    /// `resolveTheme()` runs there and *assigns* `theme`.
     private func syncCascadeResolver() {
         (textStorage as? EditorTextStorage)?.cascadeResolver =
             FontCascadeResolver(cascade: theme.fontCascade,
-                                sizeRatios: theme.fontCascadeSizeRatios)
+                                sizeRatios: theme.fontCascadeSizeRatios,
+                                ligatures: theme.fontCascadeLigatures)
     }
 
     /// Styling touches these values for every block. Reusing the immutable
@@ -593,30 +608,52 @@ public class EditorTextView: NSTextView {
     /// and the selection tint so the editor matches the native AppKit controls.
     var accentColor: NSColor { .controlAccentColor }
 
+    /// The active general theme for this view's appearance. Every chrome color
+    /// below reads from it; a `nil` field there means "use the platform default
+    /// for this role", so each fallback lives next to the value it replaces.
+    var generalTheme: GeneralTheme { ThemeStore.shared.general(dark: isDarkAppearance) }
+
     /// Foreground color for all body text — and, through `mathOverlay`, for the
-    /// math bitmaps drawn alongside it. Defined once in `EditorTheme` so Read
-    /// mode's `--fg` and its embedded equations use the identical ink; see the
-    /// rationale there.
+    /// math bitmaps drawn alongside it. The unthemed fallback is defined once in
+    /// `EditorTheme` so Read mode's `--fg` and its embedded equations use the
+    /// identical ink; see the rationale there.
     var foregroundColor: NSColor {
         EditorTheme.bodyTextColor(dark: isDarkAppearance)
     }
 
-    /// Background tint for text selection. Uses system orange so selections read
-    /// as warm amber rather than tracking the (potentially red) brand accent.
-    var selectionHighlightColor: NSColor { .systemOrange.withAlphaComponent(0.3) }
+    /// Background tint for text selection. Unthemed, uses system orange so
+    /// selections read as warm amber rather than tracking the (potentially red)
+    /// brand accent.
+    /// ponytail: a themed selection is opaque — `NSColor(hex:)` takes 6 digits,
+    /// no alpha channel. `selectedTextAttributes` sets the foreground too, so
+    /// opaque stays legible (it is what Xcode does). Add 8-digit hex only if a
+    /// theme actually wants translucency.
+    var selectionHighlightColor: NSColor {
+        generalTheme.selection.flatMap(NSColor.init(hex:))
+            ?? .systemOrange.withAlphaComponent(0.3)
+    }
 
-    /// Background color for the editor surface. Light appearance keeps the
-    /// standard `.textBackgroundColor` semantic; dark appearance uses `#292929`,
-    /// matching Read mode's page background. Built with `srgbRed:` rather than
-    /// the shared `NSColor(hex:)` helper (which uses `calibratedRed:`) — the
-    /// calibrated color space renders visibly lighter than the sRGB hex value
-    /// once composited on screen.
+    /// Color of the insertion point. Unthemed, follows the app accent.
+    var cursorColor: NSColor {
+        generalTheme.cursor.flatMap(NSColor.init(hex:)) ?? accentColor
+    }
+
+    /// Fill for the checked-checkbox icon. Unthemed, follows the app accent.
+    /// Separate from `accentColor` because that one still means "the system
+    /// accent" for the callout styles that fall back to it.
+    var checkboxColor: NSColor {
+        generalTheme.checkbox.flatMap(NSColor.init(hex:)) ?? accentColor
+    }
+
+    /// Background color for the editor surface. Unthemed, light appearance keeps
+    /// the standard `.textBackgroundColor` semantic; the bundled dark theme sets
+    /// `#292929`, matching Read mode's page background.
     /// Internal rather than private: the line-number gutter fills itself with
     /// this so the two surfaces read as one (the scroll view draws no
     /// background of its own).
     var editorBackgroundColor: NSColor {
-        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        guard dark else { return .textBackgroundColor }
+        if let themed = generalTheme.background.flatMap(NSColor.init(hex:)) { return themed }
+        guard isDarkAppearance else { return .textBackgroundColor }
         return NSColor(srgbRed: 0x29 / 255.0, green: 0x29 / 255.0, blue: 0x29 / 255.0, alpha: 1.0)
     }
 
@@ -641,12 +678,17 @@ public class EditorTextView: NSTextView {
     }
 
     /// Apply a new theme and restyle every block in place. `persist: false`
-    /// (used for zoom, which scales font sizes without changing the saved
-    /// preference) applies the theme live without writing it to defaults.
+    /// applies it live without writing it to defaults.
+    ///
+    /// `newTheme` is the *base*: the active general theme's font overrides and
+    /// the current zoom are layered on before it reaches `theme`. Saving
+    /// `newTheme` rather than `theme` is what keeps a theme's font out of the
+    /// General row it would otherwise overwrite.
     public func applyTheme(_ newTheme: EditorTheme, persist: Bool = true) {
         let antialiasChanged = theme.antialias != newTheme.antialias
-        theme = newTheme
-        if persist { theme.save(to: themeDefaults) }
+        baseTheme = newTheme
+        if persist { newTheme.save(to: themeDefaults) }
+        resolveTheme()
         typingAttributes = baseAttributes
         recomposeAllDirty()
         // Antialiasing isn't a text attribute, so a recompose alone won't re-vend
@@ -654,6 +696,36 @@ public class EditorTextView: NSTextView {
         if antialiasChanged, let tlm = textLayoutManager {
             tlm.invalidateLayout(for: tlm.documentRange)
         }
+    }
+
+    /// Re-derive `theme` from its three independent inputs: the persisted
+    /// General-row values, the active general theme's font overrides, and the
+    /// zoom. Called at init, on every appearance flip (the active general theme
+    /// changes with it, and so may its font), and after the Themes pane writes.
+    ///
+    /// Cheap enough to call unconditionally — the work is a struct copy; the
+    /// `didSet` on `theme` drops the font caches, and callers restyle anyway.
+    public func resolveTheme() {
+        // No font layer here. Choosing a preset in Settings ▸ Appearance
+        // writes its values into the `Editor*` keys, so `baseTheme` already
+        // carries them; layering it again would also mean the preset beat
+        // `applyTheme`, leaving no way to set a font directly.
+        var resolved = baseTheme
+        if zoomFactor != 1 {
+            resolved.fontSize *= zoomFactor
+            resolved.monospaceFontSize *= zoomFactor
+        }
+        theme = resolved
+    }
+
+    /// Scale the body and code fonts by `factor`, off the persisted base rather
+    /// than the currently applied theme — so repeated zooming can't compound
+    /// rounding error and Actual Size always lands back on the true base.
+    public func setZoom(_ factor: CGFloat) {
+        zoomFactor = factor
+        resolveTheme()
+        typingAttributes = baseAttributes
+        recomposeAllDirty()
     }
 
     var baseAttributes: [NSAttributedString.Key: Any] {
@@ -703,14 +775,8 @@ public class EditorTextView: NSTextView {
 
         textAntialias = theme.antialias
         codeBlockLabelFont = theme.monospaceFont(ofSize: max(9, theme.monospaceFontSize - 3))
-        syncCascadeResolver()
-        backgroundColor = editorBackgroundColor
-        insertionPointColor = accentColor
-        selectedTextAttributes = [
-            .backgroundColor: selectionHighlightColor,
-            .foregroundColor: foregroundColor,
-        ]
-        typingAttributes = baseAttributes
+        resolveTheme()
+        applyChromeColors()
 
         rawSource = ""
         rebuildListIndentState()
@@ -791,16 +857,27 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Appearance
 
-    /// Re-render when the system appearance (light ↔ dark) changes.
-    public override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
+    /// Push the theme's chrome colors onto the view. Called at init and whenever
+    /// the appearance flips — the active general theme changes with it, so every
+    /// one of these can differ across the switch.
+    public func applyChromeColors() {
         backgroundColor = editorBackgroundColor
-        insertionPointColor = accentColor
+        insertionPointColor = cursorColor
         selectedTextAttributes = [
             .backgroundColor: selectionHighlightColor,
             .foregroundColor: foregroundColor,
         ]
         typingAttributes = baseAttributes
+    }
+
+    /// Re-render when the system appearance (light ↔ dark) changes.
+    public override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        // Before the colors: the general theme for the new appearance may carry
+        // a different font, and `applyChromeColors` bakes the font into
+        // `typingAttributes`.
+        resolveTheme()
+        applyChromeColors()
         recomposeAllDirty()
     }
 

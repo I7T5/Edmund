@@ -255,7 +255,6 @@ struct FontIntegrationTests {
         var theme = editor.theme
         theme.fontName = "Courier"
         theme.fontSize = 14
-        theme.linkBlueHex = "#FF0000"
         theme.lineSpacing = 8
         editor.applyTheme(theme)
 
@@ -264,11 +263,9 @@ struct FontIntegrationTests {
         let d = editor.themeDefaults
         let savedName = d.string(forKey: "EditorFontName")
         let savedSize = d.float(forKey: "EditorFontSize")
-        let savedAccent = d.string(forKey: "EditorLinkBlueHex")
         let savedSpacing = d.float(forKey: "EditorLineSpacing")
         #expect(savedName == "Courier")
         #expect(savedSize == 14)
-        #expect(savedAccent == "#FF0000")
         #expect(savedSpacing == 8)
     }
 

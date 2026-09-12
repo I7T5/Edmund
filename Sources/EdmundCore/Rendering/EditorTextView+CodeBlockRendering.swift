@@ -15,15 +15,17 @@ import AppKit
 
 extension EditorTextView {
 
-    /// Background tint for a code block's box. Matches Read mode's
-    /// `--code-bg` (HTMLTheme.swift) so Edit and Read mode agree.
+    /// Background tint for a code block's box: the active code theme's page
+    /// when it names one, else the shipped default. Matches Read mode's
+    /// `--code-bg` (HTMLTheme.swift) so Edit and Read mode agree — both now read
+    /// the same theme and the same fallback.
     var codeBlockBackground: NSColor {
-        // sRGB, not the calibrated `NSColor(hex:)` helper — same reason as
-        // `editorBackgroundColor`: calibrated renders visibly lighter, and this
-        // has to land exactly on Read mode's --code-bg.
-        isDarkAppearance
-            ? NSColor(srgbRed: 0x33 / 255.0, green: 0x33 / 255.0, blue: 0x33 / 255.0, alpha: 1)
-            : (NSColor(hex: "#f4f4f4") ?? NSColor(calibratedWhite: 0.96, alpha: 1))
+        let dark = isDarkAppearance
+        let hex = ThemeStore.shared.syntax(dark: dark)?.background
+            ?? SyntaxTheme.defaultBackgroundHex(dark: dark)
+        // `NSColor(hex:)` decodes sRGB, which is what Read mode's CSS means by
+        // the same string — the two land on the same pixel.
+        return NSColor(hex: hex) ?? NSColor(calibratedWhite: dark ? 0.2 : 0.96, alpha: 1)
     }
 
     /// Applies the background box to an inactive fenced code block. Only

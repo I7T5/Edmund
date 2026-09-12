@@ -1,0 +1,16 @@
+{
+  "name": "solarized-light",
+  "displayName": "Solarized",
+  "appearance": "light",
+
+  "text": "#586e75",
+  "invisibles": "#93a1a1",
+  "checkbox": null,
+  "link": "#268bd2",
+  "highlight": "#eee8d5",
+  "background": "#fdf6e3",
+  "selection": null,
+  "cursor": null,
+
+  "syntaxTheme": "solarized-code-light"
+}
