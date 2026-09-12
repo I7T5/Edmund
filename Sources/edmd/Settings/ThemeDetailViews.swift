@@ -518,13 +518,12 @@ struct SyntaxThemeDetail: View {
             // the ten above are what code is written in, this is what it is
             // written on. The switch closes the row the way the editor pane's
             // do, and gives the lone well something to sit opposite.
-            // Two points either side, not just above: the wells carry their
-            // names under them, so the rule wants a touch more room than the
-            // stack's spacing gives — and the same amount below as above, or
-            // the well beneath reads as tighter to the rule than the wells
-            // over it.
+            // Two points more above than below, on purpose: the captions over
+            // the rule are text, whose ascender space reads as air, while the
+            // well under it is a solid block that needs none. Equal padding
+            // was tried and read as loose beneath the rule.
             Divider()
-                .padding(.vertical, 2)
+                .padding(.top, 2)
 
             HStack(alignment: .wellCenter, spacing: 8) {
                 ColorCell(label: "Background", hex: backgroundBinding,
