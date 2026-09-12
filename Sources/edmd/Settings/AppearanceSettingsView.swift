@@ -262,9 +262,14 @@ struct AppearanceSettingsView: View {
                 // nothing to name.
                 .disabled(!ThemeStore.shared.isUserTheme(fontTheme) || fontThemes.count < 2)
         } label: {
+            // System Settings' own "more" button: the circled ellipsis in the
+            // secondary tint, with no chevron — it is a button that opens a
+            // menu, not a popup showing a value.
             Image(systemName: "ellipsis.circle")
+                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
         .help("Manage font themes")
     }
