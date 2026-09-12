@@ -13,6 +13,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ### Fixed
 - Print and Export as PDF no longer keep the `.md` extension in the PDF filename
 - Tables: the `</>` button no longer leaves a ghost when it steps aside for the row pill
+- Tables: clicking the blank end of a wrapped cell no longer flashes the caret to the start of the cell
+- Tables: the row/column pills no longer linger after clicking in a table with wrapped cells
+- Tables: text can now be drag-selected inside a wrapped cell
 - Tables: a single-dash delimiter row (`- | -`) now renders as a table instead of a bullet list
 - Nested emphasis (italic inside bold, or bold inside italic) now renders
 

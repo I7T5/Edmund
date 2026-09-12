@@ -929,6 +929,20 @@ public class EditorTextView: NSTextView {
            let cell = tableCellEmptySpace(at: clickPoint, hit: clickHit) {
             scrollRangeToVisible(tableCellSelectionRange(cell))
         }
+        // A click that lands in a table restyles it, and in a table with a
+        // wrapped cell the rows are not laid out again until after this gesture
+        // returns — so the grid was unavailable when `selectionDidChange`
+        // invalidated the handles, and the old pill was left on screen while the
+        // new one never drew. Re-invalidate once layout has settled, when the
+        // grid is back: the kept `lastTableHandleBands` clears the old pill and
+        // the fresh handles draw the new one. Cheap and idempotent off a table.
+        if blockIndexForRawOffset(selectedRange().location)
+            .map({ $0 < blocks.count && blocks[$0].kind == .table }) == true {
+            DispatchQueue.main.async { [weak self] in
+                self?.invalidateTableHandles()
+                self?.invalidateTableRawButtons()
+            }
+        }
         // `super.mouseDown` returns only after the whole tracking loop (drag +
         // mouse-up) finishes; `sel` in this line is the gesture's net result.
         traceEdit("mouseDown done")
@@ -970,6 +984,24 @@ public class EditorTextView: NSTextView {
         if let wrapped = tableClickWrappedCaret, !activatingRawTable, ranges.count == 1,
            let caret = ranges[0].rangeValue as NSRange?, caret.length == 0 {
             ranges = [NSValue(range: NSRange(location: wrapped, length: 0))]
+        }
+        // A drag *within* a wrapped cell: AppKit sweeps the hidden characters,
+        // which all sit at one x, so the range it builds is meaningless. Rebuild
+        // it from the drawn text — the anchor character to the one under the
+        // pointer now — as long as both ends are in the same wrapped cell (a drag
+        // that leaves the cell is a cross-cell block, handled below). Only while
+        // a gesture is in flight, and only when the anchor started on wrapped
+        // text.
+        if let anchor = tableClickWrappedCaret, !activatingRawTable, ranges.count == 1,
+           let window, let anchorCell = tableCell(atRawOffset: anchor) {
+            let pointer = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            if let current = wrappedCellCharIndex(atViewPoint: pointer),
+               let currentCell = tableCell(atRawOffset: current),
+               currentCell.blockIndex == anchorCell.blockIndex,
+               currentCell.row == anchorCell.row, currentCell.column == anchorCell.column {
+                let lo = min(anchor, current), hi = max(anchor, current)
+                ranges = [NSValue(range: NSRange(location: lo, length: hi - lo))]
+            }
         }
         // A caret placed by the click in flight belongs to the cell that click
         // landed in. Corrected here, where the selection is installed, so no
@@ -1035,9 +1067,14 @@ public class EditorTextView: NSTextView {
         // wrapped cell that left AppKit's own insertion point drawn on the
         // cell's hidden characters — bunched at the top-left — for the length of
         // the press, then it jumped to where our caret really is once the button
-        // came up. Running the upkeep here too keeps the caret honest
-        // throughout; `selectionDidChange` still covers the final call.
-        if stillSelecting { updateWrappedCaret() }
+        // came up. Running the upkeep here too keeps the caret honest throughout.
+        //
+        // `tableClickPoint` covers a plain click's *final* install too: that call
+        // is `stillSelecting == false`, but it happens inside `super.mouseDown`,
+        // before the click's `selectionDidChange` is delivered — so without it
+        // AppKit's caret still flashes at the hidden-character left edge (the
+        // "jumps to the start of the cell, then back") until the gesture returns.
+        if stillSelecting || tableClickPoint != nil { updateWrappedCaret() }
     }
 
     /// The range actually copied, for the "selection over rendered math copies
@@ -1087,10 +1124,17 @@ public class EditorTextView: NSTextView {
     /// drawn text of a wrapped (overflowing) table cell, else nil — see
     /// `DecoratedTextLayoutFragment.cellWrapCharacterIndex`.
     func wrappedCellCharIndex(at event: NSEvent) -> Int? {
+        wrappedCellCharIndex(atViewPoint: convert(event.locationInWindow, from: nil))
+    }
+
+    /// The character under a view-coordinate point when it falls on a wrapped
+    /// cell's drawn text, mapped through the scratch layout — the drag-select
+    /// counterpart of the event version, for the pointer sampled mid-drag.
+    func wrappedCellCharIndex(atViewPoint viewPoint: NSPoint) -> Int? {
         guard let tlm = textLayoutManager,
               let storage = textStorage, storage.length > 0 else { return nil }
 
-        var point = convert(event.locationInWindow, from: nil)
+        var point = viewPoint
         point.x -= textContainerOrigin.x
         point.y -= textContainerOrigin.y
 

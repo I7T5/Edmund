@@ -116,7 +116,20 @@ extension EditorTextView {
         // trusted to record it: it runs before the restyle a click triggers,
         // and a grid that is briefly unavailable makes it record nothing at
         // all — after which the pill it forgot outlives its own move.
-        lastTableHandleBands = handles.map { handleHitBox($0) }
+        //
+        // But don't let a *grid-unavailable* draw wipe the record: a click into
+        // a wrapped-cell table restyles it, and a repaint that lands before the
+        // rows are laid out again finds no grid, so `tableHandles()` is empty
+        // even though a pill is still on screen. Overwriting with `[]` then lost
+        // the band, and the pill lingered because the next caret move had
+        // nothing to invalidate. Keep the last record in that case; only replace
+        // it when the pill is genuinely gone (caret out of a cell, raw mode, or
+        // a cell block selected — all of which resolve without needing a grid).
+        let gridUnavailable = handles.isEmpty && !rawTableEditing
+            && tableCellSelection == nil && activeTableCell != nil
+        if !gridUnavailable {
+            lastTableHandleBands = handles.map { handleHitBox($0) }
+        }
         for handle in handles where handle.rect.intersects(dirty) {
             let hovered = handle == hoveredTableHandle
             // Space, not a border, per the editor's chrome idiom — but a handle
