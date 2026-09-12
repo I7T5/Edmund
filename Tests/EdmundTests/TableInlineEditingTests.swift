@@ -154,6 +154,27 @@ struct TableInlineEditingTests {
         #expect(editor.wrappedCellVerticalOffset(lineDelta: 1) == nil)
     }
 
+    // MARK: - Typing
+
+    /// A space typed at the end of a cell's text must land — you cannot write a
+    /// two-word header otherwise. The caret-resting rule pulls a caret out of a
+    /// cell's trailing pad for a click or an arrow, but a keystroke is exempt:
+    /// the space it just typed is content-in-progress, not pad to step over.
+    @Test("A space can be typed inside a cell")
+    func spaceTypesInsideACell() {
+        let editor = loadEditor(doc)
+        let end = (doc as NSString).range(of: "col1").upperBound
+        editor.setSelectedRange(NSRange(location: end, length: 0))
+        for ch in ["X", " ", "Y"] {
+            editor.insertText(ch, replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+        // The space is in the content, between the two typed characters.
+        #expect(editor.rawSource.contains("| col1X Y "))
+        // The caret advanced past all three, not stuck before the space.
+        let ns = editor.rawSource as NSString
+        #expect(editor.selectedRange().location == ns.range(of: "col1X Y").upperBound)
+    }
+
     // MARK: - Return: down a row, or a new one
 
     @Test("Return moves to the cell below and selects it")

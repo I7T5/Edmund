@@ -30,6 +30,12 @@ extension EditorTextView {
     private static let symmetricPairs: Set<Character> = ["\"", "'", "`"]
 
     public override func insertText(_ string: Any, replacementRange: NSRange) {
+        // A caret this insertion places is where the user put it; the table
+        // caret-resting rule must not yank it out of a cell's trailing pad, or
+        // a space typed at the end of a cell can never be typed. See
+        // `isInsertingText` / `setSelectedRanges`.
+        isInsertingText = true
+        defer { isInsertingText = false }
         guard autoCloseBracketsEnabled,
               // While an IME is composing, the provisional text runs through
               // here too — never rewrite it.
