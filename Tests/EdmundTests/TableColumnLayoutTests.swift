@@ -83,6 +83,35 @@ struct TableColumnLayoutTests {
                 "the header collapsed against the plain one")
     }
 
+    /// AppKit stops sending `selectionDidChange` while a click or drag is still
+    /// in flight, so the wrapped-cell caret upkeep that rides it did not run
+    /// during a mouse-button hold — AppKit's own caret stayed drawn on the
+    /// cell's hidden characters (top-left) until release, then jumped to the
+    /// real position. The upkeep runs from `setSelectedRanges` on a
+    /// still-selecting install now; the proxy for "AppKit's caret is drawn" is
+    /// `insertionPointColor` not being clear.
+    @Test("A still-selecting install into a wrapped cell suppresses AppKit's caret")
+    func stillSelectingKeepsTheWrappedCaretHonest() throws {
+        let editor = loadEditor(Self.truthTable)
+        let index = try #require(editor.blocks.firstIndex(where: { $0.kind == .table }))
+        let cell = try #require(editor.tableCell(blockIndex: index, row: 0, column: 6))
+        let inWrapped = editor.tableCellTextRange(cell).location
+
+        func ipcIsClear() -> Bool {
+            (editor.insertionPointColor?.usingColorSpace(.sRGB)?.alphaComponent ?? 1) < 0.01
+        }
+
+        // Caret in the prose above the table: AppKit draws its own caret.
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        #expect(!ipcIsClear())
+
+        // A still-selecting install into the wrapped cell — the state a real
+        // click produces while the button is held — must already suppress it.
+        editor.setSelectedRanges([NSValue(range: NSRange(location: inWrapped, length: 0))],
+                                 affinity: .downstream, stillSelecting: true)
+        #expect(ipcIsClear(), "AppKit's caret was left drawn during the hold")
+    }
+
     /// A click in a wrapped cell's blank space below the text lands the caret
     /// at the end of the cell's text — wherever along that blank strip it fell.
     /// This is what an unwrapped cell already does; the two were inconsistent,

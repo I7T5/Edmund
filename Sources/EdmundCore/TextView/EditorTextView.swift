@@ -1012,6 +1012,15 @@ public class EditorTextView: NSTextView {
         setTableCellHighlight(suppressed: tableCellBlock(forRanges: ranges) != nil)
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         updateTableCellSelectionChrome()
+        // AppKit suppresses `selectionDidChange` while a click or drag is still
+        // in flight (`stillSelecting`), so the wrapped-cell caret upkeep that
+        // rides that notification never runs during a mouse-button hold. In a
+        // wrapped cell that left AppKit's own insertion point drawn on the
+        // cell's hidden characters — bunched at the top-left — for the length of
+        // the press, then it jumped to where our caret really is once the button
+        // came up. Running the upkeep here too keeps the caret honest
+        // throughout; `selectionDidChange` still covers the final call.
+        if stillSelecting { updateWrappedCaret() }
     }
 
     /// The range actually copied, for the "selection over rendered math copies
