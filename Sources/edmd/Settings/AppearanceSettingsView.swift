@@ -266,10 +266,12 @@ struct AppearanceSettingsView: View {
             // secondary tint, with no chevron — it is a button that opens a
             // menu, not a popup showing a value.
             Image(systemName: "ellipsis.circle")
-                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        // `tint`, not `foregroundStyle`: the borderless menu button draws its
+        // label in the control tint and ignores the label's own style.
+        .tint(.secondary)
         .fixedSize()
         .help("Manage font themes")
     }
