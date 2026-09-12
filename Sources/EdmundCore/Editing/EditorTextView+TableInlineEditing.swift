@@ -35,15 +35,25 @@ extension EditorTextView {
 
     // MARK: - Return: down a row, or a new one
 
-    /// Moves to the cell below and selects its text, the way Return does in a
-    /// spreadsheet; on the last row there is nothing below, so it adds one.
-    /// Returns false if the caret isn't in an in-place table.
+    /// Return inside a table: from the header it inserts a new body row below
+    /// and lands there; from any other row it moves to the cell below, adding a
+    /// row when there is none. Returns false if the caret isn't in an in-place
+    /// table.
     func handleTableNewline() -> Bool {
         guard let cell = inlineTableCell else { return false }
-        // Row 1 is the separator, so the header's row below is the first body
-        // row. Falling back to column 0 covers a ragged row that is short of
-        // the column the caret was in.
-        let below = cell.row == 0 ? 2 : cell.row + 1
+        // Return from the header inserts a fresh body row directly below and
+        // lands in it: a header is where you set the columns up, so the next
+        // keystroke is almost always the first data row, not a step into
+        // whatever row happens to already be there. Row 1 is the separator, so
+        // "directly below the header" is line 2.
+        if cell.row == 0 {
+            insertTableRow(blockIndex: cell.blockIndex, at: 2, column: cell.column)
+            return true
+        }
+        // Every other row moves to the cell below and selects its text, the way
+        // Return does in a spreadsheet. Falling back to column 0 covers a
+        // ragged row that is short of the column the caret was in.
+        let below = cell.row + 1
         if let target = tableCell(blockIndex: cell.blockIndex, row: below, column: cell.column)
             ?? tableCell(blockIndex: cell.blockIndex, row: below, column: 0) {
             selectCellText(target)

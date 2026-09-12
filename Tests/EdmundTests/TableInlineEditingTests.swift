@@ -166,14 +166,25 @@ struct TableInlineEditingTests {
         #expect((editor.rawSource as NSString).substring(with: editor.selectedRange()) == "c21")
     }
 
-    /// The header's row below is the first body row — row 1 is the separator.
-    @Test("Return from the header skips the separator row")
-    func returnFromTheHeaderSkipsTheSeparator() {
+    /// Return from the header inserts a fresh body row directly below it — under
+    /// the separator (row 1) — and lands in it, rather than stepping into the
+    /// row that was already there. It keeps the column the caret was in.
+    @Test("Return from the header inserts a new body row and enters it")
+    func returnFromTheHeaderInsertsARow() {
         let editor = loadEditor(doc)
         let caret = (doc as NSString).range(of: "col2").location
         editor.setSelectedRange(NSRange(location: caret, length: 0))
         editor.insertNewline(nil)
-        #expect((editor.rawSource as NSString).substring(with: editor.selectedRange()) == "c12")
+        let ns = editor.rawSource as NSString
+        // A new empty row now sits between the separator and the old first row.
+        #expect(editor.rawSource.contains("| ---- | ---- |\n|  |  |\n| c11 | c12 |"))
+        // The caret is in that new row, in the header's column (col2).
+        let line = ns.lineRange(for: editor.selectedRange())
+        #expect(ns.substring(with: line).trimmingCharacters(in: .newlines) == "|  |  |")
+        #expect(editor.selectedRange().location == line.location + 5)   // second column
+        // The old rows are untouched.
+        #expect(editor.rawSource.contains("| c11 | c12 |"))
+        #expect(editor.rawSource.contains("| c21 | c22 |"))
     }
 
     @Test("Return on the last row adds one")
