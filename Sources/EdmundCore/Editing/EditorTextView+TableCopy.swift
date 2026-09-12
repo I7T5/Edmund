@@ -16,6 +16,46 @@ import AppKit
 
 extension EditorTextView {
 
+    /// Paste, then tidy the delimiters of any table the paste landed in.
+    ///
+    /// Markdown tolerates a table written without its outer pipes and without
+    /// the spaces either side of the inner ones, and plenty of sources emit
+    /// exactly that — so a pasted table renders, but the source underneath it
+    /// reads nothing like the ones this editor writes. Only the delimiters are
+    /// touched; the pasted text itself is never reflowed.
+    public override func paste(_ sender: Any?) {
+        let before = selectedRange()
+        super.paste(sender)
+        let after = selectedRange()
+        let start = min(before.location, after.location)
+        normalizeTableDelimiters(in: NSRange(location: start,
+                                             length: max(0, after.upperBound - start)))
+    }
+
+    /// Rewrites every table the span touches to the conventional skeleton.
+    ///
+    /// Back to front, so rewriting one table cannot shift the range of another
+    /// still to be done. A table already conventional is skipped outright,
+    /// which is what keeps this from filing an undo step for a no-op.
+    func normalizeTableDelimiters(in span: NSRange) {
+        guard span.length > 0, !rawTableEditing else { return }
+        let ns = rawSource as NSString
+        let targets = blocks.filter {
+            $0.kind == .table && NSIntersectionRange($0.range, span).length > 0
+        }
+        for block in targets.reversed() {
+            let location = min(block.range.location, ns.length)
+            let range = NSRange(location: location,
+                                length: min(block.range.length, ns.length - location))
+            guard range.length > 0,
+                  let normalized = normalizedTableBlock(ns.substring(with: range))
+            else { continue }
+            let caret = range.location + (normalized as NSString).length
+            applyFormattingEdit(rawRange: range, replacement: normalized,
+                                select: NSRange(location: caret, length: 0))
+        }
+    }
+
     /// What ⌘C should put on the pasteboard for a selection in a table, or nil
     /// when the ordinary copy is the right one.
     func tableCopyText() -> String? {

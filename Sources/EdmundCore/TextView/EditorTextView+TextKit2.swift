@@ -501,16 +501,36 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 let height = line.typographicBounds.height
                 // Past the last line means the click was in the row's bottom
                 // padding — that still belongs to the last line.
-                guard point.y < top + height || li == lines.count - 1 else {
+                let belowLastLine = point.y >= top + height
+                guard !belowLastLine || li == lines.count - 1 else {
                     top += height
                     continue
+                }
+                // A click below the last line goes to the end of the cell's
+                // text, not to whatever character happens to sit above the
+                // point — the same place an unwrapped cell's blank space sends
+                // it. Only a click *on* a line's own vertical band resolves by x.
+                if belowLastLine {
+                    return wrap.charStart + line.characterRange.upperBound
                 }
                 let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth, align: wrap.align)
                 // The line's own bounds carry the scratch container's stacking
                 // offset; only its x matters here, so probe at its own midY.
                 let local = CGPoint(x: point.x - wrap.x - dx, y: line.typographicBounds.midY)
-                let index = line.characterIndex(for: local)
+                var index = line.characterIndex(for: local)
                 guard index >= 0 else { return nil }
+                // `characterIndex(for:)` names the character *under* the point,
+                // which is not where a click puts a caret: AppKit's insertion
+                // rule rounds at the glyph's midpoint, so a click on the right
+                // half of a letter lands after it. Without this every such
+                // click came out one character early.
+                let lineEnd = line.characterRange.upperBound
+                if index < lineEnd {
+                    let left = line.locationForCharacter(at: index).x
+                    let right = index + 1 <= lineEnd
+                        ? line.locationForCharacter(at: index + 1).x : left
+                    if right > left, local.x > (left + right) / 2 { index += 1 }
+                }
                 return wrap.charStart + index
             }
         }
@@ -612,7 +632,14 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         let tallest = resolvedCellWraps
             .map { $0.lines.reduce(0) { $0 + $1.typographicBounds.height } }
             .max() ?? 0
-        return max(0, tallest - super.layoutFragmentFrame.height)
+        // Measured against the row's own *line* height, not the whole fragment:
+        // the fragment also carries the row's vertical padding, and a row whose
+        // cells all overflow has no visible characters left to give its line any
+        // height at all. Comparing against the fragment then hides the whole
+        // shortfall behind the padding, and the row collapses onto it — which is
+        // what a header of long labels did, while the data rows beside it grew.
+        let lineHeight = textLineFragments.reduce(0) { $0 + $1.typographicBounds.height }
+        return max(0, tallest - lineHeight)
     }
 
     required init?(coder: NSCoder) {

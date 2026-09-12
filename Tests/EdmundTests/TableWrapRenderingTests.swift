@@ -194,8 +194,7 @@ struct TableWrapRenderingTests {
             #expect(cellWrapLineOffset(last, contentWidth: wrap.contentWidth, align: .left) == 0)
             if align == .right {
                 // Right-aligned means the line's *visible* text ends at the
-                // column edge. The cell's trailing space (`… |`) is excluded
-                // on purpose — counting it would push the text a space short.
+                // column edge.
                 let text = last.attributedString.attributedSubstring(from: last.characterRange)
                 let full = text.size().width
                 let lastInk = (text.string as NSString).rangeOfCharacter(
@@ -203,7 +202,13 @@ struct TableWrapRenderingTests {
                 let visible = text.attributedSubstring(
                     from: NSRange(location: 0, length: lastInk.upperBound)).size().width
                 #expect(abs(offset + visible - wrap.contentWidth) < 0.5)
-                #expect(full > visible)
+                // The cell's padding (`| … |`) never enters the scratch layout
+                // at all — a leading space could take a narrow column's first
+                // line by itself — so the last line ends on ink, and the full
+                // and visible widths are one and the same.
+                #expect(abs(full - visible) < 0.5)
+                #expect(!wrap.styled.string.hasPrefix(" "))
+                #expect(!wrap.styled.string.hasSuffix(" "))
             }
         }
     }

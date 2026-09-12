@@ -31,6 +31,16 @@ extension EditorTextView {
             traceEdit("shouldChangeText REJECTED (isUpdating) range=\(affectedCharRange) repl=\(logSnippet(replacementString))")
             return false
         }
+        // A table's pipes and the space beside each are structure, not content:
+        // an edit that would remove one is refused whatever produced it —
+        // backspace, forward delete, ⌥⌫, ⌘⌫, cut, or typing over a selection
+        // that spans a pipe. Rows and columns are changed through the pill menu,
+        // never by deleting a delimiter out from under the render. See
+        // `deletionHitsTableStructure`.
+        if deletionHitsTableStructure(affectedCharRange) {
+            traceEdit("shouldChangeText REJECTED (table structure) range=\(affectedCharRange)")
+            return false
+        }
         if let replacement = replacementString {
             if !isUndoRedoing {
                 recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)

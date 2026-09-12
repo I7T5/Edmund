@@ -521,6 +521,10 @@ public class EditorTextView: NSTextView {
     /// before anyone sees it, and it knows neither on its own.
     var tableClickCount = 0
     var tableClickHit: Int?
+    /// Where the click in flight lands in a wrapped cell's *drawn* text, when
+    /// it lands in one — resolved against the scratch layout before the gesture
+    /// runs, since AppKit's own hit test can only find the hidden characters.
+    var tableClickWrappedCaret: Int?
 
     /// Where the click now in flight landed, in view coordinates, for as long
     /// as `mouseDown` is running. It is what lets `setSelectedRanges` keep a
@@ -889,40 +893,27 @@ public class EditorTextView: NSTextView {
         tableClickPoint = convert(event.locationInWindow, from: nil)
         tableClickCount = event.clickCount
         tableClickHit = clickHit
+        tableClickWrappedCaret = wrappedCellCaret
         suppressTypewriterCentering = true
         super.mouseDown(with: event)
         suppressTypewriterCentering = false
+        let clickPoint = tableClickPoint ?? convert(event.locationInWindow, from: nil)
+        let wasDoubleClick = tableClickCount == 2
         tableClickPoint = nil
         tableClickCount = 0
         tableClickHit = nil
-        // Only a plain click: a drag or a double-click made a real selection,
-        // and honouring those would collapse it.
-        if let wrappedCellCaret, selectedRange().length == 0 {
-            setSelectedRange(NSRange(location: wrappedCellCaret, length: 0))
-        }
-        let clickPoint = convert(event.locationInWindow, from: nil)
-        let clickSelection = selectedRange()
-        // A double-click out in a cell's empty space takes the cell's contents.
-        // There is no word where it landed, and the next unit up from a word,
-        // here, is the cell — which is what a double-click in a spreadsheet
-        // gives you too. A single click out there comes back to the cell's
-        // text instead, as does one AppKit carried into the neighbouring cell
-        // — see `tableCellCaretSnap(at:offset:)`.
-        let emptySpace = tableCellEmptySpace(at: clickPoint, hit: clickHit)
-        if event.clickCount >= 2 {
-            traceEdit("tableDoubleClick clicks=\(event.clickCount) x=\(Int(clickPoint.x))"
-                + " hit=\(clickHit.map(String.init) ?? "nil")"
-                + " grid=\(tableGridDiagnostic(at: clickPoint, hit: clickHit))"
-                + " cell=\(emptySpace.map { "r\($0.row)c\($0.column)" } ?? "nil")"
-                + " sel=\(clickSelection)")
-        }
-        if event.clickCount == 2, let cell = emptySpace {
-            // Already installed in flight; this is the scroll and the last word.
-            selectCellText(cell)
-        } else if clickSelection.length == 0,
-                  let snapped = tableCellCaretSnap(at: clickPoint,
-                                                   offset: clickSelection.location) {
-            setSelectedRange(NSRange(location: snapped, length: 0))
+        tableClickWrappedCaret = nil
+        // Every single-click correction — the wrapped-cell caret, the snap out
+        // of a cell's padding, the resting rule — is applied *in flight* by
+        // `setSelectedRanges` while `super.mouseDown` tracks, so the final
+        // placement is installed exactly once and there is nothing to re-apply
+        // here. Re-applying it after the gesture fired a second selection change
+        // and the caret visibly jumped from one to the other. Only the
+        // double-click scroll survives: it moves nothing, just brings the cell
+        // it already selected into view.
+        if wasDoubleClick, selectedRange().length > 0,
+           let cell = tableCellEmptySpace(at: clickPoint, hit: clickHit) {
+            scrollRangeToVisible(tableCellSelectionRange(cell))
         }
         // `super.mouseDown` returns only after the whole tracking loop (drag +
         // mouse-up) finishes; `sel` in this line is the gesture's net result.
@@ -958,6 +949,14 @@ public class EditorTextView: NSTextView {
            let cell = tableCellEmptySpace(at: point, hit: tableClickHit) {
             ranges = [NSValue(range: tableCellSelectionRange(cell))]
         }
+        // A click on a wrapped cell's drawn text goes to the character it
+        // landed on there. Installed in flight for the same reason as
+        // everything else here: applied after the gesture it was a second
+        // answer, and the caret visibly jumped from the first one to it.
+        if let wrapped = tableClickWrappedCaret, !activatingRawTable, ranges.count == 1,
+           let caret = ranges[0].rangeValue as NSRange?, caret.length == 0 {
+            ranges = [NSValue(range: NSRange(location: wrapped, length: 0))]
+        }
         // A caret placed by the click in flight belongs to the cell that click
         // landed in. Corrected here, where the selection is installed, so no
         // other placement is ever painted — and so that it holds for every path
@@ -974,11 +973,11 @@ public class EditorTextView: NSTextView {
            selection.length > 0, let trimmed = tableCellSelectionTrimmed(selection) {
             ranges = [NSValue(range: trimmed)]
         }
-        // And wherever it came from, a caret never rests on a hidden pipe.
-        // See `tableCellCaretRest`.
+        // And wherever it came from, a caret never rests in a cell's padding
+        // or on a pipe — before or after it. See `tableCellCaretResting`.
         if !activatingRawTable, ranges.count == 1,
            let caret = ranges[0].rangeValue as NSRange?, caret.length == 0,
-           let moved = tableCellCaretRest(caret.location, from: selectedRange().location) {
+           let moved = tableCellCaretResting(caret.location, from: selectedRange().location) {
             ranges = [NSValue(range: NSRange(location: moved, length: 0))]
         }
         // A drag across cells is a rectangle between where it started and where
