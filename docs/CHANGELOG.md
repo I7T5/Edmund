@@ -3,6 +3,11 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Print and Export as PDF no longer keep the `.md` extension in the PDF filename
+
 ## [0.6.1] - 2026-09-12
 
 Various table editing fixes.

@@ -322,7 +322,9 @@ Notable subsystems:
   Element", with WebKit's own duplicate removed.
   **Export as PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
-  high-DPI PNG). Full spec: `docs/architecture/reader-and-export.md`.
+  high-DPI PNG). The PDF is named after the document minus its extension —
+  Print via `NSPrintOperation.jobTitle`, since the page has no `<title>`.
+  Full spec: `docs/architecture/reader-and-export.md`.
 - **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
   `NSTextFinder` — it renders the system bar rather than the Notes look, and
   its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire
