@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ### Added
 - Tables: Return on a header's separator row fills in the table — pads the separator to the header widths and adds a body row to type in
+- Tables: Delete with a block of cells selected clears the cells' contents
 
 ### Fixed
 - Print and Export as PDF no longer keep the `.md` extension in the PDF filename

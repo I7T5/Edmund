@@ -182,6 +182,44 @@ extension EditorTextView {
         landInCell(blockIndex: blockIndex, row: row, column: max(0, column - 1))
     }
 
+    // MARK: - Delete on a cell selection
+
+    /// Delete pressed while a block of cells is selected: the cells' contents
+    /// are cleared, the grid left intact — Apple Notes' behaviour, and the one
+    /// this table chrome is modelled on. Removing whole rows or columns is a
+    /// deliberate act with its own affordance, the row/column pill's menu
+    /// (Delete Row / Delete Column); a drag-and-delete never destroys structure.
+    /// A 2-column table makes this unavoidable anyway — any horizontal selection
+    /// there covers "every column", so keying row deletion off that would delete
+    /// a row the user only meant to clear. Returns false when no block of cells
+    /// is selected, so an ordinary delete runs.
+    func handleTableCellSelectionDelete() -> Bool {
+        guard let block = tableCellSelection else { return false }
+        clearTableCells(block)
+        return true
+    }
+
+    /// Blanks every selected cell's content to a single padded empty cell, as
+    /// one undoable edit. The pipes and the padding stay; only the text goes.
+    func clearTableCells(_ block: TableCellBlock) {
+        guard var lines = tableLines(blockIndex: block.blockIndex) else { return }
+        for row in block.rows where row != 1 && lines.indices.contains(row) {
+            let mut = NSMutableString(string: lines[row])
+            let spans = columnSpans(in: mut)
+            // Right to left, so an earlier span's offsets survive a later edit.
+            for column in block.columns.reversed() where column < spans.count {
+                let span = spans[column]
+                mut.replaceCharacters(in: NSRange(location: span.start,
+                                                  length: span.end - span.start),
+                                      with: "  ")
+            }
+            lines[row] = mut as String
+        }
+        replaceTable(blockIndex: block.blockIndex, lines: lines)
+        landInCell(blockIndex: block.blockIndex, row: block.rows.lowerBound,
+                   column: block.columns.lowerBound)
+    }
+
     // MARK: - Finishing a header + separator
 
     /// Return pressed on a table that is still just a header and its separator:

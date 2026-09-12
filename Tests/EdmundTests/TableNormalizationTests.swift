@@ -173,22 +173,34 @@ struct TableNormalizationTests {
         }
     }
 
-    /// Selecting across a pipe and deleting — or typing over the selection —
-    /// would merge two cells. The structural characters are protected whatever
-    /// the replacement is.
-    @Test("A delete or type-over spanning a pipe is refused")
-    func editAcrossAPipeIsRefused() {
+    /// A selection spanning a pipe is a block of two cells. Deleting it clears
+    /// their contents — the pipe between them stays, so the cells never merge.
+    /// Typing over it is refused outright: a replacement string cannot land
+    /// across the structure the way a clear can.
+    @Test("An edit spanning a pipe never merges the cells")
+    func editAcrossAPipeNeverMerges() {
         let editor = loadEditor("Intro.\n\n| aa | bb |\n| --- | --- |\n| c21 | d22 |\n")
         let ns = editor.rawSource as NSString
         let from = ns.range(of: "c21").location + 1     // inside c21
         let to = ns.range(of: "d22").location + 1       // inside d22, across the pipe
-        let before = editor.rawSource
+        let pipes = editor.rawSource.filter { $0 == "|" }.count
+
+        // Delete clears the two cells; the row's pipe count is unchanged.
         editor.setSelectedRange(NSRange(location: from, length: to - from))
         editor.deleteBackward(nil)
-        #expect(editor.rawSource == before, "a cross-pipe delete went through")
-        editor.setSelectedRange(NSRange(location: from, length: to - from))
+        #expect(editor.rawSource.filter { $0 == "|" }.count == pipes,
+                "a cross-pipe delete took a pipe")
+        #expect(editor.rawSource.contains("|  |  |"), "the cells were not cleared")
+
+        // Type-over is refused: the structure guard turns it away whole.
+        let restored = "Intro.\n\n| aa | bb |\n| --- | --- |\n| c21 | d22 |\n"
+        editor.loadContent(restored)
+        let ns2 = editor.rawSource as NSString
+        let f2 = ns2.range(of: "c21").location + 1
+        let t2 = ns2.range(of: "d22").location + 1
+        editor.setSelectedRange(NSRange(location: f2, length: t2 - f2))
         editor.insertText("x", replacementRange: editor.selectedRange())
-        #expect(editor.rawSource == before, "a cross-pipe type-over went through")
+        #expect(editor.rawSource == restored, "a cross-pipe type-over went through")
     }
 
     /// The escaped pipe in a cell is content, and deletes like any character.
