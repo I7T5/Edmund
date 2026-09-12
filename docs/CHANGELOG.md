@@ -3,6 +3,20 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-12
+
+Various table editing fixes.
+
+### Fixed
+- Tables: Content of wrapped cells don't fully display
+- Tables: Caret jumps to start of cell and jumps back if you click at the end
+
+### Changed
+- Tables: Pasting tables
+- Tables: Users cannot merge columns by deleting pipes
+- Tables: Users cannot remove the padding space before and after pipes
+
+
 ## [0.6.0] - 2026-09-10
 
 ### Added
