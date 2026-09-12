@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ### Fixed
 - Print and Export as PDF no longer keep the `.md` extension in the PDF filename
+- Tables: a single-dash delimiter row (`- | -`) now renders as a table instead of a bullet list
+- Nested emphasis (italic inside bold, or bold inside italic) now renders
+
+### Changed
+- A setext heading underline now needs three or more `---`/`===`, not one
 
 ## [0.6.1] - 2026-09-12
 
