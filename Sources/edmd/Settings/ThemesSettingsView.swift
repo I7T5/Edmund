@@ -446,7 +446,13 @@ struct ThemesSettingsView: View {
             isDimmed: false,
             isEmphasized: isEmphasized,
             dotAccessibilityLabel: appearance == .dark ? "In use for Dark" : "In use for Light",
-            onDotTap: { if dot != nil { activate(selection) } }
+            onDotTap: { if dot != nil { activate(selection) } },
+            // The size Xcode's Themes list uses, which is also the size of the
+            // "Theme" caption above these rows and of the section headers
+            // between them — one text size for this sidebar
+            // (misc/frontend-refs/settings-xcode-themes.png). At body size a
+            // row shouted next to its own header.
+            font: .subheadline
         )
         .padding(.trailing, SettingsSidebar.rowTrailing)
         .frame(height: SettingsSidebar.rowHeight)
