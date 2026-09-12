@@ -70,26 +70,37 @@ extension EditorTextView {
             let slot = NSRect(x: rightEdge - trailing - size,
                               y: origin.y + capCenterY - size / 2,
                               width: size, height: size)
-            // The row pill and this button share one strip of margin, and the
-            // strip is barely wider than the two of them — so the button steps
-            // aside by exactly the band the pill occupies. Only when the pill
-            // is really in the way: it follows the caret's row, so it reaches
-            // this line only while the header row is the active one, and the
-            // button belongs back in the line number's slot the moment the
-            // caret moves to any other row.
-            let shift = self.tableRawButtonSlotIsTaken(slot) ? Self.tableHandleBand : 0
-            result.append((slot.offsetBy(dx: -min(shift, slot.minX), dy: 0), blockIndex))
+            // The row pill and this button share one strip of margin. Whenever
+            // the pill is on this header row — i.e. the header is the active row
+            // — the button steps to sit one gap to the *pill's* left, anchored
+            // to where the pill actually is rather than shifted from the slot by
+            // a fixed band. The slot's own distance from the pill rides on the
+            // reading column's left margin, which shrinks when the line numbers
+            // are off, so a fixed shift clamped at the view edge barely moved
+            // the button then; anchoring to the pill clears it whatever the
+            // margin. The pill follows the caret, so it is on this line only
+            // while the header row is active — every other row leaves the slot.
+            if let pill = self.tableRawButtonBlockingPill(blockIndex: blockIndex) {
+                let x = max(0, pill.rect.minX - Self.tableHandleGap - size)
+                result.append((NSRect(x: x, y: slot.minY, width: size, height: size), blockIndex))
+            } else {
+                result.append((slot, blockIndex))
+            }
         }
         return result
     }
 
-    /// Whether the row pill currently stands in the button's own slot, asked of
-    /// the geometry rather than assumed from the caret being in the table
-    /// somewhere — the pill sits on one row, and every other row leaves the
-    /// slot free.
-    func tableRawButtonSlotIsTaken(_ slot: NSRect) -> Bool {
-        guard !rawTableEditing else { return false }
-        return tableHandles().contains { $0.axis == .row && handleHitBox($0).intersects(slot) }
+    /// The row pill sharing a table's header row, if any — the pill the `</>`
+    /// button has to step aside for. The pill follows the caret, so it is on the
+    /// header row only while that row is active; every other row leaves the slot
+    /// free. Keyed on the row, not on geometric overlap, so the button steps
+    /// aside whatever the reading column's margin (which shrinks with the line
+    /// numbers off, and would otherwise leave the two too close to tell apart).
+    func tableRawButtonBlockingPill(blockIndex: Int) -> TableHandle? {
+        guard !rawTableEditing else { return nil }
+        return tableHandles().first {
+            $0.axis == .row && $0.blockIndex == blockIndex && $0.row == 0
+        }
     }
 
     /// Whether a table's button is currently showing.
@@ -101,7 +112,7 @@ extension EditorTextView {
     /// that the row handle claims the same margin slot. That also made it
     /// unclickable exactly when someone editing a cell reaches for it: the hit
     /// test only considers revealed buttons. The two share the margin instead
-    /// — see `tableRawButtonSlotIsTaken`.
+    /// — see `tableRawButtonBlockingPill`.
     func tableRawButtonIsRevealed(blockIndex: Int) -> Bool {
         hoveredTableBlock == blockIndex || activeBlockIndexForRawTable() == blockIndex
     }
