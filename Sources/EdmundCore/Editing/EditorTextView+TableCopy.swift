@@ -24,6 +24,11 @@ extension EditorTextView {
     /// reads nothing like the ones this editor writes. Only the delimiters are
     /// touched; the pasted text itself is never reflowed.
     public override func paste(_ sender: Any?) {
+        // A list pasted into a list is rewritten first; see EditorTextView+ListPaste.
+        if let adjusted = listAdjustedPasteText() {
+            insertText(adjusted, replacementRange: selectedRange())
+            return
+        }
         let before = selectedRange()
         super.paste(sender)
         let after = selectedRange()
