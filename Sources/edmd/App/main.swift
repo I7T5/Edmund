@@ -36,6 +36,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         defaults.object(forKey: typewriterModeKey) as? Bool ?? true
     }
 
+    /// The menu bar is built here, not in `applicationDidFinishLaunching`:
+    /// windows restored from the last session and documents opened at launch
+    /// are created between the two, and a document's format bar builds the
+    /// same Heading and Callout menus. `KeyBindingCatalog` lists commands in
+    /// registration order and keeps the first item registered per id, so the
+    /// menu bar has to register first — or Settings ▸ Key Bindings puts Format
+    /// ahead of File and Heading ahead of Thematic Break, and retunes the
+    /// format bar's pulldown instead of the menu.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        setupMenuBar()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.applyLogging()
         AppSettings.applyAutosaving()
@@ -44,7 +56,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         AppSettings.applyCodeSyntax()
         AppSettings.applyThemes()
         AppSettings.applyExtensionStates()
-        setupMenuBar()
 
         // Right-click ▸ Services entries (see Info.plist NSServices). Held
         // strongly — `NSApplication.servicesProvider` does not retain.
