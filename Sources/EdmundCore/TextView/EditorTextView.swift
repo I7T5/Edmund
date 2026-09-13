@@ -498,6 +498,13 @@ public class EditorTextView: NSTextView {
     /// See EditorTextView+TableRawButton.
     var lastTableRawButtonBands: [NSRect] = []
 
+    /// The active table cell at the last selection change, as `block.row.column`.
+    /// Used to force a full repaint when the caret crosses into a different cell
+    /// — the one moment table chrome (pills, cell outline) moves — so nothing is
+    /// left behind even when the grid is briefly unavailable mid-restyle. Bounded
+    /// to cell transitions, so typing inside a cell never triggers it.
+    var lastActiveTableCellKey: String?
+
     /// Whether a multi-cell table selection was up at the last selection
     /// change, so the box can be repainted away when it goes.
     /// See EditorTextView+TableHandles.
@@ -894,6 +901,14 @@ public class EditorTextView: NSTextView {
         // across the click's activate-the-table restyle because it is a raw
         // source offset (storage == rawSource).
         let wrappedCellCaret = wrappedCellCharIndex(at: event)
+        // Kill AppKit's own caret *before* `super.mouseDown` gets to paint it.
+        // Every hidden character of a wrapped cell sits at the same left-edge x,
+        // so AppKit would draw its insertion point there — the visible "jump to
+        // the start of the cell" — and clearing the colour only afterwards was
+        // too late, the paint had already happened. Our own caret is drawn from
+        // `drawWrappedCellChrome`; `updateWrappedCaret` restores AppKit's colour
+        // the moment the caret is somewhere it can handle.
+        if wrappedCellCaret != nil { insertionPointColor = .clear }
         // AppKit's own answer to "which character is under the pointer", taken
         // before the gesture runs and moves the selection out from under it.
         let clickHit = clickCharIndex(at: event)
@@ -1058,7 +1073,15 @@ public class EditorTextView: NSTextView {
         // Before `super`: AppKit resolves the highlight's colour as it installs
         // the selection, so attributes set afterwards only land at the *next*
         // change.
-        setTableCellHighlight(suppressed: tableCellBlock(forRanges: ranges) != nil)
+        // Suppress AppKit's own highlight for a cell block, and also for a
+        // selection inside a single wrapped cell: there the real characters are
+        // hidden at one x, so AppKit's highlight is a stray sliver at the left
+        // edge on top of the custom one drawn over the visible text.
+        let wrappedSelection = ranges.count == 1
+            && (ranges[0].rangeValue as NSRange).length > 0
+            && !wrappedCellRects(for: ranges[0].rangeValue).isEmpty
+        setTableCellHighlight(
+            suppressed: tableCellBlock(forRanges: ranges) != nil || wrappedSelection)
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         updateTableCellSelectionChrome()
         // AppKit suppresses `selectionDidChange` while a click or drag is still
