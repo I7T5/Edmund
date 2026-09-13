@@ -284,6 +284,35 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource == "Plain")
     }
 
+    @Test func headingStepsUpFromBodyAndHoldsAtSix() {
+        let e = mk("Title", NSRange(location: 0, length: 0))
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "# Title")
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "## Title")
+        e.applyHeadingLevel(6)
+        e.formatIncrementHeading(nil)     // the end holds, no wrap to body
+        #expect(e.rawSource == "###### Title")
+    }
+
+    @Test func headingStepsDownToBodyAndHoldsThere() {
+        let e = mk("## Title", NSRange(location: 0, length: 0))
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "# Title")
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "Title")
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "Title")
+    }
+
+    /// Each line steps from its own level; blank lines stay blank.
+    @Test func headingStepKeepsAMixedSelectionsRelativeLevels() {
+        let text = "# One\n\nThree\n### Four"
+        let e = mk(text, NSRange(location: 0, length: (text as NSString).length))
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "## One\n\n# Three\n#### Four")
+    }
+
     @Test func checklistAddsThenTogglesMark() {
         let e = mk("task", NSRange(location: 0, length: 0))
         e.formatChecklist(nil)

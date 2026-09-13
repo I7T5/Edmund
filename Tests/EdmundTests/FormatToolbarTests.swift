@@ -199,6 +199,13 @@ import AppKit
         let headings = FormatMenu.headingSubmenuItem().submenu?.items ?? []
         #expect(headings.filter { $0.action != nil && $0.tag > 0 }.count == 6)
         #expect((FormatMenu.calloutSubmenuItem().submenu?.items.count ?? 0) > 15)
+        // The step commands close the menu, behind their own divider.
+        #expect(headings.suffix(3).map(\.action) == [
+            nil,
+            #selector(EditorTextView.formatIncrementHeading(_:)),
+            #selector(EditorTextView.formatDecrementHeading(_:)),
+        ])
+        #expect(headings[headings.count - 3].isSeparatorItem)
     }
 
     @Test func iconRowsCarryTheDocumentedCommands() {
