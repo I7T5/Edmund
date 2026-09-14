@@ -203,6 +203,37 @@ struct TableNormalizationTests {
         #expect(editor.rawSource == restored, "a cross-pipe type-over went through")
     }
 
+    /// Backspacing at the start of the first column would delete the newline
+    /// joining the row to the one above and merge them — the first column's
+    /// version of the cross-pipe merge every other column is already guarded
+    /// against. The row-joining newline is structural too.
+    @Test("Backspace at the first column's start cannot merge rows")
+    func firstColumnStartCannotMerge() {
+        let editor = loadEditor("Intro.\n\n| a | b |\n| --- | --- |\n| c1 | d1 |\n| c2 | d2 |\n")
+        let ns = editor.rawSource as NSString
+        let before = editor.rawSource
+        // Caret at the very start of the second body row (before its opening pipe).
+        let lineStart = ns.range(of: "| c2").location
+        editor.setSelectedRange(NSRange(location: lineStart, length: 0))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource == before, "the row merged into the one above")
+        // Forward-delete at a row's end would make the same merge from below.
+        let rowEnd = ns.range(of: "| c1 | d1 |").upperBound
+        editor.setSelectedRange(NSRange(location: rowEnd, length: 0))
+        editor.deleteForward(nil)
+        #expect(editor.rawSource == before, "a forward-delete merged the next row up")
+    }
+
+    /// A newline outside a table still deletes — the guard is table-only.
+    @Test("A newline in prose still deletes")
+    func proseNewlineStillDeletes() {
+        let editor = loadEditor("one\ntwo\n")
+        let ns = editor.rawSource as NSString
+        editor.setSelectedRange(NSRange(location: ns.range(of: "two").location, length: 0))
+        editor.deleteBackward(nil)
+        #expect(editor.rawSource.hasPrefix("onetwo"))
+    }
+
     /// The escaped pipe in a cell is content, and deletes like any character.
     @Test("An escaped pipe in a cell still deletes")
     func escapedPipeDeletes() {

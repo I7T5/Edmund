@@ -165,10 +165,29 @@ extension EditorTextView {
         let upper = min(range.upperBound, ns.length)
         var i = max(0, range.location)
         while i < upper {
-            if tableStructuralPipe(at: i) || tableCellPadding(at: i) { return true }
+            if tableStructuralPipe(at: i) || tableCellPadding(at: i)
+                || tableRowJoiningNewline(at: i) { return true }
             i += 1
         }
         return false
+    }
+
+    /// Whether the character at `offset` is the newline joining two rows of one
+    /// table. In every column but the first, a backspace is stopped by the pipe
+    /// or pad it would hit; at the first column's line start there is neither —
+    /// the character behind the caret is this newline, and deleting it merges the
+    /// row into the one above (the same merge a forward-delete at a row's end
+    /// would make from below). Both ends being in the same table block is the
+    /// test: a table block's range spans its internal newlines, so only a
+    /// row-joining newline has table on both sides.
+    func tableRowJoiningNewline(at offset: Int) -> Bool {
+        guard !rawTableEditing, offset > 0 else { return false }
+        let ns = rawSource as NSString
+        guard offset + 1 < ns.length, ns.character(at: offset) == 0x0A else { return false }
+        guard let before = blockIndexForRawOffset(offset - 1),
+              let after = blockIndexForRawOffset(offset + 1),
+              before == after, blocks[before].kind == .table else { return false }
+        return true
     }
 
     /// The index of the last cell in a row, or nil if the row has none.

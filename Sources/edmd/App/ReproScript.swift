@@ -467,6 +467,18 @@ enum ReproScript {
                     report("repro clickprobe " + editor.debugClickProbe(
                         x: n[0], y: n[1], clicks: n.count == 3 ? Int(n[2]) : 1))
                 }
+            case "drag":
+                // "drag x1,y1,x2,y2[,steps]" — a real drag-select at view points,
+                // through the same mouseDown tracking loop a mouse would drive.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count == 4 || n.count == 5 else {
+                        report("repro drag: want x1,y1,x2,y2[,steps]"); return
+                    }
+                    report("repro drag " + editor.debugDrag(
+                        fromX: n[0], fromY: n[1], toX: n[2], toY: n[3],
+                        steps: n.count == 5 ? Int(n[4]) : 8))
+                }
             case "hovertable":
                 schedule(after: delay) { editor in
                     report("repro hovertable " + editor.debugHoverTable())

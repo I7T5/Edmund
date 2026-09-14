@@ -80,7 +80,13 @@ extension EditorTextView {
             // the button then; anchoring to the pill clears it whatever the
             // margin. The pill follows the caret, so it is on this line only
             // while the header row is active — every other row leaves the slot.
-            if let pill = self.tableRawButtonBlockingPill(blockIndex: blockIndex) {
+            // Only dodge when the pill actually overlaps the button vertically.
+            // The button sits in the header's top cap-band; the row pill is
+            // centred on the row. A tall header — a wrapped header cell three or
+            // more lines high — pushes the pill's centre well below the button,
+            // so the two clear each other and the button keeps its slot.
+            if let pill = self.tableRawButtonBlockingPill(blockIndex: blockIndex),
+               pill.rect.minY < slot.maxY, pill.rect.maxY > slot.minY {
                 let x = max(0, pill.rect.minX - Self.tableHandleGap - size)
                 result.append((NSRect(x: x, y: slot.minY, width: size, height: size), blockIndex))
             } else {

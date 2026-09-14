@@ -977,6 +977,40 @@ extension EditorTextView {
         return out
     }
 
+    /// Drags from one view point to another through the real `mouseDown` path:
+    /// the intermediate drag events and the mouse-up are pre-queued (in order,
+    /// then read by `super.mouseDown`'s own tracking loop), exactly as
+    /// `debugClickProbe` does for a single click. Reports the resulting
+    /// selection, so a drag-select — inside a wrapped cell included — can be
+    /// exercised without a real mouse. CGEvent drags do not land in the harness.
+    public func debugDrag(fromX: CGFloat, fromY: CGFloat,
+                          toX: CGFloat, toY: CGFloat, steps: Int = 8) -> String {
+        let p1 = NSPoint(x: fromX, y: fromY), p2 = NSPoint(x: toX, y: toY)
+        guard let window, let down = debugMouseEvent(at: p1) else { return "no window" }
+        func event(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: convert(p, to: nil), modifierFlags: [],
+                               timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil,
+                               eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        let n = max(1, steps)
+        for i in 1...n {
+            let t = CGFloat(i) / CGFloat(n)
+            let p = NSPoint(x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t)
+            if let d = event(.leftMouseDragged, p) { window.postEvent(d, atStart: false) }
+        }
+        if let up = event(.leftMouseUp, p2) { window.postEvent(up, atStart: false) }
+        mouseDown(with: down)
+        let sel = selectedRange()
+        var out = "drag (\(Int(fromX)),\(Int(fromY)))->(\(Int(toX)),\(Int(toY)))"
+            + " ranges=\(selectedRanges.map(\.rangeValue))"
+        if let cell = tableCell(atRawOffset: sel.location) {
+            out += " startCell=r\(cell.row)c\(cell.column)"
+        }
+        out += " wrappedRects=\(wrappedCellRects(for: sel).count)"
+        return out
+    }
+
     /// Clicks every cell of every table at five points across its width and
     /// reports only what came out wrong: a caret that left the cell it was
     /// clicked in, or one that stopped short of the cell's text when the click
