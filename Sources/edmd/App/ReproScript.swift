@@ -11,6 +11,8 @@ import WebKit
 /// Accessibility permission. Commands, one per line:
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
+///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
+///   copycode <n>      press the copy button of the code block at offset n
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
@@ -109,6 +111,18 @@ enum ReproScript {
                                 mouseButton: .left)?.post(tap: .cghidEventTap)
                     }
                     post(.mouseMoved); post(.leftMouseDown); post(.leftMouseUp)
+                }
+            case "hoveroff":
+                // Hover pass at an absolute offset's glyph, without moving the
+                // real pointer: reveals the margin chrome (a table's `</>`, a
+                // code block's copy button) for a capture.
+                schedule(after: delay) { editor in
+                    editor.reproHover(atOffset: Int(arg) ?? 0)
+                }
+            case "copycode":
+                // Press the copy button of the code block at an absolute offset.
+                schedule(after: delay) { editor in
+                    editor.reproCopyCode(atOffset: Int(arg) ?? 0)
                 }
             case "selrange":
                 // "selrange N M" — select M chars at offset N.
