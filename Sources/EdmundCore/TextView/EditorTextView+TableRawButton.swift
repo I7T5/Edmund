@@ -189,8 +189,9 @@ extension EditorTextView {
         for (box, blockIndex) in boxes {
             if tableRawButtonHovered && hoveredTableBlock == blockIndex {
                 // Space, not a border: the editor's chrome idiom. A soft fill
-                // is enough to read as a target under the pointer.
-                NSColor.quaternaryLabelColor.setFill()
+                // is enough to read as a target under the pointer — kept light,
+                // half of `quaternaryLabelColor`.
+                NSColor.quaternaryLabelColor.withAlphaComponent(0.5).setFill()
                 NSBezierPath(roundedRect: box.insetBy(dx: -3, dy: -3),
                              xRadius: 4, yRadius: 4).fill()
             }

@@ -134,6 +134,14 @@ extension EditorTextView {
             return
         }
         insertionPointColor = .clear
+        // Clearing the colour is not enough on macOS 15: the live insertion-point
+        // view keeps the colour it was started with, so an accent caret carried
+        // in from a non-wrapped cell paints one frame at the collapsed
+        // hidden-character x (the cell's start) before the custom caret shows —
+        // the flash. Turn the insertion point off outright, here at the one place
+        // every caret-into-a-wrapped-cell update passes through, so the click and
+        // the async selection-change path are both covered.
+        updateInsertionPointStateAndRestartTimer(false)
         guard selection.length == 0 else {
             // A selection has no caret to blink.
             wrappedCaretTimer?.invalidate()
