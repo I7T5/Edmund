@@ -69,38 +69,60 @@ extension EditorTextView {
 
     // MARK: - Drawing
 
-    /// How long the button stays filled after a copy.
+    /// How long the button stays filled after a copy, and how long the outline
+    /// takes to cross-fade into the fill at the start of that.
     static let codeCopiedFlashDuration: TimeInterval = 1.2
+    static let codeCopiedFadeDuration: TimeInterval = 0.2
 
     /// Draws the copy buttons, from the same `drawBackground(in:)` pass as the
-    /// `</>` buttons and with their ink. A just-copied block's button is the
-    /// filled symbol in the accent colour — the "copied" acknowledgement.
+    /// `</>` buttons and with their ink. A just-copied block's button keeps
+    /// the hover background and cross-fades from the outline to the filled
+    /// glyph, same ink — the "copied" acknowledgement.
     func drawCodeCopyButtons(in rect: NSRect) {
         let boxes = revealedCodeCopyButtons().filter { $0.rect.intersects(rect) }
         guard !boxes.isEmpty else { return }
         let dim: NSColor = isDarkAppearance ? syntaxDimColor : .secondaryLabelColor
+        let config = NSImage.SymbolConfiguration(pointSize: Self.tableRawButtonSize, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [dim]))
+        guard let outline = NSImage(systemSymbolName: "document.on.document",
+                                    accessibilityDescription: "Copy code")?
+                  .withSymbolConfiguration(config),
+              let filled = NSImage(systemSymbolName: "document.on.document.fill",
+                                   accessibilityDescription: "Copied")?
+                  .withSymbolConfiguration(config)
+        else { return }
 
         for (box, blockIndex) in boxes {
             let copied = blockIndex == copiedCodeBlock
-            guard let symbol = NSImage(systemSymbolName: copied ? "document.on.document.fill"
-                                                                : "document.on.document",
-                                       accessibilityDescription: copied ? "Copied" : "Copy code"),
-                  let configured = symbol.withSymbolConfiguration(
-                    NSImage.SymbolConfiguration(pointSize: Self.tableRawButtonSize, weight: .regular)
-                        .applying(NSImage.SymbolConfiguration(
-                            paletteColors: [copied ? .controlAccentColor : dim])))
-            else { continue }
-            if codeCopyButtonHovered && !copied {
+            if codeCopyButtonHovered || copied {
                 NSColor.quaternaryLabelColor.setFill()
                 NSBezierPath(roundedRect: box.insetBy(dx: -3, dy: -3),
                              xRadius: 4, yRadius: 4).fill()
             }
-            let drawn = configured.size
-            let scale = min(box.width / drawn.width, box.height / drawn.height)
-            let fitted = NSSize(width: drawn.width * scale, height: drawn.height * scale)
-            configured.draw(in: NSRect(x: box.midX - fitted.width / 2,
-                                       y: box.midY - fitted.height / 2,
-                                       width: fitted.width, height: fitted.height))
+            let fill: CGFloat = copied ? copiedCodeProgress : 0
+            // The two glyphs share a footprint, so a plain alpha cross-fade
+            // reads as the outline filling in.
+            if fill < 1 { draw(outline, in: box, alpha: 1 - fill) }
+            if fill > 0 { draw(filled, in: box, alpha: fill) }
+        }
+    }
+
+    /// Fits a symbol in the box by its own aspect so it isn't squashed square.
+    private func draw(_ image: NSImage, in box: NSRect, alpha: CGFloat) {
+        let drawn = image.size
+        let scale = min(box.width / drawn.width, box.height / drawn.height)
+        let fitted = NSSize(width: drawn.width * scale, height: drawn.height * scale)
+        image.draw(in: NSRect(x: box.midX - fitted.width / 2, y: box.midY - fitted.height / 2,
+                              width: fitted.width, height: fitted.height),
+                   from: .zero, operation: .sourceOver, fraction: alpha)
+    }
+
+    @objc private func stepCopiedFade(_ link: CADisplayLink) {
+        copiedCodeProgress = min(1, copiedCodeProgress + CGFloat(link.duration / Self.codeCopiedFadeDuration))
+        needsDisplay = true
+        if copiedCodeProgress >= 1 {
+            link.invalidate()
+            copiedCodeLink = nil
         }
     }
 
@@ -148,13 +170,19 @@ extension EditorTextView {
         pasteboard.clearContents()
         pasteboard.setString(fenceContent(blockIndex: blockIndex), forType: .string)
 
-        // ponytail: a timed swap to the filled glyph, not a keyframed
-        // animation — drawBackground has no layer to animate. A display-link
-        // fade like the find "pop" is the upgrade if this reads too abrupt.
+        // A display link drives the fade-in (drawBackground has no layer to
+        // animate), the way the find "pop" does; a work item ends the hold.
         copiedCodeBlockReset?.cancel()
+        copiedCodeLink?.invalidate()
         copiedCodeBlock = blockIndex
+        copiedCodeProgress = 0
+        let link = displayLink(target: self, selector: #selector(stepCopiedFade))
+        link.add(to: .main, forMode: .common)
+        copiedCodeLink = link
         let reset = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            self.copiedCodeLink?.invalidate()
+            self.copiedCodeLink = nil
             self.copiedCodeBlock = nil
             self.copiedCodeBlockReset = nil
             self.needsDisplay = true

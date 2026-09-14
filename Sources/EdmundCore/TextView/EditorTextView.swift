@@ -508,9 +508,13 @@ public class EditorTextView: NSTextView {
     var codeCopyButtonHovered = false
 
     /// Block index of the code block whose content was just copied: its button
-    /// draws filled, in the accent colour, until `copiedCodeBlockReset` fires.
+    /// cross-fades to the filled glyph and holds it, with the hover
+    /// background, until `copiedCodeBlockReset` fires.
     var copiedCodeBlock: Int?
     var copiedCodeBlockReset: DispatchWorkItem?
+    /// 0…1 progress of the outline→filled cross-fade, driven by `copiedCodeLink`.
+    var copiedCodeProgress: CGFloat = 0
+    var copiedCodeLink: CADisplayLink?
 
     /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
