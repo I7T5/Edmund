@@ -36,6 +36,10 @@ struct HTMLRenderer: MarkupVisitor {
     /// same way as the schemes above, and never actually navigated to.
     static let copyScheme = "x-edmund-copy"
 
+    /// Private URL scheme for a task item's checkbox: the payload is the item's
+    /// 1-based *source* line, so the click can flip `[ ]`/`[x]` in the editor.
+    static let taskScheme = "x-edmund-task"
+
     /// The markdown this instance is rendering. Held so block-level constructs
     /// (callouts) can recover their *raw* source text by range, the way the
     /// editor's styling layer does.
@@ -52,10 +56,23 @@ struct HTMLRenderer: MarkupVisitor {
     /// See `isTight(_:)`.
     private var listIsTight: [Bool] = []
 
-    private init(source: String, options: ReadRenderOptions) {
+    /// Lines `preprocess` removed, as (last stripped line before the cut,
+    /// lines cut). swift-markdown numbers lines in the stripped text; anything
+    /// handed to the editor — the `edmund-l<N>` anchors, a checkbox's line —
+    /// has to be in the document's own numbering, see `originalLine`.
+    private let removedLineRuns: [(afterLine: Int, count: Int)]
+
+    private init(source: String, removedLineRuns: [(afterLine: Int, count: Int)],
+                 options: ReadRenderOptions) {
         self.source = source
         self.sourceLines = source.components(separatedBy: "\n")
+        self.removedLineRuns = removedLineRuns
         self.options = options
+    }
+
+    /// The source line a stripped-text line came from.
+    private func originalLine(_ line: Int) -> Int {
+        line + removedLineRuns.reduce(0) { $0 + ($1.afterLine < line ? $1.count : 0) }
     }
 
     /// Parses `markdown` and returns the rendered HTML body (no `<html>`/`<head>`
@@ -64,8 +81,8 @@ struct HTMLRenderer: MarkupVisitor {
         // Strip block constructs swift-markdown can't hide for us before it
         // parses (front matter, block-spanning `%%…%%`). `source` and `doc`
         // must see the same text so range-based raw-text recovery stays aligned.
-        let prepared = preprocess(markdown, options: options)
-        var r = HTMLRenderer(source: prepared, options: options)
+        let (prepared, removed) = preprocess(markdown, options: options)
+        var r = HTMLRenderer(source: prepared, removedLineRuns: removed, options: options)
         let doc = Document(parsing: prepared, options: [.disableSmartOpts])
         let body = r.visit(doc)
         return body + r.renderFootnotesSection()
@@ -75,25 +92,40 @@ struct HTMLRenderer: MarkupVisitor {
     /// leading YAML front matter (hidden in Read) and block-spanning `%%…%%`
     /// comments (swift-markdown splits them at blank lines, so the per-node
     /// inline `.comment` pass can't catch them). Each gated by its flag.
-    private static func preprocess(_ markdown: String, options: ReadRenderOptions) -> String {
+    ///
+    /// Also reports the lines each strip removed (see `removedLineRuns`), so
+    /// line numbers taken from the parsed text can be mapped back to the
+    /// document's own.
+    private static func preprocess(_ markdown: String, options: ReadRenderOptions)
+        -> (text: String, removed: [(afterLine: Int, count: Int)]) {
         var s = markdown
-        if options.features.contains(.frontMatter) { s = stripFrontMatter(s) }
-        if options.features.contains(.multiBlockComment) { s = stripMultiBlockComments(s) }
-        return s
+        var removed: [(afterLine: Int, count: Int)] = []
+        if options.features.contains(.frontMatter) {
+            let (text, count) = stripFrontMatter(s)
+            s = text
+            if count > 0 { removed.append((afterLine: 0, count: count)) }
+        }
+        if options.features.contains(.multiBlockComment) {
+            let (text, runs) = stripMultiBlockComments(s)
+            s = text
+            removed += runs
+        }
+        return (s, removed)
     }
 
-    /// Drops a leading `---`…`---` YAML block (and one following blank line).
-    /// No leading `---`, or no closing `---`, ⇒ unchanged.
-    private static func stripFrontMatter(_ md: String) -> String {
+    /// Drops a leading `---`…`---` YAML block (and one following blank line),
+    /// reporting how many lines went. No leading `---`, or no closing `---`,
+    /// ⇒ unchanged.
+    private static func stripFrontMatter(_ md: String) -> (text: String, removed: Int) {
         let lines = md.components(separatedBy: "\n")
         guard let first = lines.first,
-              first.trimmingCharacters(in: .whitespaces) == "---" else { return md }
+              first.trimmingCharacters(in: .whitespaces) == "---" else { return (md, 0) }
         for k in 1..<lines.count where lines[k].trimmingCharacters(in: .whitespaces) == "---" {
             var rest = Array(lines[(k + 1)...])
             if rest.first == "" { rest.removeFirst() }   // one blank separator
-            return rest.joined(separator: "\n")
+            return (rest.joined(separator: "\n"), lines.count - rest.count)
         }
-        return md   // unclosed: not front matter
+        return (md, 0)   // unclosed: not front matter
     }
 
     private static let multiBlockCommentRegex =
@@ -101,17 +133,32 @@ struct HTMLRenderer: MarkupVisitor {
 
     /// Removes `%%…%%` comments that span lines (the block-level case). A
     /// single-line `%%x%%` is left to the inline `.comment` pass.
-    private static func stripMultiBlockComments(_ md: String) -> String {
+    ///
+    /// Each removal also reports the lines it cut and the stripped-text line
+    /// the cut sits on — the comment's opening line survives, joined to
+    /// whatever followed the closing `%%`, so the lines *after* it are the
+    /// ones that shift.
+    private static func stripMultiBlockComments(_ md: String)
+        -> (text: String, removed: [(afterLine: Int, count: Int)]) {
         let ns = md as NSString
         let matches = multiBlockCommentRegex.matches(
             in: md, range: NSRange(location: 0, length: ns.length))
-        guard !matches.isEmpty else { return md }
+            .filter { ns.substring(with: $0.range).contains("\n") }
+        guard !matches.isEmpty else { return (md, []) }
+        var removed: [(afterLine: Int, count: Int)] = []
+        var cutSoFar = 0
+        for m in matches {
+            let startLine = 1 + ns.substring(to: m.range.location).filter { $0 == "\n" }.count
+            let newlines = ns.substring(with: m.range).filter { $0 == "\n" }.count
+            removed.append((afterLine: startLine - cutSoFar, count: newlines))
+            cutSoFar += newlines
+        }
         let result = NSMutableString(string: md)
         // Replace from the end so earlier match ranges stay valid.
-        for m in matches.reversed() where ns.substring(with: m.range).contains("\n") {
+        for m in matches.reversed() {
             result.replaceCharacters(in: m.range, with: "")
         }
-        return result as String
+        return (result as String, removed)
     }
 
     /// `[^id]: body` definitions render at the bottom of the page as a `<hr>` +
@@ -161,7 +208,7 @@ struct HTMLRenderer: MarkupVisitor {
             }
             var html = visit(child)
             if let range = child.range {
-                html = addingAnchorID(html, line: range.lowerBound.line)
+                html = addingAnchorID(html, line: originalLine(range.lowerBound.line))
             }
             out += html
             if options.preserveBlankLines, let range = child.range {
@@ -399,8 +446,19 @@ struct HTMLRenderer: MarkupVisitor {
             let checked = checkbox == .checked
             // Composed Lucide SVG (not an SF Symbol, which can't ship in exported
             // PDFs) mirroring the editor's look; CSS supplies the accent/dim color.
-            let mark = "<span class=\"task-check task-check--\(checked ? "checked" : "unchecked")\">"
-                + "\(LucideIcons.checkboxSVG(checked: checked))</span>"
+            // Clickable: the box is a private-scheme link the read view
+            // intercepts, like the code copy button, carrying the item's source
+            // line so the editor can flip it. The link *is* the `.task-check`
+            // element rather than a wrapper around it — the CSS reaches the box
+            // with `li.task > .task-check`, and a wrapper would break that.
+            let tag: (open: String, close: String)
+            if let line = listItem.range?.lowerBound.line {
+                tag = ("a href=\"\(Self.taskScheme):\(originalLine(line))\"", "a")
+            } else {
+                tag = ("span", "span")
+            }
+            let mark = "<\(tag.open) class=\"task-check task-check--\(checked ? "checked" : "unchecked")\">"
+                + "\(LucideIcons.checkboxSVG(checked: checked))</\(tag.close)>"
             let checkedClass = checked ? " task--checked" : ""
             return "<li class=\"task\(checkedClass)\">\(mark)\(renderListItemContents(listItem))</li>"
         }

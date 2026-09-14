@@ -284,6 +284,23 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource == "Plain")
     }
 
+    /// A Read-mode checkbox click arrives as a source line, not a selection.
+    @Test func toggleTaskByLineFlipsTheBoxAndKeepsTheCaret() {
+        let e = mk("# Title\n\n- [ ] one\n  * [x] two\n3. [ ] three\nplain", NSRange(location: 0, length: 0))
+        e.viewMode = .reading
+        e.toggleTask(atLine: 3)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [x] two\n3. [ ] three\nplain")
+        e.toggleTask(atLine: 4)      // indented, `*` bullet, checked → unchecked
+        e.toggleTask(atLine: 5)      // ordered task
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [x] three\nplain")
+        e.toggleTask(atLine: 6)      // not a task: untouched
+        e.toggleTask(atLine: 1)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [x] three\nplain")
+        #expect(e.selectedRange() == NSRange(location: 0, length: 0))
+        e.undo(nil)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [ ] three\nplain")
+    }
+
     @Test func checklistAddsThenTogglesMark() {
         let e = mk("task", NSRange(location: 0, length: 0))
         e.formatChecklist(nil)

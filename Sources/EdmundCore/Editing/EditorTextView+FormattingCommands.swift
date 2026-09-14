@@ -256,6 +256,26 @@ extension EditorTextView {
         }
     }
 
+    // MARK: - Task toggle by line
+
+    /// The `[ ]` / `[x]` mark of a task item: indent, any list marker, the box.
+    private static let taskMarkRegex = try! NSRegularExpression(
+        pattern: #"^\s*(?:[-*+]|\d+[.)])\s+\[([ xX])\]"#)
+
+    /// Flips the checkbox of the task item on 1-based source `line` — how a
+    /// click on a Read-mode checkbox edits the document. A line that is not a
+    /// task item is left alone; the caret stays where it was. One undo step.
+    public func toggleTask(atLine line: Int) {
+        guard let block = blockIndexForRawOffset(offset(forLine: line)), block < blocks.count else { return }
+        let content = blocks[block].content
+        guard let match = Self.taskMarkRegex.firstMatch(
+            in: content, range: NSRange(location: 0, length: (content as NSString).length))
+        else { return }
+        let mark = NSRange(location: blocks[block].range.location + match.range(at: 1).location, length: 1)
+        let checked = (content as NSString).substring(with: match.range(at: 1)) != " "
+        applyFormattingEdit(rawRange: mark, replacement: checked ? " " : "x", select: selectedRange())
+    }
+
     // MARK: - Lists / quote
 
     /// Prepend `prefix` to every line, or strip it when every non-empty line is

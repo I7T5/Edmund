@@ -612,6 +612,13 @@ class Document: NSDocument, HeadingNavigable {
                 // NSDocumentController) instead of navigating the webview.
                 v.onOpenWikiLink = { [weak self] in self?.editor.followWikiLink($0) }
                 v.onOpenInternalLink = { [weak self] in self?.editor.followLinkDestination($0) }
+                // A checkbox click edits the (hidden) editor. Formatting edits
+                // post no text-change notification, so the re-render that
+                // `editorDidChange` would trigger is asked for here.
+                v.onToggleTask = { [weak self] in
+                    self?.editor.toggleTask(atLine: $0)
+                    self?.refreshReadView()
+                }
                 // The ONLY place the Edit→Read view swap happens: the editor
                 // stays on screen (and interactive) until the rendered
                 // document is actually ready, so there's never a blank gap.

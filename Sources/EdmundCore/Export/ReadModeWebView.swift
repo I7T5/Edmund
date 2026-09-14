@@ -46,6 +46,11 @@ public final class ReadModeWebView: WKWebView {
     /// destination (e.g. `[text](other.md)`), routed the same way.
     public var onOpenInternalLink: ((String) -> Void)?
 
+    /// Called when the user clicks a task item's checkbox, with the item's
+    /// 1-based source line. The owner flips `[ ]`/`[x]` in the editor and
+    /// re-renders; the view itself never edits.
+    public var onToggleTask: ((Int) -> Void)?
+
     /// Called after a `loadHTMLString` finishes (including any pending scroll
     /// restore, applied first — see `pendingScrollRestore`).
     public var onLoadFinished: (() -> Void)?
@@ -375,6 +380,9 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
         case .copyCode(let base64):
             owner?.handleCopyCode(base64)
             return .cancel
+        case .toggleTask(let line):
+            owner?.onToggleTask?(line)
+            return .cancel
         case .openExternal(let url):
             NSWorkspace.shared.open(url)
             return .cancel
@@ -405,6 +413,7 @@ enum ReadModeNavigationPolicy {
         case openWiki(String)
         case openInternal(String)
         case copyCode(String)
+        case toggleTask(Int)
         case openExternal(URL)
         case cancel
     }
@@ -429,6 +438,14 @@ enum ReadModeNavigationPolicy {
         }
         if scheme == HTMLRenderer.copyScheme {
             return .copyCode(decodeTarget(url, scheme: HTMLRenderer.copyScheme))
+        }
+        if scheme == HTMLRenderer.taskScheme {
+            // The payload is a line number the renderer wrote; anything else
+            // is not ours to act on.
+            guard let line = Int(decodeTarget(url, scheme: HTMLRenderer.taskScheme)) else {
+                return .cancel
+            }
+            return .toggleTask(line)
         }
         // Decide by URL scheme, not navigation type: WebKit does not reliably
         // report `.linkActivated` for every click. Real web schemes are handed to

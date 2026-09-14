@@ -305,6 +305,9 @@ enum HTMLTheme {
       margin-left: -1.45em;
     }
     li.task > .task-check svg { display: block; width: 1.2em; height: 1.2em; }
+    /* The box is a link (x-edmund-task:) so a click can toggle it; it must
+       not look like one. */
+    a.task-check { text-decoration: none; cursor: pointer; }
     .task-check--unchecked { color: var(--marker); }
     .task-check--checked { color: var(--check-fill); }
     li.task--checked > p { opacity: 0.45; text-decoration: line-through; }
