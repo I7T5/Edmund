@@ -29,7 +29,7 @@ extension EditorTextView {
         let origin = textContainerOrigin
         let padding = textContainer?.lineFragmentPadding ?? 0
         let rightEdge = origin.x + padding - Self.lineNumberPadding
-        let size = Self.tableRawButtonSize
+        let size = codeCopyButtonSize
         let trailing = lineNumberStyle.digitWidth
         var result: [(rect: NSRect, blockIndex: Int)] = []
         enumerateVisibleLineNumbers { line, capCenterY in
@@ -67,22 +67,36 @@ extension EditorTextView {
         return trimmed.count >= 3 && trimmed.allSatisfy { $0 == first }
     }
 
+    /// The `</>` button's square, scaled with the zoom (⌘= / ⌘- / ⌘0) so the
+    /// glyph keeps its size against the text it sits beside.
+    var codeCopyButtonSize: CGFloat { Self.tableRawButtonSize * zoomFactor }
+
     // MARK: - Drawing
 
-    /// How long the button stays filled after a copy, and how long the outline
-    /// takes to cross-fade into the fill at the start of that.
+    /// The "copied" acknowledgement, as one timeline driven by a display link
+    /// (`copiedCodeProgress` 0…1 over `codeCopiedFlashDuration`): the
+    /// background pulses — up over the first `codeCopiedPulseRise` of it,
+    /// then eased out to nothing — while the outline cross-fades into the
+    /// filled glyph over `codeCopiedFillDuration` and holds until the end.
     static let codeCopiedFlashDuration: TimeInterval = 1.2
-    static let codeCopiedFadeDuration: TimeInterval = 0.2
+    static let codeCopiedFillDuration: TimeInterval = 0.2
+    static let codeCopiedPulseRise: CGFloat = 0.15
+
+    /// Alpha of the background pulse at `progress`: a quick rise, then a
+    /// quadratic ease-out — quiet, the way a Copy button acknowledges.
+    static func copiedPulseAlpha(at progress: CGFloat) -> CGFloat {
+        if progress < codeCopiedPulseRise { return progress / codeCopiedPulseRise }
+        let t = (progress - codeCopiedPulseRise) / (1 - codeCopiedPulseRise)
+        return (1 - t) * (1 - t)
+    }
 
     /// Draws the copy buttons, from the same `drawBackground(in:)` pass as the
-    /// `</>` buttons and with their ink. A just-copied block's button keeps
-    /// the hover background and cross-fades from the outline to the filled
-    /// glyph, same ink — the "copied" acknowledgement.
+    /// `</>` buttons and with their ink.
     func drawCodeCopyButtons(in rect: NSRect) {
         let boxes = revealedCodeCopyButtons().filter { $0.rect.intersects(rect) }
         guard !boxes.isEmpty else { return }
         let dim: NSColor = isDarkAppearance ? syntaxDimColor : .secondaryLabelColor
-        let config = NSImage.SymbolConfiguration(pointSize: Self.tableRawButtonSize, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: codeCopyButtonSize, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [dim]))
         guard let outline = NSImage(systemSymbolName: "document.on.document",
                                     accessibilityDescription: "Copy code")?
@@ -94,12 +108,20 @@ extension EditorTextView {
 
         for (box, blockIndex) in boxes {
             let copied = blockIndex == copiedCodeBlock
-            if codeCopyButtonHovered || copied {
+            let pad = box.insetBy(dx: -3, dy: -3)
+            if codeCopyButtonHovered {
                 NSColor.quaternaryLabelColor.setFill()
-                NSBezierPath(roundedRect: box.insetBy(dx: -3, dy: -3),
-                             xRadius: 4, yRadius: 4).fill()
+                NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
             }
-            let fill: CGFloat = copied ? copiedCodeProgress : 0
+            if copied {
+                // A tier stronger than the hover fill, so it reads over it.
+                NSColor.tertiaryLabelColor
+                    .withAlphaComponent(0.5 * Self.copiedPulseAlpha(at: copiedCodeProgress)).setFill()
+                NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
+            }
+            let fill: CGFloat = copied
+                ? min(1, copiedCodeProgress * CGFloat(Self.codeCopiedFlashDuration / Self.codeCopiedFillDuration))
+                : 0
             // The two glyphs share a footprint, so a plain alpha cross-fade
             // reads as the outline filling in.
             if fill < 1 { draw(outline, in: box, alpha: 1 - fill) }
@@ -117,13 +139,19 @@ extension EditorTextView {
                    from: .zero, operation: .sourceOver, fraction: alpha)
     }
 
-    @objc private func stepCopiedFade(_ link: CADisplayLink) {
-        copiedCodeProgress = min(1, copiedCodeProgress + CGFloat(link.duration / Self.codeCopiedFadeDuration))
+    @objc private func stepCopiedFlash(_ link: CADisplayLink) {
+        copiedCodeProgress = min(1, copiedCodeProgress + CGFloat(link.duration / Self.codeCopiedFlashDuration))
         needsDisplay = true
-        if copiedCodeProgress >= 1 {
-            link.invalidate()
-            copiedCodeLink = nil
-        }
+        if copiedCodeProgress >= 1 { endCopiedFlash() }
+    }
+
+    /// Back to the resting button. The link's own end, and the tests'.
+    func endCopiedFlash() {
+        copiedCodeLink?.invalidate()
+        copiedCodeLink = nil
+        copiedCodeBlock = nil
+        copiedCodeProgress = 0
+        needsDisplay = true
     }
 
     // MARK: - Pointer tracking
@@ -164,31 +192,20 @@ extension EditorTextView {
 
     // MARK: - Activation
 
-    /// Puts the block's content on the general pasteboard and flashes the
-    /// button filled for `codeCopiedFlashDuration`.
+    /// Puts the block's content on the general pasteboard and runs the
+    /// "copied" flash.
     func copyCodeBlock(blockIndex: Int, to pasteboard: NSPasteboard = .general) {
         pasteboard.clearContents()
         pasteboard.setString(fenceContent(blockIndex: blockIndex), forType: .string)
 
-        // A display link drives the fade-in (drawBackground has no layer to
-        // animate), the way the find "pop" does; a work item ends the hold.
-        copiedCodeBlockReset?.cancel()
+        // A display link drives the whole flash (drawBackground has no layer
+        // to animate), the way the find "pop" does.
         copiedCodeLink?.invalidate()
         copiedCodeBlock = blockIndex
         copiedCodeProgress = 0
-        let link = displayLink(target: self, selector: #selector(stepCopiedFade))
+        let link = displayLink(target: self, selector: #selector(stepCopiedFlash))
         link.add(to: .main, forMode: .common)
         copiedCodeLink = link
-        let reset = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.copiedCodeLink?.invalidate()
-            self.copiedCodeLink = nil
-            self.copiedCodeBlock = nil
-            self.copiedCodeBlockReset = nil
-            self.needsDisplay = true
-        }
-        copiedCodeBlockReset = reset
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.codeCopiedFlashDuration, execute: reset)
         needsDisplay = true
     }
 }

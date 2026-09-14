@@ -83,9 +83,33 @@ struct CodeCopyButtonTests {
         #expect(pasteboard.string(forType: .string) == "let x = 1\nlet y = 2")
         #expect(editor.copiedCodeBlock == 0)
         #expect(editor.revealedCodeCopyButtons().count == 1)   // no hover needed
-        editor.copiedCodeBlockReset?.perform()
+        editor.endCopiedFlash()
         #expect(editor.copiedCodeBlock == nil)
         #expect(editor.revealedCodeCopyButtons().isEmpty)
+    }
+
+    /// The pulse rises fast and eases out to nothing by the end of the flash.
+    @Test("The copied pulse rises, then fades to nothing")
+    func pulseShape() {
+        let rise = EditorTextView.codeCopiedPulseRise
+        #expect(EditorTextView.copiedPulseAlpha(at: 0) == 0)
+        #expect(EditorTextView.copiedPulseAlpha(at: rise) == 1)
+        #expect(EditorTextView.copiedPulseAlpha(at: 0.5) < 0.5)
+        #expect(EditorTextView.copiedPulseAlpha(at: 1) == 0)
+    }
+
+    @Test("The button scales with the zoom")
+    func scalesWithZoom() {
+        let editor = loadEditor(fence)
+        let base = editor.visibleCodeCopyButtons().first?.rect.width
+        editor.setZoom(1.5)
+        ensureFullLayout(editor)
+        layOutViewport(editor)
+        #expect(editor.visibleCodeCopyButtons().first?.rect.width == base.map { $0 * 1.5 })
+        editor.setZoom(1)
+        ensureFullLayout(editor)
+        layOutViewport(editor)
+        #expect(editor.visibleCodeCopyButtons().first?.rect.width == base)
     }
 
     @Test("The copied text is the lines between the fences")

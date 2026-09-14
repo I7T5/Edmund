@@ -507,12 +507,10 @@ public class EditorTextView: NSTextView {
     /// Whether the pointer is on the revealed copy button itself.
     var codeCopyButtonHovered = false
 
-    /// Block index of the code block whose content was just copied: its button
-    /// cross-fades to the filled glyph and holds it, with the hover
-    /// background, until `copiedCodeBlockReset` fires.
+    /// Block index of the code block whose content was just copied — its
+    /// button is running the "copied" flash — and how far along it is (0…1),
+    /// stepped by `copiedCodeLink`. See EditorTextView+CodeCopyButton.
     var copiedCodeBlock: Int?
-    var copiedCodeBlockReset: DispatchWorkItem?
-    /// 0…1 progress of the outline→filled cross-fade, driven by `copiedCodeLink`.
     var copiedCodeProgress: CGFloat = 0
     var copiedCodeLink: CADisplayLink?
 
