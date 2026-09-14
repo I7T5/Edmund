@@ -25,7 +25,7 @@ struct EditorTextViewAutoPairTests {
     @Test("Every configured pair closes")
     @MainActor func allPairs() {
         for (open, expected) in [("(", "()"), ("[", "[]"), ("{", "{}"),
-                                 ("\"", "\"\""), ("'", "''"), ("`", "``")] {
+                                 ("\"", "\"\""), ("'", "''")] {
             let editor = makeEditor()
             editor.loadContent("")
             type(open, at: 0, in: editor)
@@ -107,9 +107,20 @@ struct EditorTextViewAutoPairTests {
         #expect(editor.selectedRange() == NSRange(location: 0, length: 0))
     }
 
+    /// A backtick is a fence opener as much as a code delimiter; pairing it
+    /// left a typed ``` as `` ```` `` with the caret in the middle.
+    @Test("Backticks never auto-pair, so a fence can be typed")
+    @MainActor func backticksAreNotAPair() {
+        let editor = makeEditor()
+        editor.loadContent("")
+        for i in 0..<3 { type("`", at: i, in: editor) }
+        #expect(editor.rawSource == "```")
+        #expect(editor.selectedRange() == NSRange(location: 3, length: 0))
+    }
+
     @Test("Every pair deletes as a pair")
     @MainActor func deleteAllPairs() {
-        for text in ["()", "[]", "{}", "\"\"", "''", "``"] {
+        for text in ["()", "[]", "{}", "\"\"", "''"] {
             let editor = makeEditor()
             editor.loadContent("a" + text + "b")
             editor.setSelectedRange(NSRange(location: 2, length: 0))
