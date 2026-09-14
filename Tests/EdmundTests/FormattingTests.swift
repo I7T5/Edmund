@@ -288,13 +288,13 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
     @Test func toggleTaskByLineFlipsTheBoxAndKeepsTheCaret() {
         let e = mk("# Title\n\n- [ ] one\n  * [x] two\n3. [ ] three\nplain", NSRange(location: 0, length: 0))
         e.viewMode = .reading
-        e.toggleTask(atLine: 3)
+        #expect(e.toggleTask(atLine: 3) == true)
         #expect(e.rawSource == "# Title\n\n- [x] one\n  * [x] two\n3. [ ] three\nplain")
-        e.toggleTask(atLine: 4)      // indented, `*` bullet, checked → unchecked
-        e.toggleTask(atLine: 5)      // ordered task
+        #expect(e.toggleTask(atLine: 4) == false)   // indented, `*` bullet, checked → unchecked
+        #expect(e.toggleTask(atLine: 5) == true)    // ordered task
         #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [x] three\nplain")
-        e.toggleTask(atLine: 6)      // not a task: untouched
-        e.toggleTask(atLine: 1)
+        #expect(e.toggleTask(atLine: 6) == nil)     // not a task: untouched
+        #expect(e.toggleTask(atLine: 1) == nil)
         #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [x] three\nplain")
         #expect(e.selectedRange() == NSRange(location: 0, length: 0))
         e.undo(nil)

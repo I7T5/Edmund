@@ -264,16 +264,19 @@ extension EditorTextView {
 
     /// Flips the checkbox of the task item on 1-based source `line` — how a
     /// click on a Read-mode checkbox edits the document. A line that is not a
-    /// task item is left alone; the caret stays where it was. One undo step.
-    public func toggleTask(atLine line: Int) {
-        guard let block = blockIndexForRawOffset(offset(forLine: line)), block < blocks.count else { return }
+    /// task item is left alone (nil); the caret stays where it was. One undo
+    /// step. Returns the box's new state.
+    @discardableResult
+    public func toggleTask(atLine line: Int) -> Bool? {
+        guard let block = blockIndexForRawOffset(offset(forLine: line)), block < blocks.count else { return nil }
         let content = blocks[block].content
         guard let match = Self.taskMarkRegex.firstMatch(
             in: content, range: NSRange(location: 0, length: (content as NSString).length))
-        else { return }
+        else { return nil }
         let mark = NSRange(location: blocks[block].range.location + match.range(at: 1).location, length: 1)
-        let checked = (content as NSString).substring(with: match.range(at: 1)) != " "
-        applyFormattingEdit(rawRange: mark, replacement: checked ? " " : "x", select: selectedRange())
+        let wasChecked = (content as NSString).substring(with: match.range(at: 1)) != " "
+        applyFormattingEdit(rawRange: mark, replacement: wasChecked ? " " : "x", select: selectedRange())
+        return !wasChecked
     }
 
     // MARK: - Lists / quote

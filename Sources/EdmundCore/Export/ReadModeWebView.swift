@@ -95,6 +95,30 @@ public final class ReadModeWebView: WKWebView {
         evaluateJavaScript(js, completionHandler: nil)
     }
 
+    /// Flips the checkbox on source line `line` in place — the classes, the
+    /// SVG, and the item's strike-through — with the host-side JS channel
+    /// (see `flashCopyButtonCopied`). No reload: `loadHTMLString` would blank
+    /// the page for a frame and land the scroll position only as near as the
+    /// anchor-line-plus-fraction restore can put it. `markdown` is the
+    /// document as it now reads, kept so a later appearance-driven re-render
+    /// starts from the toggled state rather than reverting it.
+    public func setTaskChecked(line: Int, checked: Bool, markdown: String) {
+        pending?.markdown = markdown
+        let svg = Data(LucideIcons.checkboxSVG(checked: checked).utf8).base64EncodedString()
+        let js = """
+        (function() {
+          var el = document.querySelector('a[href="\(HTMLRenderer.taskScheme):\(line)"]');
+          if (!el) return;
+          el.classList.toggle('task-check--checked', \(checked));
+          el.classList.toggle('task-check--unchecked', \(!checked));
+          el.innerHTML = atob('\(svg)');
+          var li = el.closest('li');
+          if (li) li.classList.toggle('task--checked', \(checked));
+        })()
+        """
+        evaluateJavaScript(js, completionHandler: nil)
+    }
+
     /// The most recent render inputs, so the view can re-render itself when the
     /// system appearance flips (light ↔ dark) without the document re-driving it.
     private var pending: (markdown: String, theme: EditorTheme,
