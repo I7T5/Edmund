@@ -34,8 +34,8 @@ extension EditorTextView {
     /// the same key again gives `**x**` / `==x==` / `~~x~~` / `%%x%%`.
     /// A plain wrap on purpose, not `toggleInlineWrap`: that would *unwrap*
     /// on the second press.
-    // ponytail: the five keys asked for; `` ` `` and `_` can join the set.
-    private static let wrapDelimiters: Set<Character> = ["$", "*", "%", "=", "~"]
+    // ponytail: the keys asked for; `_` can join the set.
+    private static let wrapDelimiters: Set<Character> = ["$", "*", "%", "=", "~", "`"]
 
     public override func insertText(_ string: Any, replacementRange: NSRange) {
         // A caret this insertion places is where the user put it; the table

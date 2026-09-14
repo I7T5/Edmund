@@ -189,7 +189,7 @@ struct EditorTextViewWrapSelectionTests {
 
     @Test("Each delimiter wraps the selection and keeps the inner text selected")
     @MainActor func wrapsAndReselects() {
-        for delimiter in ["$", "*", "%", "=", "~"] {
+        for delimiter in ["$", "*", "%", "=", "~", "`"] {
             let editor = makeEditor()
             editor.loadContent("say word now")
             typeOverSelection(delimiter, NSRange(location: 4, length: 4), in: editor)
