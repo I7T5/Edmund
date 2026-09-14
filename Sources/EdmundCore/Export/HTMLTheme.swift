@@ -310,7 +310,8 @@ enum HTMLTheme {
     a.task-check { text-decoration: none; cursor: pointer; }
     .task-check--unchecked { color: var(--marker); }
     .task-check--checked { color: var(--check-fill); }
-    li.task--checked > p { opacity: 0.45; text-decoration: line-through; }
+    /* A tight list has no <p>; the renderer wraps the text in .task-text instead. */
+    li.task--checked > p, li.task--checked > .task-text { opacity: 0.45; text-decoration: line-through; }
     li.task > p { display: inline; margin: 0; }
     li.task > ul, li.task > ol { clear: left; }
     /* Contain the checkbox float within its own item. Without this, a task item

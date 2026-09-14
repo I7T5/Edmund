@@ -460,7 +460,7 @@ struct HTMLRenderer: MarkupVisitor {
             let mark = "<\(tag.open) class=\"task-check task-check--\(checked ? "checked" : "unchecked")\">"
                 + "\(LucideIcons.checkboxSVG(checked: checked))</\(tag.close)>"
             let checkedClass = checked ? " task--checked" : ""
-            return "<li class=\"task\(checkedClass)\">\(mark)\(renderListItemContents(listItem))</li>"
+            return "<li class=\"task\(checkedClass)\">\(mark)\(renderListItemContents(listItem, tightTextClass: "task-text"))</li>"
         }
         return "<li>\(renderListItemContents(listItem))</li>"
     }
@@ -468,13 +468,20 @@ struct HTMLRenderer: MarkupVisitor {
     /// Item contents; in a tight list, each direct Paragraph child loses its
     /// <p></p> wrapper (visit-then-strip, so visitParagraph's math/footnote
     /// special cases still run).
-    private mutating func renderListItemContents(_ item: ListItem) -> String {
+    ///
+    /// `tightTextClass` wraps each unwrapped paragraph in a span of that class
+    /// — a task item's text has to stay addressable after its `<p>` is gone,
+    /// or the checked-item strike-through has nothing to land on. (It can't go
+    /// on the `<li>`: `text-decoration` propagates into a nested list.)
+    private mutating func renderListItemContents(_ item: ListItem,
+                                                 tightTextClass: String? = nil) -> String {
         guard listIsTight.last == true else { return renderChildren(of: item) }
         var out = ""
         for child in item.children {
             var html = visit(child)
             if child is Paragraph, html.hasPrefix("<p>"), html.hasSuffix("</p>") {
                 html = String(html.dropFirst(3).dropLast(4))
+                if let tightTextClass { html = "<span class=\"\(tightTextClass)\">\(html)</span>" }
             }
             out += html
         }
