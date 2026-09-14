@@ -196,18 +196,27 @@ extension EditorTextView {
         guard !rawTableEditing, event.clickCount == 1,
               let window, let anchor = wrappedCellCharIndex(at: event),
               let anchorCell = tableCell(atRawOffset: anchor) else { return false }
-        // Kill AppKit's caret *before* placing the selection. On the first click
-        // into a table the view is only now becoming first responder, so its
-        // caret isn't live yet and nothing paints; but on a later click — after
-        // the caret left the table and `updateWrappedCaret` restored the accent
-        // colour — the insertion point is live, and `setSelectedRange` would
-        // repaint it on the hidden characters (the flash) before the custom caret
-        // takes over. Clearing the colour up front means it never shows.
+        // Kill AppKit's caret *before* placing the selection. When the previous
+        // click left the caret in a non-wrapped cell, `updateWrappedCaret`
+        // restored the accent colour and AppKit's insertion point is live and
+        // blinking — so `setSelectedRange` here repaints it once, at the wrapped
+        // cell's hidden-character x (which diverges from the drawn text on a
+        // header row), before the custom caret takes over: the flash. Clearing
+        // the colour is not enough on its own — the live insertion-point view
+        // paints a frame with the colour it already had — so also turn the
+        // insertion point off outright. (The first click into a table doesn't
+        // flash because the view is only becoming first responder then, with no
+        // live caret yet; a repeat click does, which is the case this covers.)
         insertionPointColor = .clear
+        updateInsertionPointStateAndRestartTimer(false)
         if window.firstResponder !== self { window.makeFirstResponder(self) }
         suppressTypewriterCentering = true
         defer { suppressTypewriterCentering = false }
         setSelectedRange(NSRange(location: anchor, length: 0))
+        // `setSelectedRange` restarts AppKit's insertion point, which would paint
+        // it once at the hidden-character x; turn it back off now that the
+        // selection has moved, before the custom caret is drawn.
+        updateInsertionPointStateAndRestartTimer(false)
         updateWrappedCaret()
         while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if e.type == .leftMouseUp { break }
