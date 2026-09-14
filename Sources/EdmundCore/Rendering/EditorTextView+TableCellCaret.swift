@@ -196,6 +196,14 @@ extension EditorTextView {
         guard !rawTableEditing, event.clickCount == 1,
               let window, let anchor = wrappedCellCharIndex(at: event),
               let anchorCell = tableCell(atRawOffset: anchor) else { return false }
+        // Kill AppKit's caret *before* placing the selection. On the first click
+        // into a table the view is only now becoming first responder, so its
+        // caret isn't live yet and nothing paints; but on a later click — after
+        // the caret left the table and `updateWrappedCaret` restored the accent
+        // colour — the insertion point is live, and `setSelectedRange` would
+        // repaint it on the hidden characters (the flash) before the custom caret
+        // takes over. Clearing the colour up front means it never shows.
+        insertionPointColor = .clear
         if window.firstResponder !== self { window.makeFirstResponder(self) }
         suppressTypewriterCentering = true
         defer { suppressTypewriterCentering = false }
