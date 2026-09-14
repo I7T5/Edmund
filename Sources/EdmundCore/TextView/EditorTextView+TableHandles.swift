@@ -1139,6 +1139,122 @@ extension EditorTextView {
         return out.joined(separator: "\n")
     }
 
+    /// A click that is *held*: the mouse-up is posted `holdMs` later on a
+    /// common-modes timer, so the tracking loop inside `mouseDown` spins for
+    /// that long and display frames render in between — as they do for a
+    /// human click. `debugClickProbe` queues the up first, so its gesture is
+    /// over before a single frame paints, which is why it never showed the
+    /// caret flash. Reports the insertion-indicator views before and after.
+    public func debugClickHold(x: CGFloat, y: CGFloat, holdMs: Double) -> String {
+        let point = NSPoint(x: x, y: y)
+        guard let window, let down = debugMouseEvent(at: point) else { return "no window" }
+        var out = "t=\(Self.debugMs()) point=(\(Int(x)),\(Int(y))) hold=\(Int(holdMs))ms"
+        out += " before[\(debugInsertionIndicators())]"
+        let up = NSEvent.mouseEvent(with: .leftMouseUp, location: convert(point, to: nil),
+                                    modifierFlags: [],
+                                    timestamp: ProcessInfo.processInfo.systemUptime,
+                                    windowNumber: window.windowNumber, context: nil,
+                                    eventNumber: 0, clickCount: 1, pressure: 0)
+        let timer = Timer(timeInterval: holdMs / 1000, repeats: false) { _ in
+            // Main run loop, common modes: fires inside the tracking loop.
+            MainActor.assumeIsolated {
+                if let up { window.postEvent(up, atStart: false) }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        // Direct: `window.sendEvent` drops a synthesized event here.
+        mouseDown(with: down)
+        let sel = selectedRange()
+        out += " -> t=\(Self.debugMs()) sel=\(sel)"
+        if let r = wrappedCellCaretRect() {
+            let w = convert(r, to: nil)
+            out += " wrappedCaret view=\(r) win=\(w)"
+        }
+        out += " after[\(debugInsertionIndicators())]"
+        return out
+    }
+
+    /// `-debug.caretTrace YES` turns the caret trace on.
+    private var debugCaretTrace: Bool { UserDefaults.standard.bool(forKey: "debug.caretTrace") }
+
+    /// Milliseconds of process uptime — the one clock the caret trace, the
+    /// click report and the burst capture's file names all share.
+    nonisolated public static func debugMs() -> Int {
+        Int(ProcessInfo.processInfo.systemUptime * 1000)
+    }
+
+    /// Caret trace: every change of AppKit's insertion point, with the time
+    /// and the caller, so a burst capture's frames can be lined up against
+    /// exactly which code turned the caret on, off, accent or clear.
+    public override var insertionPointColor: NSColor? {
+        didSet {
+            guard debugCaretTrace else { return }
+            let c = insertionPointColor == .clear ? "clear" : "accent"
+            Log.info("carettrace t=\(Self.debugMs()) color=\(c) sel=\(selectedRange()) "
+                     + Self.debugCaller(), category: .app)
+        }
+    }
+
+    public override func updateInsertionPointStateAndRestartTimer(_ restartFlag: Bool) {
+        if debugCaretTrace {
+            Log.info("carettrace t=\(Self.debugMs()) restartTimer(\(restartFlag)) "
+                     + "sel=\(selectedRange()) " + Self.debugCaller(), category: .app)
+        }
+        super.updateInsertionPointStateAndRestartTimer(restartFlag)
+    }
+
+    private static func debugCaller() -> String {
+        Thread.callStackSymbols.dropFirst(2).prefix(4).map {
+            // "3   EdmundCore   0x… $s10EdmundCore…F + 123" → the symbol only.
+            let parts = $0.split(separator: " ", omittingEmptySubsequences: true)
+            return parts.count >= 4 ? String(parts[3].prefix(70)) : $0
+        }.joined(separator: " < ")
+    }
+
+    /// The view and layer tree under the window's content view, with the
+    /// animations running on each layer — to find where AppKit's caret lives
+    /// and what fades it.
+    public func debugViewTree() -> String {
+        var out: [String] = []
+        func layerLine(_ l: CALayer, _ indent: String) {
+            let anims = l.animationKeys() ?? []
+            out.append("\(indent)L \(type(of: l)) frame=\(l.frame) hidden=\(l.isHidden)"
+                       + " opacity=\(l.opacity) bg=\(l.backgroundColor.map { "\($0)" } ?? "nil")"
+                       + " anims=\(anims)")
+            for s in l.sublayers ?? [] { layerLine(s, indent + "  ") }
+        }
+        func walk(_ v: NSView, _ depth: Int) {
+            let indent = String(repeating: "  ", count: depth)
+            let name = "\(type(of: v))"
+            let interesting = name.contains("Text") || name.contains("Selection")
+                || name.contains("Insertion") || name.contains("Caret") || name.contains("Cursor")
+            out.append("\(indent)V \(name) frame=\(v.frame) hidden=\(v.isHidden) alpha=\(v.alphaValue)"
+                       + " layer=\(v.layer.map { "\(type(of: $0))" } ?? "nil")")
+            if interesting, name != "EditorTextView", let l = v.layer { layerLine(l, indent + "  ") }
+            for s in v.subviews { walk(s, depth + 1) }
+        }
+        if let root = window?.contentView { walk(root, 0) }
+        return out.joined(separator: "\n")
+    }
+
+    /// Every `NSTextInsertionIndicator` under this view (AppKit's caret on
+    /// macOS 14+), with the state that decides whether it can paint.
+    public func debugInsertionIndicators() -> String {
+        var found: [String] = []
+        func walk(_ v: NSView, _ depth: Int) {
+            if #available(macOS 14.0, *), let i = v as? NSTextInsertionIndicator {
+                let win = i.convert(i.bounds, to: nil)
+                found.append("ind frame=\(i.frame) win=\(win) hidden=\(i.isHidden)"
+                    + " mode=\(i.displayMode.rawValue) color=\(i.color.map { "\($0)" } ?? "nil")"
+                    + " alpha=\(i.alphaValue) opts=\(i.automaticModeOptions.rawValue)"
+                    + " super=\(type(of: i.superview!))")
+            }
+            for s in v.subviews { walk(s, depth + 1) }
+        }
+        walk(self, 0)
+        return found.isEmpty ? "none" : found.joined(separator: "; ")
+    }
+
     private func debugMouseEvent(at point: NSPoint, clicks: Int = 1) -> NSEvent? {
         guard let window else { return nil }
         return NSEvent.mouseEvent(with: .leftMouseDown, location: convert(point, to: nil),

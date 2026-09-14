@@ -914,7 +914,10 @@ public class EditorTextView: NSTextView {
         // too late, the paint had already happened. Our own caret is drawn from
         // `drawWrappedCellChrome`; `updateWrappedCaret` restores AppKit's colour
         // the moment the caret is somewhere it can handle.
-        if wrappedCellCaret != nil { insertionPointColor = .clear }
+        if wrappedCellCaret != nil {
+            insertionPointColor = .clear
+            setAppKitCaretHidden(true)
+        }
         // AppKit's own answer to "which character is under the pointer", taken
         // before the gesture runs and moves the selection out from under it.
         let clickHit = clickCharIndex(at: event)

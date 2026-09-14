@@ -467,6 +467,145 @@ enum ReproScript {
                     report("repro clickprobe " + editor.debugClickProbe(
                         x: n[0], y: n[1], clicks: n.count == 3 ? Int(n[2]) : 1))
                 }
+            case "clickhold":
+                // "clickhold x,y,ms" — a click whose mouse-up arrives `ms`
+                // later, so frames paint during the gesture (see debugClickHold).
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count == 3 else { report("repro clickhold: want x,y,ms"); return }
+                    report("repro clickhold " + editor.debugClickHold(x: n[0], y: n[1], holdMs: n[2]))
+                }
+            case "realclick":
+                // "realclick x,y[,holdms]" — a REAL HID click (CGEvent) at a view
+                // point: the genuine delivery path (WindowServer → sendEvent →
+                // hit-test → mouseDown), which the in-process probes bypass.
+                // Needs Accessibility trust for this process (prompts once).
+                // The window is brought to the front and verified to be the
+                // topmost window under the point first — a HID click lands on
+                // whatever is on top, and that must never be someone else's window.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count == 2 || n.count == 3, let window = editor.window else {
+                        report("repro realclick: want x,y[,holdms]"); return
+                    }
+                    let hold = n.count == 3 ? n[2] : 80
+                    // Activation is asynchronous, and another app's window may
+                    // overlap ours: float the window for the click's duration,
+                    // and only check what is on top once that has taken effect.
+                    window.level = .floating
+                    let trusted = AXIsProcessTrustedWithOptions(
+                        ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    let cocoa = window.convertPoint(toScreen: editor.convert(NSPoint(x: n[0], y: n[1]), to: nil))
+                    // CG coordinates: top-left of the PRIMARY display.
+                    let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+                    let p = CGPoint(x: cocoa.x, y: primaryMaxY - cocoa.y)
+                    // Topmost window at the point must be ours (the list is
+                    // front-to-back; ours sits at the floating layer, so no
+                    // layer filter — anything above it there is a real cover).
+                    let infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                           kCGNullWindowID) as? [[String: Any]] ?? []
+                    var top: (num: Int, owner: String)? = nil
+                    for info in infos {
+                        // Normal (0) and floating (3) windows only: the Dock and
+                        // the menu bar sit higher and cover the whole screen edge.
+                        guard (info[kCGWindowLayer as String] as? Int ?? 99) <= 3,
+                              let b = info[kCGWindowBounds as String] as CFTypeRef?,
+                              CFGetTypeID(b) == CFDictionaryGetTypeID(),
+                              let r = CGRect(dictionaryRepresentation: b as! CFDictionary) else { continue }
+                        if r.contains(p) {
+                            top = (info[kCGWindowNumber as String] as? Int ?? -1,
+                                   info[kCGWindowOwnerName as String] as? String ?? "?")
+                            break
+                        }
+                    }
+                    let ours = top?.num == window.windowNumber
+                    let listed = infos.contains { ($0[kCGWindowNumber as String] as? Int) == window.windowNumber }
+                    report("repro realclick t=\(EditorTextView.debugMs()) view=(\(Int(n[0])),\(Int(n[1])))"
+                           + " cg=(\(Int(p.x)),\(Int(p.y))) trusted=\(trusted)"
+                           + " top=\(top.map { "\($0.num) \($0.owner)" } ?? "none") ours=\(ours)"
+                           + " ourWin=\(window.windowNumber) onScreen=\(listed) frame=\(window.frame)")
+                    guard trusted, ours else {
+                        window.level = .normal
+                        report("repro realclick ABORTED"); return
+                    }
+                    let restore = NSEvent.mouseLocation
+                    let restoreCG = CGPoint(x: restore.x, y: primaryMaxY - restore.y)
+                    DispatchQueue.global(qos: .userInteractive).async {
+                        func post(_ t: CGEventType) {
+                            CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: p,
+                                    mouseButton: .left)?.post(tap: .cghidEventTap)
+                        }
+                        post(.mouseMoved); usleep(30_000)
+                        post(.leftMouseDown); usleep(useconds_t(hold * 1000))
+                        post(.leftMouseUp); usleep(30_000)
+                        CGWarpMouseCursorPosition(restoreCG)
+                        DispatchQueue.main.async {
+                            window.level = .normal
+                            report("repro realclick done t=\(EditorTextView.debugMs()) sel=\(editor.selectedRange())")
+                        }
+                    }
+                    }
+                }
+            case "viewtree":
+                schedule(after: delay) { editor in
+                    report("repro viewtree t=\(EditorTextView.debugMs())\n" + editor.debugViewTree())
+                }
+            case "front":
+                // Bring the window to the active Space and the front, once,
+                // so later `realclick`s land in a stable window.
+                schedule(after: delay) { editor in
+                    guard let window = editor.window else { return }
+                    window.collectionBehavior.insert(.moveToActiveSpace)
+                    window.orderFrontRegardless()
+                    NSApp.activate(ignoringOtherApps: true)
+                    window.makeKeyAndOrderFront(nil)
+                    report("repro front t=\(EditorTextView.debugMs())")
+                }
+            case "indicators":
+                schedule(after: delay) { editor in
+                    report("repro indicators " + editor.debugInsertionIndicators())
+                }
+            case "burst":
+                // "burst ms,interval,dir" — capture ONLY the document window
+                // (CGWindowListCreateImage by window id; nothing else on screen
+                // is included) every `interval` ms for `ms` ms, to dir/NNNN.png.
+                // Catches single-frame paints a still screenshot cannot.
+                schedule(after: delay) { editor in
+                    let parts = arg.split(separator: ",", maxSplits: 2).map(String.init)
+                    guard parts.count == 3, let total = Double(parts[0]),
+                          let interval = Double(parts[1]), let window = editor.window else {
+                        report("repro burst: want ms,interval,dir"); return
+                    }
+                    let dir = parts[2]
+                    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                    let wid = CGWindowID(window.windowNumber)
+                    let t0 = Date()
+                    DispatchQueue.global(qos: .userInteractive).async {
+                        var n = 0, written = 0
+                        while Date().timeIntervalSince(t0) * 1000 < total {
+                            let img = CGWindowListCreateImage(
+                                .null, .optionIncludingWindow, wid,
+                                [.boundsIgnoreFraming, .bestResolution])
+                            // Stamped AFTER the capture returns, on the same
+                            // uptime clock as the caret trace.
+                            let ms = EditorTextView.debugMs()
+                            if let img,
+                               let dest = CGImageDestinationCreateWithURL(
+                                URL(fileURLWithPath: "\(dir)/\(String(format: "%04d", n))-\(ms).png") as CFURL,
+                                "public.png" as CFString, 1, nil) {
+                                CGImageDestinationAddImage(dest, img, nil)
+                                if CGImageDestinationFinalize(dest) { written += 1 }
+                            }
+                            n += 1
+                            usleep(useconds_t(interval * 1000))
+                        }
+                        DispatchQueue.main.async {
+                            report("repro burst done frames=\(n) written=\(written) dir=\(dir)")
+                        }
+                    }
+                    report("repro burst started wid=\(wid)")
+                }
             case "drag":
                 // "drag x1,y1,x2,y2[,steps]" — a real drag-select at view points,
                 // through the same mouseDown tracking loop a mouse would drive.

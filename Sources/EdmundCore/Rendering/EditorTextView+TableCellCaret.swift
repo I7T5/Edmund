@@ -76,6 +76,29 @@ extension EditorTextView {
         return rect
     }
 
+    // MARK: - AppKit's caret
+
+    /// AppKit's caret view (macOS 14+): a direct subview of the text view,
+    /// created the first time the window is key. Nil until then — which is
+    /// also why an inactive window never shows the flash this hides.
+    private var appKitCaretView: NSTextInsertionIndicator? {
+        subviews.lazy.compactMap { $0 as? NSTextInsertionIndicator }.first
+    }
+
+    /// Takes AppKit's caret off screen, or gives it back. A clear
+    /// `insertionPointColor` and turning the insertion point off are not enough
+    /// on their own: the indicator hides with a *fade*, and it fades after it
+    /// has already been moved to the new selection — the cell's hidden
+    /// characters, at the cell's start. A caret that was live in a non-wrapped
+    /// cell (or outside the table) therefore ghosted at the cell's start for a
+    /// few frames on every click into a wrapped cell: the flash. `isHidden` is
+    /// not animated, so the fade, and the "moved" effect that comes with it,
+    /// never paint. Verified frame by frame with a real HID click.
+    func setAppKitCaretHidden(_ hidden: Bool) {
+        guard let caret = appKitCaretView, caret.isHidden != hidden else { return }
+        caret.isHidden = hidden
+    }
+
     // MARK: - Drawing
 
     /// Paints the caret and the selection highlight where a wrapped cell's text
@@ -127,6 +150,9 @@ extension EditorTextView {
         if let band { setNeedsDisplay(band) }
 
         guard !rects.isEmpty else {
+            // Unconditional (a no-op when already shown): a wrapped *selection*
+            // has no blink timer, yet AppKit's caret was hidden for it too.
+            setAppKitCaretHidden(false)
             guard wrappedCaretTimer != nil else { return }
             wrappedCaretTimer?.invalidate()
             wrappedCaretTimer = nil
@@ -134,14 +160,13 @@ extension EditorTextView {
             return
         }
         insertionPointColor = .clear
-        // Clearing the colour is not enough on macOS 15: the live insertion-point
-        // view keeps the colour it was started with, so an accent caret carried
-        // in from a non-wrapped cell paints one frame at the collapsed
-        // hidden-character x (the cell's start) before the custom caret shows —
-        // the flash. Turn the insertion point off outright, here at the one place
-        // every caret-into-a-wrapped-cell update passes through, so the click and
-        // the async selection-change path are both covered.
+        // Neither the clear colour nor turning the insertion point off stops the
+        // indicator's *fade-out* at the new position; hiding the view does.
+        // Here at the one place every caret-into-a-wrapped-cell update passes
+        // through, so the click and the async selection-change path are both
+        // covered. See `setAppKitCaretHidden`.
         updateInsertionPointStateAndRestartTimer(false)
+        setAppKitCaretHidden(true)
         guard selection.length == 0 else {
             // A selection has no caret to blink.
             wrappedCaretTimer?.invalidate()
@@ -204,27 +229,19 @@ extension EditorTextView {
         guard !rawTableEditing, event.clickCount == 1,
               let window, let anchor = wrappedCellCharIndex(at: event),
               let anchorCell = tableCell(atRawOffset: anchor) else { return false }
-        // Kill AppKit's caret *before* placing the selection. When the previous
-        // click left the caret in a non-wrapped cell, `updateWrappedCaret`
-        // restored the accent colour and AppKit's insertion point is live and
-        // blinking — so `setSelectedRange` here repaints it once, at the wrapped
-        // cell's hidden-character x (which diverges from the drawn text on a
-        // header row), before the custom caret takes over: the flash. Clearing
-        // the colour is not enough on its own — the live insertion-point view
-        // paints a frame with the colour it already had — so also turn the
-        // insertion point off outright. (The first click into a table doesn't
-        // flash because the view is only becoming first responder then, with no
-        // live caret yet; a repeat click does, which is the case this covers.)
+        // Hide AppKit's caret *before* placing the selection. When the previous
+        // click left it live in a non-wrapped cell or outside the table,
+        // `setSelectedRange` moves it onto the wrapped cell's hidden characters
+        // (the cell's start) and its hide there fades — the flash. Hidden
+        // first, neither the move nor the fade ever paints; `updateWrappedCaret`
+        // keeps it hidden afterwards. See `setAppKitCaretHidden`.
         insertionPointColor = .clear
         updateInsertionPointStateAndRestartTimer(false)
+        setAppKitCaretHidden(true)
         if window.firstResponder !== self { window.makeFirstResponder(self) }
         suppressTypewriterCentering = true
         defer { suppressTypewriterCentering = false }
         setSelectedRange(NSRange(location: anchor, length: 0))
-        // `setSelectedRange` restarts AppKit's insertion point, which would paint
-        // it once at the hidden-character x; turn it back off now that the
-        // selection has moved, before the custom caret is drawn.
-        updateInsertionPointStateAndRestartTimer(false)
         updateWrappedCaret()
         while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if e.type == .leftMouseUp { break }
