@@ -893,6 +893,12 @@ public class EditorTextView: NSTextView {
             openTableCellEditor(cell)
             return
         }
+        // A single click/drag on a wrapped cell's drawn text is taken whole:
+        // its own tracking loop reads each drag event's location (so drag-select
+        // works there), and it never lets `super.mouseDown` place AppKit's caret
+        // on the hidden characters first (so the caret does not flash to the
+        // cell's start). A double-click falls through to the handling below.
+        if handleWrappedCellDrag(with: event) { return }
         // A wrapped table cell is drawn from a detached layout, so AppKit's own
         // hit-testing can only ever land on the hidden characters underneath it
         // (all of which sit at one x). Resolve the click against the drawn text
@@ -1000,24 +1006,10 @@ public class EditorTextView: NSTextView {
            let caret = ranges[0].rangeValue as NSRange?, caret.length == 0 {
             ranges = [NSValue(range: NSRange(location: wrapped, length: 0))]
         }
-        // A drag *within* a wrapped cell: AppKit sweeps the hidden characters,
-        // which all sit at one x, so the range it builds is meaningless. Rebuild
-        // it from the drawn text — the anchor character to the one under the
-        // pointer now — as long as both ends are in the same wrapped cell (a drag
-        // that leaves the cell is a cross-cell block, handled below). Only while
-        // a gesture is in flight, and only when the anchor started on wrapped
-        // text.
-        if let anchor = tableClickWrappedCaret, !activatingRawTable, ranges.count == 1,
-           let window, let anchorCell = tableCell(atRawOffset: anchor) {
-            let pointer = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-            if let current = wrappedCellCharIndex(atViewPoint: pointer),
-               let currentCell = tableCell(atRawOffset: current),
-               currentCell.blockIndex == anchorCell.blockIndex,
-               currentCell.row == anchorCell.row, currentCell.column == anchorCell.column {
-                let lo = min(anchor, current), hi = max(anchor, current)
-                ranges = [NSValue(range: NSRange(location: lo, length: hi - lo))]
-            }
-        }
+        // (A drag within a wrapped cell is taken whole by `handleWrappedCellDrag`
+        // in `mouseDown`, which reads each drag event's own location — not the
+        // stale `mouseLocationOutsideOfEventStream` this override would see — so
+        // there is nothing to rebuild here.)
         // A caret placed by the click in flight belongs to the cell that click
         // landed in. Corrected here, where the selection is installed, so no
         // other placement is ever painted — and so that it holds for every path

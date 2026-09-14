@@ -86,9 +86,11 @@ extension EditorTextView {
     func drawWrappedCellChrome(in rect: NSRect) {
         let selection = selectedRange()
         if selection.length > 0 {
-            let color = (selectedTextAttributes[.backgroundColor] as? NSColor)
-                ?? .selectedTextBackgroundColor
-            color.setFill()
+            // The standard selection colour, NOT `selectedTextAttributes` — that
+            // is deliberately cleared while a wrapped/cell selection is up (to
+            // suppress AppKit's own stray highlight over the hidden characters),
+            // and reading it here would paint this highlight clear too.
+            NSColor.selectedTextBackgroundColor.setFill()
             for highlight in wrappedCellRects(for: selection) where highlight.intersects(rect) {
                 highlight.fill()
             }
@@ -173,6 +175,47 @@ extension EditorTextView {
                 self.scheduleCaretBlink()
             }
         }
+    }
+
+    // MARK: - Click and drag inside a wrapped cell
+
+    /// Takes a single-click gesture whole when it lands on a wrapped cell's
+    /// drawn text, so a drag there selects the visible text. AppKit's own
+    /// tracking can't: the cell's real characters are hidden at one x, so it
+    /// sweeps a meaningless range and — reading `mouseLocationOutsideOfEventStream`
+    /// after the fact — never sees the drag at all. This runs its own tracking
+    /// loop instead, mapping each drag event's *own* location through the scratch
+    /// layout to the character under it, and selecting anchor…current.
+    ///
+    /// A click with no drag just lands the caret at the character clicked — the
+    /// same place the old path put it, but without `super.mouseDown` ever placing
+    /// AppKit's caret on the hidden characters first, so the caret no longer
+    /// flashes to the cell's start. Returns false (letting `super` handle it) for
+    /// a click that isn't a single click on wrapped text.
+    func handleWrappedCellDrag(with event: NSEvent) -> Bool {
+        guard !rawTableEditing, event.clickCount == 1,
+              let window, let anchor = wrappedCellCharIndex(at: event),
+              let anchorCell = tableCell(atRawOffset: anchor) else { return false }
+        if window.firstResponder !== self { window.makeFirstResponder(self) }
+        suppressTypewriterCentering = true
+        defer { suppressTypewriterCentering = false }
+        setSelectedRange(NSRange(location: anchor, length: 0))
+        updateWrappedCaret()
+        while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if e.type == .leftMouseUp { break }
+            let point = convert(e.locationInWindow, from: nil)
+            // Stay inside the anchor's cell: a point that leaves it (another cell,
+            // the pad, off the text) maps to nil or a different cell and is
+            // ignored, so the selection never spills across a pipe.
+            guard let current = wrappedCellCharIndex(atViewPoint: point),
+                  let cell = tableCell(atRawOffset: current),
+                  cell.blockIndex == anchorCell.blockIndex,
+                  cell.row == anchorCell.row, cell.column == anchorCell.column else { continue }
+            let lo = min(anchor, current), hi = max(anchor, current)
+            setSelectedRange(NSRange(location: lo, length: hi - lo))
+            updateWrappedCaret()
+        }
+        return true
     }
 
     // MARK: - Vertical movement
