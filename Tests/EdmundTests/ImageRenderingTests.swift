@@ -172,7 +172,7 @@ struct ImageRenderingTests {
     }
 
     @Test("Images shrink and expand with fixed margins", arguments: [false, true])
-    func resizesWithWindow(html: Bool) async throws {
+    func resizesWithWindow(html: Bool) throws {
         let path = tempPNGPath(size: NSSize(width: 900, height: 600))
         defer { try? FileManager.default.removeItem(atPath: path) }
         let image = html ? "<img src=\"\(path)\">" : "![alt](\(path))"
@@ -184,12 +184,12 @@ struct ImageRenderingTests {
         let selection = NSRange(location: (content as NSString).length - 5, length: 5)
         editor.recomposeIncremental(cursorInRaw: selection.location)
         editor.setSelectedRange(selection)
-        try await Task.sleep(for: .milliseconds(100))
+        settleContentWidth()
         let inset = editor.textContainerInset.width
 
         for width: CGFloat in [350, 800] {
             editor.setFrameSize(NSSize(width: width, height: 300))
-            try await Task.sleep(for: .milliseconds(100))
+            settleContentWidth()
             let overlay = try #require(editor.textStorage?.attribute(
                 .fragmentOverlay, at: 0, effectiveRange: nil) as? FragmentOverlay)
             #expect(abs(overlay.bounds.width - editor.availableContentWidth) < 0.01)
