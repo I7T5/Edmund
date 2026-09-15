@@ -1195,6 +1195,14 @@ extension EditorTextView {
         }
     }
 
+    public override func setNeedsDisplay(_ invalidRect: NSRect) {
+        if debugCaretTrace, invalidRect.minY < 220 {
+            Log.info("carettrace inval t=\(Self.debugMs()) rect=\(invalidRect) " + Self.debugCaller(),
+                     category: .app)
+        }
+        super.setNeedsDisplay(invalidRect)
+    }
+
     public override func updateInsertionPointStateAndRestartTimer(_ restartFlag: Bool) {
         if debugCaretTrace {
             Log.info("carettrace t=\(Self.debugMs()) restartTimer(\(restartFlag)) "

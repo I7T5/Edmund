@@ -47,9 +47,31 @@ extension EditorTextView {
         guard let tlm = textLayoutManager,
               let storage = textStorage, storage.length > 0,
               range.location >= 0, range.upperBound <= storage.length,
+              // Model, not layout: only a table row can wrap a cell, and this
+              // runs on every selection change and every background draw, so
+              // the layout work below must never touch a document without one.
+              let blockIndex = blockIndexForRawOffset(range.location),
+              blockIndex < blocks.count, blocks[blockIndex].kind == .table,
               let location = tlm.location(tlm.documentRange.location,
-                                          offsetBy: range.location),
-              let fragment = tlm.textLayoutFragment(for: location)
+                                          offsetBy: range.location)
+        else { return [] }
+        // Lay the table out before reading the row's frame. A click's own
+        // selection change restyles the whole table block (`applyBlockStyle`),
+        // which invalidates every row's fragment; read before the next layout
+        // pass, the caret's rects came out ~120pt too high and 10pt left, and
+        // the band remembered for the *next* invalidation pointed at nothing —
+        // so the caret left a solid copy of itself on its previous visual line.
+        // Seen only before the first blink tick, which re-reads the band after
+        // layout had caught up. Ensured from the document start, not from the
+        // caret's paragraph or block: the restyle also resets the newline
+        // before the block, so the paragraph above is invalid too, and TextKit
+        // 2 stacks a partially ensured range straight after the last *valid*
+        // fragment — 66pt off from the row alone, 5pt off from the block. A
+        // no-op when everything is laid out (~15µs), ~1ms when it is not.
+        if let through = NSTextRange(location: tlm.documentRange.location, end: location) {
+            tlm.ensureLayout(for: through)
+        }
+        guard let fragment = tlm.textLayoutFragment(for: location)
                   as? DecoratedTextLayoutFragment,
               let paragraphStart = fragment.textElement?.elementRange?.location
         else { return [] }
@@ -157,10 +179,25 @@ extension EditorTextView {
     func updateWrappedCaret() {
         let selection = selectedRange()
         let rects = wrappedCellRects(for: selection)
-        if let stale = wrappedCaretRect { setNeedsDisplay(stale) }
         let band = rects.isEmpty ? nil : chromeBand(rects)
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "debug.caretTrace") {
+            Log.info("carettrace update t=\(Int(ProcessInfo.processInfo.systemUptime * 1000))"
+                     + " sel=\(selection) rects=\(rects) stale=\(wrappedCaretRect.map { "\($0)" } ?? "nil")"
+                     + " band=\(band.map { "\($0)" } ?? "nil")", category: .app)
+        }
+        #endif
+        // One rect covering the old band and the new: cheaper than two
+        // invalidations of overlapping strips, and it is what a ghost caret
+        // needs — the old band is only ever right if it was read after layout
+        // (see `wrappedCellRects`).
+        switch (wrappedCaretRect, band) {
+        case let (stale?, band?): setNeedsDisplay(stale.union(band))
+        case let (stale?, nil): setNeedsDisplay(stale)
+        case let (nil, band?): setNeedsDisplay(band)
+        case (nil, nil): break
+        }
         wrappedCaretRect = band
-        if let band { setNeedsDisplay(band) }
 
         guard !rects.isEmpty else {
             // Unconditional (a no-op when already shown): a wrapped *selection*

@@ -755,12 +755,21 @@ Notable subsystems:
   been key, so in-process probes (`clickprobe`) never see any of this — use
   real clicks (`realclick`/`realoff`) with `burst` capture. Chronicle:
   `docs/investigations/caret-flash-investigation.md`.
-- **Two overlapping `setNeedsDisplay(rect)` calls in one cycle can lose one
-  of them** (macOS 15, TextKit 2 text view): invalidating the caret's old
-  band and its new band separately repainted only the new band whichever
-  order they were issued in, leaving a solid ghost caret on the old visual
-  line; a single union rect repaints both (`updateWrappedCaret`). Prefer one
-  union rect over several adjacent invalidations of the same view.
+- **Never read layout-fragment geometry right after a restyle without
+  `ensureLayout` first — and ensure from the document start.** A click's
+  own selection change restyles the active block (`applyBlockStyle`), which
+  invalidates its fragments *and* the newline before it; until the next
+  layout pass `textLayoutFragment(for:)` hands back a fragment whose frame
+  sits at the origin (rects ~120pt high, 10pt left). The wrapped-cell caret
+  remembered such a band as "where the old caret is" and the next click never
+  repainted the real one: a solid ghost caret on the previous visual line,
+  only when the second click came before the first blink tick (the tick
+  re-reads after layout). `ensureLayout` for the caret's paragraph alone
+  stacked the row after the last *valid* fragment (66pt off), from the
+  block start 5pt off (the paragraph above is invalid too); from
+  `documentRange.location` it is exact and ~15µs when nothing is pending
+  (`wrappedCellRects`). Found by logging what `setNeedsDisplay` was
+  actually called with (`-debug.caretTrace`).
 - **The `viewMode` setter recomposes every block, collapsing far geometry
   to estimates** (~17pt/line base vs ~27pt styled) — `recomposeDirty` on a
   large dirty set defers non-viewport styling to the idle drain. Two

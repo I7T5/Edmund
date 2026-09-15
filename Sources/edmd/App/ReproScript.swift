@@ -617,6 +617,17 @@ enum ReproScript {
                     }
                     report("repro hideviews \(arg) touched=\(n)")
                 }
+            case "rectsprobe":
+                // "rectsprobe off1,off2,…" — the caret rects the editor would
+                // draw for each raw offset (empty = not in a wrapped cell).
+                schedule(after: delay) { editor in
+                    let offs = arg.split(separator: ",").compactMap { Int($0) }
+                    let out = offs.map { off -> String in
+                        let rs = editor.wrappedCellRects(for: NSRange(location: off, length: 0))
+                        return "\(off):" + rs.map { "(\(Int($0.minX)),\(Int($0.minY)))" }.joined(separator: "+")
+                    }
+                    report("repro rectsprobe " + out.joined(separator: " "))
+                }
             case "caretstate":
                 schedule(after: delay) { editor in
                     report("repro caretstate t=\(EditorTextView.debugMs()) mode=\(RunLoop.main.currentMode?.rawValue ?? "nil")"
