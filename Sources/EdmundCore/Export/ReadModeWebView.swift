@@ -46,6 +46,11 @@ public final class ReadModeWebView: WKWebView {
     /// destination (e.g. `[text](other.md)`), routed the same way.
     public var onOpenInternalLink: ((String) -> Void)?
 
+    /// Called when the user clicks a task item's checkbox, with the item's
+    /// 1-based source line. The owner flips `[ ]`/`[x]` in the editor and
+    /// re-renders; the view itself never edits.
+    public var onToggleTask: ((Int) -> Void)?
+
     /// Called after a `loadHTMLString` finishes (including any pending scroll
     /// restore, applied first — see `pendingScrollRestore`).
     public var onLoadFinished: (() -> Void)?
@@ -85,6 +90,30 @@ public final class ReadModeWebView: WKWebView {
             el.innerHTML = el._copyOriginal;
             el.classList.remove('copied');
           }, 1000);
+        })()
+        """
+        evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    /// Flips the checkbox on source line `line` in place — the classes, the
+    /// SVG, and the item's strike-through — with the host-side JS channel
+    /// (see `flashCopyButtonCopied`). No reload: `loadHTMLString` would blank
+    /// the page for a frame and land the scroll position only as near as the
+    /// anchor-line-plus-fraction restore can put it. `markdown` is the
+    /// document as it now reads, kept so a later appearance-driven re-render
+    /// starts from the toggled state rather than reverting it.
+    public func setTaskChecked(line: Int, checked: Bool, markdown: String) {
+        pending?.markdown = markdown
+        let svg = Data(LucideIcons.checkboxSVG(checked: checked).utf8).base64EncodedString()
+        let js = """
+        (function() {
+          var el = document.querySelector('a[href="\(HTMLRenderer.taskScheme):\(line)"]');
+          if (!el) return;
+          el.classList.toggle('task-check--checked', \(checked));
+          el.classList.toggle('task-check--unchecked', \(!checked));
+          el.innerHTML = atob('\(svg)');
+          var li = el.closest('li');
+          if (li) li.classList.toggle('task--checked', \(checked));
         })()
         """
         evaluateJavaScript(js, completionHandler: nil)
@@ -375,6 +404,9 @@ private final class ReadModeNavigationCoordinator: NSObject, WKNavigationDelegat
         case .copyCode(let base64):
             owner?.handleCopyCode(base64)
             return .cancel
+        case .toggleTask(let line):
+            owner?.onToggleTask?(line)
+            return .cancel
         case .openExternal(let url):
             NSWorkspace.shared.open(url)
             return .cancel
@@ -405,6 +437,7 @@ enum ReadModeNavigationPolicy {
         case openWiki(String)
         case openInternal(String)
         case copyCode(String)
+        case toggleTask(Int)
         case openExternal(URL)
         case cancel
     }
@@ -429,6 +462,14 @@ enum ReadModeNavigationPolicy {
         }
         if scheme == HTMLRenderer.copyScheme {
             return .copyCode(decodeTarget(url, scheme: HTMLRenderer.copyScheme))
+        }
+        if scheme == HTMLRenderer.taskScheme {
+            // The payload is a line number the renderer wrote; anything else
+            // is not ours to act on.
+            guard let line = Int(decodeTarget(url, scheme: HTMLRenderer.taskScheme)) else {
+                return .cancel
+            }
+            return .toggleTask(line)
         }
         // Decide by URL scheme, not navigation type: WebKit does not reliably
         // report `.linkActivated` for every click. Real web schemes are handed to

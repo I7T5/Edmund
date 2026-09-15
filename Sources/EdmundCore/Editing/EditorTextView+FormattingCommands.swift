@@ -111,6 +111,11 @@ extension EditorTextView {
         applyHeadingLevel((sender as? NSMenuItem)?.tag ?? 1)
     }
 
+    /// One level deeper / shallower: body → H1 → … → H6, and back down to body.
+    /// The ends hold (H6 stays H6, body stays body) rather than wrapping.
+    @objc public func formatIncrementHeading(_ sender: Any?) { stepHeadingLevel(by: 1) }
+    @objc public func formatDecrementHeading(_ sender: Any?) { stepHeadingLevel(by: -1) }
+
     /// Callout type read from the menu item's `representedObject` (pre-cased:
     /// uppercase for GitHub alerts, lowercase for Obsidian callouts).
     @objc public func formatCallout(_ sender: Any?) {
@@ -229,6 +234,7 @@ extension EditorTextView {
         #selector(formatChecklist(_:)), #selector(formatBlockQuote(_:)), #selector(formatThematicBreak(_:)),
         #selector(formatCodeBlock(_:)), #selector(formatMathBlock(_:)), #selector(formatTable(_:)),
         #selector(formatHeading(_:)), #selector(formatCallout(_:)),
+        #selector(formatIncrementHeading(_:)), #selector(formatDecrementHeading(_:)),
         #selector(formatAttachImage(_:)),
     ]
 
@@ -254,6 +260,42 @@ extension EditorTextView {
                 return allAtLevel ? stripped : String(repeating: "#", count: level) + " " + stripped
             }
         }
+    }
+
+    /// Per selected line, like `applyHeadingLevel`; each line steps from its
+    /// own level, so a mixed selection keeps its relative structure.
+    func stepHeadingLevel(by delta: Int) {
+        transformSelectedLines { lines in
+            lines.map { line in
+                guard !line.isEmpty else { return line }
+                let level = min(6, max(0, self.leadingHashCount(line) + delta))
+                let stripped = self.stripLeadingHashes(line)
+                return level == 0 ? stripped : String(repeating: "#", count: level) + " " + stripped
+            }
+        }
+    }
+
+    // MARK: - Task toggle by line
+
+    /// The `[ ]` / `[x]` mark of a task item: indent, any list marker, the box.
+    private static let taskMarkRegex = try! NSRegularExpression(
+        pattern: #"^\s*(?:[-*+]|\d+[.)])\s+\[([ xX])\]"#)
+
+    /// Flips the checkbox of the task item on 1-based source `line` — how a
+    /// click on a Read-mode checkbox edits the document. A line that is not a
+    /// task item is left alone (nil); the caret stays where it was. One undo
+    /// step. Returns the box's new state.
+    @discardableResult
+    public func toggleTask(atLine line: Int) -> Bool? {
+        guard let block = blockIndexForRawOffset(offset(forLine: line)), block < blocks.count else { return nil }
+        let content = blocks[block].content
+        guard let match = Self.taskMarkRegex.firstMatch(
+            in: content, range: NSRange(location: 0, length: (content as NSString).length))
+        else { return nil }
+        let mark = NSRange(location: blocks[block].range.location + match.range(at: 1).location, length: 1)
+        let wasChecked = (content as NSString).substring(with: match.range(at: 1)) != " "
+        applyFormattingEdit(rawRange: mark, replacement: wasChecked ? " " : "x", select: selectedRange())
+        return !wasChecked
     }
 
     // MARK: - Lists / quote

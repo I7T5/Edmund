@@ -182,6 +182,127 @@ extension EditorTextView {
         landInCell(blockIndex: blockIndex, row: row, column: max(0, column - 1))
     }
 
+    // MARK: - Delete on a cell selection
+
+    /// Delete pressed while a block of cells is selected, after Apple Notes:
+    /// a *complete* row or column selection whose cells are already empty is
+    /// removed; every other case clears the cells' contents and leaves the grid
+    /// intact. So the first Delete empties a full row/column and a second one
+    /// removes it — and the "already empty" gate is what lets a two-column table
+    /// tell "clear this row" from "delete it", since there any horizontal
+    /// selection covers every column. The whole table (every row *and* column)
+    /// only ever clears; removing the block is a separate operation. Returns
+    /// false when no block of cells is selected, so an ordinary delete runs.
+    func handleTableCellSelectionDelete() -> Bool {
+        guard let block = tableCellSelection,
+              let lines = tableLines(blockIndex: block.blockIndex) else { return false }
+        let lastRow = lines.count - 1
+        let cols = tableColumnCount(blockIndex: block.blockIndex)
+        let allRows = block.rows.lowerBound == 0 && block.rows.upperBound >= lastRow
+        let allCols = block.columns.lowerBound == 0 && block.columns.upperBound >= cols - 1
+
+        if tableCellsAreEmpty(block) {
+            if allCols && !allRows {            // complete, empty row(s) → delete them
+                for row in block.rows.reversed() where row != 1 {
+                    deleteTableRow(blockIndex: block.blockIndex, row: row,
+                                   column: block.columns.lowerBound)
+                }
+                return true
+            }
+            if allRows && !allCols {            // complete, empty column(s) → delete them
+                for column in block.columns.reversed() {
+                    deleteTableColumn(blockIndex: block.blockIndex, column: column,
+                                      row: block.rows.lowerBound)
+                }
+                return true
+            }
+        }
+        clearTableCells(block)
+        return true
+    }
+
+    /// Whether every selected cell (the separator row aside) is already empty —
+    /// the condition Notes uses to turn a second Delete into a row/column
+    /// removal rather than another clear.
+    func tableCellsAreEmpty(_ block: TableCellBlock) -> Bool {
+        guard let lines = tableLines(blockIndex: block.blockIndex) else { return false }
+        for row in block.rows where row != 1 && lines.indices.contains(row) {
+            let ns = lines[row] as NSString
+            let spans = columnSpans(in: ns)
+            for column in block.columns where column < spans.count {
+                let span = spans[column]
+                let text = ns.substring(with: NSRange(location: span.start,
+                                                      length: span.end - span.start))
+                    .trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty { return false }
+            }
+        }
+        return true
+    }
+
+    /// Blanks every selected cell's content to a single padded empty cell, as
+    /// one undoable edit. The pipes and the padding stay; only the text goes.
+    func clearTableCells(_ block: TableCellBlock) {
+        guard var lines = tableLines(blockIndex: block.blockIndex) else { return }
+        for row in block.rows where row != 1 && lines.indices.contains(row) {
+            let mut = NSMutableString(string: lines[row])
+            let spans = columnSpans(in: mut)
+            // Right to left, so an earlier span's offsets survive a later edit.
+            for column in block.columns.reversed() where column < spans.count {
+                let span = spans[column]
+                mut.replaceCharacters(in: NSRange(location: span.start,
+                                                  length: span.end - span.start),
+                                      with: "  ")
+            }
+            lines[row] = mut as String
+        }
+        replaceTable(blockIndex: block.blockIndex, lines: lines)
+        // Keep the cells selected, not a caret: clearing doesn't change the
+        // grid, and holding the selection is what lets a second Delete on a now-
+        // empty complete row/column remove it (the Notes two-press behaviour).
+        selectTableCells(blockIndex: block.blockIndex,
+                         from: (block.rows.lowerBound, block.columns.lowerBound),
+                         to: (block.rows.upperBound, block.columns.upperBound))
+    }
+
+    // MARK: - Finishing a header + separator
+
+    /// Return pressed on a table that is still just a header and its separator:
+    /// finish it to the canonical aligned form — columns padded to their widest
+    /// cell, the separator's dashes filling each column — and drop in one empty
+    /// body row to type into, landing the caret in its first cell.
+    ///
+    /// This is the "autocomplete a table once the header and the `-|-` are
+    /// there" affordance. Return from the header row is already handled
+    /// (`handleTableNewline` adds a body row); the gap is Return from the
+    /// *separator* line, where the caret is in no cell, so this fills it.
+    /// Returns false when the caret isn't on the separator of a body-less table.
+    func handleTableSeparatorNewline() -> Bool {
+        guard !rawTableEditing, selectedRange().length == 0,
+              let blockIndex = blockIndexForRawOffset(selectedRange().location),
+              let lines = tableLines(blockIndex: blockIndex),
+              lines.count == 2 else { return false }   // header + separator only
+        // The caret must be on the separator line (line 1), not the header.
+        let block = blocks[blockIndex]
+        let separatorStart = block.range.location + (lines[0] as NSString).length + 1
+        guard selectedRange().location >= separatorStart else { return false }
+
+        // Match the header's pipe style so a table written without outer pipes
+        // doesn't gain them; an empty body row's cells are filled out to the
+        // column widths by the pretty-align pass.
+        let outer = lines[0].trimmingCharacters(in: .whitespaces).hasPrefix("|")
+        let columns = columnSpans(in: lines[0] as NSString).count
+        guard columns > 0 else { return false }
+        let emptyBody = outer
+            ? "|" + String(repeating: "  |", count: columns)
+            : Array(repeating: "  ", count: columns).joined(separator: "|")
+
+        let pretty = prettyAlignedTableLines([lines[0], lines[1], emptyBody])
+        replaceTable(blockIndex: blockIndex, lines: pretty)
+        landInCell(blockIndex: blockIndex, row: 2, column: 0)
+        return true
+    }
+
     // MARK: - Shared
 
     /// Character offset of line `row` within the table's own content.

@@ -25,7 +25,7 @@ struct EditorTextViewAutoPairTests {
     @Test("Every configured pair closes")
     @MainActor func allPairs() {
         for (open, expected) in [("(", "()"), ("[", "[]"), ("{", "{}"),
-                                 ("\"", "\"\""), ("'", "''"), ("`", "``")] {
+                                 ("\"", "\"\""), ("'", "''")] {
             let editor = makeEditor()
             editor.loadContent("")
             type(open, at: 0, in: editor)
@@ -107,9 +107,20 @@ struct EditorTextViewAutoPairTests {
         #expect(editor.selectedRange() == NSRange(location: 0, length: 0))
     }
 
+    /// A backtick is a fence opener as much as a code delimiter; pairing it
+    /// left a typed ``` as `` ```` `` with the caret in the middle.
+    @Test("Backticks never auto-pair, so a fence can be typed")
+    @MainActor func backticksAreNotAPair() {
+        let editor = makeEditor()
+        editor.loadContent("")
+        for i in 0..<3 { type("`", at: i, in: editor) }
+        #expect(editor.rawSource == "```")
+        #expect(editor.selectedRange() == NSRange(location: 3, length: 0))
+    }
+
     @Test("Every pair deletes as a pair")
     @MainActor func deleteAllPairs() {
-        for text in ["()", "[]", "{}", "\"\"", "''", "``"] {
+        for text in ["()", "[]", "{}", "\"\"", "''"] {
             let editor = makeEditor()
             editor.loadContent("a" + text + "b")
             editor.setSelectedRange(NSRange(location: 2, length: 0))
@@ -173,5 +184,64 @@ struct EditorTextViewAutoPairTests {
         editor.setSelectedRange(NSRange(location: 0, length: 3))
         editor.insertText("(", replacementRange: NSRange(location: NSNotFound, length: 0))
         #expect(editor.rawSource == "(")
+    }
+}
+
+// MARK: - Quick format: a delimiter key wraps the selection
+
+@Suite("EditorTextView — Wrap selection on delimiter key")
+struct EditorTextViewWrapSelectionTests {
+
+    @MainActor private func typeOverSelection(_ text: String, _ range: NSRange,
+                                              in editor: EditorTextView) {
+        editor.setSelectedRange(range)
+        editor.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    @Test("Each delimiter wraps the selection and keeps the inner text selected")
+    @MainActor func wrapsAndReselects() {
+        for delimiter in ["$", "*", "%", "=", "~", "`"] {
+            let editor = makeEditor()
+            editor.loadContent("say word now")
+            typeOverSelection(delimiter, NSRange(location: 4, length: 4), in: editor)
+            #expect(editor.rawSource == "say \(delimiter)word\(delimiter) now")
+            #expect(editor.selectedRange() == NSRange(location: 5, length: 4))
+        }
+    }
+
+    @Test("Typing the key again doubles the delimiter — bold, highlight, strike")
+    @MainActor func secondPressDoubles() {
+        let editor = makeEditor()
+        editor.loadContent("word")
+        typeOverSelection("*", NSRange(location: 0, length: 4), in: editor)
+        editor.insertText("*", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(editor.rawSource == "**word**")
+        #expect(editor.selectedRange() == NSRange(location: 2, length: 4))
+    }
+
+    @Test("Without a selection the key types as usual")
+    @MainActor func caretTypesTheCharacter() {
+        let editor = makeEditor()
+        editor.loadContent("ab")
+        typeOverSelection("*", NSRange(location: 1, length: 0), in: editor)
+        #expect(editor.rawSource == "a*b")
+    }
+
+    @Test("Other keys still replace the selection")
+    @MainActor func otherKeysReplace() {
+        let editor = makeEditor()
+        editor.loadContent("word")
+        typeOverSelection("x", NSRange(location: 0, length: 4), in: editor)
+        #expect(editor.rawSource == "x")
+    }
+
+    @Test("The wrap is one undo step")
+    @MainActor func undoRestores() {
+        let editor = makeEditor()
+        editor.loadContent("word")
+        typeOverSelection("=", NSRange(location: 0, length: 4), in: editor)
+        #expect(editor.rawSource == "=word=")
+        editor.undo(nil)
+        #expect(editor.rawSource == "word")
     }
 }
