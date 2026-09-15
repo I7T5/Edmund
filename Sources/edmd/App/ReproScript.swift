@@ -456,11 +456,22 @@ enum ReproScript {
                 // in an inactive window and ignores `selectedTextAttributes`
                 // there, so anything about the selection's appearance has to be
                 // checked with the window actually focused.
+                //
+                // Only works for an instance LaunchServices launched (`open -n
+                // <bundle> --args …`, launch-debug.sh --front). macOS 14
+                // activation is cooperative: a process the user did not launch
+                // — a harness exec'ing the binary — is refused by
+                // `NSApp.activate`, and neither `NSWorkspace.openApplication`
+                // on its own bundle nor `open -a` will raise it afterwards
+                // (both tried; `key=false` every time). The report line says
+                // which case this run is in.
                 schedule(after: delay) { editor in
                     NSApp.activate(ignoringOtherApps: true)
                     editor.window?.makeKeyAndOrderFront(nil)
                     editor.window?.makeFirstResponder(editor)
-                    report("repro activate key=\(editor.window?.isKeyWindow == true)")
+                    let key = editor.window?.isKeyWindow == true
+                    report("repro activate key=\(key)"
+                           + (key ? "" : " (exec'd binary cannot self-activate; launch with open -n / --front)"))
                 }
             case "caretpositions":
                 schedule(after: delay) { editor in
