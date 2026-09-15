@@ -116,7 +116,20 @@ extension EditorTextView {
         // trusted to record it: it runs before the restyle a click triggers,
         // and a grid that is briefly unavailable makes it record nothing at
         // all — after which the pill it forgot outlives its own move.
-        lastTableHandleBands = handles.map { handleHitBox($0) }
+        //
+        // But don't let a *grid-unavailable* draw wipe the record: a click into
+        // a wrapped-cell table restyles it, and a repaint that lands before the
+        // rows are laid out again finds no grid, so `tableHandles()` is empty
+        // even though a pill is still on screen. Overwriting with `[]` then lost
+        // the band, and the pill lingered because the next caret move had
+        // nothing to invalidate. Keep the last record in that case; only replace
+        // it when the pill is genuinely gone (caret out of a cell, raw mode, or
+        // a cell block selected — all of which resolve without needing a grid).
+        let gridUnavailable = handles.isEmpty && !rawTableEditing
+            && tableCellSelection == nil && activeTableCell != nil
+        if !gridUnavailable {
+            lastTableHandleBands = handles.map { handleHitBox($0) }
+        }
         for handle in handles where handle.rect.intersects(dirty) {
             let hovered = handle == hoveredTableHandle
             // Space, not a border, per the editor's chrome idiom — but a handle
@@ -730,6 +743,8 @@ extension EditorTextView {
             item("Add Row Above", TableOperation(.insertRow, blockIndex, row, column))
             item("Add Row Below", TableOperation(.insertRow, blockIndex,
                                                  row == 0 ? 2 : row + 1, column))
+            // A divider sets the destructive Delete apart from the two adds.
+            menu.addItem(.separator())
             item("Delete Row", TableOperation(.deleteRow, blockIndex, row, column),
                  enabled: canDeleteTableRow(blockIndex: blockIndex, row: row))
         }
@@ -737,6 +752,7 @@ extension EditorTextView {
         if axis != .row {
             item("Add Column Before", TableOperation(.insertColumn, blockIndex, row, column))
             item("Add Column After", TableOperation(.insertColumn, blockIndex, row, column + 1))
+            menu.addItem(.separator())
             item("Delete Column", TableOperation(.deleteColumn, blockIndex, row, column),
                  enabled: canDeleteTableColumn(blockIndex: blockIndex, column: column))
         }
@@ -961,6 +977,40 @@ extension EditorTextView {
         return out
     }
 
+    /// Drags from one view point to another through the real `mouseDown` path:
+    /// the intermediate drag events and the mouse-up are pre-queued (in order,
+    /// then read by `super.mouseDown`'s own tracking loop), exactly as
+    /// `debugClickProbe` does for a single click. Reports the resulting
+    /// selection, so a drag-select — inside a wrapped cell included — can be
+    /// exercised without a real mouse. CGEvent drags do not land in the harness.
+    public func debugDrag(fromX: CGFloat, fromY: CGFloat,
+                          toX: CGFloat, toY: CGFloat, steps: Int = 8) -> String {
+        let p1 = NSPoint(x: fromX, y: fromY), p2 = NSPoint(x: toX, y: toY)
+        guard let window, let down = debugMouseEvent(at: p1) else { return "no window" }
+        func event(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: convert(p, to: nil), modifierFlags: [],
+                               timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil,
+                               eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        let n = max(1, steps)
+        for i in 1...n {
+            let t = CGFloat(i) / CGFloat(n)
+            let p = NSPoint(x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t)
+            if let d = event(.leftMouseDragged, p) { window.postEvent(d, atStart: false) }
+        }
+        if let up = event(.leftMouseUp, p2) { window.postEvent(up, atStart: false) }
+        mouseDown(with: down)
+        let sel = selectedRange()
+        var out = "drag (\(Int(fromX)),\(Int(fromY)))->(\(Int(toX)),\(Int(toY)))"
+            + " ranges=\(selectedRanges.map(\.rangeValue))"
+        if let cell = tableCell(atRawOffset: sel.location) {
+            out += " startCell=r\(cell.row)c\(cell.column)"
+        }
+        out += " wrappedRects=\(wrappedCellRects(for: sel).count)"
+        return out
+    }
+
     /// Clicks every cell of every table at five points across its width and
     /// reports only what came out wrong: a caret that left the cell it was
     /// clicked in, or one that stopped short of the cell's text when the click
@@ -1087,6 +1137,133 @@ extension EditorTextView {
             }
         }
         return out.joined(separator: "\n")
+    }
+
+    /// A click that is *held*: the mouse-up is posted `holdMs` later on a
+    /// common-modes timer, so the tracking loop inside `mouseDown` spins for
+    /// that long and display frames render in between — as they do for a
+    /// human click. `debugClickProbe` queues the up first, so its gesture is
+    /// over before a single frame paints, which is why it never showed the
+    /// caret flash. Reports the insertion-indicator views before and after.
+    public func debugClickHold(x: CGFloat, y: CGFloat, holdMs: Double) -> String {
+        let point = NSPoint(x: x, y: y)
+        guard let window, let down = debugMouseEvent(at: point) else { return "no window" }
+        var out = "t=\(Self.debugMs()) point=(\(Int(x)),\(Int(y))) hold=\(Int(holdMs))ms"
+        out += " before[\(debugInsertionIndicators())]"
+        let up = NSEvent.mouseEvent(with: .leftMouseUp, location: convert(point, to: nil),
+                                    modifierFlags: [],
+                                    timestamp: ProcessInfo.processInfo.systemUptime,
+                                    windowNumber: window.windowNumber, context: nil,
+                                    eventNumber: 0, clickCount: 1, pressure: 0)
+        // Main-actor closure (Sendable), so the timer's block captures no
+        // NSEvent or NSWindow of its own.
+        let postUp: @MainActor () -> Void = {
+            if let up { window.postEvent(up, atStart: false) }
+        }
+        let timer = Timer(timeInterval: holdMs / 1000, repeats: false) { _ in
+            // Main run loop, common modes: fires inside the tracking loop.
+            MainActor.assumeIsolated { postUp() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        // Direct: `window.sendEvent` drops a synthesized event here.
+        mouseDown(with: down)
+        let sel = selectedRange()
+        out += " -> t=\(Self.debugMs()) sel=\(sel)"
+        if let r = wrappedCellCaretRect() {
+            let w = convert(r, to: nil)
+            out += " wrappedCaret view=\(r) win=\(w)"
+        }
+        out += " after[\(debugInsertionIndicators())]"
+        return out
+    }
+
+    /// `-debug.caretTrace YES` turns the caret trace on.
+    private var debugCaretTrace: Bool { UserDefaults.standard.bool(forKey: "debug.caretTrace") }
+
+    /// Milliseconds of process uptime — the one clock the caret trace, the
+    /// click report and the burst capture's file names all share.
+    nonisolated public static func debugMs() -> Int {
+        Int(ProcessInfo.processInfo.systemUptime * 1000)
+    }
+
+    /// Caret trace: every change of AppKit's insertion point, with the time
+    /// and the caller, so a burst capture's frames can be lined up against
+    /// exactly which code turned the caret on, off, accent or clear.
+    public override var insertionPointColor: NSColor? {
+        didSet {
+            guard debugCaretTrace else { return }
+            let c = insertionPointColor == .clear ? "clear" : "accent"
+            Log.info("carettrace t=\(Self.debugMs()) color=\(c) sel=\(selectedRange()) "
+                     + Self.debugCaller(), category: .app)
+        }
+    }
+
+    public override func setNeedsDisplay(_ invalidRect: NSRect) {
+        if debugCaretTrace, invalidRect.minY < 220 {
+            Log.info("carettrace inval t=\(Self.debugMs()) rect=\(invalidRect) " + Self.debugCaller(),
+                     category: .app)
+        }
+        super.setNeedsDisplay(invalidRect)
+    }
+
+    public override func updateInsertionPointStateAndRestartTimer(_ restartFlag: Bool) {
+        if debugCaretTrace {
+            Log.info("carettrace t=\(Self.debugMs()) restartTimer(\(restartFlag)) "
+                     + "sel=\(selectedRange()) " + Self.debugCaller(), category: .app)
+        }
+        super.updateInsertionPointStateAndRestartTimer(restartFlag)
+    }
+
+    private static func debugCaller() -> String {
+        Thread.callStackSymbols.dropFirst(2).prefix(4).map {
+            // "3   EdmundCore   0x… $s10EdmundCore…F + 123" → the symbol only.
+            let parts = $0.split(separator: " ", omittingEmptySubsequences: true)
+            return parts.count >= 4 ? String(parts[3].prefix(70)) : $0
+        }.joined(separator: " < ")
+    }
+
+    /// The view and layer tree under the window's content view, with the
+    /// animations running on each layer — to find where AppKit's caret lives
+    /// and what fades it.
+    public func debugViewTree() -> String {
+        var out: [String] = []
+        func layerLine(_ l: CALayer, _ indent: String) {
+            let anims = l.animationKeys() ?? []
+            out.append("\(indent)L \(type(of: l)) frame=\(l.frame) hidden=\(l.isHidden)"
+                       + " opacity=\(l.opacity) bg=\(l.backgroundColor.map { "\($0)" } ?? "nil")"
+                       + " anims=\(anims)")
+            for s in l.sublayers ?? [] { layerLine(s, indent + "  ") }
+        }
+        func walk(_ v: NSView, _ depth: Int) {
+            let indent = String(repeating: "  ", count: depth)
+            let name = "\(type(of: v))"
+            let interesting = name.contains("Text") || name.contains("Selection")
+                || name.contains("Insertion") || name.contains("Caret") || name.contains("Cursor")
+            out.append("\(indent)V \(name) frame=\(v.frame) hidden=\(v.isHidden) alpha=\(v.alphaValue)"
+                       + " layer=\(v.layer.map { "\(type(of: $0))" } ?? "nil")")
+            if interesting, name != "EditorTextView", let l = v.layer { layerLine(l, indent + "  ") }
+            for s in v.subviews { walk(s, depth + 1) }
+        }
+        if let root = window?.contentView { walk(root, 0) }
+        return out.joined(separator: "\n")
+    }
+
+    /// Every `NSTextInsertionIndicator` under this view (AppKit's caret on
+    /// macOS 14+), with the state that decides whether it can paint.
+    public func debugInsertionIndicators() -> String {
+        var found: [String] = []
+        func walk(_ v: NSView, _ depth: Int) {
+            if #available(macOS 14.0, *), let i = v as? NSTextInsertionIndicator {
+                let win = i.convert(i.bounds, to: nil)
+                found.append("ind frame=\(i.frame) win=\(win) hidden=\(i.isHidden)"
+                    + " mode=\(i.displayMode.rawValue) color=\(i.color.map { "\($0)" } ?? "nil")"
+                    + " alpha=\(i.alphaValue) opts=\(i.automaticModeOptions.rawValue)"
+                    + " super=\(type(of: i.superview!))")
+            }
+            for s in v.subviews { walk(s, depth + 1) }
+        }
+        walk(self, 0)
+        return found.isEmpty ? "none" : found.joined(separator: "; ")
     }
 
     private func debugMouseEvent(at point: NSPoint, clicks: Int = 1) -> NSEvent? {

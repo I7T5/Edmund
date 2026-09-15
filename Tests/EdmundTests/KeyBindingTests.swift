@@ -257,6 +257,15 @@ struct KeyBindingTests {
         #expect(item.keyEquivalentModifierMask == [.command])
     }
 
+    /// The catalog lists an id once, so a command written twice into a menu
+    /// table shows up twice in the menu bar and once in Settings — the two no
+    /// longer agree. Subscript/Superscript were duplicated this way in 8f6a7f2.
+    @Test("Every Font submenu command has a distinct id")
+    func fontCommandIDsAreUnique() {
+        let ids = FormatMenu.fontCommands.map(\.id)
+        #expect(Set(ids).count == ids.count)
+    }
+
     @Test("Submenu commands are listed under a row for the submenu")
     func rowsNestSubmenuCommands() {
         useFreshDefaults()
