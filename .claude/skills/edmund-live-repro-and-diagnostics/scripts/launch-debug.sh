@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# launch-debug.sh <file.md> [script.repro]
+# launch-debug.sh [--front] <file.md> [script.repro]
 # Assemble/refresh build/EdmundDbg.app, then direct-exec it with diagnostic
 # flags (and optionally replay a ReproScript). Kills only its OWN prior debug
 # instance, never the user's daily-driver edmd.
+#
+# --front launches through LaunchServices (`open -n … --args`) instead, which
+# is the only way the instance can ever become key: macOS 14 activation is
+# cooperative, so a process nobody "opened" cannot raise itself — the
+# ReproScript `activate` command reports key=false from a direct exec, and
+# neither `open -a` nor NSWorkspace can raise it afterwards. Steals focus from
+# whoever is at the machine; ask first.
 #
 # Steps (from docs/dev-guides/live-repro-guide.md §4):
 #   1. swift build (debug).
@@ -19,7 +26,9 @@
 # see edmund-build-and-env for the strings/shasum method.
 set -euo pipefail
 
-doc="${1:?usage: launch-debug.sh <file.md> [script.repro]}"
+front=0
+if [[ "${1:-}" == "--front" ]]; then front=1; shift; fi
+doc="${1:?usage: launch-debug.sh [--front] <file.md> [script.repro]}"
 repro="${2:-}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"   # repo root
@@ -63,5 +72,10 @@ if [[ -n "$repro" ]]; then
 fi
 
 echo "Launching $APP with: ${args[*]}"
-"$APP/Contents/MacOS/edmd" "${args[@]}" &
-echo "Launched PID $! — tail with: scripts/grep-trace.sh"
+if [[ $front -eq 1 ]]; then
+  open -n "$APP" --args "${args[@]}"
+  echo "Launched via LaunchServices (frontmost) — tail with: scripts/grep-trace.sh"
+else
+  "$APP/Contents/MacOS/edmd" "${args[@]}" &
+  echo "Launched PID $! — tail with: scripts/grep-trace.sh"
+fi
