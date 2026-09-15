@@ -12,7 +12,7 @@ extension EditorTextView {
 
     /// Regex that captures a list marker prefix:
     /// Group 1 = leading whitespace, Group 2 = marker (e.g. "- ", "* ", "1. ", "- [ ] ", "- [x] ")
-    private static let listMarkerRegex = try! NSRegularExpression(
+    static let listMarkerRegex = try! NSRegularExpression(
         pattern: #"^(\s*)([-*+]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)"#
     )
 
