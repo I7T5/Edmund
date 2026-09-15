@@ -189,13 +189,15 @@ extension EditorTextView {
         for (box, blockIndex) in boxes {
             if tableRawButtonHovered && hoveredTableBlock == blockIndex {
                 // Space, not a border: the editor's chrome idiom. A soft fill
-                // is enough to read as a target under the pointer — kept light,
-                // half of `quaternaryLabelColor`'s *own* alpha (~10%).
+                // is enough to read as a target under the pointer. Light mode
+                // takes half of `quaternaryLabelColor`'s *own* alpha (~10%) —
                 // `withAlphaComponent(0.5)` on it directly replaces that alpha
-                // with 50%: near-black at half strength in light mode, which
-                // read as a dark box rather than a lighter one.
+                // with 50%, near-black at half strength, a dark box rather than
+                // a lighter one. Dark mode keeps the full alpha: a white tint
+                // at 5% on the dark ground was too faint to read as a target.
+                let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
                 let base = NSColor.quaternaryLabelColor
-                let fill = base.usingColorSpace(.deviceRGB)
+                let fill = dark ? base : base.usingColorSpace(.deviceRGB)
                     .map { $0.withAlphaComponent($0.alphaComponent * 0.5) } ?? base
                 fill.setFill()
                 NSBezierPath(roundedRect: box.insetBy(dx: -3, dy: -3),
