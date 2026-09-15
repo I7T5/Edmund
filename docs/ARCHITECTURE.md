@@ -770,6 +770,27 @@ Notable subsystems:
   `documentRange.location` it is exact and ~15µs when nothing is pending
   (`wrappedCellRects`). Found by logging what `setNeedsDisplay` was
   actually called with (`-debug.caretTrace`).
+- **A table is styled for the line width it had at the time; the width
+  changing later must restyle it.** Column widths are clamped to the
+  available line width (`distributeColumnWidths`) and an overflowing cell
+  kerns out its whole column, so a row styled for a wider column and then
+  narrowed is wider than the line and TextKit 2 force-wraps it — the next
+  column's cells land on a second line of near-zero height (only 0.01pt
+  hidden characters on the first), drawn over the first column's text.
+  Reached by ⌘0 then ⌘− (`Document.setZoom` applies the theme before it
+  shrinks `maxContentWidthPoints`) and by pulling a window in.
+  `updateContentInset` recomposes table blocks on a width change, as it
+  already did image blocks (`EditorTextView+ContentWidth.swift`).
+- **Table chrome scales with the text.** The `</>` button follows the code
+  size (as the line numbers it shares a margin with); the pills, their gap
+  and band, and the cell-selection dots follow the body size
+  (`tableChromeScale`). The base constants are the sizes at the defaults.
+- **`burst` (ReproScript) frames can be stale for a *static* window**: a
+  ScreenCaptureKit stream delivers frames on change, and a fresh stream's
+  first frames can be the compositor's last-cached surface — a zoom that had
+  clearly applied showed as unzoomed. For a static state use a
+  `screencapture -l` still (`capture-window.sh`); the stream is for
+  transients (a caret paint, a click sequence).
 - **The `viewMode` setter recomposes every block, collapsing far geometry
   to estimates** (~17pt/line base vs ~27pt styled) — `recomposeDirty` on a
   large dirty set defers non-viewport styling to the idle drain. Two

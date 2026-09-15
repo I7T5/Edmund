@@ -170,7 +170,7 @@ extension EditorTextView {
                     // cost is a little more air above every table.
                     ps.paragraphSpacingBefore = cellVPad + ((i == 0)
                         ? max(bodyParagraphStyle.paragraphSpacingBefore,
-                              Self.tableHandleBand)
+                              tableHandleBand)
                         : 0)
                     ps.paragraphSpacing = cellVPad
                 }
@@ -184,7 +184,7 @@ extension EditorTextView {
                                                      // Including the last row: the table
                                                      // is closed on all four sides.
                                                      bottomBorder: i > 1,
-                                                     topInset: i == 0 ? Self.tableHandleBand : 0)),
+                                                     topInset: i == 0 ? tableHandleBand : 0)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)

@@ -113,12 +113,45 @@ struct TableRawButtonSlotTests {
         }
         #expect(button.rect.maxX <= pill.rect.minX,
                 "the button overlaps the pill instead of sitting to its left")
-        #expect(pill.rect.minX - button.rect.maxX >= Self.expectedGap - 0.5,
+        #expect(pill.rect.minX - button.rect.maxX >= editor.tableHandleGap - 0.5,
                 "the button crowds the pill")
         #expect(button.rect.minX >= 0, "the button ran off the view's left edge")
     }
 
-    private static let expectedGap = EditorTextView.tableHandleGap
+    /// View ▸ Zoom scales the theme's font sizes; the button follows the
+    /// monospace size like the line numbers, and returns to its base at ⌘0.
+    @Test("The button scales with zoom")
+    func buttonScalesWithZoom() {
+        let editor = loadEditor(doc)
+        let base = editor.tableRawButtonSize
+        #expect(base > 0)
+        #expect(editor.visibleTableRawButtons().first?.rect.width == base)
+
+        caret(editor, to: "a")
+        let pill = editor.tableHandles().first { $0.axis == .row }?.rect.width
+        let dot = editor.tableCellDotRadius
+
+        var zoomed = editor.theme
+        zoomed.fontSize *= 2
+        zoomed.monospaceFontSize *= 2
+        editor.applyTheme(zoomed, persist: false)
+        ensureFullLayout(editor)
+        layOutViewport(editor)
+        #expect(editor.visibleTableRawButtons().first?.rect.width == base * 2,
+                "the button did not grow with the zoomed theme")
+        // The pills and the cell-selection dots follow the body size.
+        #expect(editor.tableHandles().first { $0.axis == .row }?.rect.width == pill.map { $0 * 2 },
+                "the row pill did not grow with the zoomed theme")
+        #expect(editor.tableCellDotRadius == dot * 2)
+
+        var actual = editor.theme
+        actual.fontSize /= 2
+        actual.monospaceFontSize /= 2
+        editor.applyTheme(actual, persist: false)
+        ensureFullLayout(editor)
+        layOutViewport(editor)
+        #expect(editor.visibleTableRawButtons().first?.rect.width == base)
+    }
 
     /// The button toggles the table's raw markdown, and stays put afterwards so
     /// the same click brings the table back.

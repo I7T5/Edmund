@@ -621,6 +621,17 @@ enum ReproScript {
                     }
                     report("repro hideviews \(arg) touched=\(n)")
                 }
+            case "zoom":
+                // "zoom in|out|actual" — View ▸ Zoom, through the document's
+                // own actions (what ⌘= / ⌘- / ⌘0 run).
+                scheduleDoc(after: delay) { doc in
+                    switch arg {
+                    case "in": doc.zoomIn(nil)
+                    case "out": doc.zoomOut(nil)
+                    default: doc.actualSize(nil)
+                    }
+                    report("repro zoom \(arg)")
+                }
             case "appearance":
                 // "appearance light|dark|system" — force the app's appearance.
                 schedule(after: delay) { _ in
@@ -642,6 +653,56 @@ enum ReproScript {
                     CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p,
                             mouseButton: .left)?.post(tap: .cghidEventTap)
                     report("repro realmove view=(\(Int(n[0])),\(Int(n[1]))) cg=(\(Int(p.x)),\(Int(p.y)))")
+                }
+            case "fontprobe":
+                // "fontprobe off1,off2,…" — the font in storage at each offset,
+                // plus the theme's sizes, to check a live restyle landed.
+                schedule(after: delay) { editor in
+                    let offs = arg.split(separator: ",").compactMap { Int($0) }
+                    let out = offs.map { off -> String in
+                        guard let ts = editor.textStorage, off < ts.length,
+                              let f = ts.attribute(.font, at: off, effectiveRange: nil) as? NSFont
+                        else { return "\(off):nil" }
+                        return "\(off):\(f.fontName)@\(f.pointSize)"
+                    }
+                    report("repro fontprobe theme=\(editor.theme.fontSize)/\(editor.theme.monospaceFontSize)"
+                           + " body=\(editor.bodyFont.pointSize) " + out.joined(separator: " "))
+                }
+            case "relayout":
+                // Invalidate TextKit 2 layout for the whole document and repaint,
+                // without touching attributes — separates a stale layout from a
+                // wrong one.
+                schedule(after: delay) { editor in
+                    if let tlm = editor.textLayoutManager { tlm.invalidateLayout(for: tlm.documentRange) }
+                    editor.needsDisplay = true
+                    report("repro relayout")
+                }
+            case "kernprobe":
+                // "kernprobe from,to" — every kern attribute in the range, with
+                // the font size under it, and whether the paragraph carries
+                // table cell wraps. Checks a table row's pad kerns survived.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Int($0) }
+                    guard n.count == 2, let ts = editor.textStorage else { report("repro kernprobe: want from,to"); return }
+                    var out: [String] = []
+                    let range = NSRange(location: n[0], length: min(ts.length, n[1]) - n[0])
+                    ts.enumerateAttribute(.kern, in: range) { value, r, _ in
+                        guard let k = value as? CGFloat, k != 0 else { return }
+                        let f = ts.attribute(.font, at: r.location, effectiveRange: nil) as? NSFont
+                        out.append("\(r.location):k=\(Int(k))@\(f?.pointSize ?? -1)")
+                    }
+                    let wraps = ts.attribute(.tableCellWraps, at: n[0], effectiveRange: nil) as? TableCellWrapList
+                    var lines = "?"
+                    if let tlm = editor.textLayoutManager,
+                       let loc = tlm.location(tlm.documentRange.location, offsetBy: n[0]),
+                       let frag = tlm.textLayoutFragment(for: loc) {
+                        lines = "\(frag.textLineFragments.count) frame=\(frag.layoutFragmentFrame)"
+                            + " lineWidths=\(frag.textLineFragments.map { Int($0.typographicBounds.width) })"
+                    }
+                    let cw = editor.textContainer?.size.width ?? -1
+                    report("repro kernprobe container=\(Int(cw)) lines=\(lines) wraps=\(wraps?.wraps.count ?? 0) "
+                           + (wraps?.wraps.map { "x=\(Int($0.x)) w=\(Int($0.contentWidth))" }.joined(separator: ";") ?? "")
+                           + " kerns=" + out.joined(separator: " "))
                 }
             case "rectsprobe":
                 // "rectsprobe off1,off2,…" — the caret rects the editor would
