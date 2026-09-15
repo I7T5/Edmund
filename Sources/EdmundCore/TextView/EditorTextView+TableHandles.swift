@@ -173,8 +173,9 @@ extension EditorTextView {
     /// Three dots along the pill's long axis, carrying the pill on their own —
     /// its outline is a hint of a box, not a border.
     private func drawHandleDots(_ handle: TableHandle) {
-        let size: CGFloat = 1.5
-        let spacing: CGFloat = 4
+        // With the pill, so the dots keep their place in it at every zoom.
+        let size: CGFloat = 1.5 * tableChromeScale
+        let spacing: CGFloat = 4 * tableChromeScale
         tableHandleInk(Self.tableHandleDotAlpha).setFill()
         for step in -1...1 {
             let offset = CGFloat(step) * spacing
