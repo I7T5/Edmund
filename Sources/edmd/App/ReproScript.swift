@@ -13,6 +13,7 @@ import WebKit
 ///   caret <needle>    place the caret before the first occurrence of <needle>
 ///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
 ///   copycode <n>      press the copy button of the code block at offset n
+///   snapshot <path>   render the window content to a PNG in-process
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
@@ -118,6 +119,21 @@ enum ReproScript {
                 // code block's copy button) for a capture.
                 schedule(after: delay) { editor in
                     editor.reproHover(atOffset: Int(arg) ?? 0)
+                }
+            case "snapshot":
+                // Renders the window's content view to a PNG at <path>
+                // in-process (`cacheDisplay`), so a capture is exact and never
+                // a stale compositor frame — `screencapture -l` of a window that
+                // is behind another returns whatever it last showed on screen.
+                schedule(after: delay) { editor in
+                    guard let view = editor.window?.contentView,
+                          let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                        report("repro snapshot: no content view"); return
+                    }
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    guard let png = rep.representation(using: .png, properties: [:]) else { return }
+                    try? png.write(to: URL(fileURLWithPath: arg))
+                    report("repro snapshot \(arg)")
                 }
             case "copycode":
                 // Press the copy button of the code block at an absolute offset.

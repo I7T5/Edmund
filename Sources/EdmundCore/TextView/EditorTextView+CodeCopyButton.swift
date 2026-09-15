@@ -73,22 +73,34 @@ extension EditorTextView {
 
     // MARK: - Drawing
 
-    /// The "copied" acknowledgement, as one timeline driven by a display link
-    /// (`copiedCodeProgress` 0…1 over `codeCopiedFlashDuration`): the
-    /// background blinks — full on the click, gone by `codeCopiedBlinkEnd` of
-    /// the way through, a fast cubic ease-out — while the outline cross-fades
-    /// into the filled glyph over `codeCopiedFillDuration` and holds to the end.
-    static let codeCopiedFlashDuration: TimeInterval = 1.2
-    static let codeCopiedFillDuration: TimeInterval = 0.2
-    static let codeCopiedBlinkEnd: CGFloat = 0.25
+    /// The "copied" acknowledgement, one timeline driven by a display link
+    /// (`copiedCodeProgress` 0…1 over `codeCopiedFlashDuration`), in seconds:
+    /// the outline fills in (0–0.2), the background blinks once the fill has
+    /// landed (up 0.2–0.3, eased out by 0.7), the filled glyph holds, then
+    /// fades back to the outline (1.4–1.6).
+    static let codeCopiedFlashDuration: TimeInterval = 1.6
+    static let codeCopiedFillIn: ClosedRange<TimeInterval> = 0...0.2
+    static let codeCopiedBlinkUp: ClosedRange<TimeInterval> = 0.2...0.3
+    static let codeCopiedBlinkOut: ClosedRange<TimeInterval> = 0.3...0.7
+    static let codeCopiedFillOut: ClosedRange<TimeInterval> = 1.4...1.6
 
-    /// Alpha of the background blink at `progress`: on at once, then a cubic
-    /// ease-out — most of the drop in the first frames, so it reads as a
-    /// blink rather than a glow.
+    /// 0…1 across `range`, clamped.
+    private static func ramp(_ t: TimeInterval, over range: ClosedRange<TimeInterval>) -> CGFloat {
+        CGFloat(min(1, max(0, (t - range.lowerBound) / (range.upperBound - range.lowerBound))))
+    }
+
+    /// How filled the glyph is at `progress`.
+    static func copiedFillAlpha(at progress: CGFloat) -> CGFloat {
+        let t = TimeInterval(progress) * codeCopiedFlashDuration
+        return ramp(t, over: codeCopiedFillIn) - ramp(t, over: codeCopiedFillOut)
+    }
+
+    /// Alpha of the background blink at `progress`: a short rise, then a
+    /// quadratic ease-out — a blink, not a glow.
     static func copiedPulseAlpha(at progress: CGFloat) -> CGFloat {
-        guard progress < codeCopiedBlinkEnd else { return 0 }
-        let t = 1 - progress / codeCopiedBlinkEnd
-        return t * t * t
+        let t = TimeInterval(progress) * codeCopiedFlashDuration
+        let out = 1 - ramp(t, over: codeCopiedBlinkOut)
+        return ramp(t, over: codeCopiedBlinkUp) * out * out
     }
 
     /// Draws the copy buttons, from the same `drawBackground(in:)` pass as the
@@ -120,9 +132,7 @@ extension EditorTextView {
                     .withAlphaComponent(0.35 * Self.copiedPulseAlpha(at: copiedCodeProgress)).setFill()
                 NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
             }
-            let fill: CGFloat = copied
-                ? min(1, copiedCodeProgress * CGFloat(Self.codeCopiedFlashDuration / Self.codeCopiedFillDuration))
-                : 0
+            let fill: CGFloat = copied ? Self.copiedFillAlpha(at: copiedCodeProgress) : 0
             // The two glyphs share a footprint, so a plain alpha cross-fade
             // reads as the outline filling in.
             if fill < 1 { draw(outline, in: box, alpha: 1 - fill) }
