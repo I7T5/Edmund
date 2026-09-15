@@ -190,6 +190,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout gated at render via `calloutInfo`), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Syntax pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
 | Table editing (interactive) | `TextView/EditorTextView+TableHandles.swift` (row/column ⋯ pills and their menus, the cell-selection box and its corner dots, and every rule about where a caret may rest in a table), `TextView/EditorTextView+TableRawButton.swift` (the `</>` toggle: revealed by hover *or* the caret being in the table, sharing the line-number margin with the row pill), `Rendering/EditorTextView+TableGeometry.swift` (`TableGrid` — row rects and column edges read back off the `.tableRow` decoration), `Editing/EditorTextView+TableStructure.swift` (add/delete row and column; Delete on a cell selection clears it, a second Delete on an empty complete row/column removes it; Return on the separator autocompletes the table in canonical aligned form via `prettyAlignedTableLines`), `Editing/EditorTextView+TableInlineEditing.swift` (Tab/Return between cells, and the deletions that must not eat table structure), `Rendering/EditorTextView+TableCellCaret.swift` (a *wrapped* cell — one drawn from the scratch layout — hides its real characters, so its caret, selection highlight, drag-select and Up/Down are drawn and resolved by hand there, AppKit's caret view hidden meanwhile; a drag that leaves the cell becomes a cell block), `Editing/EditorTextView+TableCopy.swift` (⌘C: a cell's own text, or a selected block as tab-separated rows for a spreadsheet). All the chrome scales with zoom (`tableChromeScale`). The gestures and their traps: §8. |
+| Code block copy button | `TextView/EditorTextView+CodeCopyButton.swift` — Edit mode's counterpart to Read mode's copy button: the `</>` mechanism (same margin slot, size, ink, hover band) keyed on `.fence` blocks, level with the opening fence. Copies the lines between the fences; the glyph flashes filled in the accent colour for 1.2s (`copiedCodeBlock`, a timed swap — `drawBackground` has no layer to animate). Hover is the only reveal; Source mode gets none. |
 | Images | Edit mode renders `![alt](path)` **inline**: outside the token an overlay draws the picture (raw, editable markdown shows when the caret is inside it); an image that can't load draws a small icon + the reason instead. Resolution: absolute/`~`/`file:` load directly, relative resolves against the document's directory, `https` only when `allowRemoteImages` (`AppSettings.blockExternalImages`) and always async, `http` never (ATS). Loaded images are cached in a plain dict, **not** `NSCache` — eviction re-fetched remote badges and tripped host rate limits. Failure reasons are one shared `ImageLoadFailure` enum so Edit and Read report the same words. `Rendering/EditorTextView+ImageRendering.swift`. |
 | Inserting images | Format ▸ Image ▸ Attach File… and **drag & drop from Finder** both land on `insertImages(at:)` (`Editing/EditorTextView+FormattingCommands.swift`), inserting `![alt text](dest)` with the placeholder selected. `imageDestination(for:)` writes a path relative to the document's folder when the file sits under it, absolute otherwise, percent-encoded (a raw space or `)` would truncate the destination; `DocumentHTML.resolveLocalImage` decodes symmetrically). Files are referenced where they lie — Edmund never copies them, so moving an image later breaks the link. Drop mechanics: `Editing/EditorTextView+ImageDrop.swift`. |
 | Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: no characters inserted, TextKit 2 only. `EditorTextView.invisibles` ← `AppSettings.invisiblesConfig`; Settings ▸ Edit. Mechanism: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
@@ -315,6 +316,17 @@ Notable subsystems:
   `http`/`https`/`mailto` links open in the browser, `file:`/unknown
   schemes cancelled; wikilinks/relative links use private
   `x-edmund-wiki:`/`x-edmund-link:` schemes the nav coordinator intercepts.
+  The same channel carries the two in-page actions: a code block's copy
+  button (`x-edmund-copy:<base64>`, handled in the web view) and a task
+  item's checkbox (`x-edmund-task:<sourceLine>` → `ReadModeWebView.onToggleTask`
+  → `Document` → `editor.toggleTask(atLine:)` on the hidden editor, then
+  `setTaskChecked` patches the box's DOM in place over the host-side JS
+  channel — never a reload, which blanks a frame and lands the scroll only
+  as near as the anchor restore can; formatting edits post no
+  `NSText.didChangeNotification`, so nothing else refreshes). Line numbers in that HTML are **source**
+  lines: `HTMLRenderer.preprocess` strips front matter and block `%%` comments
+  before swift-markdown parses, and reports what it cut so `originalLine`
+  can map back — the `edmund-l<N>` anchors below use the same map.
   **Inspect Reader (⌥⌘I)** is a semi-toggle on `Document`, not on the web
   view, so it works from Edit too: it switches to Read and opens WebKit's
   private `_inspector`, and closes it when already up; entering Edit always
@@ -385,11 +397,33 @@ Notable subsystems:
 - `AppSettings` (`edmd/Settings`) = UserDefaults keys + typed accessors.
   SwiftUI panes use `@AppStorage`. Live changes broadcast to every open
   `Document.editor` (the font/line-height/content-width `applyTo…` helpers).
-- **Seven panes**, built by `SettingsWindowController.addPane`: General,
-  Appearance, Edit, Syntax, Key Bindings, Extensions, Advanced. Keys are
+- **Eight panes**, built by `SettingsWindowController.addPane`: General,
+  Appearance, Themes, Edit, Syntax, Key Bindings, Extensions, Advanced. Keys are
   namespaced to match (`settings.<pane>.<name>`), so the key tells you which
   pane owns it. There is no "Markdown" pane — the Markdown feature toggles
-  (§6) live under `settings.syntax.*`. The per-script font cascade is NOT a
+  (§6) live under `settings.syntax.*`.
+- **Appearance and Themes are separate on purpose.** Appearance owns typography
+  and the broad choices (light/dark, the measure, both faces, line height, the
+  per-script cascade); Themes owns color, and is the authoring pane — it makes
+  and edits themes. Fonts were briefly a third *theme kind*, named by an editor
+  theme; that added a third noun with an assignment between it and the others,
+  and it let the light↔dark switch change the reader's typeface. A writing app's
+  font is chosen once and kept, so it is a setting, and a theme is a color
+  scheme. Typography keys therefore keep their old `Editor*` names
+  (`EditorFontName`, `EditorLineSpacing`, …) rather than moving to a
+  `settings.font.*` namespace: they are the shipped keys, and renaming them
+  would strand every existing install.
+- **Themes are JSON, loaded by `ThemeStore`** (§`Sources/EdmundCore/Model/`).
+  Two kinds — `GeneralTheme` (editor chrome) and `SyntaxTheme` (code tokens) —
+  each declaring the appearance it is legible on; the app holds one active theme
+  per kind per appearance and swaps on light↔dark. A file's stem is the theme's
+  `name` and the value stored in settings, so renaming touches `displayName`
+  only. Bundled themes load first and a user file of the same name shadows one,
+  which is what lets a shipped theme be edited without being replaced and
+  restored by deleting the shadow. A `nil` color means "use the platform default
+  for this role" and is resolved at the call site, beside the value it falls
+  back to — not the same as missing data, because a semantic color like
+  `NSColor.textColor` tracks Increase Contrast and a hex cannot. The per-script font cascade is NOT a
   pane: it is a collapsed "Fonts by script" section at the foot of Appearance
   (`EditorFontCascade` = `[script: family]` dict, `EditorFontCascadeSizeRatios`
   = `[script: ratio]` — ratios of the body size, so zoom and body-size changes
@@ -565,6 +599,12 @@ Notable subsystems:
   windows, state restoration) —
   `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
   and relaunch.
+- **Settings panes render offscreen** (DEBUG builds): `.build/debug/edmd
+  -debug.render pane:Appearance -debug.renderOut out.png [-debug.renderDark YES]
+  -debug.disableUpdater YES` — also `editor:<name>` / `syntax:<name>` for a
+  theme's detail box (`Sources/edmd/App/SettingsRender.swift`). Live
+  `screencapture` has never worked for these panes; use this, don't
+  hand-build a scaffold.
 - **Counting an app's windows is the flakiest measurement in this repo — don't
   trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
   `winid.swift` uses) lists windows the app has already *closed*, so a stale

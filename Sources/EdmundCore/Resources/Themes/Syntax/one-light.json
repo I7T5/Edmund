@@ -1,0 +1,16 @@
+{
+  "name": "one-light",
+  "displayName": "One Light",
+  "appearance": "light",
+
+  "plain": "#383a42",
+  "keyword": "#a626a4",
+  "command": "#4078f2",
+  "type": "#c18401",
+  "attribute": "#0184bc",
+  "variable": "#e45649",
+  "value": "#986801",
+  "number": "#986801",
+  "string": "#50a14f",
+  "comment": "#a0a1a7"
+}
