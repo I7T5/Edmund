@@ -617,6 +617,28 @@ enum ReproScript {
                     }
                     report("repro hideviews \(arg) touched=\(n)")
                 }
+            case "appearance":
+                // "appearance light|dark|system" — force the app's appearance.
+                schedule(after: delay) { _ in
+                    switch arg {
+                    case "light": NSApp.appearance = NSAppearance(named: .aqua)
+                    case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+                    default: NSApp.appearance = nil
+                    }
+                    report("repro appearance \(arg)")
+                }
+            case "realmove":
+                // "realmove x,y" — move the real pointer to a view point (hover).
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count == 2, let window = editor.window else { report("repro realmove: want x,y"); return }
+                    let cocoa = window.convertPoint(toScreen: editor.convert(NSPoint(x: n[0], y: n[1]), to: nil))
+                    let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+                    let p = CGPoint(x: cocoa.x, y: primaryMaxY - cocoa.y)
+                    CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p,
+                            mouseButton: .left)?.post(tap: .cghidEventTap)
+                    report("repro realmove view=(\(Int(n[0])),\(Int(n[1]))) cg=(\(Int(p.x)),\(Int(p.y)))")
+                }
             case "rectsprobe":
                 // "rectsprobe off1,off2,…" — the caret rects the editor would
                 // draw for each raw offset (empty = not in a wrapped cell).
