@@ -2,6 +2,7 @@
 import AppKit
 import EdmundCore
 import WebKit
+import ScreenCaptureKit
 
 /// In-process repro driver: `-debug.reproScript <path>` replays a keystroke
 /// script against the front document through the real AppKit key-event path
@@ -341,7 +342,7 @@ enum ReproScript {
                         }
                         // The tooltip too: hovering an item to read one cannot be
                         // driven from here, so this is the only way to check it.
-                        let tip = (item.view as? NSView)?.toolTip ?? item.toolTip
+                        let tip = item.view?.toolTip ?? item.toolTip
                         report("repro toolbar \(item.itemIdentifier.rawValue) " +
                                "enabled=\(on) tip=\(tip ?? "nil")")
                     }
@@ -533,6 +534,12 @@ enum ReproScript {
                     }
                     let restore = NSEvent.mouseLocation
                     let restoreCG = CGPoint(x: restore.x, y: primaryMaxY - restore.y)
+                    // Main-actor closure: Sendable, so the background thread can
+                    // carry it without capturing the editor itself.
+                    let finish: @MainActor () -> Void = {
+                        window.level = .normal
+                        report("repro realclick done t=\(EditorTextView.debugMs()) sel=\(editor.selectedRange())")
+                    }
                     DispatchQueue.global(qos: .userInteractive).async {
                         func post(_ t: CGEventType) {
                             let e = CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: p,
@@ -544,10 +551,7 @@ enum ReproScript {
                         post(.leftMouseDown); usleep(useconds_t(hold * 1000))
                         post(.leftMouseUp); usleep(30_000)
                         CGWarpMouseCursorPosition(restoreCG)
-                        DispatchQueue.main.async {
-                            window.level = .normal
-                            report("repro realclick done t=\(EditorTextView.debugMs()) sel=\(editor.selectedRange())")
-                        }
+                        DispatchQueue.main.async { MainActor.assumeIsolated { finish() } }
                     }
                     }
                 }
@@ -680,9 +684,12 @@ enum ReproScript {
                 }
             case "burst":
                 // "burst ms,interval,dir" — capture ONLY the document window
-                // (CGWindowListCreateImage by window id; nothing else on screen
-                // is included) every `interval` ms for `ms` ms, to dir/NNNN.png.
-                // Catches single-frame paints a still screenshot cannot.
+                // (a ScreenCaptureKit stream filtered to this window id; nothing
+                // else on screen is included) for `ms` ms, at most one frame per
+                // `interval` ms, to dir/NNNN-<uptime ms>.png. A stream delivers
+                // a frame whenever the window repaints, so a single-frame paint
+                // a still screenshot cannot catch lands as its own file. Needs
+                // Screen Recording for the bundle.
                 schedule(after: delay) { editor in
                     let parts = arg.split(separator: ",", maxSplits: 2).map(String.init)
                     guard parts.count == 3, let total = Double(parts[0]),
@@ -692,31 +699,40 @@ enum ReproScript {
                     let dir = parts[2]
                     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
                     let wid = CGWindowID(window.windowNumber)
-                    let t0 = Date()
-                    DispatchQueue.global(qos: .userInteractive).async {
-                        var n = 0, written = 0
-                        while Date().timeIntervalSince(t0) * 1000 < total {
-                            let img = CGWindowListCreateImage(
-                                .null, .optionIncludingWindow, wid,
-                                [.boundsIgnoreFraming, .bestResolution])
-                            // Stamped AFTER the capture returns, on the same
-                            // uptime clock as the caret trace.
-                            let ms = EditorTextView.debugMs()
-                            if let img,
-                               let dest = CGImageDestinationCreateWithURL(
-                                URL(fileURLWithPath: "\(dir)/\(String(format: "%04d", n))-\(ms).png") as CFURL,
-                                "public.png" as CFString, 1, nil) {
-                                CGImageDestinationAddImage(dest, img, nil)
-                                if CGImageDestinationFinalize(dest) { written += 1 }
+                    let scale = window.backingScaleFactor
+                    report("repro burst started wid=\(wid)")
+                    Task.detached(priority: .userInitiated) {
+                        let output = BurstOutput(dir: dir)
+                        do {
+                            let content = try await SCShareableContent.excludingDesktopWindows(
+                                false, onScreenWindowsOnly: true)
+                            guard let target = content.windows.first(where: { $0.windowID == wid }) else {
+                                throw NSError(domain: "repro", code: 1,
+                                              userInfo: [NSLocalizedDescriptionKey: "window \(wid) not shareable"])
                             }
-                            n += 1
-                            usleep(useconds_t(interval * 1000))
+                            let filter = SCContentFilter(desktopIndependentWindow: target)
+                            let config = SCStreamConfiguration()
+                            config.width = Int(target.frame.width * scale)
+                            config.height = Int(target.frame.height * scale)
+                            config.showsCursor = false
+                            config.captureResolution = .best
+                            config.minimumFrameInterval = CMTime(value: CMTimeValue(max(1, interval)), timescale: 1000)
+                            config.queueDepth = 8
+                            let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+                            try stream.addStreamOutput(output, type: .screen,
+                                                       sampleHandlerQueue: DispatchQueue(label: "repro.burst"))
+                            try await stream.startCapture()
+                            try await Task.sleep(nanoseconds: UInt64(total * 1_000_000))
+                            try await stream.stopCapture()
+                        } catch {
+                            let text = "\(error)"
+                            await MainActor.run { report("repro burst error \(text)") }
                         }
-                        DispatchQueue.main.async {
-                            report("repro burst done frames=\(n) written=\(written) dir=\(dir)")
+                        let frames = output.frames, ok = output.written
+                        await MainActor.run {
+                            report("repro burst done frames=\(frames) written=\(ok) dir=\(dir)")
                         }
                     }
-                    report("repro burst started wid=\(wid)")
                 }
             case "drag":
                 // "drag x1,y1,x2,y2[,steps]" — a real drag-select at view points,
@@ -784,6 +800,9 @@ enum ReproScript {
             report("repro realseq ABORTED top=\(top.map(String.init) ?? "none")"); return
         }
         report("repro realseq t=\(EditorTextView.debugMs()) clicks=\(points.count) hold=\(Int(hold)) gap=\(Int(gap))")
+        let finish: @MainActor () -> Void = {
+            report("repro realseq done t=\(EditorTextView.debugMs()) sel=\(editor.selectedRange())")
+        }
         DispatchQueue.global(qos: .userInteractive).async {
             var last = first
             for p in points {
@@ -802,9 +821,7 @@ enum ReproScript {
                 usleep(useconds_t(gap * 1000))
                 last = p
             }
-            DispatchQueue.main.async {
-                report("repro realseq done t=\(EditorTextView.debugMs()) sel=\(editor.selectedRange())")
-            }
+            DispatchQueue.main.async { MainActor.assumeIsolated { finish() } }
         }
     }
 
@@ -881,3 +898,29 @@ enum ReproScript {
     }
 }
 #endif
+
+/// Writes every frame a burst stream delivers as a PNG named by its index and
+/// the process-uptime ms at delivery — the clock the caret trace uses.
+private final class BurstOutput: NSObject, SCStreamOutput, @unchecked Sendable {
+    private let dir: String
+    private let context = CIContext()
+    private let lock = NSLock()
+    private(set) var frames = 0
+    private(set) var written = 0
+
+    init(dir: String) { self.dir = dir }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+                of type: SCStreamOutputType) {
+        guard type == .screen, let buffer = sampleBuffer.imageBuffer else { return }
+        let ms = EditorTextView.debugMs()
+        lock.lock(); let n = frames; frames += 1; lock.unlock()
+        let image = CIImage(cvPixelBuffer: buffer)
+        guard let cg = context.createCGImage(image, from: image.extent),
+              let dest = CGImageDestinationCreateWithURL(
+                URL(fileURLWithPath: "\(dir)/\(String(format: "%04d", n))-\(ms).png") as CFURL,
+                "public.png" as CFString, 1, nil) else { return }
+        CGImageDestinationAddImage(dest, cg, nil)
+        if CGImageDestinationFinalize(dest) { lock.lock(); written += 1; lock.unlock() }
+    }
+}

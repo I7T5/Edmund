@@ -1155,11 +1155,14 @@ extension EditorTextView {
                                     timestamp: ProcessInfo.processInfo.systemUptime,
                                     windowNumber: window.windowNumber, context: nil,
                                     eventNumber: 0, clickCount: 1, pressure: 0)
+        // Main-actor closure (Sendable), so the timer's block captures no
+        // NSEvent or NSWindow of its own.
+        let postUp: @MainActor () -> Void = {
+            if let up { window.postEvent(up, atStart: false) }
+        }
         let timer = Timer(timeInterval: holdMs / 1000, repeats: false) { _ in
             // Main run loop, common modes: fires inside the tracking loop.
-            MainActor.assumeIsolated {
-                if let up { window.postEvent(up, atStart: false) }
-            }
+            MainActor.assumeIsolated { postUp() }
         }
         RunLoop.main.add(timer, forMode: .common)
         // Direct: `window.sendEvent` drops a synthesized event here.

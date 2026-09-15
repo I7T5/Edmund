@@ -153,7 +153,7 @@ Accessibility trust needed once):
 | `realclick x,y[,holdms[,clicks]]` | real HID click at a view point; floats the window, verifies ours is topmost at the point (else `ABORTED`), restores the cursor |
 | `realoff holdms,gapms,off1,off2,…` | a run of real clicks on raw offsets (wrapped cells included), exact spacing, mouse-move trail between — survives the window moving |
 | `realseq holdms,gapms,x1,y1,…` | the same on view points |
-| `burst ms,interval,dir` | capture **our window only** every ~15–35 ms to `dir/NNNN-<uptime ms>.png` |
+| `burst ms,interval,dir` | ScreenCaptureKit stream of **our window only**: one PNG per repaint (≤ one per `interval` ms) to `dir/NNNN-<uptime ms>.png`; a quiet window yields no frames, so gaps are meaningful |
 | `caretstate` / `indicators` / `viewtree` / `hideviews <Class|none>` / `redraw` | state probes for the caret and the layer tree |
 
 Add `-debug.caretTrace YES` to log caret colour/state changes and the dirty
