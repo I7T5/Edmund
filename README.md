@@ -97,7 +97,8 @@ The list is by no means exhaustive, and neither was it meant to be. I just wante
 - The bundled code themes: [Tomorrow and Tomorrow Night](https://github.com/chriskempson/tomorrow-theme) (Chris Kempson, MIT), [One Light and One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) (Atom, MIT), [Solarized](https://ethanschoonover.com/solarized/) (Ethan Schoonover, MIT), and Anura and Dendrobates (1024jp, from [CotEditor](https://github.com/coteditor/CotEditor), Apache 2.0)
 - [create-dmg](https://github.com/sindresorhus/create-dmg), [screenshot-studio](screenshot-studio.com), and [shields](shields.io) for the utilities
 - Claude, [caveman](https://github.com/JuliusBrussee/caveman), and [ponytail](https://github.com/DietrichGebert/ponytail) for the engineering. 
-<!-- - [RaTeX], [beautiful-mermaid], [Shiki] for extension functionalities -->
+- [RaTeX](https://ratex.lites.dev) and [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) for extension functionalities
+<!-- Shiki stays out until a Shiki/TextMate backend actually ships — see CodeSyntaxBackend.swift -->
 
 Most importantly, many thanks to our contributors: 
 

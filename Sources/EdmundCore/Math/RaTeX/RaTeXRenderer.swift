@@ -11,16 +11,17 @@ import AppKit
 public final class RaTeXRenderer: MathRenderer {
     public let id = "ratex@\(RaTeXRelease.version)"
     private let host: WasmMathHost
-    private let installer: RaTeXInstaller
+    private let installer: ExtensionPayloadInstaller
 
     public var isReady: Bool { host.isLoaded }
     /// The installer's current state, for Settings to surface (downloading
     /// %, verifying, ready, failed → retry).
-    public var installState: MathExtensionState {
+    public var installState: ExtensionInstallState {
         get async { await installer.state }
     }
 
-    public init(host: WasmMathHost = WasmMathHost(), installer: RaTeXInstaller = RaTeXInstaller()) {
+    public init(host: WasmMathHost = WasmMathHost(),
+                installer: ExtensionPayloadInstaller = ExtensionPayloadInstaller(payload: RaTeXRelease.payload)) {
         self.host = host
         self.installer = installer
     }

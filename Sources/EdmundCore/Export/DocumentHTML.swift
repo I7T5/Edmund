@@ -23,6 +23,7 @@ enum DocumentHTML {
                      baseURL: URL? = nil,
                      options: ReadRenderOptions = .default) -> String {
         var body = HTMLRenderer.render(markdown: markdown, options: options)
+        body = fillMermaid(body, dark: dark)
         body = fillMath(body, theme: theme, dark: dark)
         body = fillImages(body, baseURL: baseURL, options: options)
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
@@ -37,6 +38,53 @@ enum DocumentHTML {
         </style></head>
         <body><div class="page">\(body)</div></body></html>
         """
+    }
+
+    // MARK: Mermaid (diagram source → inline SVG)
+
+    // Group 1 is the block's `edmund-l<N>` source-line anchor (see
+    // `HTMLRenderer.addingAnchorID`), carried through into the replacement so
+    // the anchor survives this pass. Group 2 is the base64 diagram source,
+    // group 3 the wrapped code block used as the fallback.
+    //
+    // The `</div></div>` tail is what ends the match: the wrapped
+    // `code-block-wrap` div contains only an `<a>` and a `<pre>`, never
+    // another div, so the first adjacent pair of closing tags is this
+    // placeholder's own.
+    private static let mermaidPattern =
+        "<div( id=\"[^\"]*\")? class=\"mermaid-diagram\" data-source=\"([^\"]*)\">(.*?)</div></div>"
+
+    /// Replaces each mermaid placeholder with an inline SVG, or unwraps it back
+    /// to the plain code block when the extension is disabled, not installed,
+    /// or the diagram doesn't parse.
+    ///
+    /// Runs before `fillMath` so a diagram is never scanned for `$…$` math.
+    private static func fillMermaid(_ html: String, dark: Bool) -> String {
+        // No early-out when the extension is off: the placeholder is markup
+        // `HTMLRenderer` always emits, so this pass must run to unwrap it even
+        // when nothing can render. Skipping it would leak `data-source="…"`
+        // into the finished document.
+        let style = MermaidStyle.readMode(dark: dark)
+        return replaceMatches(html, pattern: mermaidPattern) { groups in
+            let id = groups[1]
+            // Unwrapping drops the outer div, so the source-line anchor has to
+            // move onto the code block it wrapped — otherwise a fenced diagram
+            // that failed to render becomes a hole in Read mode's scroll-sync
+            // anchor list.
+            let wrapOpen = "<div class=\"code-block-wrap\""
+            let fallback = (groups[3].hasPrefix(wrapOpen)
+                ? "<div\(id) class=\"code-block-wrap\"" + groups[3].dropFirst(wrapOpen.count)
+                : groups[3]) + "</div>"
+            guard let data = Data(base64Encoded: groups[2]),
+                  let source = String(data: data, encoding: .utf8),
+                  let svg = MermaidRenderer.shared.svg(source: source, style: style) else {
+                return fallback
+            }
+            // `role="img"` with the source as the label: a screen reader
+            // otherwise walks the SVG's individual text nodes and reads the
+            // diagram's labels in layout order, which is meaningless.
+            return "<div\(id) class=\"mermaid-diagram\" role=\"img\" aria-label=\"\(HTMLRenderer.attr(source))\">\(svg)</div>"
+        }
     }
 
     // MARK: Math (active engine → PNG data URI)
