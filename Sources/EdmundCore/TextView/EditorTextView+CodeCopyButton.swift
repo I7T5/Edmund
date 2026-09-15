@@ -120,9 +120,19 @@ extension EditorTextView {
         for (box, blockIndex) in boxes {
             let copied = blockIndex == copiedCodeBlock
             let pad = box.insetBy(dx: -3, dy: -3)
-            if codeCopyButtonHovered {
+            let fill: CGFloat = copied ? Self.copiedFillAlpha(at: copiedCodeProgress) : 0
+            // The hover background stays with the filled glyph — the copied
+            // state keeps it up (and fades it out with the fill) even after
+            // the pointer has left.
+            let background: CGFloat = codeCopyButtonHovered ? 1 : fill
+            if background > 0 {
+                // Context alpha, not `withAlphaComponent`: the semantic colour's
+                // own alpha is the tint, and this scales it rather than replaces it.
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current?.cgContext.setAlpha(background)
                 NSColor.quaternaryLabelColor.setFill()
                 NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
+                NSGraphicsContext.restoreGraphicsState()
             }
             if copied {
                 // Two tiers above the hover fill, so it reads over it.
@@ -130,7 +140,6 @@ extension EditorTextView {
                     .withAlphaComponent(0.35 * Self.copiedPulseAlpha(at: copiedCodeProgress)).setFill()
                 NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
             }
-            let fill: CGFloat = copied ? Self.copiedFillAlpha(at: copiedCodeProgress) : 0
             // The two glyphs share a footprint, so a plain alpha cross-fade
             // reads as the outline filling in.
             if fill < 1 { draw(outline, in: box, alpha: 1 - fill) }
