@@ -10,7 +10,7 @@ import AppKit
 //   - `traceEdit` — a one-line snapshot of caret + flags + lengths, emitted only
 //     when verbose editor tracing is on (Settings ▸ Advanced). Sprinkled at the
 //     key pipeline points so a reproduction yields a readable keystroke-level
-//     trail in `~/.edmund/logs`.
+//     trail in the diagnostic log (Settings ▸ Advanced ▸ Show in Finder).
 //   - `verifyEditorInvariants` — checks the two model invariants after a sync. A
 //     cheap length check is effectively always on (logs an error if the
 //     storage==rawSource invariant ever breaks); the full structural check runs

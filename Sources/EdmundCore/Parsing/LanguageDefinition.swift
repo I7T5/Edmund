@@ -4,7 +4,7 @@ import Foundation
 //
 // The declarative, per-language data the built-in highlighter reads instead of
 // hardcoded sets. Bundled defs ship as JSON under Resources/Syntaxes; users add
-// languages by dropping their own JSON in ~/.edmund/syntaxes. JSON (not YAML)
+// languages by dropping their own JSON in Application Support/Edmund/Syntaxes. JSON (not YAML)
 // keeps parsing dependency-free (Codable) and off the render hot path.
 //
 // The schema is deliberately minimal — the scanner supplies the universal parts

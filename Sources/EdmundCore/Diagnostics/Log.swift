@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Diagnostic logging
 //
 // A small always-on (opt-out) file logger that writes human-readable lines to
-// `~/.edmund/logs/edmund-YYYY-MM-DD.log` (one file per day) so problems can be
+// `Log.defaultDirectory/edmund-YYYY-MM-DD.log` (one file per day) so problems can be
 // diagnosed after the fact. Logs stay on the user's Mac and may contain document
 // text — that's fine because they never leave the device.
 //
@@ -17,6 +17,15 @@ import Foundation
 //   (load, full recompose) whose cost can't be read off a pair of events.
 
 public enum Log {
+
+    /// `~/Library/Application Support/Edmund/Logs`. Resolves to the sandbox
+    /// container when the app is sandboxed and to the real folder when not,
+    /// with no code branch — never build this from `homeDirectoryForCurrentUser`,
+    /// which a sandboxed process can't see.
+    public static var defaultDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Edmund/Logs", isDirectory: true)
+    }
 
     public enum Level: Int, Comparable, Sendable {
         case debug = 0, info = 1, error = 2
@@ -159,8 +168,7 @@ private final class LogStore: @unchecked Sendable {
     // Lock-guarded configuration.
     private var _enabled = false
     private var _verbose = false
-    private var directory = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".edmund/logs", isDirectory: true)
+    private var directory = Log.defaultDirectory
 
     // Queue-confined state.
     private var handle: FileHandle?

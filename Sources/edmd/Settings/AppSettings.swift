@@ -438,11 +438,8 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.logRetention) }
     }
 
-    /// Where diagnostic logs live: `~/.edmund/logs`.
-    static var logDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".edmund/logs", isDirectory: true)
-    }
+    /// Where diagnostic logs live (see `Log.defaultDirectory`).
+    static var logDirectory: URL { Log.defaultDirectory }
 
     /// Pushes the current logging settings into the `Log` facility. Called at
     /// launch and whenever the toggle or retention changes.
@@ -454,7 +451,7 @@ enum AppSettings {
     }
 
     /// Pushes the default code-block language into the shared definition store and
-    /// reloads bundled + user (~/.edmund/syntaxes) definitions. Called at launch,
+    /// reloads bundled + user (Application Support/Edmund/Syntaxes) definitions. Called at launch,
     /// and after the popup changes or a def is imported/removed.
     static func applyCodeSyntax() {
         SyntaxDefinitionStore.shared.defaultLanguage = defaultCodeSyntax
