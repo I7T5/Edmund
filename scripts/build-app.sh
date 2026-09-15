@@ -1,10 +1,24 @@
 #!/bin/bash
 # Build Edmund.app — a standalone macOS application bundle.
-# Usage: ./scripts/build-app.sh
+# Usage: ./scripts/build-app.sh [--variant sparkle|adhoc]
+#   sparkle (default): App Sandbox on (Resources/Edmund.entitlements), signed
+#                      with the bundle id. What releases ship.
+#   adhoc:             no entitlements, today's dev build. The sandbox blocks
+#                      posting CGEvents, which the ReproScript live-repro driver
+#                      needs, so local debugging stays on this variant.
 # Output: build/Edmund.app (ready to drag into /Applications)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+VARIANT="sparkle"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --variant) VARIANT="$2"; shift 2 ;;
+        *) echo "Unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+case "$VARIANT" in sparkle|adhoc) ;; *) echo "Unknown variant: $VARIANT" >&2; exit 2 ;; esac
 
 APP_NAME="Edmund"
 BUNDLE="build/${APP_NAME}.app"
@@ -23,6 +37,9 @@ mkdir -p "${BUNDLE}/Contents/Resources"
 cp ".build/release/${EXECUTABLE}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
 cp Info.plist "${BUNDLE}/Contents/"
 cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
+# First-sandboxed-launch migration of Application Support/Edmund into the
+# container (see the plist). Copied for every variant; inert unsandboxed.
+cp Resources/container-migration.plist "${BUNDLE}/Contents/Resources/"
 
 # Compile the asset catalog so the app's AccentColor (our brown) is available.
 # macOS uses it only when the user's system accent is "Multicolor"; a specific
@@ -148,7 +165,15 @@ echo "Code signing..."
 codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
     --identifier "com.i7t5.edmund.quicklook" "$APPEX"
-codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
+# The sandboxed variant signs with no --identifier override: the signing id
+# names the container (~/Library/Containers/<id>) and keys the automatic
+# preferences migration, so it must equal the Info.plist bundle id. The ad-hoc
+# variant keeps its historical "com.i7t5.edmd" id.
+if [ "$VARIANT" = "sparkle" ]; then
+    codesign --force --sign - --entitlements Resources/Edmund.entitlements "$BUNDLE"
+else
+    codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
+fi
 
 # SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
 # per-target bundle next to the binary. SwiftMath's generated Bundle.module
@@ -163,5 +188,5 @@ for bundle in .build/release/*.bundle; do
 done
 
 echo ""
-echo "Done: ${BUNDLE}"
+echo "Done: ${BUNDLE} (variant: ${VARIANT})"
 echo "To install: cp -R ${BUNDLE} /Applications/"
