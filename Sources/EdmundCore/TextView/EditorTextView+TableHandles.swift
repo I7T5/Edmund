@@ -47,11 +47,25 @@ extension EditorTextView {
     ///
     /// Measured off the Notes reference at 2×: a 32×16 px pill, 8 px clear of
     /// the table, with a 3 px corner — a rounded rectangle, not a capsule.
-    static let tableHandleThickness: CGFloat = 8
-    static let tableHandleLength: CGFloat = 16
-    static let tableHandleGap: CGFloat = 4
-    static let tableHandleRadius: CGFloat = 1.5
-    static var tableHandleBand: CGFloat { tableHandleThickness + tableHandleGap }
+    /// All at the default body size; the instance values below scale them.
+    static let tableHandleBaseThickness: CGFloat = 8
+    static let tableHandleBaseLength: CGFloat = 16
+    static let tableHandleBaseGap: CGFloat = 4
+    static let tableHandleBaseRadius: CGFloat = 1.5
+    static let tableCellDotBaseRadius: CGFloat = 3.75
+
+    /// How much bigger than the default body size the text is — what View ▸
+    /// Zoom changes — so the table's chrome (pills, their gap and band, the
+    /// selection dots) grows and shrinks with the text instead of staying at
+    /// the size measured for 16pt. The `</>` button follows the code size
+    /// instead, like the line numbers it shares a margin with.
+    var tableChromeScale: CGFloat { theme.fontSize / EditorTheme.default.fontSize }
+    var tableHandleThickness: CGFloat { Self.tableHandleBaseThickness * tableChromeScale }
+    var tableHandleLength: CGFloat { Self.tableHandleBaseLength * tableChromeScale }
+    var tableHandleGap: CGFloat { Self.tableHandleBaseGap * tableChromeScale }
+    var tableHandleRadius: CGFloat { Self.tableHandleBaseRadius * tableChromeScale }
+    var tableHandleBand: CGFloat { tableHandleThickness + tableHandleGap }
+    var tableCellDotRadius: CGFloat { Self.tableCellDotBaseRadius * tableChromeScale }
 
     /// Ink for the pill's outline and its dots, as alpha on the label colour.
     ///
@@ -86,9 +100,9 @@ extension EditorTextView {
               let top = grid.rows.first?.minY else { return [] }
 
         let rowRect = grid.rows[cell.row]
-        let thickness = Self.tableHandleThickness
-        let length = Self.tableHandleLength
-        let gap = Self.tableHandleGap
+        let thickness = tableHandleThickness
+        let length = tableHandleLength
+        let gap = tableHandleGap
 
         // Clamped so a narrow window pins the row pill to the view's edge
         // rather than sliding it off the left.
@@ -136,8 +150,8 @@ extension EditorTextView {
             // has to read as a target with no text beside it to anchor on, so it
             // keeps a hairline outline and gains a fill only under the pointer.
             let body = NSBezierPath(roundedRect: handle.rect,
-                                    xRadius: Self.tableHandleRadius,
-                                    yRadius: Self.tableHandleRadius)
+                                    xRadius: tableHandleRadius,
+                                    yRadius: tableHandleRadius)
             (hovered ? NSColor.quaternaryLabelColor : NSColor.clear).setFill()
             body.fill()
             tableHandleInk(Self.tableHandleOutlineAlpha).setStroke()
@@ -159,8 +173,9 @@ extension EditorTextView {
     /// Three dots along the pill's long axis, carrying the pill on their own —
     /// its outline is a hint of a box, not a border.
     private func drawHandleDots(_ handle: TableHandle) {
-        let size: CGFloat = 1.5
-        let spacing: CGFloat = 4
+        // With the pill, so the dots keep their place in it at every zoom.
+        let size: CGFloat = 1.5 * tableChromeScale
+        let spacing: CGFloat = 4 * tableChromeScale
         tableHandleInk(Self.tableHandleDotAlpha).setFill()
         for step in -1...1 {
             let offset = CGFloat(step) * spacing
@@ -291,16 +306,15 @@ extension EditorTextView {
         path.stroke()
         accentColor.setFill()
         for point in tableCellSelectionDots(box) {
-            NSBezierPath(ovalIn: NSRect(x: point.x - Self.tableCellDotRadius,
-                                        y: point.y - Self.tableCellDotRadius,
-                                        width: Self.tableCellDotRadius * 2,
-                                        height: Self.tableCellDotRadius * 2)).fill()
+            NSBezierPath(ovalIn: NSRect(x: point.x - tableCellDotRadius,
+                                        y: point.y - tableCellDotRadius,
+                                        width: tableCellDotRadius * 2,
+                                        height: tableCellDotRadius * 2)).fill()
         }
     }
 
-    /// 7.5pt across, measured off the Notes recording at 2x (a 15px blob on a
-    /// 4px stroke).
-    static let tableCellDotRadius: CGFloat = 3.75
+    /// 7.5pt across at the default size, measured off the Notes recording at
+    /// 2x (a 15px blob on a 4px stroke). See `tableCellDotRadius`.
 
     /// The two drag dots: top-left and bottom-right of the box, the corners
     /// Notes puts them on — centred on the corner itself, where the two lines
@@ -315,7 +329,7 @@ extension EditorTextView {
         -> (block: TableCellBlock, anchor: (row: Int, column: Int))? {
         guard let block = tableCellSelection, let box = tableCellSelectionBox() else { return nil }
         let dots = tableCellSelectionDots(box)
-        let slack = Self.tableCellDotRadius + 4
+        let slack = tableCellDotRadius + 4
         if NSRect(x: dots[0].x - slack, y: dots[0].y - slack,
                   width: slack * 2, height: slack * 2).contains(point) {
             return (block, (block.rows.upperBound, block.columns.upperBound))
@@ -664,10 +678,10 @@ extension EditorTextView {
         var box = handle.rect.insetBy(dx: -6, dy: -6)
         switch handle.axis {
         case .row:
-            box.size.width = handle.rect.maxX + Self.tableHandleGap - box.minX
+            box.size.width = handle.rect.maxX + tableHandleGap - box.minX
         case .column:
             // Flipped coordinates: the table is below the column pill.
-            box.size.height = handle.rect.maxY + Self.tableHandleGap - box.minY
+            box.size.height = handle.rect.maxY + tableHandleGap - box.minY
         }
         return box
     }

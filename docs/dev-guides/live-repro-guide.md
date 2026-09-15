@@ -153,7 +153,8 @@ Accessibility trust needed once):
 | `realclick x,y[,holdms[,clicks]]` | real HID click at a view point; floats the window, verifies ours is topmost at the point (else `ABORTED`), restores the cursor |
 | `realoff holdms,gapms,off1,off2,…` | a run of real clicks on raw offsets (wrapped cells included), exact spacing, mouse-move trail between — survives the window moving |
 | `realseq holdms,gapms,x1,y1,…` | the same on view points |
-| `burst ms,interval,dir` | ScreenCaptureKit stream of **our window only**: one PNG per repaint (≤ one per `interval` ms) to `dir/NNNN-<uptime ms>.png`; a quiet window yields no frames, so gaps are meaningful |
+| `burst ms,interval,dir` | ScreenCaptureKit stream of **our window only**: one PNG per repaint (≤ one per `interval` ms) to `dir/NNNN-<uptime ms>.png`; a quiet window yields no frames, so gaps are meaningful. For a *static* state take a still with `capture-window.sh` instead — a fresh stream's first frames can be the compositor's stale surface |
+| `zoom in|out|actual`, `appearance light|dark|system`, `realmove x,y`, `fontprobe off,…`, `kernprobe from,to`, `rectsprobe off,…`, `relayout` | View ▸ Zoom; force appearance; move the pointer; storage fonts / pad kerns and line count of a table row / caret rects at offsets; invalidate all layout |
 | `caretstate` / `indicators` / `viewtree` / `hideviews <Class|none>` / `redraw` | state probes for the caret and the layer tree |
 
 Add `-debug.caretTrace YES` to log caret colour/state changes and the dirty
