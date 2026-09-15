@@ -80,6 +80,9 @@ extension EditorTextView {
     /// Once anything sits between them the pair is ordinary text and the closer
     /// stays put.
     public override func deleteBackward(_ sender: Any?) {
+        // A block of selected cells deletes as whole rows/columns, or clears
+        // its cells' contents — never as a plain character delete of the ranges.
+        if handleTableCellSelectionDelete() { return }
         let target = selectedRange()
         guard autoCloseBracketsEnabled,
               !hasMarkedText(),
@@ -100,6 +103,13 @@ extension EditorTextView {
         // (NSMutableRLEArray … Out of bounds).
         super.deleteForward(sender)
         super.deleteBackward(sender)
+    }
+
+    /// Forward delete (fn+Delete) on a cell selection does the same as Delete —
+    /// whole rows/columns, or clearing the cells. Otherwise it is untouched.
+    public override func deleteForward(_ sender: Any?) {
+        if handleTableCellSelectionDelete() { return }
+        super.deleteForward(sender)
     }
 
     /// Whether typing `ch` at `location` should bring a closing partner along.

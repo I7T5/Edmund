@@ -70,26 +70,43 @@ extension EditorTextView {
             let slot = NSRect(x: rightEdge - trailing - size,
                               y: origin.y + capCenterY - size / 2,
                               width: size, height: size)
-            // The row pill and this button share one strip of margin, and the
-            // strip is barely wider than the two of them — so the button steps
-            // aside by exactly the band the pill occupies. Only when the pill
-            // is really in the way: it follows the caret's row, so it reaches
-            // this line only while the header row is the active one, and the
-            // button belongs back in the line number's slot the moment the
-            // caret moves to any other row.
-            let shift = self.tableRawButtonSlotIsTaken(slot) ? Self.tableHandleBand : 0
-            result.append((slot.offsetBy(dx: -min(shift, slot.minX), dy: 0), blockIndex))
+            // The row pill and this button share one strip of margin. Whenever
+            // the pill is on this header row — i.e. the header is the active row
+            // — the button steps to sit one gap to the *pill's* left, anchored
+            // to where the pill actually is rather than shifted from the slot by
+            // a fixed band. The slot's own distance from the pill rides on the
+            // reading column's left margin, which shrinks when the line numbers
+            // are off, so a fixed shift clamped at the view edge barely moved
+            // the button then; anchoring to the pill clears it whatever the
+            // margin. The pill follows the caret, so it is on this line only
+            // while the header row is active — every other row leaves the slot.
+            // Only dodge when the pill actually overlaps the button vertically.
+            // The button sits in the header's top cap-band; the row pill is
+            // centred on the row. A tall header — a wrapped header cell three or
+            // more lines high — pushes the pill's centre well below the button,
+            // so the two clear each other and the button keeps its slot.
+            if let pill = self.tableRawButtonBlockingPill(blockIndex: blockIndex),
+               pill.rect.minY < slot.maxY, pill.rect.maxY > slot.minY {
+                let x = max(0, pill.rect.minX - Self.tableHandleGap - size)
+                result.append((NSRect(x: x, y: slot.minY, width: size, height: size), blockIndex))
+            } else {
+                result.append((slot, blockIndex))
+            }
         }
         return result
     }
 
-    /// Whether the row pill currently stands in the button's own slot, asked of
-    /// the geometry rather than assumed from the caret being in the table
-    /// somewhere — the pill sits on one row, and every other row leaves the
-    /// slot free.
-    func tableRawButtonSlotIsTaken(_ slot: NSRect) -> Bool {
-        guard !rawTableEditing else { return false }
-        return tableHandles().contains { $0.axis == .row && handleHitBox($0).intersects(slot) }
+    /// The row pill sharing a table's header row, if any — the pill the `</>`
+    /// button has to step aside for. The pill follows the caret, so it is on the
+    /// header row only while that row is active; every other row leaves the slot
+    /// free. Keyed on the row, not on geometric overlap, so the button steps
+    /// aside whatever the reading column's margin (which shrinks with the line
+    /// numbers off, and would otherwise leave the two too close to tell apart).
+    func tableRawButtonBlockingPill(blockIndex: Int) -> TableHandle? {
+        guard !rawTableEditing else { return nil }
+        return tableHandles().first {
+            $0.axis == .row && $0.blockIndex == blockIndex && $0.row == 0
+        }
     }
 
     /// Whether a table's button is currently showing.
@@ -101,7 +118,7 @@ extension EditorTextView {
     /// that the row handle claims the same margin slot. That also made it
     /// unclickable exactly when someone editing a cell reaches for it: the hit
     /// test only considers revealed buttons. The two share the margin instead
-    /// — see `tableRawButtonSlotIsTaken`.
+    /// — see `tableRawButtonBlockingPill`.
     func tableRawButtonIsRevealed(blockIndex: Int) -> Bool {
         hoveredTableBlock == blockIndex || activeBlockIndexForRawTable() == blockIndex
     }
@@ -110,6 +127,17 @@ extension EditorTextView {
     /// ones that can be clicked.
     func revealedTableRawButtons() -> [(rect: NSRect, blockIndex: Int)] {
         visibleTableRawButtons().filter { tableRawButtonIsRevealed(blockIndex: $0.blockIndex) }
+    }
+
+    /// Repaints where the `</>` buttons are and where they were, so the button
+    /// relocating past the row pill on a caret move leaves no ghost behind.
+    /// Called on every selection change, beside `invalidateTableHandles`; like
+    /// it, the "were" bands come from the last draw, never recorded here.
+    func invalidateTableRawButtons() {
+        for band in revealedTableRawButtons().map({ tableRawButtonHitBox($0.rect) })
+            + lastTableRawButtonBands {
+            setNeedsDisplay(band)
+        }
     }
 
     /// Line numbers something else in the margin is standing in for, so the
@@ -140,7 +168,13 @@ extension EditorTextView {
     /// Draws the `</>` buttons. Called from `drawBackground(in:)` — they occupy
     /// margin the text never uses, so nothing has to move to make room.
     func drawTableRawButtons(in rect: NSRect) {
-        let boxes = revealedTableRawButtons().filter { $0.rect.intersects(rect) }
+        let revealed = revealedTableRawButtons()
+        // Where the buttons are on screen now, so the next caret move (which can
+        // relocate one past the row pill) knows what to repaint. Recorded from
+        // the draw, like the handles' bands, since only a draw knows what
+        // actually reached the screen.
+        lastTableRawButtonBands = revealed.map { tableRawButtonHitBox($0.rect) }
+        let boxes = revealed.filter { $0.rect.intersects(rect) }
         guard !boxes.isEmpty else { return }
         // ponytail: the symbol image is rebuilt per draw. It is one small
         // template image per visible table; give it a cache only if it shows up
@@ -155,8 +189,17 @@ extension EditorTextView {
         for (box, blockIndex) in boxes {
             if tableRawButtonHovered && hoveredTableBlock == blockIndex {
                 // Space, not a border: the editor's chrome idiom. A soft fill
-                // is enough to read as a target under the pointer.
-                NSColor.quaternaryLabelColor.setFill()
+                // is enough to read as a target under the pointer. Light mode
+                // takes half of `quaternaryLabelColor`'s *own* alpha (~10%) —
+                // `withAlphaComponent(0.5)` on it directly replaces that alpha
+                // with 50%, near-black at half strength, a dark box rather than
+                // a lighter one. Dark mode keeps the full alpha: a white tint
+                // at 5% on the dark ground was too faint to read as a target.
+                let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                let base = NSColor.quaternaryLabelColor
+                let fill = dark ? base : base.usingColorSpace(.deviceRGB)
+                    .map { $0.withAlphaComponent($0.alphaComponent * 0.5) } ?? base
+                fill.setFill()
                 NSBezierPath(roundedRect: box.insetBy(dx: -3, dy: -3),
                              xRadius: 4, yRadius: 4).fill()
             }

@@ -18,6 +18,20 @@ extension EditorTextView {
         // The row and column handles hang off the caret's cell, so they move
         // with it and nothing else invalidates them.
         invalidateTableHandles()
+        // The `</>` button steps aside for the row pill when the header row
+        // becomes active, so a caret move relocates it — repaint old and new.
+        invalidateTableRawButtons()
+        // Crossing into a different cell is the one moment the pills, the cell
+        // outline and the `</>` position all move at once. Band invalidation is
+        // unreliable exactly here — a wrapped table restyles on the way, so the
+        // grid is briefly unavailable and the bands come out empty — which is why
+        // stale pills lingered. A full repaint on the cell transition (only then,
+        // not per keystroke) is the one thing that cannot leave chrome behind.
+        let cellKey = activeTableCell.map { "\($0.blockIndex).\($0.row).\($0.column)" }
+        if cellKey != lastActiveTableCellKey {
+            lastActiveTableCellKey = cellKey
+            needsDisplay = true
+        }
         // A selection change landing mid-recompose is the drift signature
         // (issue #156); the stack names the AppKit path that moved the caret.
         if isUpdating { traceSelectionOrigin() }

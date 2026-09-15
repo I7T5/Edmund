@@ -96,6 +96,30 @@ struct TableRawButtonSlotTests {
         }
     }
 
+    /// With the header row active the row pill shares the button's line, so the
+    /// button steps to sit entirely to the pill's left with a gap — anchored to
+    /// the pill, not shifted a fixed amount from a slot whose distance from the
+    /// pill shrinks with the line numbers off. Checked with them off (the
+    /// default) precisely because that is the margin the fixed shift failed in.
+    @Test("The button sits left of the pill on the header row")
+    func buttonParksLeftOfThePill() {
+        let editor = loadEditor(doc)
+        #expect(!editor.showLineNumbers)   // the case the shift used to miss
+        caret(editor, to: "c1")            // header row: the pill is on this line
+        guard let button = editor.visibleTableRawButtons().first,
+              let pill = editor.tableHandles().first(where: { $0.axis == .row }) else {
+            Issue.record("no button or pill on the header row")
+            return
+        }
+        #expect(button.rect.maxX <= pill.rect.minX,
+                "the button overlaps the pill instead of sitting to its left")
+        #expect(pill.rect.minX - button.rect.maxX >= Self.expectedGap - 0.5,
+                "the button crowds the pill")
+        #expect(button.rect.minX >= 0, "the button ran off the view's left edge")
+    }
+
+    private static let expectedGap = EditorTextView.tableHandleGap
+
     /// The button toggles the table's raw markdown, and stays put afterwards so
     /// the same click brings the table back.
     @Test("The button toggles raw markdown both ways")
