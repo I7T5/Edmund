@@ -6,10 +6,9 @@ import AppKit
 @MainActor
 struct ImageRenderingTests {
 
-    /// Writes a tiny solid PNG to a temp file and returns its absolute path
+    /// Writes a solid PNG to a temp file and returns its absolute path
     /// (absolute so resolution doesn't need a document directory).
-    private func tempPNGPath() -> String {
-        let size = NSSize(width: 24, height: 16)
+    private func tempPNGPath(size: NSSize = NSSize(width: 24, height: 16)) -> String {
         let img = NSImage(size: size)
         img.lockFocus()
         NSColor.systemBlue.setFill()
@@ -142,7 +141,7 @@ struct ImageRenderingTests {
     }
 
     @Test("Narrowing the max-content-width column shrinks an already-rendered image")
-    func shrinksOnColumnNarrow() {
+    func shrinksOnColumnNarrow() async throws {
         let editor = EditorTextView.makeTextKit2(
             frame: NSRect(x: 0, y: 0, width: 800, height: 300),
             containerSize: NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude))
@@ -163,11 +162,42 @@ struct ImageRenderingTests {
 
         // Cap the column narrower than the image's natural width.
         editor.maxContentWidthPoints = 22
+        try await Task.sleep(for: .milliseconds(100))
 
         let after = editor.textStorage?.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) as? FragmentOverlay
         #expect((after?.bounds.width ?? 9999) <= editor.availableContentWidth + 0.01)
         #expect(after!.bounds.width < before!.bounds.width)
         // Aspect ratio preserved (24x16 -> half width -> half height).
         #expect(abs(after!.bounds.height / after!.bounds.width - 16.0 / 24.0) < 0.01)
+    }
+
+    @Test("Images shrink and expand with fixed margins", arguments: [false, true])
+    func resizesWithWindow(html: Bool) async throws {
+        let path = tempPNGPath(size: NSSize(width: 900, height: 600))
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let image = html ? "<img src=\"\(path)\">" : "![alt](\(path))"
+        let content = image + "\n\nsecond paragraph"
+        let editor = makeEditor()
+        editor.maxContentWidthPoints = .greatestFiniteMagnitude
+        editor.setFrameSize(NSSize(width: 800, height: 300))
+        editor.loadContent(content)
+        let selection = NSRange(location: (content as NSString).length - 5, length: 5)
+        editor.recomposeIncremental(cursorInRaw: selection.location)
+        editor.setSelectedRange(selection)
+        try await Task.sleep(for: .milliseconds(100))
+        let inset = editor.textContainerInset.width
+
+        for width: CGFloat in [350, 800] {
+            editor.setFrameSize(NSSize(width: width, height: 300))
+            try await Task.sleep(for: .milliseconds(100))
+            let overlay = try #require(editor.textStorage?.attribute(
+                .fragmentOverlay, at: 0, effectiveRange: nil) as? FragmentOverlay)
+            #expect(abs(overlay.bounds.width - editor.availableContentWidth) < 0.01)
+            #expect(abs(overlay.bounds.height / overlay.bounds.width - 2.0 / 3.0) < 0.01)
+            #expect(editor.textContainerInset.width == inset)
+            #expect(editor.selectedRange() == selection)
+            #expect(editor.rawSource == content)
+            #expect(editor.textStorage?.string == content)
+        }
     }
 }
