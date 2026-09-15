@@ -79,6 +79,7 @@ extension EditorTextView {
         // step left of the numbers when both are in it. See
         // EditorTextView+TableRawButton.
         drawTableRawButtons(in: rect)
+        drawCodeCopyButtons(in: rect)
         // A wrapped table cell's real characters are hidden at ~zero width, so
         // AppKit's caret and highlight land nowhere near the text the user sees
         // — the cell draws its own. Same pass, same reason: behind the glyphs.

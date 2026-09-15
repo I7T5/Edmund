@@ -500,6 +500,20 @@ public class EditorTextView: NSTextView {
     /// its hover highlight.
     var tableRawButtonHovered = false
 
+    /// Block index of the fenced code block the pointer is over, or nil — the
+    /// only thing that reveals its copy button. See EditorTextView+CodeCopyButton.
+    var hoveredCodeBlock: Int?
+
+    /// Whether the pointer is on the revealed copy button itself.
+    var codeCopyButtonHovered = false
+
+    /// Block index of the code block whose content was just copied — its
+    /// button is running the "copied" flash — and how far along it is (0…1),
+    /// stepped by `copiedCodeLink`. See EditorTextView+CodeCopyButton.
+    var copiedCodeBlock: Int?
+    var copiedCodeProgress: CGFloat = 0
+    var copiedCodeLink: CADisplayLink?
+
     /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
     /// repaint where they were as well as where they now are.
@@ -907,6 +921,26 @@ public class EditorTextView: NSTextView {
         setSelectedRange(NSRange(location: min(offset, (rawSource as NSString).length), length: 0))
         suppressTypewriterCentering = false
     }
+
+    /// Repro hook (ReproScript `hoveroff`): run the pointer-hover pass as if
+    /// the mouse sat on the glyph at `offset` — what reveals a table's `</>`
+    /// and a code block's copy button — without moving the real pointer.
+    public func reproHover(atOffset offset: Int) {
+        guard let rect = lineRect(forCharacterAt: min(offset, (rawSource as NSString).length)) else { return }
+        // `lineRect` is in container coordinates; the hover passes take view points.
+        let point = NSPoint(x: rect.midX + textContainerOrigin.x, y: rect.midY + textContainerOrigin.y)
+        updateTableHover(at: point)
+        updateTableHandleHover(at: point)
+        updateCodeCopyHover(at: point)
+    }
+
+    /// Repro hook (ReproScript `copycode`): press the copy button of the code
+    /// block holding `offset`, as `mouseDown` would.
+    public func reproCopyCode(atOffset offset: Int) {
+        guard let block = blockIndexForRawOffset(offset), block < blocks.count,
+              blocks[block].kind == .fence else { return }
+        copyCodeBlock(blockIndex: block)
+    }
     #endif
 
     /// Cmd+click on a link's text follows it: a `[[wikilink]]` resolves to a
@@ -944,6 +978,12 @@ public class EditorTextView: NSTextView {
         // never reaches `super`. See EditorTextView+TableRawButton.
         if let tableBlock = tableRawButtonHit(at: event) {
             activateRawTableEditing(blockIndex: tableBlock)
+            return
+        }
+        // A code block's copy button hangs in the same slot. See
+        // EditorTextView+CodeCopyButton.
+        if let codeBlock = codeCopyButtonHit(at: event) {
+            copyCodeBlock(blockIndex: codeBlock)
             return
         }
         // A row/column handle hangs in the same margin, and in the band above
