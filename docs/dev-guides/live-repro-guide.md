@@ -139,6 +139,27 @@ Design rules that made this work — keep them when extending:
 - New commands are ~10 lines each in `ReproScript.swift`. Extend it rather
   than working around it.
 
+### 3b. Real clicks and frame capture (caret / paint bugs)
+
+In-process clicks (`clickprobe`, `clickhold`) never activate the app and run
+the whole gesture inside one call, so they cannot show anything about how the
+caret *paints* — AppKit's caret view does not even exist until the window has
+been key. For paint questions use the real-input commands (DEBUG builds,
+Accessibility trust needed once):
+
+| Command | Effect |
+|---|---|
+| `front` | once at script start: move the window to the active Space, order front, activate |
+| `realclick x,y[,holdms[,clicks]]` | real HID click at a view point; floats the window, verifies ours is topmost at the point (else `ABORTED`), restores the cursor |
+| `realoff holdms,gapms,off1,off2,…` | a run of real clicks on raw offsets (wrapped cells included), exact spacing, mouse-move trail between — survives the window moving |
+| `realseq holdms,gapms,x1,y1,…` | the same on view points |
+| `burst ms,interval,dir` | capture **our window only** every ~15–35 ms to `dir/NNNN-<uptime ms>.png` |
+| `caretstate` / `indicators` / `viewtree` / `hideviews <Class|none>` / `redraw` | state probes for the caret and the layer tree |
+
+Add `-debug.caretTrace YES` to log caret colour/state changes and the dirty
+rects of every caret draw on the same uptime clock as the frame names, then
+line the two up. Worked example: `docs/investigations/caret-flash-investigation.md`.
+
 ## 4. Building and launching the debug app
 
 - **Bundle fast path** (no `build-app.sh` needed): `build/EdmundDbg.app/

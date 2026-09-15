@@ -743,6 +743,24 @@ Notable subsystems:
   blocks everything until dismissed. Chronicle:
   `docs/investigations/delete-drift-investigation.md` round 6; method:
   `docs/dev-guides/live-repro-guide.md`.
+- **AppKit's caret on macOS 14+ is a view (`NSTextInsertionIndicator`, a
+  direct subview of the text view) and it hides with an animated fade —
+  *after* it has moved to the new selection.** Clearing `insertionPointColor`
+  or `updateInsertionPointStateAndRestartTimer(false)` shortens the fade but
+  never skips it, so a caret carried live into a wrapped table cell ghosted
+  ~100 ms at the cell's hidden characters (the cell start) — the "caret
+  flash". Only `isHidden` on that view (not animated) removes it:
+  `setAppKitCaretHidden` in `EditorTextView+TableCellCaret.swift`, called
+  *before* the selection moves. The view exists only once the window has
+  been key, so in-process probes (`clickprobe`) never see any of this — use
+  real clicks (`realclick`/`realoff`) with `burst` capture. Chronicle:
+  `docs/investigations/caret-flash-investigation.md`.
+- **Two overlapping `setNeedsDisplay(rect)` calls in one cycle can lose one
+  of them** (macOS 15, TextKit 2 text view): invalidating the caret's old
+  band and its new band separately repainted only the new band whichever
+  order they were issued in, leaving a solid ghost caret on the old visual
+  line; a single union rect repaints both (`updateWrappedCaret`). Prefer one
+  union rect over several adjacent invalidations of the same view.
 - **The `viewMode` setter recomposes every block, collapsing far geometry
   to estimates** (~17pt/line base vs ~27pt styled) — `recomposeDirty` on a
   large dirty set defers non-viewport styling to the idle drain. Two

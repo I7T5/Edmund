@@ -579,9 +579,9 @@ public class EditorTextView: NSTextView {
     /// AppKit's own caret is switched off while this one is up — it would draw
     /// at the column's left edge, where the cell's hidden characters are.
     /// See EditorTextView+TableCellCaret.
-    var wrappedCaretOn = false
-    var wrappedCaretRect: NSRect?
-    var wrappedCaretTimer: Timer?
+    public internal(set) var wrappedCaretOn = false
+    public internal(set) var wrappedCaretRect: NSRect?
+    public internal(set) var wrappedCaretTimer: Timer?
 
     /// The card's top edge in view coordinates, fixed for as long as it points
     /// at one cell. Nil re-reads it from the row on the next placement.

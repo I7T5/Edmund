@@ -485,10 +485,12 @@ enum ReproScript {
                 // whatever is on top, and that must never be someone else's window.
                 schedule(after: delay) { editor in
                     let n = arg.split(separator: ",").compactMap { Double($0) }
-                    guard n.count == 2 || n.count == 3, let window = editor.window else {
-                        report("repro realclick: want x,y[,holdms]"); return
+                    guard (2...4).contains(n.count), let window = editor.window else {
+                        report("repro realclick: want x,y[,holdms[,clicks]]"); return
                     }
-                    let hold = n.count == 3 ? n[2] : 80
+                    let hold = n.count >= 3 ? n[2] : 80
+                    // clickState: 2 makes AppKit see a double-click (clickCount 2).
+                    let clicks = n.count == 4 ? Int64(n[3]) : 1
                     // Activation is asynchronous, and another app's window may
                     // overlap ours: float the window for the click's duration,
                     // and only check what is on top once that has taken effect.
@@ -533,8 +535,10 @@ enum ReproScript {
                     let restoreCG = CGPoint(x: restore.x, y: primaryMaxY - restore.y)
                     DispatchQueue.global(qos: .userInteractive).async {
                         func post(_ t: CGEventType) {
-                            CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: p,
-                                    mouseButton: .left)?.post(tap: .cghidEventTap)
+                            let e = CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: p,
+                                            mouseButton: .left)
+                            if t != .mouseMoved { e?.setIntegerValueField(.mouseEventClickState, value: clicks) }
+                            e?.post(tap: .cghidEventTap)
                         }
                         post(.mouseMoved); usleep(30_000)
                         post(.leftMouseDown); usleep(useconds_t(hold * 1000))
@@ -546,6 +550,81 @@ enum ReproScript {
                         }
                     }
                     }
+                }
+            case "realseq":
+                // "realseq holdms,gapms,x1,y1,x2,y2,…" — a run of real HID
+                // clicks from ONE thread with exact spacing and a mouse-move
+                // trail between them, as a hand does. Click counts are left to
+                // the system. Same topmost-window guard as `realclick`.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count >= 4, n.count % 2 == 0, let window = editor.window else {
+                        report("repro realseq: want holdms,gapms,x1,y1,…"); return
+                    }
+                    var viewPoints: [NSPoint] = []
+                    var i = 2
+                    while i + 1 < n.count {
+                        viewPoints.append(NSPoint(x: n[i], y: n[i + 1]))
+                        i += 2
+                    }
+                    Self.realSequence(editor: editor, window: window, hold: n[0], gap: n[1], viewPoints: viewPoints)
+                }
+            case "realoff":
+                // "realoff holdms,gapms,off1,off2,…" — like `realseq`, but each
+                // click lands on a raw-source OFFSET, located through the same
+                // rects the editor draws the caret with (wrapped cells included)
+                // — so the script survives the window being moved or resized.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Double($0) }
+                    guard n.count >= 3, let window = editor.window else {
+                        report("repro realoff: want holdms,gapms,off1,…"); return
+                    }
+                    var viewPoints: [NSPoint] = []
+                    for off in n.dropFirst(2).map({ Int($0) }) {
+                        let range = NSRange(location: off, length: 0)
+                        if let r = editor.wrappedCellRects(for: range).first {
+                            viewPoints.append(NSPoint(x: r.minX + 1, y: r.midY))
+                        } else {
+                            var actual = NSRange()
+                            let s = editor.firstRect(forCharacterRange: range, actualRange: &actual)
+                            let v = editor.convert(window.convertPoint(fromScreen: s.origin), from: nil)
+                            viewPoints.append(NSPoint(x: v.x + 1, y: v.y + s.height / 2))
+                        }
+                    }
+                    report("repro realoff offsets=\(n.dropFirst(2).map { Int($0) }) points=\(viewPoints.map { "(\(Int($0.x)),\(Int($0.y)))" })")
+                    Self.realSequence(editor: editor, window: window, hold: n[0], gap: n[1], viewPoints: viewPoints)
+                }
+            case "redraw":
+                schedule(after: delay) { editor in
+                    editor.needsDisplay = true
+                    report("repro redraw t=\(EditorTextView.debugMs()) opaque=\(editor.isOpaque)"
+                           + " drawsBackground=\(editor.drawsBackground)"
+                           + " layerOpaque=\(editor.layer?.isOpaque ?? false)"
+                           + " layerBg=\(editor.layer?.backgroundColor.map { "\($0)" } ?? "nil")"
+                           + " policy=\(editor.layerContentsRedrawPolicy.rawValue)"
+                           + " clipLayerBg=\(editor.superview?.layer?.backgroundColor.map { "\($0)" } ?? "nil")")
+                }
+            case "hideviews":
+                // "hideviews Content|Selection|Insertion|none" — hide every
+                // subview of the editor whose class name contains the word,
+                // to find which layer a stray pixel lives in. "none" unhides.
+                schedule(after: delay) { editor in
+                    var n = 0
+                    for v in editor.subviews {
+                        let name = "\(type(of: v))"
+                        if arg == "none" { v.isHidden = false; n += 1; continue }
+                        if name.contains(arg) { v.isHidden = true; n += 1 }
+                    }
+                    report("repro hideviews \(arg) touched=\(n)")
+                }
+            case "caretstate":
+                schedule(after: delay) { editor in
+                    report("repro caretstate t=\(EditorTextView.debugMs()) mode=\(RunLoop.main.currentMode?.rawValue ?? "nil")"
+                           + " sel=\(editor.selectedRange()) on=\(editor.wrappedCaretOn)"
+                           + " band=\(editor.wrappedCaretRect.map { "\($0)" } ?? "nil")"
+                           + " timer=\(editor.wrappedCaretTimer.map { $0.isValid ? "valid" : "invalid" } ?? "nil")"
+                           + " caretRect=\(editor.wrappedCellCaretRect().map { "\($0)" } ?? "nil")"
+                           + " firstResponder=\(editor.window?.firstResponder === editor)")
                 }
             case "viewtree":
                 schedule(after: delay) { editor in
@@ -642,6 +721,57 @@ enum ReproScript {
                 break
             }
             delay += 0.02
+        }
+    }
+
+    /// A run of real HID clicks from one background thread with exact spacing
+    /// and a mouse-move trail between them, as a hand does; click counts are
+    /// left to the system. Aborts unless our window is topmost at the first
+    /// point (normal/floating layers only — the Dock and menu bar span the
+    /// screen edge at higher layers and are ignored).
+    private static func realSequence(editor: EditorTextView, window: NSWindow,
+                                     hold: Double, gap: Double, viewPoints: [NSPoint]) {
+        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+        let points: [CGPoint] = viewPoints.map {
+            let cocoa = window.convertPoint(toScreen: editor.convert($0, to: nil))
+            return CGPoint(x: cocoa.x, y: primaryMaxY - cocoa.y)
+        }
+        guard let first = points.first else { return }
+        let infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                               kCGNullWindowID) as? [[String: Any]] ?? []
+        var top: Int? = nil
+        for info in infos {
+            guard (info[kCGWindowLayer as String] as? Int ?? 99) <= 3,
+                  let b = info[kCGWindowBounds as String] as CFTypeRef?,
+                  CFGetTypeID(b) == CFDictionaryGetTypeID(),
+                  let r = CGRect(dictionaryRepresentation: b as! CFDictionary) else { continue }
+            if r.contains(first) { top = info[kCGWindowNumber as String] as? Int; break }
+        }
+        guard top == window.windowNumber else {
+            report("repro realseq ABORTED top=\(top.map(String.init) ?? "none")"); return
+        }
+        report("repro realseq t=\(EditorTextView.debugMs()) clicks=\(points.count) hold=\(Int(hold)) gap=\(Int(gap))")
+        DispatchQueue.global(qos: .userInteractive).async {
+            var last = first
+            for p in points {
+                for k in 1...4 {
+                    let t = CGFloat(k) / 4
+                    let m = CGPoint(x: last.x + (p.x - last.x) * t, y: last.y + (p.y - last.y) * t)
+                    CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: m,
+                            mouseButton: .left)?.post(tap: .cghidEventTap)
+                    usleep(4_000)
+                }
+                CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: p,
+                        mouseButton: .left)?.post(tap: .cghidEventTap)
+                usleep(useconds_t(hold * 1000))
+                CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: p,
+                        mouseButton: .left)?.post(tap: .cghidEventTap)
+                usleep(useconds_t(gap * 1000))
+                last = p
+            }
+            DispatchQueue.main.async {
+                report("repro realseq done t=\(EditorTextView.debugMs()) sel=\(editor.selectedRange())")
+            }
         }
     }
 

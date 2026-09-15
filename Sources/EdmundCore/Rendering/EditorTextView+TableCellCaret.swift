@@ -43,7 +43,7 @@ extension EditorTextView {
     /// View-coordinate rects covering `range` where it falls inside a wrapped
     /// cell's drawn text, one per visual line. Empty for every range that
     /// doesn't — which is all of them outside a table with an overflowing cell.
-    func wrappedCellRects(for range: NSRange) -> [NSRect] {
+    public func wrappedCellRects(for range: NSRange) -> [NSRect] {
         guard let tlm = textLayoutManager,
               let storage = textStorage, storage.length > 0,
               range.location >= 0, range.upperBound <= storage.length,
@@ -68,7 +68,7 @@ extension EditorTextView {
 
     /// Where the caret really is when it sits in a wrapped cell, or nil when it
     /// doesn't and AppKit's own caret is in the right place already.
-    func wrappedCellCaretRect() -> NSRect? {
+    public func wrappedCellCaretRect() -> NSRect? {
         let selection = selectedRange()
         guard selection.length == 0,
               var rect = wrappedCellRects(for: selection).first else { return nil }
@@ -122,8 +122,21 @@ extension EditorTextView {
         // Recomputed rather than cached: a resize or a restyle can move the
         // caret without the selection changing, and the cached band is only
         // ever used to work out what to invalidate.
+        let caretRect = wrappedCellCaretRect()
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "debug.caretTrace"), let caretRect {
+            var rectsPtr: UnsafePointer<NSRect>? = nil
+            var count = 0
+            getRectsBeingDrawn(&rectsPtr, count: &count)
+            let dirty = (0..<count).map { "\(rectsPtr![$0])" }.joined(separator: " ")
+            Log.info("carettrace draw t=\(Int(ProcessInfo.processInfo.systemUptime * 1000))"
+                     + " rect=\(rect) caret=\(caretRect) on=\(wrappedCaretOn)"
+                     + " hit=\(caretRect.intersects(rect)) dirty=[\(dirty)]",
+                     category: .app)
+        }
+        #endif
         guard wrappedCaretOn, window?.firstResponder === self,
-              let caret = wrappedCellCaretRect(), caret.intersects(rect) else { return }
+              let caret = caretRect, caret.intersects(rect) else { return }
         accentColor.setFill()
         caret.fill()
     }
