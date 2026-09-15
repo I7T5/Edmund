@@ -205,6 +205,15 @@ extension EditorTextView {
         preservingViewportAnchor {
             recomposeDirty(dirty, cursorInRaw: currentCursorInRaw())
         }
+        // `setFrameSize` already ran `updateWrappedCaret` against the old
+        // column geometry; the in-cell caret has to be re-read once the new
+        // geometry is laid out. Not right here — the grid is read off laid-out
+        // fragments, and the recompose only *scheduled* that layout — so wait
+        // for the settle it queued (measured: an immediate call still lands a
+        // row off).
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated { self?.updateWrappedCaret() }
+        }
     }
 
     /// Recompute the centered inset as the view width changes (window resize).

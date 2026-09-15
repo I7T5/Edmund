@@ -51,6 +51,17 @@ func blockDecoration(at offset: Int, in result: NSAttributedString) -> BlockDeco
     return result.attribute(.blockDecoration, at: offset, effectiveRange: nil) as? BlockDecoration
 }
 
+/// Lets a content-width restyle land: fires the 30 Hz coalescing timer
+/// (`scheduleContentWidthUpdate`) and the run-loop hops the recompose queues
+/// (layout settle, in-cell caret), while holding the main actor. `Task.sleep`
+/// cannot stand in for this under a parallel test run — it yields the main
+/// actor to other suites, and the timer starves: the resize tests passed
+/// alone and failed under full-suite load at both 100ms and 250ms.
+@MainActor
+func settleContentWidth() {
+    RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+}
+
 /// Forces layout of the whole document (TextKit 2). The lazy equivalent of
 /// the old `layoutManager.ensureLayout(for: textContainer)`.
 @MainActor
