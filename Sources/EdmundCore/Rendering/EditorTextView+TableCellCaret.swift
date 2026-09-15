@@ -131,6 +131,10 @@ extension EditorTextView {
     func drawWrappedCellChrome(in rect: NSRect) {
         let selection = selectedRange()
         if selection.length > 0 {
+            // A block of *cells* is marked by its box alone, like Notes: the
+            // text highlight AppKit would draw is suppressed for it
+            // (`setTableCellHighlight`), and this one must not stand in.
+            guard tableCellSelection == nil else { return }
             // The standard selection colour, NOT `selectedTextAttributes` — that
             // is deliberately cleared while a wrapped/cell selection is up (to
             // suppress AppKit's own stray highlight over the hidden characters),
