@@ -186,5 +186,242 @@
                        length="7793566"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.3.0</title>
+            <pubDate>Mon, 27 Jul 2026 16:54:35 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Settings stuff.</p>
+<p>Thanks to @CaliLuke for his first contribution (#236) and for being the first community contributor :D</p>
+<h3>Added</h3>
+<ul>
+<li>Improved performance (#236 @CaliLuke)</li>
+<li><strong>(Almost) Full Obsidian-flavored Markdown support</strong>: YAML front matter, <code>[image|dimension()</code> (implicit), <code>^block</code>, <code>#tag</code>, collapsible callout</li>
+<li><strong>Find and replace</strong> in Apple Notes fashion</li>
+<li><strong>Settings &gt; Edit</strong>: Hide toolbar, focus mode, detect indentation, show invisible characters, show line numbers, hard-wrap long lines</li>
+<li><strong>Settings &gt; Syntax</strong>: Toggle Markdown syntax support, add code block syntax</li>
+<li><strong>Settings &gt; Key Bindings</strong></li>
+<li>Edit &gt; Find, Spelling &amp; Grammar, Transformations, Speech menus</li>
+<li>Finder services</li>
+<li><code>Option+Cmd+I</code> to open inspector</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Misc UI improvements: Numbered lists marker in read mode, thicker thematic break, removed bottom border from edit mode tables, removed inline code color from read mode</li>
+<li>Dark mode readability: Empty checkbox in edit mode, blockquote bars in read mode, table borders in edit mode</li>
+<li>Code block syntax highlighting is now controlled by syntax-based JSON instead of general regex</li>
+<li>Inline math block renders as block in read mode</li>
+<li>Format &gt; Comments now wraps selection in <code>&lt;!-- selection --&gt;</code></li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Headers render spaces after <code>#...</code></li>
+<li>Indented code block renders as monospace</li>
+<li>Replace right-click &quot;Font&quot; menu in edit mode with our Format &gt; Font menu</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.3.0/Edmund-0.3.0.dmg"
+                       sparkle:version="8"
+                       sparkle:shortVersionString="0.3.0"
+                       sparkle:edSignature="ky3kunM5LGdyUlLTBhZ5ukSiQtTIlIhznlNerk15czWpAf2ZFaV53oLYAky3Rm7rlLzPFrcUHXb6sGj28ZaBBw=="
+                       length="13636661"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.4.0</title>
+            <pubDate>Sat, 01 Aug 2026 19:35:49 +0000</pubDate>
+
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.4.0/Edmund-0.4.0.dmg"
+                       sparkle:version="9"
+                       sparkle:shortVersionString="0.4.0"
+                       sparkle:edSignature="Q7MjjRa8bmmjRtJFDq6Y6jbDJRYheSeoNuX1TulVBT4Q2eLqn4DhN/RO1VppzraqMg+Zg1DyIk91uSlSUPf5Bw=="
+                       length="14005880"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.4.1</title>
+            <pubDate>Sat, 01 Aug 2026 20:04:49 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<h3>Fixed</h3>
+<ul>
+<li>Min window width was too wide (temp fix)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.4.1/Edmund-0.4.1.dmg"
+                       sparkle:version="10"
+                       sparkle:shortVersionString="0.4.1"
+                       sparkle:edSignature="AbZZb2sx/e7lb/mB8aBYBh6Vg+1v6QjxkqXmeKGXjlcFCezDHOVq6U1te6VuWyKvGu+PTkGDcX5Od/snO3irBg=="
+                       length="14003030"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.4.2</title>
+            <pubDate>Tue, 11 Aug 2026 04:37:12 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Thanks to @jdobbs for their first contribution (#266)</p>
+<h3>Added</h3>
+<ul>
+<li>Format bar in Apple Mail style</li>
+<li>Toolbar items from Apple Notes: format, table, images, links, share</li>
+<li>Overscroll: Allow overscroll up to half the viewport height at the bottom of the window by default. Top and bottom with typewriter scroll on</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Moved typewriter scroll and focus mode from View to Edit menu</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>RaTeX path rendering (#265)</li>
+<li>QuickLook infinite load for macOS 26 (#266 @jdobbs)</li>
+<li>Open two Untitled windows instead of one at launch without restore window</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.4.2/Edmund-0.4.2.dmg"
+                       sparkle:version="11"
+                       sparkle:shortVersionString="0.4.2"
+                       sparkle:edSignature="+m0BcGHjheVscyLBBcCkOzFilRUGdt3kCKnf83t7GFVibiRKQvj6sHhGmHFN0JtAOOB+3RBAvc8yJjtwsXf6BQ=="
+                       length="14127906"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.4.3</title>
+            <pubDate>Mon, 17 Aug 2026 05:41:37 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Thanks to @aahventures for their first contribution (#269)</p>
+<h3>Added</h3>
+<ul>
+<li>⌘W to close window and ⌥⌘W to close all windows (#269 @aahventures)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Typewriter scroll not centering while typing on the last line of the document (#277)</li>
+<li>Launching app after closing every window with autoquit off no longer creates two blank documents (#278)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.4.3/Edmund-0.4.3.dmg"
+                       sparkle:version="12"
+                       sparkle:shortVersionString="0.4.3"
+                       sparkle:edSignature="noYaAIXJVsX0nLpJQLoLuOlnOyV9Mc8XoUG1MKOEmusWn+nj8WpAoisHv0w7r9XQiDf+8993jLjm6UG7+Qo+DQ=="
+                       length="14148685"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.5.0</title>
+            <pubDate>Sat, 22 Aug 2026 15:08:27 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Thanks to @arthurlee116 for their first contribution (#268)</p>
+<h3>Added</h3>
+<ul>
+<li>Settings &gt; Appearance &gt; Font per script (#268 @arthurlee116)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.5.0/Edmund-0.5.0.dmg"
+                       sparkle:version="13"
+                       sparkle:shortVersionString="0.5.0"
+                       sparkle:edSignature="cgHeRmMtJitbjv/1Grmz4CdA2qIsTUZO4memOuW04VBHwuBq61s0IsnC9ZzFyt4LTzrmGprqLIOHlSBM5jSJDA=="
+                       length="14163541"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.6.0</title>
+            <pubDate>Thu, 10 Sep 2026 17:22:54 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<h3>Added</h3>
+<ul>
+<li>Table editing within cells, row/column actions, copy as spreadsheet date</li>
+<li>Image drag and drop</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Deleting opening parentheses/quotes automatically removes corresponding closing character if they are adjacent when pairing setting is on</li>
+<li>Automatically detect required indent instead of relying on settings tab size when tabbing on nested lists</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Indent list selection sometimes indents the non-selected</li>
+<li>PDFs end in <code>.pdf</code> instead of <code>.md.pdf</code></li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.6.0/Edmund-0.6.0.dmg"
+                       sparkle:version="14"
+                       sparkle:shortVersionString="0.6.0"
+                       sparkle:edSignature="PrkcbiR1QkivRYU6By2XJ+l7JNpYDAqLnZexnLFIEnDA02di32x85DIcmZhVrHk5HGlCu3ZE9soyR5/DMpx0BA=="
+                       length="14345445"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.6.1</title>
+            <pubDate>Sat, 12 Sep 2026 03:37:04 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Various table editing fixes.</p>
+<h3>Fixed</h3>
+<ul>
+<li>Tables: Content of wrapped cells don&#x27;t fully display</li>
+<li>Tables: Caret jumps to start of cell and jumps back if you click at the end</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Tables: Automatically insert pipes when pasting incomplete tables</li>
+<li>Tables: Users cannot merge columns by deleting pipes</li>
+<li>Tables: Users cannot remove the padding space before and after pipes</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.6.1/Edmund-0.6.1.dmg"
+                       sparkle:version="15"
+                       sparkle:shortVersionString="0.6.1"
+                       sparkle:edSignature="ru1LjGmexTVz45cjF41ROQHe2zdoOBkw3ykdcGoW0DbV2S63eO2bMMQTORWUPi+pZqM7KmQMYJSANLImRok0DQ=="
+                       length="14368050"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.7.0</title>
+            <pubDate>Tue, 15 Sep 2026 15:38:24 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Editor, code syntax, and better organized font theme. More table editing fixes. Various refinements.</p>
+<h3>Added</h3>
+<ul>
+<li>Settings &gt; Appearance &gt; Font theme</li>
+<li>Settings &gt; Themes (#292)</li>
+<li>Tables: Divider between add and delete operations in row/column menu</li>
+<li>App Menu &gt; Format &gt; Headings &gt; Increment/Decrement heading level</li>
+<li>Editor: Quick-wrap selection with <code>~$%*=</code> and the backtick</li>
+<li>Editor: Detect and remove list markers <code>-/- [ ]/1.</code> from pasteboard content if pasting into list</li>
+<li>Editor: Copy button for code blocks</li>
+<li>Reader: Click to toggle checkbox</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Tables: Delete on cell selection clears cell content; Delete on empty complete row or column removes it</li>
+<li>Tables: Return on a header&#x27;s separator row auto-fills in and prettifies the table</li>
+<li>Tables: Disabled delete pipes between cells in formatted state</li>
+<li>Tables: Controls (<code>&lt;/&gt;</code> button, pills) scale with zoom <code>CMD+=/-/0</code></li>
+<li>Tables: <code>&lt;/&gt;</code> button makes way only when pills are actually in the way</li>
+<li>Settings &gt; Autopair parentheses and quotes doesn&#x27;t pair backticks anymore</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Nested emphasis (italic inside bold, or bold inside italic)</li>
+<li>Tables: a single-dash delimiter row (<code>- | -</code>) now renders as a table</li>
+<li>Tables: Selection, caret movement, row/column pills, and zoom behavior with wrapped cells and/or header row containing wrapped cells</li>
+<li>Tables: <code>&lt;/&gt;</code> button makes way for row pills with &quot;Show line numbers&quot; off</li>
+<li>Reader: Nested checkboxes aren&#x27;t dimmed or strikethrough when checked</li>
+<li>Settings &gt; Key Bindings: &quot;Format&quot; app menu is in order with the rest</li>
+<li>Print &gt; PDF no longer keep the <code>.md</code> extension in filename</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.7.0/Edmund-0.7.0.dmg"
+                       sparkle:version="16"
+                       sparkle:shortVersionString="0.7.0"
+                       sparkle:edSignature="M2dt7hTDQa8XDgQZt4I5VnZFICZM2v0IJW0ubf3HR/3X4CagZWlR+tLFsPoHJikLFbdXNGqM3EiRG+MGwRwPBw=="
+                       length="14859914"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>

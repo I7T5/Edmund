@@ -1,5 +1,5 @@
 # Roadmap
-Last updated: 2026-07-09
+Last updated: 2026-08-04
 
 ## v1.0.0
 
@@ -15,13 +15,13 @@ Basic editing experience
 Advanced editing features
 - [ ] File outline
 - [ ] Find and replace within file
-- [ ] Format bar
+- [x] Format bar
 - [ ] Advanced Code official extension
 - [ ] Advanced Math official extension
 
 Customization and extensions
 - [ ] Settings > Edit
-- [ ] User-configurable keyboard shortcuts 
+- [x] User-configurable keyboard shortcuts (Settings ▸ Key Bindings; Edmund's own commands only) 
 - [ ] Themes: Customize code syntax highlighting and editor view. File-based
 - [ ] Extensions API, documentations, primitive marketplace
 - [ ] Finalize structure of settings

@@ -80,7 +80,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           awk "BEGIN{p=0} /^## \[${VERSION}\]/{p=1;next} p && /^## \[/{exit} p{print}" \
-            CHANGELOG.md > release-notes.txt
+            docs/CHANGELOG.md > release-notes.txt
           if [ ! -s release-notes.txt ]; then
             echo "See CHANGELOG for details." > release-notes.txt
           fi

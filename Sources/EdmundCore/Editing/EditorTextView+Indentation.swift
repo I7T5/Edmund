@@ -17,6 +17,31 @@ extension EditorTextView {
         indentUsesTabs ? "\t" : String(repeating: " ", count: min(max(indentWidth, 1), 8))
     }
 
+    /// Guesses a document's indent style from its leading whitespace, for the
+    /// Edit ▸ "Detect and learn indent style on document opening" setting.
+    /// Returns nil when nothing is indented (so the current settings stand).
+    /// Tabs vs spaces is decided by the majority of indented lines; the width is
+    /// the smallest space-indent step seen, clamped to 1...8.
+    // ponytail: min-step heuristic, no fenced-code exclusion — good enough for v1.
+    // Upgrade path if it proves eager: histogram the indent deltas so a stray
+    // alignment space doesn't drag the width down, and skip code fences.
+    public static func detectIndent(in text: String) -> (usesTabs: Bool, width: Int)? {
+        var tabLed = 0
+        var spaceCounts: [Int] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            guard let first = line.first, first == " " || first == "\t",
+                  line.contains(where: { !$0.isWhitespace }) else { continue }
+            if first == "\t" {
+                tabLed += 1
+            } else {
+                spaceCounts.append(line.prefix { $0 == " " }.count)
+            }
+        }
+        guard tabLed + spaceCounts.count > 0 else { return nil }
+        if tabLed >= spaceCounts.count { return (true, 4) }   // width unused for tabs
+        return (false, min(max(spaceCounts.min() ?? 4, 1), 8))
+    }
+
     /// Returns true if the line looks like a markdown list item
     /// (optionally indented): `- `, `* `, `+ `, `1. `, etc.
     func isListLine(_ line: String) -> Bool {
@@ -27,6 +52,13 @@ extension EditorTextView {
     // MARK: - Key Overrides
 
     public override func insertTab(_ sender: Any?) {
+        // In a table, Tab steps to the next cell rather than indenting — and
+        // is swallowed at the last cell rather than falling through, since a
+        // literal tab in a row is never what was meant.
+        if inlineTableCell != nil {
+            stepTableCell(by: 1)
+            return
+        }
         guard let (startBlock, endBlock) = affectedListBlockRange() else {
             super.insertTab(sender)
             return
@@ -35,6 +67,10 @@ extension EditorTextView {
     }
 
     public override func insertBacktab(_ sender: Any?) {
+        if inlineTableCell != nil {
+            stepTableCell(by: -1)
+            return
+        }
         guard let (startBlock, endBlock) = affectedListBlockRange() else {
             return
         }
@@ -71,13 +107,122 @@ extension EditorTextView {
         return (startIdx, endIdx)
     }
 
+    // MARK: - Nesting Columns
+    //
+    // A fixed `indentUnit` is not always enough to nest. CommonMark starts a
+    // child list only at (or past) the parent item's *content* column — 2 for
+    // "- ", 3 for "2. ", 4 for "10. " — so the default 2-space unit under an
+    // ordered marker writes a sibling, not a child. The editor derives depth
+    // from leading whitespace and draws that as nested anyway, while Read mode
+    // (and GitHub, and pandoc) parse it flat. Pad Tab out to the previous
+    // sibling's content column so the bytes mean what the editor draws.
+    //
+    // Depth is read back the same way — `ListDepthMap` stacks the content
+    // columns of the preceding lines — so a document that mixes 2-column
+    // bullet nesting with 3-column ordered nesting reads back exactly as it
+    // was written, and the width Tab picks here has no effect on any list but
+    // the one being indented.
+
+    /// Marker plus the spaces after it — everything before an item's content.
+    /// Spaces-indented lines only; tab-indented ones are handled by the callers.
+    private static let listContentColumnRegex =
+        try! NSRegularExpression(pattern: #"^ *(?:[-*+]|\d{1,9}[.)])( +)"#)
+
+    private func leadingSpaces(_ line: String) -> Int {
+        line.prefix(while: { $0 == " " }).count
+    }
+
+    /// Column where `line`'s content starts — where CommonMark requires a child
+    /// list to begin — or nil if it isn't a spaces-indented list line. More than
+    /// four spaces after the marker open an indented code block inside the item
+    /// rather than widening it, so the run counts for at most four.
+    private func listContentColumn(_ line: String) -> Int? {
+        let ns = line as NSString
+        guard let m = Self.listContentColumnRegex.firstMatch(
+            in: line, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        let spaces = m.range(at: 1).length
+        return m.range.length - spaces + min(spaces, 4)
+    }
+
+    /// Content column of the list line the block at `index` would become a child
+    /// of when indented — its nearest preceding sibling at the same column. nil
+    /// when there is none, so there is nothing to nest under and `indentUnit`
+    /// stands.
+    private func nestingTargetColumn(before index: Int) -> Int? {
+        let content = blocks[index].content
+        guard !content.hasPrefix("\t") else { return nil }
+        let cols = leadingSpaces(content)
+        var i = index - 1
+        while i >= 0 {
+            let line = blocks[i].content
+            guard isListLine(line), !line.hasPrefix("\t") else { return nil }
+            let c = leadingSpaces(line)
+            if c < cols { return nil }              // that's the parent, not a sibling
+            if c == cols { return listContentColumn(line) }
+            i -= 1                                  // deeper: a nephew, keep looking
+        }
+        return nil
+    }
+
+    /// The whitespace one Tab prepends to every block in the affected range.
+    /// One string for the whole range, so relative nesting inside it is kept.
+    private func indentString(from startBlock: Int) -> String {
+        guard !indentUsesTabs,
+              let target = nestingTargetColumn(before: startBlock) else { return indentUnit }
+        let cols = leadingSpaces(blocks[startBlock].content)
+        return String(repeating: " ", count: max(indentUnit.count, target - cols))
+    }
+
+    /// Columns one Shift-Tab strips, mirroring `indentString(from:)`: back to
+    /// the nearest shallower list line's column, so a padded indent undoes
+    /// cleanly instead of leaving an orphan space — which would drag the
+    /// document-wide `listIndentUnit` down to 1 and re-depth every list.
+    private func dedentColumns(from startBlock: Int) -> Int {
+        let content = blocks[startBlock].content
+        guard !content.hasPrefix("\t") else { return indentUnit.count }
+        let cols = leadingSpaces(content)
+        guard cols > 0 else { return indentUnit.count }
+        var i = startBlock - 1
+        while i >= 0 {
+            let line = blocks[i].content
+            guard isListLine(line), !line.hasPrefix("\t") else { break }
+            let c = leadingSpaces(line)
+            if c < cols { return cols - c }
+            i -= 1
+        }
+        // Nothing shallower to return to, so there was no padding to mirror:
+        // step by the plain unit, as a ragged/orphan indent always has.
+        return indentUnit.count
+    }
+
+    // MARK: - Diagnostics
+
+    /// Which blocks a Tab/Shift-Tab actually resolved to, and their leading
+    /// whitespace — enough to tell "it moved the lines I selected" from "it
+    /// moved a different part of the list". Verbose-only; the document-global
+    /// consequence is logged separately by `listIndentUnit`'s `didSet`.
+    private func traceIndent(_ op: String, _ startBlock: Int, _ endBlock: Int,
+                             _ change: String) {
+        guard Log.shouldTrace else { return }
+        let lines = (startBlock...endBlock).prefix(6).map { i -> String in
+            "\(i):cols=\(blocks[i].content.prefix(while: { $0 == " " || $0 == "\t" }).count)"
+                + " \(logSnippet(String(blocks[i].content.prefix(24))))"
+        }
+        let more = endBlock - startBlock + 1 > 6 ? " …+\(endBlock - startBlock + 1 - 6)" : ""
+        traceEdit("\(op) blocks \(startBlock)…\(endBlock) \(change) unit=\(listIndentUnit)"
+                  + " [\(lines.joined(separator: ", "))\(more)]")
+    }
+
     // MARK: - Indent (Tab)
 
     private func indentListBlocks(from startBlock: Int, to endBlock: Int) {
         let sel = selectedRange()
         let rawStart = sel.location
         let rawEnd = sel.location + sel.length
-        let indentLen = (indentUnit as NSString).length
+        let indent = indentString(from: startBlock)
+        let indentLen = (indent as NSString).length
+        let target = nestingTargetColumn(before: startBlock).map(String.init) ?? "none"
+        traceIndent("indent", startBlock, endBlock, "+\(indentLen)col target=\(target)")
 
         // The pre-edit storage span covering exactly the affected blocks; only
         // this is replaced so layout above/below — and the viewport — is kept.
@@ -95,13 +240,13 @@ extension EditorTextView {
         var parts: [String] = []
         for (i, block) in blocks.enumerated() {
             if i >= startBlock && i <= endBlock {
-                parts.append(indentUnit + block.content)
+                parts.append(indent + block.content)
             } else {
                 parts.append(block.content)
             }
         }
         let newText = parts[startBlock...endBlock].joined(separator: blockSeparator)
-        let oldIndentUnit = listIndentUnit
+        let oldDepths = listDepths
         rawSource = parts.joined(separator: blockSeparator)
         rebuildListIndentState()
         rebuildLinkDefState()
@@ -118,7 +263,7 @@ extension EditorTextView {
         stabilizingViewport {
             recomposeReplacing(oldRange: oldRange, with: newText,
                                dirty: indentDirtySet(startBlock, endBlock,
-                                                     unitChanged: listIndentUnit != oldIndentUnit),
+                                                     oldDepths: oldDepths),
                                cursorInRaw: newRawStart, selectionInRaw: selInRaw)
         }
         // The indented blocks changed depth: they may now belong to a
@@ -129,17 +274,14 @@ extension EditorTextView {
         document?.updateChangeCount(.changeDone)
     }
 
-    /// Blocks to restyle for an indent/dedent: the directly-edited span, plus —
-    /// when the document-global list indent unit moved — every list block,
-    /// whose rendered indentation is derived from that unit.
+    /// Blocks to restyle for an indent/dedent: the directly-edited span, plus
+    /// any list block whose depth moved with it. Moving one item across a
+    /// column boundary can re-parent the items nested under it, and those sit
+    /// outside the edited span.
     private func indentDirtySet(_ startBlock: Int, _ endBlock: Int,
-                                unitChanged: Bool) -> IndexSet {
+                                oldDepths: [Int]) -> IndexSet {
         var dirty = IndexSet(integersIn: startBlock...min(endBlock, blocks.count - 1))
-        if unitChanged {
-            for (i, block) in blocks.enumerated() where block.kind == .listItem {
-                dirty.insert(i)
-            }
-        }
+        dirty.formUnion(listDepthChanges(from: oldDepths))
         return dirty
     }
 
@@ -149,7 +291,7 @@ extension EditorTextView {
         let sel = selectedRange()
         let rawStart = sel.location
         let rawEnd = sel.location + sel.length
-        let maxRemove = indentUnit.count
+        let maxRemove = dedentColumns(from: startBlock)
 
         // Compute how many leading whitespace characters to strip from each block.
         var removed: [Int] = Array(repeating: 0, count: blocks.count)
@@ -164,6 +306,8 @@ extension EditorTextView {
         }
 
         let totalRemoved = removed[startBlock...endBlock].reduce(0, +)
+        traceIndent("dedent", startBlock, endBlock,
+                    "−\(maxRemove)col removed=\(Array(removed[startBlock...endBlock]))")
         guard totalRemoved > 0 else { return }
 
         // The pre-edit storage span covering exactly the affected blocks; only
@@ -188,7 +332,7 @@ extension EditorTextView {
             }
         }
         let newText = parts[startBlock...endBlock].joined(separator: blockSeparator)
-        let oldIndentUnit = listIndentUnit
+        let oldDepths = listDepths
         rawSource = parts.joined(separator: blockSeparator)
         rebuildListIndentState()
         rebuildLinkDefState()
@@ -216,7 +360,7 @@ extension EditorTextView {
         stabilizingViewport {
             recomposeReplacing(oldRange: oldRange, with: newText,
                                dirty: indentDirtySet(startBlock, endBlock,
-                                                     unitChanged: listIndentUnit != oldIndentUnit),
+                                                     oldDepths: oldDepths),
                                cursorInRaw: newRawStart, selectionInRaw: selInRaw)
         }
         // The dedented blocks changed depth: they may now belong to a

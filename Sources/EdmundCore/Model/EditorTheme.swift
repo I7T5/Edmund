@@ -24,9 +24,24 @@ public struct EditorTheme: Equatable, Sendable {
     /// Whether editor text is antialiased (a single editor-wide setting).
     public var antialias: Bool
 
+    /// Per-script font overrides: script → macOS font family name. Empty means
+    /// no cascade — the editor and Read mode behave exactly as before (system
+    /// fallback picks covering fonts).
+    public var fontCascade: [FontCascadeScript: String]
+
+    /// Per-script size overrides: script → multiplier of the run's point size
+    /// (absent = 1.0). Ratios, not points, so zoom and body-size changes scale
+    /// the cascade for free; Read mode carries the same ratio via the
+    /// @font-face `size-adjust` descriptor, keeping Edit and Read in step.
+    public var fontCascadeSizeRatios: [FontCascadeScript: Double]
+    /// Per-script ligature switches (script → on). Absent = on, matching the
+    /// standard font's default. Edit mode only: Read mode reaches a script
+    /// through an `@font-face` unicode-range, and CSS has no per-range ligature
+    /// switch to hang this on.
+    public var fontCascadeLigatures: [FontCascadeScript: Bool]
+
     // MARK: - Colors (hex strings, e.g. "#3366E6")
 
-    public var linkBlueHex: String
     public var codeHex: String
     /// Color for LaTeX operators/commands (`_`, `^`, `\sum`, …) in raw math.
     public var mathOperatorHex: String
@@ -38,15 +53,16 @@ public struct EditorTheme: Equatable, Sendable {
     public var lineSpacing: CGFloat
     public var paragraphSpacingBefore: CGFloat
 
-    public init(fontName: String, fontSize: CGFloat, linkBlueHex: String, codeHex: String,
+    public init(fontName: String, fontSize: CGFloat, codeHex: String,
                 lineSpacing: CGFloat, paragraphSpacingBefore: CGFloat,
                 mathOperatorHex: String = "#D70015", mathNumberHex: String = "#C77800",
                 monospaceFontName: String = "", monospaceFontSize: CGFloat = 14,
                 standardLigatures: Bool = true, monospaceLigatures: Bool = false,
-                antialias: Bool = true) {
+                antialias: Bool = true, fontCascade: [FontCascadeScript: String] = [:],
+                fontCascadeSizeRatios: [FontCascadeScript: Double] = [:],
+                fontCascadeLigatures: [FontCascadeScript: Bool] = [:]) {
         self.fontName = fontName
         self.fontSize = fontSize
-        self.linkBlueHex = linkBlueHex
         self.codeHex = codeHex
         self.lineSpacing = lineSpacing
         self.paragraphSpacingBefore = paragraphSpacingBefore
@@ -57,6 +73,9 @@ public struct EditorTheme: Equatable, Sendable {
         self.standardLigatures = standardLigatures
         self.monospaceLigatures = monospaceLigatures
         self.antialias = antialias
+        self.fontCascade = fontCascade
+        self.fontCascadeSizeRatios = fontCascadeSizeRatios
+        self.fontCascadeLigatures = fontCascadeLigatures
     }
 
     // MARK: - Defaults
@@ -64,7 +83,6 @@ public struct EditorTheme: Equatable, Sendable {
     public static let `default` = EditorTheme(
         fontName: "Iowan Old Style",
         fontSize: 16,
-        linkBlueHex: "#3366E6",
         codeHex: "#8A2425",
         lineSpacing: 4,
         paragraphSpacingBefore: 2
@@ -78,6 +96,83 @@ public struct EditorTheme: Equatable, Sendable {
         t.fontName = "system-ui"
         return t
     }()
+
+    // MARK: - Font Presets
+
+    /// This theme with `font`'s faces, sizes and line height layered on top.
+    ///
+    /// Order matters: line height is authored as a multiple of the body size
+    /// but stored as extra leading in points, so it has to be scaled by the
+    /// size the theme actually ends up with, not the one it started from.
+    ///
+    /// An empty face or a non-positive size is ignored rather than applied — a
+    /// hand-written JSON missing a value should fall back to what is there, not
+    /// set the editor in a zero-point font. The exception is
+    /// `monospaceFontName`, where empty is a real value meaning the system
+    /// monospaced font.
+    public func applying(_ font: FontTheme) -> EditorTheme {
+        var t = self
+        if !font.fontName.isEmpty { t.fontName = font.fontName }
+        if font.fontSize > 0 { t.fontSize = CGFloat(font.fontSize) }
+        t.monospaceFontName = font.monospaceFontName
+        if font.monospaceFontSize > 0 { t.monospaceFontSize = CGFloat(font.monospaceFontSize) }
+        t.lineSpacing = max(0, (CGFloat(font.lineHeight) - 1) * t.fontSize)
+        t.standardLigatures = font.standardLigatures
+        t.monospaceLigatures = font.monospaceLigatures
+        // Assigned whole, like the faces: a font theme is a complete set, so an
+        // empty cascade in the theme means *no* per-script overrides rather
+        // than "keep whatever the base had".
+        t.fontCascade = font.scriptCascade
+        t.fontCascadeSizeRatios = font.scriptSizeRatios
+        t.fontCascadeLigatures = font.scriptLigatures
+        return t
+    }
+
+    /// This theme's faces, sizes and line height as a font theme — the inverse
+    /// of `applying(_:)`, used to save the live values into a preset.
+    ///
+    /// Line height converts back from points to the multiple a font theme
+    /// stores, and is clamped to the range the pane's stepper allows so a
+    /// hand-set `EditorLineSpacing` cannot seed a theme the UI refuses to show.
+    public func fontTheme(name: String, displayName: String) -> FontTheme {
+        let multiple = fontSize > 0
+            ? min(3, max(1, (fontSize + lineSpacing) / fontSize))
+            : 1
+        return FontTheme(name: name, displayName: displayName,
+                         fontName: fontName, fontSize: Double(fontSize),
+                         monospaceFontName: monospaceFontName,
+                         monospaceFontSize: Double(monospaceFontSize),
+                         lineHeight: Double(multiple),
+                         standardLigatures: standardLigatures,
+                         monospaceLigatures: monospaceLigatures,
+                         cascade: fontCascade.reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
+                         cascadeSizeRatios: fontCascadeSizeRatios
+                             .reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
+                         cascadeLigatures: fontCascadeLigatures
+                             .reduce(into: [:]) { $0[$1.key.rawValue] = $1.value })
+    }
+
+    /// Whether `font` actually draws common ligatures, so a checkbox offering to
+    /// turn them off is wired to something.
+    ///
+    /// Asks by shaping rather than by reading the feature table. Every face
+    /// tested advertises the AAT ligature type with a common-ligatures selector
+    /// — Monaco and Menlo included, neither of which has a single ligature — so
+    /// the table answers "yes" for everything and settles nothing. Laying out a
+    /// known pair and counting glyphs is the behaviour the checkbox actually
+    /// governs: if "fi" comes back as one glyph, the face has the ligature.
+    @MainActor public static func hasLigatures(_ font: NSFont) -> Bool {
+        // Two pairs, because a face may carry one and not the other.
+        ["fi", "fl"].contains { pair in
+            let text = NSAttributedString(string: pair,
+                                          attributes: [.font: font, .ligature: 1])
+            let runs = CTLineGetGlyphRuns(CTLineCreateWithAttributedString(text))
+                as? [CTRun] ?? []
+            let glyphs = runs.reduce(0) { $0 + CTRunGetGlyphCount($1) }
+            // Fewer glyphs than characters means the pair was combined.
+            return glyphs < pair.count
+        }
+    }
 
     // MARK: - Derived Properties
 
@@ -110,7 +205,7 @@ public struct EditorTheme: Equatable, Sendable {
     /// latter is what drives programming ligatures like Fira Code's `=>`/`==`.
     /// Baking it into the font (rather than the `.ligature` attribute) is what the
     /// editor's TextKit 2 pipeline reliably honors.
-    private static func applyingLigatures(_ on: Bool, to font: NSFont) -> NSFont {
+    static func applyingLigatures(_ on: Bool, to font: NSFont) -> NSFont {
         guard !on else { return font }
         let kContextualAlternatesType = 36
         let kContextualAlternatesOffSelector = 1
@@ -122,8 +217,44 @@ public struct EditorTheme: Equatable, Sendable {
         return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
     }
 
-    @MainActor public var linkBlueColor: NSColor {
-        NSColor(hex: linkBlueHex) ?? .systemBlue
+    /// Body-text ink — **the** definition, read by both Edit mode
+    /// (`EditorTextView.foregroundColor`) and Read mode (`HTMLTheme`'s `--fg`,
+    /// and the math bitmaps `DocumentHTML` embeds). It lives here because the two
+    /// modes had drifted: Edit mode painted the system `textColor` while Read
+    /// mode hard-coded `#1a1a1a`, so in light mode the identical equation was
+    /// pure black in one mode and 10% lighter in the other (measured off
+    /// screenshots: peak ink coverage 1.000 vs 0.863).
+    ///
+    /// Light mode keeps the system color: Edit mode is a real `NSTextView`, and
+    /// `textColor` is what every native text surface paints — it also tracks
+    /// Increase Contrast, which a hex cannot. On white the difference from
+    /// `#1a1a1a` is perceptually tiny (21:1 vs 18.9:1 contrast), so matching the
+    /// system costs nothing. Dark mode is the exception, and it predates this:
+    /// `textColor` is pure white there, which glares against the `#292929` page,
+    /// so both modes use Read mode's long-standing `#e6e6e6` instead.
+    /// The active general theme's `text` wins when it sets one; the values below
+    /// are what the bundled Default themes fall back to. Kept as the single
+    /// definition so Edit mode, Read mode's `--fg`, and the math bitmaps cannot
+    /// drift apart — every one of them routes through here.
+    @MainActor public static func bodyTextColor(dark: Bool) -> NSColor {
+        if let themed = ThemeStore.shared.general(dark: dark).text.flatMap(NSColor.init(hex:)) {
+            return themed
+        }
+        return dark ? NSColor(srgbRed: 230 / 255, green: 230 / 255, blue: 230 / 255, alpha: 1)
+                    : .textColor
+    }
+
+    /// `bodyTextColor(dark:)` resolved against that appearance rather than
+    /// whichever one happens to be current. Read mode needs this: its CSS and its
+    /// math bitmaps are generated for an explicit light/dark target (an export, or
+    /// a preview while the app sits in the other appearance), and a dynamic
+    /// `textColor` resolved at the wrong moment would bake in the wrong ink.
+    @MainActor public static func bodyTextColorResolved(dark: Bool) -> NSColor {
+        var color = bodyTextColor(dark: dark)
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            color = color.usingColorSpace(.deviceRGB) ?? color
+        }
+        return color
     }
 
     @MainActor public var codeColor: NSColor {
@@ -148,12 +279,14 @@ public struct EditorTheme: Equatable, Sendable {
         static let standardLigatures = "EditorStandardLigatures"
         static let monospaceLigatures = "EditorMonospaceLigatures"
         static let antialias = "EditorAntialias"
-        static let linkBlueHex = "EditorLinkBlueHex"
         static let codeHex = "EditorCodeHex"
         static let mathOperatorHex = "EditorMathOperatorHex"
         static let mathNumberHex = "EditorMathNumberHex"
         static let lineSpacing = "EditorLineSpacing"
         static let paragraphSpacingBefore = "EditorParagraphSpacingBefore"
+        static let fontCascade = "EditorFontCascade"
+        static let fontCascadeSizeRatios = "EditorFontCascadeSizeRatios"
+        static let fontCascadeLigatures = "EditorFontCascadeLigatures"
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> EditorTheme {
@@ -165,10 +298,6 @@ public struct EditorTheme: Equatable, Sendable {
             let v = CGFloat(d.float(forKey: Keys.fontSize))
             return v > 0 ? v : def.fontSize
         }()
-        // The accent color is not user-customizable; always use the default so a
-        // stale persisted value (e.g. left over from the removed in-app accent
-        // picker) can't leak in and recolor links.
-        let linkBlueHex = def.linkBlueHex
         let monospaceFontName = d.string(forKey: Keys.monospaceFontName) ?? def.monospaceFontName
         let monospaceFontSize: CGFloat = {
             let v = CGFloat(d.float(forKey: Keys.monospaceFontSize))
@@ -186,11 +315,53 @@ public struct EditorTheme: Equatable, Sendable {
         let paragraphSpacingBefore: CGFloat = d.object(forKey: Keys.paragraphSpacingBefore) != nil
             ? CGFloat(d.float(forKey: Keys.paragraphSpacingBefore))
             : def.paragraphSpacingBefore
+        // Unknown script keys are dropped so a cascade written by a newer (or
+        // older) build with a different curated list still loads cleanly.
+        let fontCascade: [FontCascadeScript: String] = {
+            guard let raw = d.dictionary(forKey: Keys.fontCascade) as? [String: String] else {
+                return [:]
+            }
+            var cascade: [FontCascadeScript: String] = [:]
+            for (key, family) in raw {
+                if let script = FontCascadeScript(rawValue: key), !family.isEmpty {
+                    cascade[script] = family
+                }
+            }
+            return cascade
+        }()
+        // Same discipline as the families: unknown scripts dropped, ratios
+        // clamped to the stepper's range, and 1.0 treated as unset (the
+        // settings UI removes the entry instead of storing it).
+        let fontCascadeSizeRatios: [FontCascadeScript: Double] = {
+            guard let raw = d.dictionary(forKey: Keys.fontCascadeSizeRatios) else {
+                return [:]
+            }
+            var ratios: [FontCascadeScript: Double] = [:]
+            for (key, value) in raw {
+                guard let script = FontCascadeScript(rawValue: key),
+                      let number = value as? NSNumber else { continue }
+                let ratio = min(2.0, max(0.5, number.doubleValue))
+                if abs(ratio - 1.0) >= 0.001 { ratios[script] = ratio }
+            }
+            return ratios
+        }()
+        // Only the "off" entries are stored; an absent script means ligatures on.
+        let fontCascadeLigatures: [FontCascadeScript: Bool] = {
+            guard let raw = d.dictionary(forKey: Keys.fontCascadeLigatures) else {
+                return [:]
+            }
+            var flags: [FontCascadeScript: Bool] = [:]
+            for (key, value) in raw {
+                guard let script = FontCascadeScript(rawValue: key),
+                      let number = value as? NSNumber else { continue }
+                if !number.boolValue { flags[script] = false }
+            }
+            return flags
+        }()
 
         return EditorTheme(
             fontName: fontName,
             fontSize: fontSize,
-            linkBlueHex: linkBlueHex,
             codeHex: codeHex,
             lineSpacing: lineSpacing,
             paragraphSpacingBefore: paragraphSpacingBefore,
@@ -200,7 +371,10 @@ public struct EditorTheme: Equatable, Sendable {
             monospaceFontSize: monospaceFontSize,
             standardLigatures: standardLigatures,
             monospaceLigatures: monospaceLigatures,
-            antialias: antialias
+            antialias: antialias,
+            fontCascade: fontCascade,
+            fontCascadeSizeRatios: fontCascadeSizeRatios,
+            fontCascadeLigatures: fontCascadeLigatures
         )
     }
 
@@ -213,12 +387,17 @@ public struct EditorTheme: Equatable, Sendable {
         d.set(standardLigatures, forKey: Keys.standardLigatures)
         d.set(monospaceLigatures, forKey: Keys.monospaceLigatures)
         d.set(antialias, forKey: Keys.antialias)
-        d.set(linkBlueHex, forKey: Keys.linkBlueHex)
         d.set(codeHex, forKey: Keys.codeHex)
         d.set(mathOperatorHex, forKey: Keys.mathOperatorHex)
         d.set(mathNumberHex, forKey: Keys.mathNumberHex)
         d.set(Float(lineSpacing), forKey: Keys.lineSpacing)
         d.set(Float(paragraphSpacingBefore), forKey: Keys.paragraphSpacingBefore)
+        d.set(Dictionary(uniqueKeysWithValues: fontCascade.map { ($0.key.rawValue, $0.value) }),
+              forKey: Keys.fontCascade)
+        d.set(Dictionary(uniqueKeysWithValues: fontCascadeSizeRatios.map { ($0.key.rawValue, $0.value) }),
+              forKey: Keys.fontCascadeSizeRatios)
+        d.set(Dictionary(uniqueKeysWithValues: fontCascadeLigatures.map { ($0.key.rawValue, $0.value) }),
+              forKey: Keys.fontCascadeLigatures)
     }
 }
 
@@ -227,6 +406,13 @@ public struct EditorTheme: Equatable, Sendable {
 extension NSColor {
 
     /// Create a color from a hex string like "#3366E6" or "3366E6".
+    ///
+    /// sRGB, not the calibrated space: a hex literal means the same thing in CSS
+    /// (Read mode, PDF export) as it does here, and calibrated RGB composites
+    /// visibly lighter than that — every project hex drifted, most obviously the
+    /// `warning` callout's orange (#EC7500 painted as #F28900 in the editor while
+    /// Read mode showed the literal). Decoding as sRGB makes the two agree and
+    /// makes hex → NSColor → `hexString` round-trip exactly.
     public convenience init?(hex: String) {
         var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if h.hasPrefix("#") { h.removeFirst() }
@@ -234,7 +420,7 @@ extension NSColor {
         let r = CGFloat((rgb >> 16) & 0xFF) / 255.0
         let g = CGFloat((rgb >> 8) & 0xFF) / 255.0
         let b = CGFloat(rgb & 0xFF) / 255.0
-        self.init(calibratedRed: r, green: g, blue: b, alpha: 1.0)
+        self.init(srgbRed: r, green: g, blue: b, alpha: 1.0)
     }
 
     /// Returns the hex string representation (e.g. "#3366E6").

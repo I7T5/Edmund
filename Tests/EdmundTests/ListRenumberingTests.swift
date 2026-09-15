@@ -155,7 +155,9 @@ struct ListRenumberingTests {
         let end = (editor.rawSource as NSString).range(of: "3. Three").upperBound
         editor.setSelectedRange(NSRange(location: start, length: end - start))
         editor.insertTab(nil)
-        #expect(editor.rawSource == "1. One\n  1. Two\n  2. Three\n2. Four")
+        // Three columns, not two: "1. " is that wide, and CommonMark only
+        // nests a child list at or past the parent item's content column.
+        #expect(editor.rawSource == "1. One\n   1. Two\n   2. Three\n2. Four")
     }
 
     @Test("Indenting a single item into a brand-new sublist restarts at 1")
@@ -165,20 +167,20 @@ struct ListRenumberingTests {
         let caret = (editor.rawSource as NSString).range(of: "2. Two").location
         editor.setSelectedRange(NSRange(location: caret, length: 0))
         editor.insertTab(nil)
-        #expect(editor.rawSource == "1. One\n  1. Two\n2. Three")
+        #expect(editor.rawSource == "1. One\n   1. Two\n2. Three")
     }
 
     @Test("Indenting a list item renumbers both the old and new level")
     @MainActor func indentRenumbersBothLevels() {
         let editor = makeEditor()
-        editor.loadContent("1. a\n2. b\n  1. x\n  2. y\n3. c")
+        editor.loadContent("1. a\n2. b\n   1. x\n   2. y\n3. c")
         // Tab-indent "2. b" into the nested (depth-1) run: the old top-level
         // run loses a member (c should renumber 3→2), and the nested run
         // gains a new head (x, y should renumber to 3, 4 after b's "2.").
         let caret = (editor.rawSource as NSString).range(of: "2. b").location
         editor.setSelectedRange(NSRange(location: caret, length: 0))
         editor.insertTab(nil)
-        #expect(editor.rawSource == "1. a\n  2. b\n  3. x\n  4. y\n2. c")
+        #expect(editor.rawSource == "1. a\n   2. b\n   3. x\n   4. y\n2. c")
     }
 
     @Test("Dedenting a list item renumbers both the old and new level")

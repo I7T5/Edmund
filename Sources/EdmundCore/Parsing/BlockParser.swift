@@ -624,15 +624,22 @@ public enum BlockParser {
     }
 
     /// Returns the heading level if the line is a setext underline: ≤3 leading
-    /// spaces, then 1+ of the same character (`=` → level 1, `-` → level 2),
-    /// then only trailing spaces/tabs. Internal spaces (`- - -`) disqualify it,
-    /// so a spaced thematic break after a paragraph stays a rule.
+    /// spaces, then **3 or more** of the same character (`=` → level 1, `-` →
+    /// level 2), then only trailing spaces/tabs. Internal spaces (`- - -`)
+    /// disqualify it, so a spaced thematic break after a paragraph stays a rule.
+    ///
+    /// Three is a deliberate divergence from CommonMark, which underlines on a
+    /// single `-`/`=`: a lone dash or two under a line turned it into a heading
+    /// by accident far more often than anyone wanted a one-dash underline. A
+    /// heading (setext or thematic break) now needs a run of three, matching
+    /// the `---`/`===`/`***` the eye already reads as one.
     private static func setextUnderlineLevel(_ line: String) -> Int? {
         let trimmed = line.drop(while: { $0 == " " })
         guard line.count - trimmed.count <= 3,
               let first = trimmed.first, first == "=" || first == "-" else { return nil }
         let run = trimmed.prefix(while: { $0 == first })
-        guard trimmed.dropFirst(run.count).allSatisfy({ $0 == " " || $0 == "\t" }) else { return nil }
+        guard run.count >= 3,
+              trimmed.dropFirst(run.count).allSatisfy({ $0 == " " || $0 == "\t" }) else { return nil }
         return first == "=" ? 1 : 2
     }
 
@@ -794,10 +801,32 @@ public enum BlockParser {
     }
 
     /// Returns true if the line is a table separator (e.g., "| --- | --- |").
+    ///
+    /// A cell may use any number of dashes, not only three: `- | -` and
+    /// `:--:|--` are separators too, per GFM (each column is `:?-+:?`).
+    /// Requiring literal `---` misread a single-dash separator as a bullet
+    /// list — its leading `- ` looked like a list marker.
     private static func isTableSeparator(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard trimmed.contains("|") && trimmed.contains("---") else { return false }
-        return trimmed.allSatisfy { "|:- \t".contains($0) }
+        guard trimmed.contains("|"), trimmed.contains("-"),
+              trimmed.allSatisfy({ "|:- \t".contains($0) }) else { return false }
+        // Every cell between the pipes must be a valid delimiter. Outer pipes
+        // leave empty leading/trailing parts, which are dropped.
+        let cells = trimmed.split(separator: "|", omittingEmptySubsequences: true)
+        guard !cells.isEmpty else { return false }
+        return cells.allSatisfy { isDelimiterCell($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    /// A single separator cell: an optional leading colon, one or more dashes,
+    /// an optional trailing colon, and nothing else.
+    private static func isDelimiterCell(_ cell: String) -> Bool {
+        var rest = Substring(cell)
+        if rest.first == ":" { rest = rest.dropFirst() }
+        let dashes = rest.prefix(while: { $0 == "-" })
+        guard !dashes.isEmpty else { return false }
+        rest = rest.dropFirst(dashes.count)
+        if rest.first == ":" { rest = rest.dropFirst() }
+        return rest.isEmpty
     }
 
     /// Returns fence info (character and count) if the line is an opening code fence.

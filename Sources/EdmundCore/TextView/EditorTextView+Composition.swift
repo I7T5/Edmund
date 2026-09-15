@@ -108,22 +108,12 @@ extension EditorTextView {
         }
         let deferred = dirty.subtracting(syncSet)
 
-        let nsString = ts.string as NSString
         ts.beginEditing()
         for idx in syncSet where idx < blocks.count {
             let cursorInBlock: Int? = (idx == newActiveIndex)
                 ? max(0, cursorInRaw - blocks[idx].range.location) : nil
             restyleBlock(idx, cursorInBlock: cursorInBlock)
             blocks[idx].isStyled = true
-
-            // Full recompose resets separator newlines to base attributes as
-            // a side effect of rebuilding the whole string; do the same for
-            // dirty blocks so stale paragraph styles can't linger on the `\n`
-            // after e.g. a former callout.
-            let sep = blocks[idx].range.upperBound
-            if sep < nsString.length && nsString.character(at: sep) == 0x0A {
-                ts.setAttributes(baseAttributes, range: NSRange(location: sep, length: 1))
-            }
         }
         ts.endEditing()
 
@@ -198,11 +188,19 @@ extension EditorTextView {
     /// Restyles every block in place (attribute-only). For theme and
     /// appearance changes: the string is unchanged but every attribute
     /// derives from the new theme/appearance.
-    func recomposeAllDirty() {
-        for i in blocks.indices { blocks[i].isStyled = false }
-        recomposeDirty(IndexSet(blocks.indices),
-                       cursorInRaw: currentCursorInRaw(),
-                       settingSelection: true)
+    ///
+    /// Anchored: marking every block unstyled drops the whole document back to
+    /// base-height estimates, so the content *above* the viewport re-measures
+    /// and the same clip origin lands somewhere else entirely — measured at +64
+    /// lines on a 2000-line file when the appearance switched. Pinning the
+    /// viewport top keeps the user looking at what they were looking at.
+    public func recomposeAllDirty() {
+        preservingViewportAnchor {
+            for i in blocks.indices { blocks[i].isStyled = false }
+            recomposeDirty(IndexSet(blocks.indices),
+                           cursorInRaw: currentCursorInRaw(),
+                           settingSelection: true)
+        }
     }
 
     /// Attribute-only restyle of the whole document, for the app layer to call

@@ -1,0 +1,16 @@
+{
+  "name": "tomorrow-night",
+  "displayName": "Tomorrow Night",
+  "appearance": "dark",
+
+  "plain": "#c5c8c6",
+  "keyword": "#b294bb",
+  "command": "#81a2be",
+  "type": "#f0c674",
+  "attribute": "#8abeb7",
+  "variable": "#cc6666",
+  "value": "#de935f",
+  "number": "#de935f",
+  "string": "#b5bd68",
+  "comment": "#969896"
+}

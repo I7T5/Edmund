@@ -21,7 +21,7 @@ Finder preview renders identically to Read mode with no second renderer.
 | **AppleScript code-fence syntax** | `EdmundCore/Resources/Syntaxes/applescript.json` | Works. Fully tested. |
 | **Services menu** | `edmd/App/ServicesProvider.swift`, `NSServices` in `Info.plist`, registered in `main.swift` `applicationDidFinishLaunching` | Built & registered; live menu-click not yet exercised. |
 | **App Intents** | `edmd/App/Intents.swift` (+ `DocumentController.newDocument(withContent:)`) | Code correct; **Shortcuts discovery blocked** — see §3. |
-| **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Code + packaging + signing done; **live launch blocked** — see §4. |
+| **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Live-verified and fixed 2026-08-05 — see §4. |
 
 Shared plumbing:
 
@@ -68,32 +68,66 @@ emit the const values (or the app is built from an Xcode project).
 support becomes a requirement, the fix is an Xcode-project build (or a wrapper
 target), not more SwiftPM flags.
 
-## 4. Limitation — the Quick Look appex doesn't launch under ad-hoc signing
+## 4. Fixed — the Quick Look appex hung (it did launch; it just never replied)
 
-The extension is complete and registers with `pluginkit` (enabled, content type
-matches), but **`quicklookd` silently declines to launch it** when the app is
-ad-hoc signed and run from a dev / non-`/Applications` location: no logs from the
-extension, no `amfid`/`pkd` rejection trace — Quick Look just falls back to the
-system plain-text preview (raw monospace source).
+**Live-verified 2026-08-05**, by an end user on a real ad-hoc-signed
+`/Applications/Edmund.app` install (macOS 26.6) — exactly the "To verify live"
+scenario the prior revision of this section asked for, minus the Developer-ID
+signing step. Findings correct the previous hypothesis:
 
-Proof it's the signing/location and not the code: MarkEdit's **Developer-ID**
-appex in `/Applications` *is* invoked by the same `qlmanage -p`; a copy of ours
-with a unique bundle id (dodging the `com.i7t5.edmund` collision from multiple
-dev builds) was still never launched. Edmund signs ad-hoc (`codesign --sign -`,
-no Team ID); app extensions are held to a stricter launch bar than the host app.
+**The appex does launch under ad-hoc signing from `/Applications`.**
+`pluginkit -m -v` showed it `+` (enabled), the process spawned, and the
+`os_log` breadcrumbs in `PreviewViewController` (`loadView`,
+`preparePreviewOfFile`, `render finished`, under `subsystem ==
+"com.i7t5.edmund.quicklook"`) were all present. The earlier claim that
+`quicklookd` declines to launch ad-hoc-signed appexes outright does not hold
+here — it may still describe the non-`/Applications` dev-copy case this
+section originally tested against (never re-tested from `/Applications`
+directly), but that is not what an end user's real install hits.
 
-**To verify live:** Developer-ID sign + notarize + install to `/Applications`,
-then press Space on a `.md` in Finder. `os_log` breadcrumbs in
-`PreviewViewController` (`loadView`, `preparePreviewOfFile`, `render finished`)
-are visible under `subsystem == "com.i7t5.edmund.quicklook"`:
+**The actual failure is downstream, in WKWebView.**
+`Resources/QuickLook.entitlements` carried `app-sandbox` +
+`files.user-selected.read-only` only. WKWebView is multi-process even for
+fully local/offline HTML — its `WebContent` helper needs
+`com.apple.security.network.client` just to complete its own XPC handshake
+with the host process, regardless of whether the page it renders ever touches
+the network. Without it, `WebContent` dies on launch every time, logged under
+WebKit's own subsystem (not `PreviewViewController`'s — a broader predicate is
+needed to see it):
 
 ```bash
-log show --last 1m --predicate 'subsystem == "com.i7t5.edmund.quicklook"'
+log show --predicate 'process CONTAINS "EdmundQuickLook"' --info --debug
 ```
 
-Do **not** overwrite the user's live `/Applications/Edmund.app` just to test —
-ask first. The render code is the same `ReadModeWebView` that renders correctly
-in-app, so the only unproven link is WKWebView drawing inside the appex sandbox.
+```
+WebContent[0] Application does not have permission to communicate with network resources. rc=1 : errno=34
+WebProcessProxy::didFinishLaunching: Invalid connection identifier (web process failed to launch)
+WebProcessProxy::processDidTerminateOrFailedToLaunch: reason=Crash
+```
+
+**Why it hangs instead of falling back to plain text.** `preparePreviewOfFile`
+awaits a `withCheckedContinuation` that only `webView.onLoadFinished` resumes
+(§2 above). WebKit never surfaces a `WebContent` launch failure to
+`ReadModeWebView` as a call to that closure, so the continuation is never
+resumed and the `async throws` function never returns — Quick Look has no
+fallback for an extension that never replies, so Finder just spins forever.
+Confirmed with `sample <pid>`: every thread sat idle in a normal run-loop wait
+(`mach_msg2_trap`), including the `WebCore: Scrolling` thread that only exists
+once a `WKWebView` has actually been instantiated — nothing was blocked on a
+lock or syscall, because nothing was running at all. The failure had already
+happened; nothing was ever told to resume.
+
+**Fix:** add `com.apple.security.network.client` to
+`Resources/QuickLook.entitlements`. Verified: after re-signing and
+re-registering, the same `qlmanage -p` invocation shows `WebContent` launching
+successfully and the page completing (`didFinishLoadForFrame`,
+`DidFirstMeaningfulPaint`), no permission error.
+
+**Follow-up worth considering, not part of this fix:** the continuation in
+`preparePreviewOfFile` has no timeout or `didFail` path, so any *other* future
+cause of a `WebContent` launch or load failure reproduces this exact hang.
+Resuming (and throwing) on a navigation failure, or adding a timeout, would
+make a future break fail fast instead of hanging forever again.
 
 ### Signing order in `build-app.sh` (why it's the way it is)
 

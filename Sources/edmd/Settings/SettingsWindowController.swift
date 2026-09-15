@@ -35,10 +35,19 @@ final class SettingsTabViewController: NSTabViewController {
         super.viewDidLoad()
         tabStyle = .toolbar
 
+        // General first and Advanced last are fixed; between them the look of
+        // the thing comes before its behaviour, which is where CotEditor
+        // (General, Window, Appearance, Edit) and Mail (General, Accounts,
+        // Junk, Fonts & Colors, Viewing) both put it. Appearance precedes
+        // Themes: it holds the broad choices, Themes is the authoring pane.
         addPane(GeneralSettingsView(), label: "General", symbol: "gearshape")
-        addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance", symbol: "eyeglasses")
+        addPane(AppearanceSettingsView(fonts: fonts), label: "Appearance",
+                symbol: "eyeglasses")
+        addPane(ThemesSettingsView(), label: "Themes", symbol: "paintbrush")
         addPane(EditSettingsView(), label: "Edit", symbol: "square.and.pencil")
         addPane(SyntaxSettingsView(), label: "Syntax", symbol: "chevron.left.forwardslash.chevron.right")
+        addPane(KeyBindingsSettingsView(), label: "Key Bindings", symbol: "keyboard")
+        addPane(ExtensionsSettingsView(), label: "Extensions", symbol: "puzzlepiece.extension")
         addPane(AdvancedSettingsView(), label: "Advanced", symbol: "gearshape.2")
     }
 
@@ -84,7 +93,11 @@ final class SettingsTabViewController: NSTabViewController {
             context.duration = window.animationResizeTime(frame)
             window.setFrame(frame, display: true)
         } completionHandler: { [weak self] in
-            self?.view.isHidden = false
+            // AppKit runs this on the main thread but types it as a plain
+            // `@Sendable` closure, so the isolation has to be asserted rather
+            // than hopped to — a hop would land a frame later and flash the
+            // pane back in after the resize had already finished.
+            MainActor.assumeIsolated { self?.view.isHidden = false }
         }
     }
 }

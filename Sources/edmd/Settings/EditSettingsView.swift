@@ -1,23 +1,15 @@
 // The Edit settings pane: one page, in three sections separated by rules —
 // the window chrome, what typing does, and what you see.
-//
-// Several controls here are deliberately `.disabled(true)`: their setting is
-// stored and the UI is final, but the feature behind them isn't built yet
-// (invisible characters, indent guides, line numbers, focus mode, indent
-// detection, strict line breaks, hard wrap). Each becomes live by deleting its
-// `.disabled(true)` when the feature lands — see misc/backlog.md.
 
 import SwiftUI
 import AppKit
 import EdmundCore
 
 struct EditSettingsView: View {
-    @AppStorage(AppSettings.Key.showToolbar)     private var showToolbar = true
-    @AppStorage(AppSettings.Key.autoHideToolbar) private var autoHideToolbar = true
-    @AppStorage(AppSettings.Key.sourceMode)      private var sourceMode = false
     @AppStorage(AppSettings.Key.showInvisibles) private var showInvisibles = false
-    @AppStorage(AppSettings.Key.invisiblesMode)
-    private var invisiblesMode = AppSettings.InvisibleCharacterMode.uponSelection
+    // Parked with the rest of the Always mode — see the "Characters:" row.
+    // @AppStorage(AppSettings.Key.invisiblesMode)
+    // private var invisiblesMode = AppSettings.InvisibleCharacterMode.uponSelection
     @AppStorage(AppSettings.Key.invisibleLineEnding) private var lineEnding = true
     @AppStorage(AppSettings.Key.invisibleTab)        private var tab = true
     @AppStorage(AppSettings.Key.invisibleSpace)      private var space = true
@@ -25,7 +17,6 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.invisibleControl)    private var otherControl = true
     @AppStorage(AppSettings.Key.showListIndentGuides) private var showListIndentGuides = false
     @AppStorage(AppSettings.Key.showLineNumbers)      private var showLineNumbers = false
-    @AppStorage(AppSettings.Key.highlightCurrentLine) private var highlightCurrentLine = false
     @AppStorage(AppSettings.Key.indentStyle)
     private var indentStyle = AppSettings.IndentStyle.spaces
     @AppStorage(AppSettings.Key.indentWidth)       private var indentWidth = 2
@@ -34,49 +25,24 @@ struct EditSettingsView: View {
     @AppStorage(AppSettings.Key.hardWrapLongLines) private var hardWrapLongLines = false
     @AppStorage(AppSettings.Key.autoCloseBrackets) private var autoCloseBrackets = true
     @AppStorage(AppSettings.Key.continueLists)     private var continueLists = true
-    @AppStorage(AppSettings.Key.spellCheck)        private var spellCheck = false 
+    @AppStorage(AppSettings.Key.spellCheck)        private var spellCheck = false
+    @AppStorage(AppSettings.Key.grammarCheck)      private var grammarCheck = false
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
-            // MARK: - Window-level settings
-            GridRow {
-                // Cancel the extra space .leadingFirstTextBaseline adds above
-                // the first row (both cells, so they stay aligned).
-                Text("Toolbar:")
-                    .gridColumnAlignment(.trailing)
-                    .padding(.top, -6)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Show toolbar", isOn: $showToolbar)
-                    Toggle("Automatically hide toolbar in full screen", isOn: autoHideInFullScreen)
-                        .padding(.leading, 20)
-                        .disabled(!showToolbar)
-                }
-                .padding(.top, 2)
-                .onChange(of: showToolbar) { AppSettings.applyEditSettingsToOpenDocuments() }
-            }
-            
-            // TODO: Move Max Content Width here, after Settings ▸ Themes 
-            
-            GridRow {
-                Text("Focus mode:").gridColumnAlignment(.trailing)
-                Toggle("Highlight current line", isOn: $highlightCurrentLine)
-                    .disabled(true)   // not implemented yet
-            }
-            
-            GridRow {
-                Text("Source mode:").gridColumnAlignment(.trailing)
-                // The same setting as View ▸ Show Source in Editor
-                Toggle("Show raw source in editor", isOn: $sourceMode)
-                    .onChange(of: sourceMode) { applySourceMode() }
-            }
-            
-            GridRow { Divider().gridCellColumns(2) }
+            // Window- and view-level state isn't configured here: toolbar
+            // visibility and its full-screen auto-hide, typewriter scroll,
+            // focus mode and source mode are all things you flip while working
+            // and see immediately, so they live in the View menu. This pane is
+            // for the defaults you set once — how text is indented, checked and
+            // displayed.
+
+            // TODO: Move Max Content Width here, after Settings ▸ Themes
 
             // MARK: - Content-level editing settings
             GridRow {
                 Text("Indentation:")
                     .gridColumnAlignment(.trailing)
-                    .padding(.top, -6)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("Prefer using")
@@ -96,10 +62,8 @@ struct EditSettingsView: View {
                             .labelsHidden()
                         Text("spaces")
                     }
-                    Toggle("Detect and learn indent style on document opening", isOn: $detectIndent)
-                        .disabled(true)   // not implemented yet
+                    Toggle("Detect indent style on document opening", isOn: $detectIndent)
                 }
-                .padding(.top, -6)
                 .onChange(of: indentStyle) { AppSettings.applyEditSettingsToOpenDocuments() }
                 .onChange(of: indentWidth) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
@@ -107,18 +71,25 @@ struct EditSettingsView: View {
             GridRow {
                 Text("Words:")
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Automatically insert closing parentheses and quotes", isOn: $autoCloseBrackets)
+                    Toggle("Automatically close parentheses and quotes", isOn: $autoCloseBrackets)
                     Toggle("Check spelling while typing", isOn: $spellCheck)
+                    // AppKit checks grammar as part of the continuous
+                    // spell-checking pass (hence the menu's "Check Grammar With
+                    // Spelling"), so it has nothing to do on its own.
+                    Toggle("Check grammar while typing", isOn: $grammarCheck)
+                        .padding(.leading, 20)
+                        .disabled(!spellCheck)
                 }
                 .onChange(of: autoCloseBrackets) { AppSettings.applyEditSettingsToOpenDocuments() }
                 .onChange(of: spellCheck) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: grammarCheck) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
             
             GridRow {
                 Text("Lists:")
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Show list indent guides", isOn: $showListIndentGuides)
-                        .disabled(true)   // not implemented yet
+                        .onChange(of: showListIndentGuides) { AppSettings.applyEditSettingsToOpenDocuments() }
                     Toggle("Automatically continue lists", isOn: $continueLists)
                         .onChange(of: continueLists) { AppSettings.applyEditSettingsToOpenDocuments() }
                 }
@@ -130,63 +101,79 @@ struct EditSettingsView: View {
             GridRow {
                 Text("Characters:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        // fixedSize, or the picker's flexible width squeezes the
-                        // label down to "Invisible charac…".
-                        Toggle("Show invisible characters", isOn: $showInvisibles)
-                            .fixedSize()
-                        // When to draw them, once they're on at all.
-                        Picker("", selection: $invisiblesMode) {
-                            ForEach(AppSettings.InvisibleCharacterMode.allCases) {
-                                Text($0.label).tag($0)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                        .disabled(!showInvisibles)
-                    }
+                    Toggle("Show invisible characters upon selection", isOn: $showInvisibles)
+                    // The mode picker this toggle replaced (commit 6652972),
+                    // parked in case Always comes back. Restoring it also needs
+                    // AppSettings.InvisibleCharacterMode, its key/accessor, and
+                    // InvisiblesConfig.Mode — all commented at their sites.
+                    //
+                    // HStack {
+                    //     // fixedSize, or the picker's flexible width squeezes the
+                    //     // label down to "Invisible charac…".
+                    //     Toggle("Show invisible characters", isOn: $showInvisibles)
+                    //         .fixedSize()
+                    //     // When to draw them, once they're on at all.
+                    //     Picker("", selection: $invisiblesMode) {
+                    //         ForEach(AppSettings.InvisibleCharacterMode.allCases) {
+                    //             Text($0.label).tag($0)
+                    //         }
+                    //     }
+                    //     .labelsHidden()
+                    //     .fixedSize()
+                    //     .disabled(!showInvisibles)
+                    // }
                     invisibleCharacterGrid
                         .padding(.leading, 20)
                         .padding(.bottom, -15)  // hardcoded
                         .disabled(!showInvisibles)
                 }
-                .disabled(true)   // not implemented yet
+                .onChange(of: showInvisibles) { AppSettings.applyEditSettingsToOpenDocuments() }
+                // .onChange(of: invisiblesMode) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: lineEnding) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: tab) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: space) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: otherWhitespace) { AppSettings.applyEditSettingsToOpenDocuments() }
+                .onChange(of: otherControl) { AppSettings.applyEditSettingsToOpenDocuments() }
             }
             
             GridRow {
                 Text("Lines:").gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    // Leftmost of the window only — not in print / PDF, for now.
+                    // Not in print / PDF, for now.
                     Toggle("Show line numbers", isOn: $showLineNumbers)
-                        .disabled(true)   // not implemented yet
-                    
+                        .onChange(of: showLineNumbers) { AppSettings.applyEditSettingsToOpenDocuments() }
                     Toggle("Strict line breaks", isOn: $strictLineBreaks)
-                    Text("Markdown specs ignore single line breaks in read view. Turn off to make single line breaks visible.")
+                        .onChange(of: strictLineBreaks) { refreshReadViews() }
+                    Text("Turn off to make single line breaks / soft-wraps visible.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
-                .disabled(true)   // not implemented yet
             }
             
             GridRow {
-                Text("Document:")
-                Toggle("Automatically hard-wrap long lines", isOn: $hardWrapLongLines)
-                    .disabled(true)   // not implemented yet
+                Text("Document:").gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Joining lines only makes sense while a single newline is
+                    // formatting rather than content — see the note below the
+                    // strict line breaks toggle.
+                    // One switch for the whole feature: a file that opens
+                    // hard-wrapped is joined for editing and written back at the
+                    // width it already uses, detected from its own line breaks.
+                    Toggle("Detect hard wrap pattern for lines on document opening", isOn: $hardWrapLongLines)
+                        .disabled(!strictLineBreaks)
+                    Text("Requires strict line breaks")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                }
             }
         }
         .settingsPanePadding()
-    }
-
-    /// With the toolbar hidden outright there is nothing left to auto-hide, so
-    /// the checkbox reads as on and greys out. It reports `true` rather than
-    /// writing it, so whatever the user actually picked comes back untouched
-    /// when the toolbar returns.
-    private var autoHideInFullScreen: Binding<Bool> {
-        Binding(get: { showToolbar ? autoHideToolbar : true },
-                set: { autoHideToolbar = $0 })
     }
 
     private var invisibleCharacterGrid: some View {
@@ -212,11 +199,11 @@ struct EditSettingsView: View {
             .gridColumnAlignment(.leading)
     }
 
-    /// The setting is already written by @AppStorage; each open document just
-    /// needs to swap its editing view over.
-    private func applySourceMode() {
+    /// Strict line breaks changes Read-mode output, so re-render every open
+    /// document (Read mode reads `AppSettings.strictLineBreaks` on render).
+    private func refreshReadViews() {
         for case let document as Document in NSDocumentController.shared.documents {
-            document.applySourceMode()
+            document.refreshReadView()
         }
     }
 }

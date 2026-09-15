@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - Format-menu actions
 //
@@ -44,6 +45,16 @@ import AppKit
 // "** word **". Toggle-off detection also operates on the trimmed range, so
 // selecting " **word** " and pressing Cmd+B correctly unwraps.
 
+/// Toolbar items validate through `NSToolbarItemValidation`, not
+/// `validateMenuItem` — without this the format items would stay enabled in
+/// Read mode and for switched-off Markdown features.
+extension EditorTextView: NSToolbarItemValidation {
+    public func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        guard let action = item.action, Self.formattingActions.contains(action) else { return true }
+        return isFormattingActionEnabled(action, representedObject: nil)
+    }
+}
+
 extension EditorTextView {
 
     // MARK: - Inline font styles
@@ -67,6 +78,8 @@ extension EditorTextView {
     @objc public func formatCode(_ sender: Any?)          { toggleInlineWrap(open: "`", close: "`", expandToWord: true) }
     @objc public func formatInlineMath(_ sender: Any?)    { toggleInlineWrap(open: "$", close: "$", expandToWord: true) }
     @objc public func formatKeyboard(_ sender: Any?)      { toggleInlineWrap(open: "<kbd>", close: "</kbd>", expandToWord: true) }
+    @objc public func formatSubscript(_ sender: Any?)     { toggleInlineWrap(open: "<sub>", close: "</sub>", expandToWord: true) }
+    @objc public func formatSuperscript(_ sender: Any?)   { toggleInlineWrap(open: "<sup>", close: "</sup>", expandToWord: true) }
     @objc public func formatComment(_ sender: Any?)       { toggleInlineWrap(open: "<!-- ", close: " -->", expandToWord: true) }
 
     // MARK: - Inline links
@@ -90,12 +103,18 @@ extension EditorTextView {
     @objc public func formatMathBlock(_ sender: Any?)     { insertMathBlock() }
     @objc public func formatTable(_ sender: Any?)         { insertTable() }
 
-    /// Heading level read from the menu item's `tag` (1–6).
+    /// Heading level read from the menu item's `tag` (0 = Body, 1–6).
+    /// Level 0 strips any heading prefix (back to body text) without toggling.
     /// Heading H1–H6: strips any existing `#…` prefix and applies the new level.
     /// Re-applying the same level clears the heading. Applies per selected line.
     @objc public func formatHeading(_ sender: Any?) {
         applyHeadingLevel((sender as? NSMenuItem)?.tag ?? 1)
     }
+
+    /// One level deeper / shallower: body → H1 → … → H6, and back down to body.
+    /// The ends hold (H6 stays H6, body stays body) rather than wrapping.
+    @objc public func formatIncrementHeading(_ sender: Any?) { stepHeadingLevel(by: 1) }
+    @objc public func formatDecrementHeading(_ sender: Any?) { stepHeadingLevel(by: -1) }
 
     /// Callout type read from the menu item's `representedObject` (pre-cased:
     /// uppercase for GitHub alerts, lowercase for Obsidian callouts).
@@ -115,6 +134,9 @@ extension EditorTextView {
     /// Markdown Font menu (Bold, Italic, Highlight, Comments, …) so right-click
     /// offers the same commands as Format ▸ Font.
     public override func menu(for event: NSEvent) -> NSMenu? {
+        // A right-click on a row/column handle is that handle's menu, not the
+        // editor's — the pointer is out in the margin, over no text at all.
+        if let handle = tableHandleHit(at: event) { return tableHandleMenu(handle) }
         guard let menu = super.menu(for: event) else { return nil }
         if let provider = Self.contextFontMenuProvider,
            let fontItem = menu.items.first(where: { item in
@@ -124,7 +146,31 @@ extension EditorTextView {
            }) {
             fontItem.submenu = provider()
         }
+        attachTableSection(to: menu, for: event)
         return menu
+    }
+
+    /// A right-click inside a rendered table cell appends a Table submenu of
+    /// the row and column operations. Everything else about the standard menu
+    /// is left alone — including the selection: a right-click used to select
+    /// the whole cell so Cut/Copy would take it, but silently moving the
+    /// selection under a menu the user only meant to open is a surprise, and
+    /// the cell box is now reserved for a real drag across cells.
+    private func attachTableSection(to menu: NSMenu, for event: NSEvent) {
+        guard !rawTableEditing,
+              let offset = wrappedCellCharIndex(at: event) ?? clickCharIndex(at: event),
+              let cell = tableCell(atRawOffset: offset) else { return }
+
+        let submenu = NSMenu(title: "Table")
+        // Only this submenu: the standard items around it rely on AppKit's own
+        // validation, while these carry their guards on the item already.
+        submenu.autoenablesItems = false
+        addTableItems(to: submenu, blockIndex: cell.blockIndex,
+                      row: cell.row, column: cell.column, axis: nil)
+        let item = NSMenuItem(title: "Table", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        menu.addItem(.separator())
+        menu.addItem(item)
     }
 
     // MARK: - Menu validation
@@ -132,18 +178,26 @@ extension EditorTextView {
 
     public override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if let action = menuItem.action, Self.formattingActions.contains(action) {
-            if viewMode == .reading { return false }
-            // Gray out a command whose Markdown syntax is turned off in Settings
-            // (e.g. Highlight when highlights are disabled) so it can't insert
-            // markup the editor would render as plain text.
-            if let feature = Self.requiredFeature(forAction: action,
-                                                  representedObject: menuItem.representedObject),
-               !markdownFeatures.contains(feature) {
-                return false
-            }
-            return true
+            return isFormattingActionEnabled(action, representedObject: menuItem.representedObject)
         }
         return super.validateMenuItem(menuItem)
+    }
+
+    /// Whether a formatting command can run right now. The single predicate
+    /// behind menu validation, toolbar validation, and the format popup's icon
+    /// rows (whose buttons are not validated items at all and must ask directly).
+    /// One predicate, three callers — the enable rules must not drift apart.
+    public func isFormattingActionEnabled(_ action: Selector, representedObject: Any?) -> Bool {
+        if viewMode == .reading { return false }
+        // Gray out a command whose Markdown syntax is turned off in Settings
+        // (e.g. Highlight when highlights are disabled) so it can't insert
+        // markup the editor would render as plain text.
+        if let feature = Self.requiredFeature(forAction: action,
+                                              representedObject: representedObject),
+           !markdownFeatures.contains(feature) {
+            return false
+        }
+        return true
     }
 
     /// The Markdown feature a formatting command needs, or nil if it inserts
@@ -167,20 +221,33 @@ extension EditorTextView {
         }
     }
 
-    static let formattingActions: Set<Selector> = [
+    /// Public because the toolbar decides from it which of its buttons the caret
+    /// may disable — an item whose action is not in here (Format, which only
+    /// opens a popover) must never be gated.
+    public static let formattingActions: Set<Selector> = [
         #selector(formatBold(_:)), #selector(formatItalic(_:)), #selector(formatUnderline(_:)),
         #selector(formatStrikethrough(_:)), #selector(formatHighlight(_:)), #selector(formatCode(_:)),
         #selector(formatInlineMath(_:)), #selector(formatKeyboard(_:)), #selector(formatComment(_:)),
+        #selector(formatSubscript(_:)), #selector(formatSuperscript(_:)),
         #selector(formatWikilink(_:)), #selector(formatLink(_:)), #selector(formatImage(_:)),
         #selector(formatFootnote(_:)), #selector(formatBulletedList(_:)), #selector(formatNumberedList(_:)),
         #selector(formatChecklist(_:)), #selector(formatBlockQuote(_:)), #selector(formatThematicBreak(_:)),
         #selector(formatCodeBlock(_:)), #selector(formatMathBlock(_:)), #selector(formatTable(_:)),
         #selector(formatHeading(_:)), #selector(formatCallout(_:)),
+        #selector(formatIncrementHeading(_:)), #selector(formatDecrementHeading(_:)),
+        #selector(formatAttachImage(_:)),
     ]
 
     // MARK: - Heading
 
     func applyHeadingLevel(_ level: Int) {
+        // Level 0 (Body) strips the heading prefix unconditionally — never the
+        // same-level toggle-off, so a repeated Body pick is a no-op rather than
+        // re-applying `# `. Only reachable from the format bar / menu Body item.
+        guard level > 0 else {
+            transformSelectedLines { lines in lines.map { self.stripLeadingHashes($0) } }
+            return
+        }
         // All selected lines get the same heading level applied or cleared.
         // "Same level" is determined by majority: if every non-empty line already
         // has exactly `level` hashes, they are all cleared (toggle-off).
@@ -193,6 +260,42 @@ extension EditorTextView {
                 return allAtLevel ? stripped : String(repeating: "#", count: level) + " " + stripped
             }
         }
+    }
+
+    /// Per selected line, like `applyHeadingLevel`; each line steps from its
+    /// own level, so a mixed selection keeps its relative structure.
+    func stepHeadingLevel(by delta: Int) {
+        transformSelectedLines { lines in
+            lines.map { line in
+                guard !line.isEmpty else { return line }
+                let level = min(6, max(0, self.leadingHashCount(line) + delta))
+                let stripped = self.stripLeadingHashes(line)
+                return level == 0 ? stripped : String(repeating: "#", count: level) + " " + stripped
+            }
+        }
+    }
+
+    // MARK: - Task toggle by line
+
+    /// The `[ ]` / `[x]` mark of a task item: indent, any list marker, the box.
+    private static let taskMarkRegex = try! NSRegularExpression(
+        pattern: #"^\s*(?:[-*+]|\d+[.)])\s+\[([ xX])\]"#)
+
+    /// Flips the checkbox of the task item on 1-based source `line` — how a
+    /// click on a Read-mode checkbox edits the document. A line that is not a
+    /// task item is left alone (nil); the caret stays where it was. One undo
+    /// step. Returns the box's new state.
+    @discardableResult
+    public func toggleTask(atLine line: Int) -> Bool? {
+        guard let block = blockIndexForRawOffset(offset(forLine: line)), block < blocks.count else { return nil }
+        let content = blocks[block].content
+        guard let match = Self.taskMarkRegex.firstMatch(
+            in: content, range: NSRange(location: 0, length: (content as NSString).length))
+        else { return nil }
+        let mark = NSRange(location: blocks[block].range.location + match.range(at: 1).location, length: 1)
+        let wasChecked = (content as NSString).substring(with: match.range(at: 1)) != " "
+        applyFormattingEdit(rawRange: mark, replacement: wasChecked ? " " : "x", select: selectedRange())
+        return !wasChecked
     }
 
     // MARK: - Lists / quote
@@ -366,6 +469,63 @@ extension EditorTextView {
         applyFormattingEdit(rawRange: NSRange(location: sel.location, length: 0),
                             replacement: "![]()",
                             select: NSRange(location: sel.location + 4, length: 0))
+    }
+
+    /// Image ▸ Attach File…: pick an image on disk and insert
+    /// `![alt text](path)` for it. Unlike `formatImage`, which only lays down
+    /// empty syntax, this one knows the destination — so the selection lands on
+    /// the *alt-text* placeholder, the part still missing.
+    @objc public func formatAttachImage(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "Attach"
+        panel.message = "Choose an image to insert."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        insertImage(at: url)
+    }
+
+    /// The alt text `insertImage` lays down. Selected after the insert, so the
+    /// first keystroke replaces it — the destination is already known, the alt
+    /// text is the part still missing.
+    static let imageAltPlaceholder = "alt text"
+
+    /// Inserts `![alt text](destination)` for `url` at the caret. Split from the
+    /// panel above so the path logic is testable without UI.
+    public func insertImage(at url: URL) { insertImages(at: [url]) }
+
+    /// Inserts one `![alt text](destination)` per URL at the caret, blank-line
+    /// separated so each image is its own block (adjacent lines would parse as
+    /// a single paragraph). The *first* image's alt text ends up selected.
+    /// A drop of several files from Finder is the multi-URL case.
+    public func insertImages(at urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let alt = Self.imageAltPlaceholder
+        let replacement = urls
+            .map { "![" + alt + "](" + imageDestination(for: $0) + ")" }
+            .joined(separator: "\n\n")
+        let sel = selectedRange()
+        applyFormattingEdit(rawRange: sel, replacement: replacement,
+                            select: NSRange(location: sel.location + 2,
+                                            length: (alt as NSString).length))
+    }
+
+    /// The destination to write into `![](…)`: relative to the document's own
+    /// directory when `url` sits at or below it (so the file stays portable
+    /// alongside its assets), absolute otherwise. Percent-encoded, since a raw
+    /// space or `)` in a filename would truncate the destination — which
+    /// `DocumentHTML.resolveLocalImage` decodes symmetrically on the way back.
+    func imageDestination(for url: URL) -> String {
+        let file = url.standardizedFileURL
+        var path = file.path
+        if let dir = document?.fileURL?.standardizedFileURL.deletingLastPathComponent() {
+            let prefix = dir.path.hasSuffix("/") ? dir.path : dir.path + "/"
+            if path.hasPrefix(prefix) { path = String(path.dropFirst(prefix.count)) }
+        }
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "()")
+        return path.addingPercentEncoding(withAllowedCharacters: allowed) ?? path
     }
 
     /// Footnote (NOT invertible): inserts `[^n]` after the selection / end of

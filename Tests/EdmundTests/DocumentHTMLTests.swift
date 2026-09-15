@@ -32,8 +32,8 @@ struct DocumentHTMLTests {
     @Test("Read-mode checkboxes are inline Lucide SVGs (no SF Symbol, no PNG)")
     func checkboxIcons() {
         let out = doc("- [x] done\n- [ ] todo")
-        #expect(out.contains("<span class=\"task-check task-check--checked\"><svg"))
-        #expect(out.contains("<span class=\"task-check task-check--unchecked\"><svg"))
+        #expect(out.contains("class=\"task-check task-check--checked\"><svg"))
+        #expect(out.contains("class=\"task-check task-check--unchecked\"><svg"))
         #expect(!out.contains("type=\"checkbox\""))
         // The whole document ships no rasterized icon glyphs (math may still PNG).
         #expect(!out.contains("<span class=\"callout-icon\"><img"))

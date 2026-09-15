@@ -15,7 +15,7 @@ Edmund blends in with macOS and works seamlessly with your files wherever they a
 Our goal is to be the [CotEditor](https://coteditor.com) of Markdown editors, 
 i.e. elegant, powerful, configurable, and native inside out.
 
-> ⚠️ Edmund is currently in beta. See the [roadmap](docs/ROADMAP.md) for what's coming next :D
+> ⚠️ Edmund is currently in beta. See the [roadmap](https://trello.com/b/vw2TveNI) for what's coming next :D
 
 
 ## Differentiators
@@ -67,6 +67,7 @@ Edmund checks for updates automatically; you can also browse version history [he
 - [swift-markdown](https://github.com/swiftlang/swift-markdown)
 - [SwiftMath](https://github.com/mgriebling/SwiftMath)
 - [Sparkle](https://github.com/sparkle-project/Sparkle)
+- [Lucide icons](https://lucide.dev)
 
 
 ## Alternatives
@@ -89,17 +90,20 @@ The list is by no means exhaustive, and neither was it meant to be. I just wante
 
 ## Acknowledgements
 
-The following have greatly influenced the architecture and/or helped with design. I owe them many thanks:  
-
-- [Swift Markdown Engine](https://github.com/nodes-app/swift-markdown-engine) / [Nodes](https://nodes-web.com) for the parser/token architecture and the TextKit 2 integration
-- [Typora](https://typora.io) and Apple Notes for app menu organization
-- [Tomorrow Light](https://github.com/chriskempson/tomorrow-theme) and [One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) for code syntax highlighting
-- [create-dmg](https://github.com/sindresorhus/create-dmg) for a Apple-looking `.dmg`
-- [MarkEdit](https://github.com/MarkEdit-app/MarkEdit) for the readme organization
-- [screenshot-studio](screenshot-studio.com) for the amazing screenshots editing experience
-- [shields](shields.io) for the beautiful badges in this readme
+- [CotEditor](https://coteditor.com) for the philosophy
+- [Typora](https://typora.io) and [Obsidian](https://obsidian.md) for much of the vision
+- [Swift Markdown Engine](https://github.com/nodes-app/swift-markdown-engine) for the architecture reference
+- Apple, Iowan Old Style, [Tomorrow](https://github.com/chriskempson/tomorrow-theme) and [One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) for the aesthetics
+- The bundled code themes: [Tomorrow and Tomorrow Night](https://github.com/chriskempson/tomorrow-theme) (Chris Kempson, MIT), [One Light and One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) (Atom, MIT), [Solarized](https://ethanschoonover.com/solarized/) (Ethan Schoonover, MIT), and Anura and Dendrobates (1024jp, from [CotEditor](https://github.com/coteditor/CotEditor), Apache 2.0)
+- [create-dmg](https://github.com/sindresorhus/create-dmg), [screenshot-studio](screenshot-studio.com), and [shields](shields.io) for the utilities
 - Claude, [caveman](https://github.com/JuliusBrussee/caveman), and [ponytail](https://github.com/DietrichGebert/ponytail) for the engineering. 
+<!-- - [RaTeX], [beautiful-mermaid], [Shiki] for extension functionalities -->
 
+Most importantly, many thanks to our contributors: 
+
+<a href="https://github.com/I7T5/Edmund/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=I7T5/Edmund" />
+</a>
 
 ## License
 

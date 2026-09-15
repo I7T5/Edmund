@@ -7,6 +7,31 @@ extension EditorTextView {
 
     @objc func selectionDidChange(_ notification: Notification) {
         traceEdit("selectionDidChange")
+        // Before the guards below: the caret's own line number is inked as body
+        // text, so it has to repaint on every caret move, including the ones
+        // that bail out of restyling. Marks only the numbers' strip.
+        invalidateLineNumbers()
+        // A caret inside a table cell too wide for its column is drawn by hand,
+        // because AppKit's would sit on the cell's hidden characters rather than
+        // its visible text. See EditorTextView+TableCellCaret.
+        updateWrappedCaret()
+        // The row and column handles hang off the caret's cell, so they move
+        // with it and nothing else invalidates them.
+        invalidateTableHandles()
+        // The `</>` button steps aside for the row pill when the header row
+        // becomes active, so a caret move relocates it — repaint old and new.
+        invalidateTableRawButtons()
+        // Crossing into a different cell is the one moment the pills, the cell
+        // outline and the `</>` position all move at once. Band invalidation is
+        // unreliable exactly here — a wrapped table restyles on the way, so the
+        // grid is briefly unavailable and the bands come out empty — which is why
+        // stale pills lingered. A full repaint on the cell transition (only then,
+        // not per keystroke) is the one thing that cannot leave chrome behind.
+        let cellKey = activeTableCell.map { "\($0.blockIndex).\($0.row).\($0.column)" }
+        if cellKey != lastActiveTableCellKey {
+            lastActiveTableCellKey = cellKey
+            needsDisplay = true
+        }
         // A selection change landing mid-recompose is the drift signature
         // (issue #156); the stack names the AppKit path that moved the caret.
         if isUpdating { traceSelectionOrigin() }
@@ -25,6 +50,11 @@ extension EditorTextView {
         let sel = selectedRange()
         let rawOffset = sel.location
         let newActiveIndex = blockIndexForRawOffset(rawOffset)
+
+        // Showing a table raw is a per-table request made with its `</>`
+        // button, so leaving the table takes it back — otherwise the next
+        // table the caret entered would come up raw too.
+        if newActiveIndex != activeBlockIndex { rawTableEditing = false }
 
         if newActiveIndex != activeBlockIndex && !pendingRecompose {
             pendingRecompose = true

@@ -9,12 +9,16 @@ extension EditorTextView {
 
     /// Styles the `.listItem` content for one span. The caller has already
     /// bounds-checked `span.fullRange` against `result`.
+    /// `depth` is the document's column-stack answer for this block; nil when
+    /// the caller has no block index (table cell, callout body, styling tests),
+    /// which falls back to the whitespace-and-unit estimate.
     func styleListItemSpan(_ result: NSMutableAttributedString,
                            span: SyntaxHighlighter.Span,
                            markdown: String,
                            ordered: Bool,
                            checkbox: SyntaxHighlighter.Span.Kind.CheckboxState?,
-                           cursorInToken: Bool) {
+                           cursorInToken: Bool,
+                           depth: Int? = nil) {
         // Indentation model (Apple Notes style): each nesting level steps
         // in by one marker "slot" (pointSize-wide icon + a space), so a
         // child's marker lands under its parent's content. All list types
@@ -25,7 +29,7 @@ extension EditorTextView {
         let leadingWS = markerStr.prefix(while: { $0 == " " || $0 == "\t" })
         let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
         let slotWidth = bodyFont.pointSize + spaceWidth
-        let depth = listDepth(leadingWhitespace: String(leadingWS))
+        let depth = depth ?? listDepth(leadingWhitespace: String(leadingWS))
         let markerStart = listPadding + CGFloat(depth) * slotWidth
         let contentIndent = markerStart + slotWidth
         // The visible marker text ("- ", "1. ", "- [ ] "), without the
@@ -76,6 +80,15 @@ extension EditorTextView {
         // style from the first character of a paragraph.
         result.addAttribute(.paragraphStyle,
                             value: listParagraphStyle(firstLineIndent: firstLineIndent, contentIndent: contentIndent),
+                            range: NSRange(location: 0, length: result.length))
+        // Indent-guide columns, written whether or not the setting is on: the
+        // fragment gates the drawing, so toggling guides needs a re-vend rather
+        // than a restyle of every list item in the document.
+        // ponytail: only the item's own paragraph carries them — a lazy
+        // continuation paragraph inside the item isn't a `.listItem` span and
+        // has no depth to derive. Add if the dashes it leaves ever bother anyone.
+        result.addAttribute(.listGuides,
+                            value: listGuideOffsets(depth: depth, slotWidth: slotWidth),
                             range: NSRange(location: 0, length: result.length))
         // Active bullet: widen the marker's trailing space so the content
         // lands at contentIndent even though the "-" sits on the dot column.

@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import Markdown
 @testable import EdmundCore
 
 // MARK: - Tab / Shift-Tab List Indentation
@@ -426,5 +427,176 @@ struct EditorListIndentIntegrationTests {
         editor.insertTab(nil)
 
         #expect(editor.rawSource == "  - [ ] todo\n  - [x] done")
+    }
+
+    // MARK: - Nesting Columns
+    //
+    // Tab has to land the child at or past the parent item's *content* column,
+    // or CommonMark parses a sibling while the editor draws a child — the
+    // divergence that made nested lists come out flat in Read mode.
+
+    /// True when `markdown`'s first list contains a nested list, i.e. the
+    /// indentation really nests rather than only looking indented.
+    private func parsesAsNested(_ markdown: String) -> Bool {
+        func hasChildList(_ markup: Markup) -> Bool {
+            for child in markup.children {
+                if child is UnorderedList || child is OrderedList { return true }
+                if child is ListItem, hasChildList(child) { return true }
+            }
+            return false
+        }
+        return hasChildList(Document(parsing: markdown))
+    }
+
+    @Test("Tab under an ordered marker pads to the parent's content column")
+    @MainActor func tabPadsUnderOrderedMarker() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n1. child")
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertTab(nil)
+        // "2. " is three columns wide, so a 2-space unit would leave a sibling.
+        #expect(editor.rawSource == "2. parent\n   1. child")
+        #expect(parsesAsNested(editor.rawSource))
+    }
+
+    @Test("What Tab nests in the editor, Read mode renders nested")
+    @MainActor func tabbedNestingReachesReadMode() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n1. child")
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertTab(nil)
+        // The reported bug: the editor drew this nested while Read mode — which
+        // parses the bytes, not the drawn indent — rendered a flat sibling.
+        let html = HTMLRenderer.render(markdown: editor.rawSource)
+        #expect(html.contains("<ol><li>child</li></ol>"))
+    }
+
+    @Test("Tab under a wide ordered marker pads further")
+    @MainActor func tabPadsUnderWideOrderedMarker() {
+        let editor = makeEditor()
+        editor.loadContent("10. parent\n1. child")
+        editor.setSelectedRange(NSRange(location: 13, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "10. parent\n    1. child")
+        #expect(parsesAsNested(editor.rawSource))
+    }
+
+    @Test("Tab under a bullet keeps the plain indent unit")
+    @MainActor func tabUnderBulletIsUnchanged() {
+        let editor = makeEditor()
+        editor.loadContent("- parent\n- child")
+        editor.setSelectedRange(NSRange(location: 11, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "- parent\n  - child")
+        #expect(parsesAsNested(editor.rawSource))
+    }
+
+    @Test("A wider indent unit is never narrowed to the content column")
+    @MainActor func tabKeepsWiderUnit() {
+        let editor = makeEditor()
+        editor.indentWidth = 4
+        editor.loadContent("2. parent\n1. child")
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "2. parent\n    1. child")
+    }
+
+    @Test("Tab nests a second level under a padded parent")
+    @MainActor func tabPadsSecondLevel() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n   1. child\n   1. grandchild")
+        editor.setSelectedRange(NSRange(location: 25, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "2. parent\n   1. child\n      1. grandchild")
+    }
+
+    @Test("Shift-Tab undoes a padded indent exactly")
+    @MainActor func shiftTabUndoesPaddedIndent() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n   1. child")
+        editor.setSelectedRange(NSRange(location: 15, length: 0))
+        editor.insertBacktab(nil)
+        // All three columns come off. Removing a bare indentUnit would strand
+        // one space here, dragging the document's detected indent unit down to
+        // 1 and re-depthing every list in it. The item rejoins the outer run,
+        // so renumbering relabels it 3.
+        #expect(editor.rawSource == "2. parent\n3. child")
+    }
+
+    @Test("Tab then Shift-Tab round-trips under an ordered marker")
+    @MainActor func paddedIndentRoundTrips() {
+        let editor = makeEditor()
+        editor.loadContent("2. parent\n3. child")
+        editor.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "2. parent\n   1. child")
+        editor.setSelectedRange(NSRange(location: 15, length: 0))
+        editor.insertBacktab(nil)
+        #expect(editor.rawSource == "2. parent\n3. child")
+    }
+
+    // MARK: - Depth is local ("indenting one list moved another")
+
+    /// Depth of every list block, for asserting untouched lists stay put.
+    @MainActor private func depths(_ editor: EditorTextView) -> [Int] {
+        (0..<editor.blocks.count).compactMap { editor.listDepth(ofBlock: $0) }
+    }
+
+    @Test("Tab on one list leaves every other list's depth alone")
+    @MainActor func indentDoesNotRedepthOtherLists() {
+        let editor = makeEditor()
+        // Nests at 4 spaces throughout, so the old document-global unit was 4.
+        editor.loadContent("- alpha\n    - alpha child\n- beta\n\nprose\n\n- gamma\n    - gamma child")
+        #expect(depths(editor) == [0, 1, 0, 0, 1])
+
+        // Tab "- beta" — it writes 2 spaces, which lowers the document's
+        // narrowest list indent from 4 to 2. That used to halve the unit and
+        // push every 4-space item from depth 1 to depth 2, including the
+        // untouched gamma list further down.
+        let beta = (editor.rawSource as NSString).range(of: "- beta").location
+        editor.setSelectedRange(NSRange(location: beta, length: 6))
+        editor.insertTab(nil)
+
+        #expect(editor.rawSource
+                == "- alpha\n    - alpha child\n  - beta\n\nprose\n\n- gamma\n    - gamma child")
+        #expect(editor.listIndentUnit == 2)          // the unit really did move…
+        #expect(depths(editor) == [0, 1, 1, 0, 1])   // …and only "- beta" changed depth
+    }
+
+    @Test("A ragged indent doesn't stack up extra levels")
+    @MainActor func raggedIndentIsOneLevel() {
+        let editor = makeEditor()
+        // 8 spaces with no 4-space level in between is one nesting step, not
+        // two: depth counts the levels actually present above the line.
+        editor.loadContent("- a\n        - b\n- c\n  - d\n    - e")
+        #expect(depths(editor) == [0, 1, 0, 1, 2])
+    }
+
+    @Test("Indenting re-depths the items nested under the moved item")
+    @MainActor func indentRedepthsOwnChildren() {
+        let editor = makeEditor()
+        editor.loadContent("- a\n- b\n  - c")
+        #expect(depths(editor) == [0, 0, 1])
+        // Tab "- b": "  - c" now sits at the same column as its parent, so it
+        // becomes b's sibling rather than its child.
+        let b = (editor.rawSource as NSString).range(of: "- b").location
+        editor.setSelectedRange(NSRange(location: b, length: 0))
+        editor.insertTab(nil)
+        #expect(editor.rawSource == "- a\n  - b\n  - c")
+        #expect(depths(editor) == [0, 1, 1])
+    }
+
+    @Test("A tab-indented line counts as a tab stop when closing open items")
+    @MainActor func tabIndentCountsAsTabStop() {
+        let editor = makeEditor()
+        // BlockParser only trims spaces, so a tab-indented list line is a
+        // paragraph, not a list item — it can still sit inside an open item
+        // though, and at 4 columns it does, leaving "  - c" nested under "- a".
+        editor.loadContent("- a\n\t- b\n  - c")
+        #expect(depths(editor) == [0, 1])
+        // The same shape with an unindented line between closes the list.
+        let flat = makeEditor()
+        flat.loadContent("- a\nb\n  - c")
+        #expect(depths(flat) == [0, 0])
     }
 }

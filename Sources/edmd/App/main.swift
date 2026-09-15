@@ -36,12 +36,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         defaults.object(forKey: typewriterModeKey) as? Bool ?? true
     }
 
+    /// The menu bar is built here, not in `applicationDidFinishLaunching`:
+    /// windows restored from the last session and documents opened at launch
+    /// are created between the two, and a document's format bar builds the
+    /// same Heading and Callout menus. `KeyBindingCatalog` lists commands in
+    /// registration order and keeps the first item registered per id, so the
+    /// menu bar has to register first — or Settings ▸ Key Bindings puts Format
+    /// ahead of File and Heading ahead of Thematic Break, and retunes the
+    /// format bar's pulldown instead of the menu.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        setupMenuBar()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.applyLogging()
+        AppSettings.applyAutosaving()
         Log.info("Edmund launched", category: .app)
         AppSettings.applyAppearance()
         AppSettings.applyCodeSyntax()
-        setupMenuBar()
+        AppSettings.applyThemes()
+        AppSettings.applyExtensionStates()
 
         // Right-click ▸ Services entries (see Info.plist NSServices). Held
         // strongly — `NSApplication.servicesProvider` does not retain.
@@ -67,6 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         #if DEBUG
         ReproScript.runIfRequested()
+        SettingsRender.runIfRequested()
         #endif
     }
 
@@ -76,22 +91,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         CommandLine.arguments.count <= 1 && AppSettings.startupAction == .createNewDocument
     }
 
+    // Declares that our restorable state is archived with secure coding — not a
+    // switch for whether windows come back. Wiring it to the "Reopen windows"
+    // preference only opted the app into legacy insecure archiving.
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
-        AppSettings.reopenWindows
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
 
-    // Reopen a new untitled document when the app is activated with no windows.
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            if AppSettings.startupAction == .createNewDocument {
-                NSDocumentController.shared.newDocument(nil)
-            }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        AppSettings.quitWhenAllWindowsClosed
+    }
+
+    // Document windows stay restorable all session so a crash can hand back
+    // unsaved work (Document.makeWindowControllers). On a clean quit, honor
+    // "Reopen windows from last session" instead: drop the flag before AppKit
+    // archives the window state, so the next launch has nothing to restore.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if !AppSettings.reopenWindows {
+            for window in NSApp.windows { window.isRestorable = false }
         }
-        return true
+        return .terminateNow
+    }
+
+    // Reopen a new untitled document when the app is activated with no windows.
+    //
+    // Returning false is what keeps it to *one* document: `true` lets AppKit run
+    // its own reopen handling, which for a document-based app with no windows
+    // opens a second untitled document of its own (`_doOpenUntitled` →
+    // `applicationShouldOpenUntitledFile`, which says yes for the same
+    // preference). That is the double window in #278.
+    //
+    // Miniaturized windows count as visible, so the `!flag` branch is only
+    // reached when there is genuinely nothing to bring back — nothing else for
+    // AppKit's default handling to do here.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        Self.shouldHandleReopen(hasVisibleWindows: flag)
+    }
+
+    /// The decision itself, as a type method so tests can exercise it without
+    /// building an `AppDelegate`: the stored `updaterController` starts Sparkle
+    /// on init, and a failed check puts up a *modal* alert that would sit on the
+    /// main thread forever in a test run.
+    static func shouldHandleReopen(hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        if AppSettings.startupAction == .createNewDocument {
+            NSDocumentController.shared.newDocument(nil)
+        }
+        return false
     }
 
     // MARK: - Settings
@@ -124,9 +170,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    /// Toggles focus-mode dimming, persists the choice, and applies it to every
+    /// open document immediately. The Settings checkbox binds the same key.
+    @MainActor @objc func toggleFocusMode(_ sender: Any?) {
+        UserDefaults.standard.set(!AppSettings.focusMode, forKey: AppSettings.Key.focusMode)
+        AppSettings.applyEditSettingsToOpenDocuments()
+    }
+
     @MainActor func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleTypewriterMode(_:)) {
             menuItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+        }
+        if menuItem.action == #selector(toggleFocusMode(_:)) {
+            menuItem.state = AppSettings.focusMode ? .on : .off
         }
         return true
     }
@@ -165,7 +221,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: - Menu Bar
 
+    /// Edit ▸ Find. Edmund's own commands, so they are rebindable — the standard
+    /// Edit items above them (Cut/Copy/Paste, Undo) keep their system shortcuts.
+    @MainActor private static let findCommands: [MenuCommand] = [
+        MenuCommand(id: "find.show", group: "Edit", submenu: "Find", title: "Find\u{2026}",
+                    action: #selector(EditorTextView.showFindBar(_:)), shortcut: .cmd("f")),
+        MenuCommand(id: "find.replace", group: "Edit", submenu: "Find", title: "Find and Replace\u{2026}",
+                    action: #selector(EditorTextView.showFindReplaceBar(_:)), shortcut: .cmdOpt("f")),
+        MenuCommand(id: "find.next", group: "Edit", submenu: "Find", title: "Find Next",
+                    action: #selector(EditorTextView.findNext(_:)), shortcut: .cmd("g")),
+        MenuCommand(id: "find.previous", group: "Edit", submenu: "Find", title: "Find Previous",
+                    action: #selector(EditorTextView.findPrevious(_:)), shortcut: .cmdShift("g")),
+    ]
+
     @MainActor private func setupMenuBar() {
+        // Before any `makeItem()`, which resolves each command's override by id.
+        KeyBindingStore.migrateRenamedIDs()
+
         let mainMenu = NSMenu()
 
         // App menu (required for Cmd+Q)
@@ -205,16 +277,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                          action: #selector(AppDelegate.openDocumentManually(_:)),
                          keyEquivalent: "o")
 
-        // Recent documents submenu
+        // Recent documents submenu. AppKit fills this in by itself only for a
+        // menu that came out of a nib marked systemMenu="recentDocuments" —
+        // there is no API to say the same thing about a menu built in code, so
+        // a hand-made one just sits there empty (the documents *are* recorded;
+        // it's only the menu that never hears about them). Fill it on open
+        // instead, from NSDocumentController's own list.
         let recentMenuItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
         let recentMenu = NSMenu(title: "Open Recent")
-        recentMenu.addItem(withTitle: "Clear Menu",
-                           action: #selector(NSDocumentController.clearRecentDocuments(_:)),
-                           keyEquivalent: "")
+        recentMenu.delegate = self
         recentMenuItem.submenu = recentMenu
         fileMenu.addItem(recentMenuItem)
 
         fileMenu.addItem(NSMenuItem.separator())
+
+        fileMenu.addItem(withTitle: "Close",
+                         action: #selector(NSWindow.performClose(_:)),
+                         keyEquivalent: "w")
 
         fileMenu.addItem(withTitle: "Save",
                          action: #selector(NSDocument.save(_:)),
@@ -222,19 +301,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        fileMenu.addItem(withTitle: "Rename\u{2026}",
-                         action: #selector(Document.rename(_:)),
-                         keyEquivalent: "")
+        // Edmund's own File commands are rebindable (Settings ▸ Key Bindings);
+        // the standard New/Open/Save/Print above keep their system shortcuts.
+        fileMenu.addItem(MenuCommand(id: "file.rename", group: "File", title: "Rename\u{2026}",
+                                     action: #selector(Document.rename(_:))).makeItem())
 
-        fileMenu.addItem(withTitle: "Move To\u{2026}",
-                         action: #selector(Document.move(_:)),
-                         keyEquivalent: "")
+        fileMenu.addItem(MenuCommand(id: "file.moveTo", group: "File", title: "Move To\u{2026}",
+                                     action: #selector(Document.move(_:))).makeItem())
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        fileMenu.addItem(withTitle: "Export as PDF\u{2026}",
-                         action: #selector(Document.exportToPDF(_:)),
-                         keyEquivalent: "")
+        fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "Export as PDF\u{2026}",
+                                     action: #selector(Document.exportToPDF(_:))).makeItem())
 
         fileMenu.addItem(withTitle: "Print\u{2026}",
                          action: #selector(Document.printDocument(_:)),
@@ -274,6 +352,105 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                          action: #selector(NSText.selectAll(_:)),
                          keyEquivalent: "a")
 
+        editMenu.addItem(NSMenuItem.separator())
+
+        // Typing behaviour rather than window furniture, so they sit here with
+        // Hard Wrap Paragraphs instead of in View. Renamed off the `view.`
+        // prefix to match; `KeyBindingStore.migrateRenamedIDs` carries any
+        // shortcut the user had set across to the new ids.
+        let typewriterItem = MenuCommand(id: "edit.typewriterScroll", group: "Edit",
+                                         title: "Typewriter Scroll",
+                                         action: #selector(AppDelegate.toggleTypewriterMode(_:))).makeItem()
+        typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+        editMenu.addItem(typewriterItem)
+
+        // Dims everything but the lines the selection touches. Same setting as
+        // Settings ▸ Edit ▸ Editor, so the two always agree.
+        let focusItem = MenuCommand(id: "edit.focusMode", group: "Edit", title: "Focus Mode",
+                                    action: #selector(AppDelegate.toggleFocusMode(_:))).makeItem()
+        focusItem.state = AppSettings.focusMode ? .on : .off
+        editMenu.addItem(focusItem)
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        // Reflows the selected paragraphs, or the whole document when nothing
+        // is selected. The manual counterpart to Settings ▸ Edit ▸ Document,
+        // which only wraps files that already arrived wrapped. First-responder
+        // routing like the Find items, so it greys out in Reading mode.
+        editMenu.addItem(withTitle: "Hard Wrap Paragraphs",
+                         action: #selector(EditorTextView.hardWrapParagraphs(_:)),
+                         keyEquivalent: "")
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        // Find submenu — routes to first-responder actions on EditorTextView,
+        // which forward to the document's FindController. Grays out in Reading
+        // mode (the web view is first responder and implements none of these).
+        let findMenuItem = NSMenuItem()
+        let findMenu = NSMenu(title: "Find")
+        for command in Self.findCommands { findMenu.addItem(command.makeItem()) }
+        findMenuItem.submenu = findMenu
+        findMenuItem.title = "Find"
+        editMenu.addItem(findMenuItem)
+
+        // The standard text submenus, same first-responder routing as Find.
+        // NSTextView supplies the actions *and* the checkmark state for the
+        // toggles (our validateMenuItem override falls through to super for
+        // anything that isn't a formatting command).
+        //
+        // In Reading mode the editing commands gray out — measured: all of
+        // Transformations, plus Show Spelling and Check Document Now. The two
+        // spell-checking toggles and Start Speaking stay live, because the web
+        // view answers those selectors itself; both are harmless there (they
+        // act on the rendered view, not the source).
+        //
+        // Substitutions is deliberately absent: smart quotes/dashes, text
+        // replacement and autocorrect are switched off in
+        // `EditorTextView.commonInit()` on purpose — they rewrite typed Markdown
+        // and the completion machinery can strand marked text, breaking the
+        // storage == rawSource invariant. Same reason "Correct Spelling
+        // Automatically" is left out of Spelling and Grammar below.
+        let spellingMenu = NSMenu(title: "Spelling and Grammar")
+        spellingMenu.addItem(withTitle: "Show Spelling and Grammar",
+                             action: #selector(NSText.showGuessPanel(_:)),
+                             keyEquivalent: ":")
+        spellingMenu.addItem(withTitle: "Check Document Now",
+                             action: #selector(NSText.checkSpelling(_:)),
+                             keyEquivalent: ";")
+        spellingMenu.addItem(.separator())
+        spellingMenu.addItem(withTitle: "Check Spelling While Typing",
+                             action: #selector(NSTextView.toggleContinuousSpellChecking(_:)),
+                             keyEquivalent: "")
+        spellingMenu.addItem(withTitle: "Check Grammar With Spelling",
+                             action: #selector(NSTextView.toggleGrammarChecking(_:)),
+                             keyEquivalent: "")
+        let spellingItem = NSMenuItem()
+        spellingItem.title = "Spelling and Grammar"
+        spellingItem.submenu = spellingMenu
+        editMenu.addItem(spellingItem)
+
+        let transformMenu = NSMenu(title: "Transformations")
+        transformMenu.addItem(withTitle: "Make Upper Case",
+                              action: #selector(NSResponder.uppercaseWord(_:)), keyEquivalent: "")
+        transformMenu.addItem(withTitle: "Make Lower Case",
+                              action: #selector(NSResponder.lowercaseWord(_:)), keyEquivalent: "")
+        transformMenu.addItem(withTitle: "Capitalize",
+                              action: #selector(NSResponder.capitalizeWord(_:)), keyEquivalent: "")
+        let transformItem = NSMenuItem()
+        transformItem.title = "Transformations"
+        transformItem.submenu = transformMenu
+        editMenu.addItem(transformItem)
+
+        let speechMenu = NSMenu(title: "Speech")
+        speechMenu.addItem(withTitle: "Start Speaking",
+                           action: #selector(NSTextView.startSpeaking(_:)), keyEquivalent: "")
+        speechMenu.addItem(withTitle: "Stop Speaking",
+                           action: #selector(NSTextView.stopSpeaking(_:)), keyEquivalent: "")
+        let speechItem = NSMenuItem()
+        speechItem.title = "Speech"
+        speechItem.submenu = speechMenu
+        editMenu.addItem(speechItem)
+
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
@@ -295,6 +472,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApplication.shared.windowsMenu = windowMenuItem.submenu
 
         NSApplication.shared.mainMenu = mainMenu
+    }
+}
+
+// MARK: - Open Recent
+
+/// Rebuilds the Open Recent menu each time it opens (see the note where the
+/// menu is created). The list itself is macOS's — every open goes through
+/// `NSDocumentController.openDocument(withContentsOf:)`, which records it.
+extension AppDelegate: NSMenuDelegate {
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for url in NSDocumentController.shared.recentDocumentURLs {
+            let item = menu.addItem(withTitle: url.lastPathComponent,
+                                    action: #selector(openRecentDocument(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = url
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+        }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        // nil target → the document controller picks it up off the responder
+        // chain, same as every other standard document action here.
+        menu.addItem(withTitle: "Clear Menu",
+                     action: #selector(NSDocumentController.clearRecentDocuments(_:)),
+                     keyEquivalent: "")
+    }
+
+    @MainActor @objc private func openRecentDocument(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
+            // A recent file can be gone or renamed; AppKit's own alert says so.
+            if let error { NSAlert(error: error).runModal() }
+        }
     }
 }
 

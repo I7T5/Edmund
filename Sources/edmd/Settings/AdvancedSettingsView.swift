@@ -33,7 +33,12 @@ struct AdvancedSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Block external images", isOn: $blockExternalImages)
                         .onChange(of: blockExternalImages) { refreshOpenReadViews() }
-                    Text("Refer to [this proposal](https://github.com/opencloud-eu/opencloud/issues/1145) for specific security implications.")
+                    // Parsed rather than left to `Text`'s own literal markdown
+                    // handling, so `settingsLinkTinted()` can bring the link in
+                    // line with every other link in Settings.
+                    Text(AttributedString(
+                        inlineMarkdown: "Refer to [this proposal](https://github.com/opencloud-eu/opencloud/issues/1145) for specific security implications."
+                    ).settingsLinkTinted())
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)

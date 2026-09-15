@@ -29,13 +29,20 @@ public struct ReadRenderOptions: Sendable, Equatable {
     /// flag drops that syntax from the rendered HTML.
     public var features: MarkdownFeatures
 
+    /// When true (the Markdown default), a single source newline is a *soft*
+    /// break — collapsed to a space/newline so the two lines flow as one
+    /// paragraph. When false, each single newline renders as a visible `<br>`,
+    /// so the author's line breaks show up literally in Read mode.
+    public var strictLineBreaks: Bool
+
     public init(preserveBlankLines: Bool = true, allowRemoteImages: Bool = false,
                 maxContentWidthPoints: Double = .greatestFiniteMagnitude,
-                features: MarkdownFeatures = .all) {
+                features: MarkdownFeatures = .all, strictLineBreaks: Bool = true) {
         self.preserveBlankLines = preserveBlankLines
         self.allowRemoteImages = allowRemoteImages
         self.maxContentWidthPoints = maxContentWidthPoints
         self.features = features
+        self.strictLineBreaks = strictLineBreaks
     }
 
     public static let `default` = ReadRenderOptions()

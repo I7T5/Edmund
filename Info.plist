@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>
-    <string>7</string>
+    <string>16</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2.1</string>
+    <string>0.7.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
@@ -64,6 +64,11 @@
             </array>
         </dict>
     </array>
+    <!-- Every service needs an NSRequiredContext, even an empty one: without
+         the key macOS parses the entry (it shows up in `pbs -dump` and the
+         services cache) but never lists it in any Services menu. Empty means
+         "no extra requirement" — eligibility is decided by the send types
+         below, which is what we want. Measured both ways on macOS 15. -->
     <key>NSServices</key>
     <array>
         <dict>
@@ -74,6 +79,8 @@
             </dict>
             <key>NSMessage</key>
             <string>openInEdmund</string>
+            <key>NSRequiredContext</key>
+            <dict/>
             <key>NSSendFileTypes</key>
             <array>
                 <string>net.daringfireball.markdown</string>
@@ -88,6 +95,8 @@
             </dict>
             <key>NSMessage</key>
             <string>newDocumentWithSelection</string>
+            <key>NSRequiredContext</key>
+            <dict/>
             <key>NSSendTypes</key>
             <array>
                 <string>public.utf8-plain-text</string>

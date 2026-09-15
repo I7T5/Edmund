@@ -98,4 +98,112 @@ struct ScrollStabilityTests {
         #expect(abs(yAfter - yBefore) < 2.0,
                 "scroll lurched by \(yAfter - yBefore) on Tab indent")
     }
+
+    /// A scrolled editor with content above the viewport, ready for the
+    /// whole-document refreshes below.
+    @MainActor private func scrolledEditor() -> (EditorTextView, NSScrollView) {
+        let editor = makeEditor()
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 300),
+                           styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = NSScrollView(frame: win.contentLayoutRect)
+        scroll.documentView = editor
+        win.contentView = scroll
+        win.makeFirstResponder(editor)
+        editor.typewriterModeEnabled = false
+        editor.isVerticallyResizable = true
+        editor.minSize = NSSize(width: 0, height: 0)
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                height: CGFloat.greatestFiniteMagnitude)
+        editor.autoresizingMask = [.width]
+
+        var doc = ""
+        // Headings and callouts, so the styled heights differ from the base
+        // estimates the invalidation falls back to — that gap is the bug.
+        for i in 0..<120 {
+            if i % 10 == 0 { doc += "## Section \(i)\n\n" }
+            doc += "paragraph number \(i) with enough text on it to wrap once\n\n"
+        }
+        editor.loadContent(doc)
+        ensureFullLayout(editor); drainAllStyling(editor)
+        editor.sizeToFit(); editor.layoutSubtreeIfNeeded()
+
+        let target = (editor.rawSource as NSString).range(of: "paragraph number 80").location
+        guard let lineY = editor.lineRect(forCharacterAt: target)?.minY else { return (editor, scroll) }
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: lineY))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        return (editor, scroll)
+    }
+
+    // Both refreshes throw away layout for the WHOLE document, dropping every
+    // fragment back to a height estimate. Unanchored, the content above the
+    // viewport re-measures and the same clip origin lands elsewhere: measured
+    // at +64 lines on a 2000-line file when the appearance switched.
+
+    @Test("A whole-document restyle (appearance/theme) keeps the viewport put")
+    @MainActor func rerenderStylesKeepsViewport() {
+        let (editor, _) = scrolledEditor()
+        let before = editor.topmostVisibleCharacterOffset()
+        #expect(before ?? 0 > 0)
+
+        editor.rerenderStyles()
+        // The app's own settle, not a raw `ensureFullLayout`: correcting the
+        // estimates is what moves the content, and the settle is the thing that
+        // is supposed to compensate for it.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        editor.layoutSubtreeIfNeeded()
+
+        #expect(editor.topmostVisibleCharacterOffset() == before,
+                "top line moved from \(before ?? -1) to \(editor.topmostVisibleCharacterOffset() ?? -1)")
+    }
+
+    @Test("A draw-only setting toggle (focus, invisibles) keeps the viewport put")
+    @MainActor func refreshOverdrawKeepsViewport() {
+        let (editor, _) = scrolledEditor()
+        let before = editor.topmostVisibleCharacterOffset()
+        #expect(before ?? 0 > 0)
+
+        editor.focusMode = true
+        editor.refreshOverdraw()
+        // The app's own settle, not a raw `ensureFullLayout`: correcting the
+        // estimates is what moves the content, and the settle is the thing that
+        // is supposed to compensate for it.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        editor.layoutSubtreeIfNeeded()
+
+        #expect(editor.topmostVisibleCharacterOffset() == before,
+                "top line moved from \(before ?? -1) to \(editor.topmostVisibleCharacterOffset() ?? -1)")
+    }
+
+    // Narrowing the text re-wraps every paragraph, so the content above the
+    // viewport changes height — the same drift as a whole-document restyle,
+    // reached through the column width instead. Both settings are reachable
+    // live: the Appearance pane's width slider (and zoom), and Settings ▸ Edit.
+
+    @Test("Narrowing the content column keeps the viewport put")
+    @MainActor func maxContentWidthKeepsViewport() {
+        let (editor, _) = scrolledEditor()
+        let before = editor.topmostVisibleCharacterOffset()
+        #expect(before ?? 0 > 0)
+
+        editor.maxContentWidthPoints = 260
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        editor.layoutSubtreeIfNeeded()
+
+        #expect(editor.topmostVisibleCharacterOffset() == before,
+                "top line moved from \(before ?? -1) to \(editor.topmostVisibleCharacterOffset() ?? -1)")
+    }
+
+    @Test("Turning on line numbers keeps the viewport put")
+    @MainActor func lineNumbersKeepViewport() {
+        let (editor, _) = scrolledEditor()
+        let before = editor.topmostVisibleCharacterOffset()
+        #expect(before ?? 0 > 0)
+
+        editor.showLineNumbers = true
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        editor.layoutSubtreeIfNeeded()
+
+        #expect(editor.topmostVisibleCharacterOffset() == before,
+                "top line moved from \(before ?? -1) to \(editor.topmostVisibleCharacterOffset() ?? -1)")
+    }
 }

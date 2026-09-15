@@ -210,18 +210,66 @@ Caveats (all hit in practice):
 **Visual judgments are measured, not eyeballed** — when the task says "balance
 padding" or "align the icon", capture the window and measure pixels.
 
-`scripts/capture-window.sh <window-title-substring> out.png` finds the window id
-(JXA → `CGWindowListCopyWindowInfo`) and runs `screencapture -x -o -l<id>`.
-Notes:
-- Capture **by window id**, reliable even when not frontmost.
+`scripts/capture-window.sh <window-title-substring> out.png` resolves the window
+id (via `winid.swift`) and runs `screencapture -x -o -l<id>`. Notes:
+- Capture **by window id**, reliable even when not frontmost — and **never
+  raise the window to do it**. Stealing focus takes the machine away from the
+  user mid-session; `screencapture -l<id>` does not need the window in front.
 - **Crop by the detected window bounds** — the desktop wallpaper defeats
   screencapture's brightness-based auto-crop.
-- Measure padding/alignment from the PNG (e.g. a short Python/PIL pixel scan for
-  the first/last colored row of a callout box). Report the pixel numbers, not an
-  impression.
+- Captures are Retina: **2 device px = 1 point.** Report both.
+- Measure padding/alignment from the PNG with `scripts/ui-measure.py` (below).
+  Report the pixel numbers, not an impression.
 - Window-server state can glitch (tiny windows, restoration) after many rapid
   launch/kill cycles: `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
   and relaunch.
+
+---
+
+## 5a. The UI-chrome harness — build the pipeline, then keep it
+
+Any task phrased as "align it / balance the padding / match the native control"
+turns into the same loop: launch, put the UI into a specific state, capture,
+measure, tweak, repeat — a dozen times or more. **Write that loop as a script on
+the first iteration, not the tenth.** The scripts below started as one-off
+shell in a scratch directory during the find-bar work and were rebuilt from
+memory several times before being made permanent; that rebuilding was the single
+largest waste in the task.
+
+**These tools are fixtures, not scratch work. Do not delete them when the task
+ends, and do not apologise for leaving them behind.** The cleanup instinct is
+wrong here: the next visual task pays the full setup cost again. Extend them
+instead — a new subcommand for a new surface is a two-line addition.
+
+```bash
+S=.claude/skills/edmund-live-repro-and-diagnostics/scripts
+$S/ui-harness.sh launch notes.md dark    # force appearance per-launch
+$S/ui-harness.sh replace on              # find bar → replace row showing
+$S/ui-harness.sh capture /tmp/shot.png   # by window id, no focus steal
+$S/ui-measure.py box /tmp/shot.png 30 80 100 165     # ink bbox + centre
+$S/ui-measure.py runs /tmp/shot.png 2400 3024 100 165 # control gaps
+```
+
+`ui-harness.sh state` reports `closed | find | replace` off the AX tree.
+**Drive control flow off that, never off a screenshot** — it is the only signal
+that says whether the UI actually changed, and it makes the flaky steps
+(below) self-correcting instead of silently producing a screenshot of the wrong
+state.
+
+Traps this harness already encodes — each one cost a debugging cycle, so read
+before "simplifying" it:
+
+| Trap | What happens | What to do |
+|---|---|---|
+| `pgrep -f "$PATH"` | Takes a **regex**; a worktree path like `feat+find-replace-in-doc` contains `+`, so it matches **nothing** | Exact-match the path field (`pgrep -lf` + awk). macOS `pgrep -a` prints bare pids, no args |
+| JXA `CGWindowListCopyWindowInfo` | `deepUnwrap` returns a value with no `.length` — reports nothing, never errors | Use `winid.swift` |
+| `.optionOnScreenOnly` | A launched-but-never-activated app looks **windowless** | `.optionAll` |
+| `click at {x, y}` | Does not reliably land on the control even at its own AX frame | Click via Accessibility (`click (checkbox 1 of window "…")`) |
+| AppleScript errors | Error text starts with a line number (`87:129: …`), so a glob like `[2-9]*` reads it as a **count** | Match `^[0-9]+$` strictly |
+| AX window queries after launch | System Events cannot enumerate windows until the app is activated **once** | `raise` before the first AX query |
+| First `⌘F` after launch | Regularly swallowed | Retry until `state` agrees |
+| Flipping **system** appearance | Slow to repaint, takes over the user's machine, and Edmund reads its **own** stored `settings.appearance.mode` anyway — so it may stay light regardless | Force per-launch: `-settings.appearance.mode dark` (NSArgumentDomain beats the stored default) |
+| `.git` inside a worktree | It is a **file**, not a directory | `git rev-parse --git-dir` |
 
 ---
 
@@ -251,12 +299,17 @@ mechanism.
 |---|---|---|
 | `check-live-instance.sh` | Report running `edmd`, exit 2 if any; never kills | logic verified; safe by construction |
 | `grep-trace.sh [date]` | Surface suspect patterns in today's log | logic verified |
-| `capture-window.sh <needle> <out.png>` | Screenshot a window by id + report bounds | **verify on first use** (JXA CGWindowList lookup not executed this session) |
+| `winid.swift <pid> [title]` | CGWindow ids for a process | **exercised** 2026-07-26 |
+| `capture-window.sh <needle> <out.png>` | Screenshot a window by id + report bounds | **exercised** 2026-07-26 (its old JXA lookup never worked — see §5) |
+| `ui-harness.sh <subcommand>` | Launch / raise / read find-bar state / toggle replace / capture, appearance per-launch | **every subcommand exercised** 2026-07-26 |
+| `ui-measure.py box\|runs\|rows` | Ink bounding box, control gaps, colour transitions | **exercised** 2026-07-26 |
 | `launch-debug.sh <file.md> [script.repro]` | Build + assemble EdmundDbg.app + direct-exec with flags | **verify on first use** (assumes arm64 debug triple; guards user instance) |
 
-All four pass `bash -n`. The two "verify on first use" scripts depend on live
-system state (window server, build layout) that couldn't be exercised while
-authoring; read the header comment before first run.
+All pass `bash -n`. One caveat on `launch-debug.sh`: its header claims a bare
+`.build/debug/edmd` "never makes a window". That is **not true** — the find-bar
+work drove the bare debug binary for a whole session and it windows fine, which
+is what `ui-harness.sh launch` does. The EdmundDbg bundle is still the right
+choice when you need Info.plist-dependent behaviour.
 
 ---
 

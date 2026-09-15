@@ -116,12 +116,12 @@ echo "appcast.xml updated."
 # ── GitHub Release ────────────────────────────────────────────────────────────
 echo "Creating GitHub Release v${VERSION}..."
 
-# Extract this version's section from CHANGELOG.md as the release body.
+# Extract this version's section from docs/CHANGELOG.md as the release body.
 # Falls back to a plain link if the section isn't found.
 NOTES_FILE=$(mktemp)
-awk "BEGIN{p=0} /^## \[${VERSION}\]/{p=1;next} p && /^## \[/{exit} p{print}" CHANGELOG.md > "$NOTES_FILE"
+awk "BEGIN{p=0} /^## \[${VERSION}\]/{p=1;next} p && /^## \[/{exit} p{print}" docs/CHANGELOG.md > "$NOTES_FILE"
 if [ ! -s "$NOTES_FILE" ]; then
-    echo "See [CHANGELOG](https://github.com/${REPO}/blob/main/CHANGELOG.md) for details." > "$NOTES_FILE"
+    echo "See [CHANGELOG](https://github.com/${REPO}/blob/main/docs/CHANGELOG.md) for details." > "$NOTES_FILE"
 fi
 
 gh release create "v${VERSION}" "$DMG" \

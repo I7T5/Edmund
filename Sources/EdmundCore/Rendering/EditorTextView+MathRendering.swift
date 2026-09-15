@@ -1,85 +1,36 @@
 import AppKit
-import SwiftMath
 
-/// A rendered equation: the image plus its typesetting descent, which we need to
-/// sit the math on the surrounding text's baseline.
-private final class MathRender {
-    let image: NSImage
-    let descent: CGFloat
-    init(image: NSImage, descent: CGFloat) {
-        self.image = image
-        self.descent = descent
-    }
-}
-
-/// Rendered math is cached so we don't re-typeset on every keystroke or
-/// recompose. The key encodes everything that affects the pixels/metrics:
-/// latex, display vs inline, font size, and the resolved text color.
+/// Built overlays are cached so we don't rebuild one on every keystroke or
+/// recompose. The rendered *image* is already cached by the active engine
+/// (`MathRendering`); this caches the second step — the overlay wrapping it —
+/// whose geometry also depends on the container width and backing scale, so
+/// the key carries those too.
 // NSCache is internally thread-safe; `nonisolated(unsafe)` opts it out of the
 // Swift 6 Sendable check (in practice it's only touched on the main actor).
-nonisolated(unsafe) private let mathRenderCache = NSCache<NSString, MathRender>()
+nonisolated(unsafe) private let mathOverlayCache = NSCache<NSString, FragmentOverlay>()
 
 extension EditorTextView {
 
     /// Renders a LaTeX string to a `FragmentOverlay` sized to `fontSize` and
-    /// aligned to the text baseline, or `nil` if SwiftMath can't parse it (the
-    /// caller then shows the raw source instead).
+    /// aligned to the text baseline, or `nil` if the active math engine can't
+    /// parse it (the caller then shows the raw source instead).
     func mathOverlay(latex: String, display: Bool, fontSize: CGFloat) -> FragmentOverlay? {
         // Resolve the (dynamic) text color against this view's appearance so the
-        // math renders in the right shade for light/dark — and so the cache key
-        // differs between the two.
+        // math renders in the right shade for light/dark — and so the render
+        // cache (keyed by color) differs between the two.
         var color = foregroundColor
         effectiveAppearance.performAsCurrentDrawingAppearance {
             color = self.foregroundColor.usingColorSpace(.deviceRGB) ?? self.foregroundColor
         }
-        let tag = String(format: "%.1f,%.3f,%.3f,%.3f,%.3f", fontSize,
-                         color.redComponent, color.greenComponent,
-                         color.blueComponent, color.alphaComponent)
-        let key = "\(display ? "D" : "I")|\(tag)|\(latex)" as NSString
-
-        let render: MathRender
-        if let cached = mathRenderCache.object(forKey: key) {
-            render = cached
-        } else {
-            let mode: MTMathUILabelMode = display ? .display : .text
-            let math = MTMathImage(latex: latex, fontSize: fontSize, textColor: color, labelMode: mode)
-            // SwiftMath sizes the image to the exact typographic metrics, which
-            // crops a glyph's ink overshoot past those edges. Vertically the
-            // bottom of a lone `x`/`c` sits flush on the image edge and clips;
-            // horizontally an italic glyph's ink leans past its advance — the top
-            // hook of a lone italic `F` overshoots the right edge and clips. A
-            // small content inset gives the rasterizer room so the full glyph is
-            // drawn. Top/bottom is folded into the descent below so the baseline
-            // is unchanged; the right inset only adds trailing canvas (left stays
-            // 0 so no gap opens before inline math), reserved by the overlay's
-            // kern like any other advance.
-            let insetPad: CGFloat = 2
-            math.contentInsets = MTEdgeInsets(top: insetPad, left: 0, bottom: insetPad, right: insetPad)
-            let (error, image) = math.asImage()
-            guard error == nil, let image else { return nil }
-
-            // Typeset once more via a label to read ascent/descent, then compute
-            // the baseline's distance from the image bottom the way SwiftMath's
-            // asImage does — including its `height < fontSize/2` clamp, which
-            // re-centers small glyphs (a lone x/c/n). Ignoring the clamp left
-            // those a pixel below the surrounding text baseline.
-            let label = MTMathUILabel()
-            label.latex = latex
-            label.fontSize = fontSize
-            label.labelMode = mode
-            label.layout()
-            let asc = label.displayList?.ascent ?? 0
-            let desc = label.displayList?.descent ?? 0
-            let clamped = max(asc + desc, fontSize / 2)
-            let descent = (asc + desc - clamped) / 2 + desc + insetPad
-
-            render = MathRender(image: image, descent: descent)
-            mathRenderCache.setObject(render, forKey: key)
+        guard let rendered = MathRendering.shared.render(latex: latex, displayMode: display,
+                                                          pointSize: fontSize, color: color) else {
+            return nil
         }
 
-        var width = render.image.size.width
-        var height = render.image.size.height
-        var descent = render.descent
+        var width = rendered.image.size.width
+        var height = rendered.image.size.height
+        var descent = rendered.descent
+        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         // Interim until SwiftMath line-wrapping ships: if the equation is wider
         // than the text area, scale it down to fit (otherwise leave it natural
         // size). The baseline descent scales with it.
@@ -89,6 +40,24 @@ extension EditorTextView {
             width *= scale
             height *= scale
             descent *= scale
+        } else {
+            // A math bitmap is rasterized at the backing scale, but its NSImage
+            // *point* size is computed independently of its rounded pixel count
+            // (RaTeX: 109 px shown at 54.264 pt — a ratio of 2.009, not 2). So
+            // drawing it at `image.size` covers a fractional number of device
+            // pixels and Core Graphics resamples the blit: the same ink spreads
+            // over ~39% more device pixels at 37% partial coverage (vs 14%),
+            // which is why equations looked slightly bolder here than the
+            // identical image in Read mode — that path already pins its <img>
+            // to the PNG's exact pixel count for this reason (DocumentHTML
+            // .fillMath). Snap the draw size onto the device grid so the blit is
+            // 1:1. The *position* is snapped where it's drawn (see
+            // `deviceAligned` in EditorTextView+TextKit2): both are needed —
+            // either misalignment alone resamples just as badly.
+            let snapped = (height * backingScale).rounded() / backingScale
+            descent *= snapped / height
+            width = (width * backingScale).rounded() / backingScale
+            height = snapped
         }
         // The rendered image's baseline sits exactly one device pixel below the
         // surrounding text baseline (measured constant across font sizes — it's a
@@ -96,12 +65,28 @@ extension EditorTextView {
         // image by one device pixel so the math rests on the text baseline. Done
         // here, not in the cached descent, so it tracks the window's scale if it
         // moves between a Retina and a non-Retina display.
-        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         descent -= 1 / backingScale
         // Drop the image so its baseline (descent above the image bottom) lands
         // on the text baseline.
-        return FragmentOverlay(image: render.image,
-                               bounds: CGRect(x: 0, y: -descent, width: width, height: height))
+        // The engine id is part of the key so enabling/disabling a math
+        // extension (which swaps the active renderer) can't serve overlays
+        // built by the previous engine.
+        let key = String(
+            format: "%@|%@|%.1f|%.3f,%.3f,%.3f,%.3f|%.3f|%.3f|%.3f|%@",
+            MathRendering.shared.active.id,
+            display ? "D" : "I",
+            fontSize,
+            color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent,
+            width, height, descent,
+            latex
+        ) as NSString
+        if let cached = mathOverlayCache.object(forKey: key) { return cached }
+        let overlay = FragmentOverlay(
+            image: rendered.image,
+            bounds: CGRect(x: 0, y: -descent, width: width, height: height)
+        )
+        mathOverlayCache.setObject(overlay, forKey: key)
+        return overlay
     }
 
     /// The usable text width for one line — the text container minus its line

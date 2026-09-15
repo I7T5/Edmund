@@ -167,6 +167,81 @@ struct RenderingRegressionTests {
                 "rule must sit between the text lines (above=\(gapAbove), below=\(gapBelow))")
     }
 
+    // MARK: Read mode's CSS line-height matches Edit mode's real line pitch
+
+    /// Read mode used to hardcode the body font's natural line height as 1.2×,
+    /// which is wrong for the default face (Iowan Old Style is 1.365×) — so every
+    /// Read-mode line came out ~11% tighter than the editor's, and the font-size
+    /// stepper moved the two modes apart instead of together. Measure the editor's
+    /// actual line pitch and hold the emitted CSS to it.
+    @Test("CSS --line-height equals the editor's measured line pitch")
+    @MainActor func cssLineHeightMatchesEditorLinePitch() {
+        // One paragraph long enough to wrap: successive line-fragment origins
+        // inside a single layout fragment give the true pitch (natural line
+        // height + the paragraph style's lineSpacing) with no ambiguity about
+        // whether typographicBounds already folds lineSpacing in.
+        let (e, _) = windowed(String(repeating: "wrapping body text ", count: 40))
+        guard let tlm = e.textLayoutManager else { Issue.record("no tlm"); return }
+
+        var first: NSTextLayoutFragment?
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) {
+            first = $0; return false
+        }
+        guard let frag = first, frag.textLineFragments.count >= 2 else {
+            Issue.record("paragraph did not wrap"); return
+        }
+        let origins = frag.textLineFragments.map { $0.typographicBounds.minY }
+        let pitch = origins[1] - origins[0]
+
+        // The same theme the editor is rendering with, through the Read-mode CSS.
+        let css = HTMLTheme.css(e.theme, callouts: Callout.defaultStyles, dark: false)
+        guard let range = css.range(of: "--line-height: "),
+              let end = css[range.upperBound...].firstIndex(of: ";"),
+              let cssLineHeight = Double(css[range.upperBound..<end]) else {
+            Issue.record("no --line-height in emitted CSS"); return
+        }
+        let cssPitch = CGFloat(cssLineHeight) * e.theme.fontSize
+
+        // Tight on purpose: the two are the same number by construction now, so
+        // any real drift (a changed metric, a reintroduced constant) shows up.
+        #expect(abs(cssPitch - pitch) < 0.05,
+                "Read mode line pitch \(cssPitch)pt must match Edit mode's \(pitch)pt")
+    }
+
+    /// The same equality, for a face whose two candidate metrics disagree sharply
+    /// (Helvetica: defaultLineHeight 19.0 vs ascender−descender+leading 16.0).
+    /// Iowan alone cannot tell the two formulas apart — they differ by 0.7% there.
+    @Test("CSS line-height tracks the editor for a font with unusual metrics")
+    @MainActor func cssLineHeightMatchesForHelvetica() {
+        let e = makeEditor()
+        var theme = e.theme
+        theme.fontName = "Helvetica"
+        e.theme = theme
+        e.textContainerInset = NSSize(width: 24, height: 18)
+        e.loadContent(String(repeating: "wrapping body text ", count: 40))
+        ensureFullLayout(e); drainAllStyling(e); e.sizeToFit(); ensureFullLayout(e)
+
+        guard let tlm = e.textLayoutManager else { Issue.record("no tlm"); return }
+        var first: NSTextLayoutFragment?
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) {
+            first = $0; return false
+        }
+        guard let frag = first, frag.textLineFragments.count >= 2 else {
+            Issue.record("paragraph did not wrap"); return
+        }
+        let origins = frag.textLineFragments.map { $0.typographicBounds.minY }
+        let pitch = origins[1] - origins[0]
+
+        let css = HTMLTheme.css(theme, callouts: Callout.defaultStyles, dark: false)
+        guard let range = css.range(of: "--line-height: "),
+              let end = css[range.upperBound...].firstIndex(of: ";"),
+              let cssLineHeight = Double(css[range.upperBound..<end]) else {
+            Issue.record("no --line-height in emitted CSS"); return
+        }
+        #expect(abs(CGFloat(cssLineHeight) * theme.fontSize - pitch) < 0.05,
+                "Helvetica: CSS pitch \(CGFloat(cssLineHeight) * theme.fontSize)pt vs editor \(pitch)pt")
+    }
+
     // MARK: Scroll targets accurate under lazy layout
 
     @Test("The drain styling blocks above the viewport does not shift visible content")

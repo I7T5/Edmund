@@ -1,5 +1,18 @@
 import AppKit
 
+// Marker overlays are immutable and depend only on their cache key. Keeping a
+// bounded process-wide cache lets successive document views reuse the same
+// attribute value instead of leaving tombstones in Foundation's global weak
+// attribute-dictionary interning table.
+nonisolated(unsafe) private let reusableListMarkerOverlayCache: NSCache<
+    NSString,
+    FragmentOverlay
+> = {
+    let cache = NSCache<NSString, FragmentOverlay>()
+    cache.countLimit = 32
+    return cache
+}()
+
 // MARK: - List Rendering
 //
 // Everything that turns a list item's marker into its rendered form, used by
@@ -42,6 +55,25 @@ extension EditorTextView {
         return cols / unit
     }
 
+    /// The indent-guide columns for an item at `depth`, outermost first: one
+    /// per *ancestor* level, plus — last — the item's **own** column. Each
+    /// lands on the center of that level's marker box (a `bodyFont.pointSize`
+    /// wide slot starting at its `markerStart`), so a guide runs down the
+    /// column that level's bullet sits in.
+    ///
+    /// The two groups are drawn differently (see `drawListGuides`): the
+    /// ancestor guides span the item's whole height, while the own-column
+    /// guide is drawn only beside the item's wrapped continuation lines — its
+    /// first line holds the marker itself, which would collide.
+    ///
+    /// Offsets are measured from the text container's text origin, the same
+    /// space `listParagraphStyle`'s head indents use.
+    func listGuideOffsets(depth: Int, slotWidth: CGFloat) -> [CGFloat] {
+        (0...depth).map {
+            listPadding + CGFloat($0) * slotWidth + bodyFont.pointSize / 2
+        }
+    }
+
     // MARK: Marker Icons
 
     /// Dark-mode ink for markers, rules and table borders: the gray the
@@ -80,10 +112,19 @@ extension EditorTextView {
     /// Unchecked: dim outlined `circle`. Checked: filled `checkmark.circle.fill`.
     private func checkboxOverlay(checked: Bool) -> FragmentOverlay {
         let fontSize = bodyFont.pointSize
+        let appearanceKey = effectiveAppearance.name.rawValue
+        let checkedColorKey = checked ? renderingCacheColorKey(checkboxColor) : ""
+        let cacheKey = "checkbox|\(checked)|\(fontSize)|\(appearanceKey)|\(checkedColorKey)"
+        if let cached = reusableListMarkerOverlayCache.object(
+            forKey: cacheKey as NSString
+        ) {
+            return cached
+        }
+
         let symbolName = checked ? "checkmark.circle.fill" : "circle"
-        // Checked: white checkmark knocked out of an accent-tinted circle (two
+        // Checked: white checkmark knocked out of a theme-tinted circle (two
         // palette layers — checkmark first, circle second). Unchecked: dim outline.
-        let palette: [NSColor] = checked ? [.white, accentColor] : [listMarkerColor]
+        let palette: [NSColor] = checked ? [.white, checkboxColor] : [listMarkerColor]
         let config = NSImage.SymbolConfiguration(pointSize: fontSize, weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: palette))
 
@@ -102,9 +143,20 @@ extension EditorTextView {
         }
 
         // Vertically center the circle relative to the text baseline
-        return FragmentOverlay(image: image,
-                               bounds: CGRect(x: 0, y: -fontSize * 0.15,
-                                              width: fontSize, height: fontSize))
+        let overlay = FragmentOverlay(
+            image: image,
+            bounds: CGRect(
+                x: 0,
+                y: -fontSize * 0.15,
+                width: fontSize,
+                height: fontSize
+            )
+        )
+        reusableListMarkerOverlayCache.setObject(
+            overlay,
+            forKey: cacheKey as NSString
+        )
+        return overlay
     }
 
     /// Creates an overlay with a small filled dot for unordered bullets,
@@ -113,6 +165,13 @@ extension EditorTextView {
     private func bulletOverlay() -> FragmentOverlay {
         let fontSize = bodyFont.pointSize
         let dotColor = listMarkerColor
+        let cacheKey = "bullet|\(fontSize)|\(effectiveAppearance.name.rawValue)"
+        if let cached = reusableListMarkerOverlayCache.object(
+            forKey: cacheKey as NSString
+        ) {
+            return cached
+        }
+
         let image = NSImage(size: NSSize(width: fontSize, height: fontSize), flipped: true) { bounds in
             let r = fontSize * 0.13                 // small dot
             let dot = NSRect(x: bounds.midX - r, y: bounds.midY - r, width: 2 * r, height: 2 * r)
@@ -120,9 +179,20 @@ extension EditorTextView {
             NSBezierPath(ovalIn: dot).fill()
             return true
         }
-        return FragmentOverlay(image: image,
-                               bounds: CGRect(x: 0, y: -fontSize * 0.15,
-                                              width: fontSize, height: fontSize))
+        let overlay = FragmentOverlay(
+            image: image,
+            bounds: CGRect(
+                x: 0,
+                y: -fontSize * 0.15,
+                width: fontSize,
+                height: fontSize
+            )
+        )
+        reusableListMarkerOverlayCache.setObject(
+            overlay,
+            forKey: cacheKey as NSString
+        )
+        return overlay
     }
 
     // MARK: Marker Styling

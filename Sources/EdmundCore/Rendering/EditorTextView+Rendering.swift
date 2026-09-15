@@ -46,22 +46,46 @@ extension EditorTextView {
         isDarkAppearance ? Self.darkChromeGray : .tertiaryLabelColor
     }
 
-    /// Color for links and wikilinks — always the theme's accent blue, independent of
-    /// the system accent so links stay consistently blue across user accent preferences.
-    var linkColor: NSColor { theme.linkBlueColor }
+    /// Color for links and wikilinks — from the active general theme, independent
+    /// of the system accent so links stay consistently blue across user accent
+    /// preferences.
+    var linkColor: NSColor {
+        generalTheme.link.flatMap(NSColor.init(hex:)) ?? .systemBlue
+    }
+
+    /// Background for ==highlighted== spans, from the active general theme.
+    /// ponytail: a themed highlight is opaque, exactly as `selectionHighlightColor`
+    /// is and for the same reason — `NSColor(hex:)` takes 6 digits, no alpha. The
+    /// unthemed default keeps the translucent yellow it has always been.
+    var highlightColor: NSColor {
+        generalTheme.highlight.flatMap(NSColor.init(hex:))
+            ?? .systemYellow.withAlphaComponent(0.3)
+    }
 
     /// Monospaced font for tables.
-    var tableFont: NSFont { theme.monospaceFont() }
+    var tableFont: NSFont { renderingMonospaceFont }
 
     /// Monospaced font for code blocks.
-    var codeBlockFont: NSFont { theme.monospaceFont() }
+    var codeBlockFont: NSFont { renderingMonospaceFont }
 
     /// Font used to visually hide delimiter characters.
     /// Near-zero size makes them effectively invisible and zero-width.
-    var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
+    var hiddenFont: NSFont {
+        if let cachedHiddenFont { return cachedHiddenFont }
+        let font = NSFont.systemFont(ofSize: 0.01)
+        cachedHiddenFont = font
+        return font
+    }
 
     /// Monospaced font for inline code spans.
-    var inlineCodeFont: NSFont { theme.monospaceFont() }
+    var inlineCodeFont: NSFont { renderingMonospaceFont }
+
+    private var renderingMonospaceFont: NSFont {
+        if let cachedMonospaceFont { return cachedMonospaceFont }
+        let font = theme.monospaceFont()
+        cachedMonospaceFont = font
+        return font
+    }
 
     /// Subtle background color for inline code spans. The 10% wash reads fine
     /// on white but nearly disappears on the dark background (it lands ~4 levels
@@ -69,6 +93,26 @@ extension EditorTextView {
     /// visible step as Read mode's --inline-code-bg.
     var inlineCodeBackground: NSColor {
         NSColor(calibratedWhite: 0.5, alpha: isDarkAppearance ? 0.22 : 0.1)
+    }
+
+    /// Stable cache-key representation for dynamic AppKit colors. Hash values
+    /// alone can collide, and unresolved semantic colors can change with the
+    /// view's appearance.
+    func renderingCacheColorKey(_ color: NSColor) -> String {
+        var resolved = color
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            resolved = color.usingColorSpace(.deviceRGB) ?? color
+        }
+        guard let rgb = resolved.usingColorSpace(.deviceRGB) else {
+            return String(reflecting: resolved)
+        }
+        return String(
+            format: "%.6f,%.6f,%.6f,%.6f",
+            rgb.redComponent,
+            rgb.greenComponent,
+            rgb.blueComponent,
+            rgb.alphaComponent
+        )
     }
 
     /// Paragraph style for thematic breaks. The raw dashes are hidden with a
@@ -166,8 +210,13 @@ extension EditorTextView {
     /// - Parameters:
     ///   - markdown: Raw markdown text.
     ///   - cursorPosition: Cursor offset within the markdown (nil = hide all inline delimiters).
+    ///   - listDepth: Nesting depth for this block's list line, from the
+    ///     document's column stack (see `listDepths`). nil for callers with no
+    ///     block index — a table cell, a callout's inner blocks, the styling
+    ///     tests — which fall back to the whitespace-and-unit estimate.
     func styleBlock(_ markdown: String, cursorPosition: Int? = nil,
-                    hideComments: Bool = false) -> NSAttributedString {
+                    hideComments: Bool = false,
+                    listDepth: Int? = nil) -> NSAttributedString {
         let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
         guard !markdown.isEmpty else { return result }
 
@@ -240,7 +289,7 @@ extension EditorTextView {
 
             case .highlight:
                 guard span.contentRange.upperBound <= result.length else { continue }
-                result.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: span.contentRange)
+                result.addAttribute(.backgroundColor, value: highlightColor, range: span.contentRange)
 
             case .heading(let level):
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -422,11 +471,19 @@ extension EditorTextView {
                 guard span.fullRange.upperBound <= result.length else { continue }
                 styleListItemSpan(result, span: span, markdown: markdown,
                                   ordered: ordered, checkbox: checkbox,
-                                  cursorInToken: cursorInToken)
+                                  cursorInToken: cursorInToken, depth: listDepth)
 
             case .table:
                 guard span.fullRange.upperBound <= result.length else { continue }
-                styleTableSpan(result, span: span, cursorInToken: cursorInToken)
+                // A table stays rendered with the caret inside it: unlike every
+                // other block, its raw form is not a readable fallback but a
+                // pipe soup, and its characters are the *same* characters the
+                // rendered form lays out (pipes hidden, columns kerned), so the
+                // caret can sit in them directly and edit the cell in place.
+                // Raw is now an explicit request — the `</>` button — rather
+                // than a side effect of putting the caret in the table.
+                styleTableSpan(result, span: span,
+                               cursorInToken: cursorInToken && rawTableEditing)
 
             case .thematicBreak:
                 guard span.fullRange.upperBound <= result.length else { continue }
@@ -833,9 +890,12 @@ extension EditorTextView {
             // would tag-style. (Source mode still shows plain raw mono below.)
             styled = styleFrontMatter(block.content)
         } else {
+            let depth = listDepth(ofBlock: blockIndex)
             switch viewMode {
-            case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock)
-            case .reading: styled = styleBlock(block.content, cursorPosition: nil, hideComments: true)
+            case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock,
+                                               listDepth: depth)
+            case .reading: styled = styleBlock(block.content, cursorPosition: nil,
+                                               hideComments: true, listDepth: depth)
             case .source:  styled = sourceStyled(block.content)
             }
         }
@@ -881,4 +941,3 @@ extension EditorTextView {
 }
 
 // MARK: - ThematicBreakTextBlock
-

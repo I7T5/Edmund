@@ -76,7 +76,7 @@ def main() -> int:
         print("usage: changelog-to-html.py <version>", file=sys.stderr)
         return 2
     version = sys.argv[1]
-    with open("CHANGELOG.md", encoding="utf-8") as f:
+    with open("docs/CHANGELOG.md", encoding="utf-8") as f:
         section = extract(version, f.readlines())
     body = to_html(section)
     if not body:

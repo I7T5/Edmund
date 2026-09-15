@@ -1,46 +1,34 @@
 #!/usr/bin/env bash
 # capture-window.sh <window-name-substring> <out.png>
-# Screenshot a specific window by id (reliable even when not frontmost).
+# Screenshot a window by id — reliable even when the window is not frontmost,
+# and without stealing focus.
 #
-# Mechanism: osascript(JXA) enumerates on-screen windows via the ObjC bridge
-# to CGWindowListCopyWindowInfo, finds the first whose kCGWindowName contains
-# the substring, prints "<id> <x> <y> <w> <h>", then `screencapture -x -o
-# -l<id>` grabs it. We crop by the detected window bounds (the desktop
-# wallpaper defeats screencapture's brightness-based auto-crop).
+# This used to do the window lookup in JXA. That never worked: under osascript,
+# `ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(...))` returns a value with no
+# `.length`, so the loop silently found nothing and the script reported "no
+# window" for windows that were plainly on screen. Verified broken 2026-07-26;
+# the lookup now goes through `winid.swift`, which is exercised routinely.
 #
-# VERIFY ON FIRST USE: JXA ObjC bridging + the CGWindowList key names are
-# stable AppKit API, but this script has not been executed in this session.
-# If the JXA lookup prints nothing, the window title didn't match or Screen
-# Recording permission is missing (it is granted for this project per
-# CLAUDE.md — do NOT request Computer Access to "fix" it).
+# For driving Edmund's own UI (open the find bar, toggle the replace row,
+# force light/dark), use `ui-harness.sh` — it wraps this plus the AX driving.
 set -euo pipefail
 
 needle="${1:?usage: capture-window.sh <window-name-substring> <out.png>}"
 out="${2:?usage: capture-window.sh <window-name-substring> <out.png>}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-read -r wid x y w h < <(osascript -l JavaScript <<JXA || true
-ObjC.import('CoreGraphics');
-ObjC.import('Foundation');
-const info = \$.CGWindowListCopyWindowInfo(
-  \$.kCGWindowListOptionOnScreenOnly | \$.kCGWindowListExcludeDesktopElements,
-  \$.kCGNullWindowID);
-const arr = ObjC.deepUnwrap(info);
-const needle = "$needle";
-for (const win of arr) {
-  const name = win.kCGWindowName || "";
-  if (name.indexOf(needle) !== -1) {
-    const b = win.kCGWindowBounds;
-    console.log([win.kCGWindowNumber, b.X, b.Y, b.Width, b.Height].join(" "));
-    break;
-  }
-}
-JXA
-)
+# Scan every edmd process for a window whose title contains the needle.
+line=""
+for pid in $(pgrep -x edmd 2>/dev/null || true); do
+  line="$(swift "$HERE/winid.swift" "$pid" | grep -F "name=" | grep -F "$needle" | head -1 || true)"
+  [[ -n "$line" ]] && break
+done
 
-if [[ -z "${wid:-}" ]]; then
-  echo "No on-screen window title contains: $needle" >&2
+if [[ -z "$line" ]]; then
+  echo "No window title contains: $needle" >&2
   exit 1
 fi
 
+wid="${line#id=}"; wid="${wid%% *}"
 screencapture -x -o -l"$wid" "$out"
-echo "Captured window $wid ($needle) -> $out  bounds=${x},${y} ${w}x${h}"
+echo "Captured window $wid -> $out  ($line)"

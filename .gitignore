@@ -2,7 +2,11 @@
 .claude/worktrees/
 .claude/settings.json
 .claude/settings.local.json
-.codex/config.toml
+AGENTS.md
+.agents/
+.codex/
+.opencode/
+opencode.json
 
 # local tooling
 .worktrees/
@@ -26,9 +30,20 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 
+# SwiftPM residues
+*.d
+*.o
+*.swiftdeps
+*.swiftdeps~
+
 # Sparkle private key
 sparkle_private_key.txt
 
 # system
 .DS_Store
 .netrc
+
+
+
+# Payload build lives in I7T5/edmund-extensions; local copy kept for convenience.
+scripts/build-ratex-payload.sh

@@ -54,6 +54,12 @@ public extension NSAttributedString.Key {
     /// The second row draws after that fill, so nothing overpaints the
     /// label. Value: the non-empty display language `String`.
     static let codeBlockLabelAnchor = NSAttributedString.Key("MarkdownEditor.codeBlockLabelAnchor")
+    /// A nested list item's indent-guide columns — one x per *ancestor* level,
+    /// measured from the text container's left edge (the same space the
+    /// paragraph's head indents live in). Value: `[CGFloat]`, absent at depth 0.
+    /// Written whether or not the setting is on, so toggling the guides needs a
+    /// re-vend (`refreshOverdraw`) rather than a whole-document restyle.
+    static let listGuides = NSAttributedString.Key("MarkdownEditor.listGuides")
 }
 
 /// Value object describing what to draw behind a decorated paragraph.
@@ -78,8 +84,13 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
         /// table's left edge. `bottomBorder` draws a full-width line at this
         /// row's bottom edge — the grid line between data rows (the header/
         /// separator boundary already gets its line from `separator`).
+        /// `topInset` holds the borders off the top of the fragment, which the
+        /// header row uses to reserve the band its column handle sits in
+        /// (see EditorTextView+TableHandles) — without it the verticals would
+        /// run up through the handle.
         case tableRow(columnXOffsets: [CGFloat], width: CGFloat,
-                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool)
+                      leftInset: CGFloat, separator: Bool, bottomBorder: Bool,
+                      topInset: CGFloat)
         /// Horizontal hairline across the text column, drawn `centerOffset`
         /// points below the fragment's vertical center. The offset compensates
         /// for adjacent text sitting at its baseline (low in its line box), so
@@ -121,12 +132,37 @@ public final class BlockDecoration: NSObject, @unchecked Sendable {
     }
 
     public override var hash: Int {
+        var hasher = Hasher()
         switch kind {
-        case .box: return 1
-        case .leftBar: return 2
-        case .tableRow: return 3
-        case .horizontalRule: return 4
+        case .box(let background, let borderColor, let borderEdges,
+                  let borderWidth, let bottomPad):
+            hasher.combine(1)
+            hasher.combine(background)
+            hasher.combine(borderColor)
+            hasher.combine(borderEdges.rawValue)
+            hasher.combine(borderWidth)
+            hasher.combine(bottomPad)
+        case .leftBar(let color, let width):
+            hasher.combine(2)
+            hasher.combine(color)
+            hasher.combine(width)
+        case .tableRow(let offsets, let width, let leftInset,
+                       let separator, let bottomBorder, let topInset):
+            hasher.combine(3)
+            hasher.combine(offsets)
+            hasher.combine(width)
+            hasher.combine(leftInset)
+            hasher.combine(topInset)
+            hasher.combine(separator)
+            hasher.combine(bottomBorder)
+        case .horizontalRule(let color, let centerOffset):
+            hasher.combine(4)
+            hasher.combine(color)
+            hasher.combine(centerOffset)
         }
+        hasher.combine(inset)
+        hasher.combine(hugsTextTop)
+        return hasher.finalize()
     }
 }
 
@@ -146,7 +182,13 @@ public final class BlockDecorationList: NSObject, @unchecked Sendable {
         return decorations == other.decorations
     }
 
-    public override var hash: Int { decorations.count }
+    public override var hash: Int {
+        var hasher = Hasher()
+        for decoration in decorations {
+            hasher.combine(decoration)
+        }
+        return hasher.finalize()
+    }
 }
 
 /// An image or stroked vector path drawn at a character's laid-out position,
@@ -166,6 +208,7 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
     public let pathColor: NSColor?
     public let pathLineWidth: CGFloat
     public let bounds: CGRect
+    private let cachedHash: Int
 
     public init(image: NSImage, bounds: CGRect) {
         self.image = image
@@ -173,15 +216,26 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
         self.pathColor = nil
         self.pathLineWidth = 0
         self.bounds = bounds
+        var hasher = Hasher()
+        hasher.combine(ObjectIdentifier(image))
+        Self.combine(bounds, into: &hasher)
+        self.cachedHash = hasher.finalize()
         super.init()
     }
 
     public init(path: CGPath, color: NSColor, lineWidth: CGFloat, bounds: CGRect) {
+        let frozenPath = path.copy() ?? path
         self.image = nil
-        self.path = path
+        self.path = frozenPath
         self.pathColor = color
         self.pathLineWidth = lineWidth
         self.bounds = bounds
+        var hasher = Hasher()
+        Self.combine(frozenPath, into: &hasher)
+        hasher.combine(color)
+        hasher.combine(lineWidth)
+        Self.combine(bounds, into: &hasher)
+        self.cachedHash = hasher.finalize()
         super.init()
     }
 
@@ -192,32 +246,123 @@ public final class FragmentOverlay: NSObject, @unchecked Sendable {
             && other.bounds == bounds
     }
 
-    public override var hash: Int { Int(bounds.width) ^ Int(bounds.height) }
+    public override var hash: Int { cachedHash }
+
+    private static func combine(_ bounds: CGRect, into hasher: inout Hasher) {
+        hasher.combine(bounds.origin.x)
+        hasher.combine(bounds.origin.y)
+        hasher.combine(bounds.width)
+        hasher.combine(bounds.height)
+    }
+
+    /// `CGPath.hashValue` is always zero on current macOS, so hash the same
+    /// structural elements that Core Graphics uses for path equality.
+    private static func combine(_ path: CGPath, into hasher: inout Hasher) {
+        path.applyWithBlock { elementPointer in
+            let element = elementPointer.pointee
+            hasher.combine(element.type.rawValue)
+            let pointCount: Int
+            switch element.type {
+            case .moveToPoint, .addLineToPoint:
+                pointCount = 1
+            case .addQuadCurveToPoint:
+                pointCount = 2
+            case .addCurveToPoint:
+                pointCount = 3
+            case .closeSubpath:
+                pointCount = 0
+            @unknown default:
+                pointCount = 0
+            }
+            for index in 0..<pointCount {
+                hasher.combine(element.points[index].x)
+                hasher.combine(element.points[index].y)
+            }
+        }
+    }
 }
 
 /// A table cell too wide for its column: its real characters are hidden, and
 /// this holds what to draw instead. `x` is text-relative (same coordinate
 /// space as `BlockDecoration.tableRow`'s `columnXOffsets`) — the cell's
 /// content start. `contentWidth` is the column's clamped content width (the
-/// width the cell's text must wrap within).
+/// width the cell's text must wrap within). `align` is the column's declared
+/// alignment, applied per drawn line. `charStart` is the cell's first character
+/// as an offset within its row's paragraph, which is what maps a click inside
+/// the drawn text back to a real character (see `cellWrapCharacterIndex`).
 public final class TableCellWrap: NSObject, @unchecked Sendable {
     public let styled: NSAttributedString
     public let x: CGFloat
     public let contentWidth: CGFloat
+    public let align: ColumnAlign
+    public let charStart: Int
+    private let cachedHash: Int
 
-    public init(styled: NSAttributedString, x: CGFloat, contentWidth: CGFloat) {
-        self.styled = styled
+    public init(styled: NSAttributedString, x: CGFloat, contentWidth: CGFloat,
+                align: ColumnAlign = .left, charStart: Int = 0) {
+        let frozenStyled = styled.copy() as! NSAttributedString
+        self.styled = frozenStyled
         self.x = x
         self.contentWidth = contentWidth
+        self.align = align
+        self.charStart = charStart
+        var hasher = Hasher()
+        Self.combine(frozenStyled, into: &hasher)
+        hasher.combine(x)
+        hasher.combine(contentWidth)
+        hasher.combine(align)
+        hasher.combine(charStart)
+        self.cachedHash = hasher.finalize()
     }
 
     public override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? TableCellWrap else { return false }
-        return other.styled.string == styled.string
-            && abs(other.x - x) < 0.5 && abs(other.contentWidth - contentWidth) < 0.5
+        return other.styled.isEqual(to: styled)
+            && other.x == x && other.contentWidth == contentWidth
+            && other.align == align && other.charStart == charStart
     }
 
-    public override var hash: Int { styled.string.hashValue }
+    public override var hash: Int { cachedHash }
+
+    private static func combine(
+        _ styled: NSAttributedString,
+        into hasher: inout Hasher
+    ) {
+        hasher.combine(styled.string)
+        styled.enumerateAttributes(
+            in: NSRange(location: 0, length: styled.length)
+        ) { attributes, range, _ in
+            hasher.combine(range.location)
+            hasher.combine(range.length)
+            for key in attributes.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+                hasher.combine(key.rawValue)
+                if let object = attributes[key] as? NSObject {
+                    hasher.combine(object.hash)
+                } else {
+                    hasher.combine(String(reflecting: attributes[key]))
+                }
+            }
+        }
+    }
+}
+
+/// How far one line of a wrapped cell shifts inside its column for the column's
+/// alignment. Trailing whitespace is left out of the line's visual width — a
+/// wrapped line ends with the space it broke on, and counting it would hang a
+/// right-aligned line a space past its column edge.
+func cellWrapLineOffset(_ line: NSTextLineFragment,
+                        contentWidth: CGFloat,
+                        align: ColumnAlign) -> CGFloat {
+    guard align != .left else { return 0 }
+    let text = line.attributedString.attributedSubstring(from: line.characterRange)
+    let trimmed = (text.string as NSString)
+        .rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines.inverted, options: .backwards)
+    guard trimmed.location != NSNotFound else { return 0 }
+    let visible = text.attributedSubstring(
+        from: NSRange(location: 0, length: trimmed.upperBound)).size().width
+    let slack = contentWidth - visible
+    guard slack > 0 else { return 0 }
+    return align == .center ? (slack / 2).rounded() : slack
 }
 
 /// A table row's overflowing cells, one `TableCellWrap` per overflowing cell.
@@ -233,7 +378,13 @@ public final class TableCellWrapList: NSObject, @unchecked Sendable {
         return wraps == other.wraps
     }
 
-    public override var hash: Int { wraps.count }
+    public override var hash: Int {
+        var hasher = Hasher()
+        for wrap in wraps {
+            hasher.combine(wrap)
+        }
+        return hasher.finalize()
+    }
 }
 
 /// Layout fragment that draws its paragraph's `BlockDecoration` behind the
@@ -249,7 +400,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// Each overflowing cell's x and pre-laid-out lines, from a detached
     /// scratch text stack sized to the column's content width. The stack
     /// itself is retained (`scratchStacks`) so the line fragments stay valid.
-    private let resolvedCellWraps: [(x: CGFloat, lines: [NSTextLineFragment])]
+    private let resolvedCellWraps: [(wrap: TableCellWrap, lines: [NSTextLineFragment])]
     private let scratchStacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)]
 
     /// A fenced code block's display language, present only on the block's
@@ -264,6 +415,20 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// handed over at vend time (the fragment has no theme access).
     let codeBlockLabelFont: NSFont
 
+    /// Whitespace-mark config, or nil when invisibles are off. Drawn over the
+    /// real glyphs after `super.draw` — see EditorTextView+Invisibles.
+    let invisibles: InvisiblesConfig?
+
+    /// Indent-guide columns for a nested list item, container-relative; empty
+    /// when the item is top-level or the setting is off. Drawn under the text.
+    let listGuides: [CGFloat]
+
+    /// The editor that vended this fragment, for the settings its draw reads
+    /// *live* rather than capturing (`focusMode`). Weak — the layout manager
+    /// outlives no editor, but a fragment must never keep one alive.
+    /// See EditorTextView+FocusMode.
+    weak var owner: EditorTextView?
+
     init(textElement: NSTextElement, range: NSTextRange?,
          decorations: [BlockDecoration],
          overlays: [(offset: Int, overlay: FragmentOverlay)],
@@ -271,14 +436,20 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
          antialias: Bool,
          codeBlockLabel: String? = nil,
          codeBlockLabelAnchor: String? = nil,
-         codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular)) {
+         codeBlockLabelFont: NSFont = .monospacedSystemFont(ofSize: 10, weight: .regular),
+         invisibles: InvisiblesConfig? = nil,
+         listGuides: [CGFloat] = [],
+         owner: EditorTextView? = nil) {
+        self.listGuides = listGuides
+        self.owner = owner
         self.decorations = decorations
         self.overlays = overlays
         self.antialias = antialias
         self.codeBlockLabel = codeBlockLabel
         self.codeBlockLabelAnchor = codeBlockLabelAnchor
         self.codeBlockLabelFont = codeBlockLabelFont
-        var resolved: [(x: CGFloat, lines: [NSTextLineFragment])] = []
+        self.invisibles = invisibles
+        var resolved: [(wrap: TableCellWrap, lines: [NSTextLineFragment])] = []
         var stacks: [(NSTextContentStorage, NSTextLayoutManager, NSTextContainer)] = []
         for wrap in cellWraps {
             let contentStorage = NSTextContentStorage()
@@ -296,12 +467,162 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 lines.append(contentsOf: frag.textLineFragments)
                 return true
             }
-            resolved.append((wrap.x, lines))
+            resolved.append((wrap, lines))
             stacks.append((contentStorage, layoutManager, container))
         }
         self.resolvedCellWraps = resolved
         self.scratchStacks = stacks
         super.init(textElement: textElement, range: range)
+    }
+
+    /// Where a wrapped cell's first line starts, relative to the fragment's
+    /// top: the row's own line box does not start at the fragment's edge (the
+    /// row paragraph reserves `paragraphSpacingBefore` above it), and a wrapped
+    /// cell has to sit on that same line, not above it.
+    private var cellWrapTopInset: CGFloat {
+        textLineFragments.first?.typographicBounds.minY ?? 0
+    }
+
+    /// The paragraph-relative character index under `point` (fragment
+    /// coordinates) when it lands on a wrapped cell's drawn text, else nil.
+    ///
+    /// The cell's real characters are hidden at ~zero advance and one of them
+    /// carries the column's whole kern pad, so the layout manager's own
+    /// hit-testing maps every point in the cell to that single character. The
+    /// scratch layout holds the very characters the document has (styling never
+    /// changes characters — storage == rawSource), so resolving the point
+    /// against it instead is exact.
+    func cellWrapCharacterIndex(for point: CGPoint) -> Int? {
+        for (wrap, lines) in resolvedCellWraps {
+            guard point.x >= wrap.x, point.x <= wrap.x + wrap.contentWidth,
+                  !lines.isEmpty else { continue }
+            var top = cellWrapTopInset
+            for (li, line) in lines.enumerated() {
+                let height = line.typographicBounds.height
+                // Past the last line means the click was in the row's bottom
+                // padding — that still belongs to the last line.
+                let belowLastLine = point.y >= top + height
+                guard !belowLastLine || li == lines.count - 1 else {
+                    top += height
+                    continue
+                }
+                // A click below the last line goes to the end of the cell's
+                // text, not to whatever character happens to sit above the
+                // point — the same place an unwrapped cell's blank space sends
+                // it. Only a click *on* a line's own vertical band resolves by x.
+                if belowLastLine {
+                    return wrap.charStart + line.characterRange.upperBound
+                }
+                let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth, align: wrap.align)
+                // The line's own bounds carry the scratch container's stacking
+                // offset; only its x matters here, so probe at its own midY.
+                let local = CGPoint(x: point.x - wrap.x - dx, y: line.typographicBounds.midY)
+                var index = line.characterIndex(for: local)
+                guard index >= 0 else { return nil }
+                // `characterIndex(for:)` names the character *under* the point,
+                // which is not where a click puts a caret: AppKit's insertion
+                // rule rounds at the glyph's midpoint, so a click on the right
+                // half of a letter lands after it. Without this every such
+                // click came out one character early.
+                let lineEnd = line.characterRange.upperBound
+                if index < lineEnd {
+                    let left = line.locationForCharacter(at: index).x
+                    let right = index + 1 <= lineEnd
+                        ? line.locationForCharacter(at: index + 1).x : left
+                    if right > left, local.x > (left + right) / 2 { index += 1 }
+                }
+                return wrap.charStart + index
+            }
+        }
+        return nil
+    }
+
+    /// The inverse of `cellWrapCharacterIndex`: fragment-local rects covering
+    /// the part of `range` (paragraph-relative) that falls inside a wrapped
+    /// cell's drawn text, one rect per visual line it spans. A zero-length
+    /// range yields the caret's single zero-width rect. Empty when the range
+    /// touches no wrapped cell, which is every row whose cells all fit.
+    ///
+    /// Both line-fragment index APIs count in the scratch string's own
+    /// coordinates, not the line's (verified: `characterIndex(for:)` at the
+    /// left edge of the second line returns that line's first index, not 0),
+    /// so `charStart` is the only shift needed either way.
+    func cellWrapRects(forParagraphRange range: NSRange) -> [CGRect] {
+        for (wrap, lines) in resolvedCellWraps where !lines.isEmpty {
+            let cell = NSRange(location: wrap.charStart, length: wrap.styled.length)
+            // A caret sitting on either edge belongs to the cell; a selection
+            // has to actually overlap it.
+            let local: NSRange
+            if range.length == 0 {
+                guard range.location >= cell.location,
+                      range.location <= cell.upperBound else { continue }
+                local = NSRange(location: range.location - wrap.charStart, length: 0)
+            } else {
+                let hit = NSIntersectionRange(range, cell)
+                guard hit.length > 0 else { continue }
+                local = NSRange(location: hit.location - wrap.charStart, length: hit.length)
+            }
+
+            var rects: [CGRect] = []
+            var top = cellWrapTopInset
+            for line in lines {
+                let height = line.typographicBounds.height
+                let lineRange = line.characterRange
+                let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth,
+                                            align: wrap.align)
+                defer { top += height }
+                if local.length == 0 {
+                    // The caret goes on the first line that can hold it, which
+                    // at a soft break is the line it broke *from* — the same
+                    // line a click at that point would have resolved to.
+                    guard local.location < lineRange.upperBound
+                            || line === lines.last else { continue }
+                    let x = line.locationForCharacter(
+                        at: min(local.location, lineRange.upperBound)).x
+                    return [CGRect(x: wrap.x + dx + x, y: top, width: 0, height: height)]
+                }
+                let hit = NSIntersectionRange(local, lineRange)
+                guard hit.length > 0 else { continue }
+                let from = line.locationForCharacter(at: hit.location).x
+                let to = line.locationForCharacter(at: hit.upperBound).x
+                rects.append(CGRect(x: wrap.x + dx + from, y: top,
+                                    width: to - from, height: height))
+            }
+            if !rects.isEmpty { return rects }
+        }
+        return []
+    }
+
+    /// The paragraph offset one visual line up (`-1`) or down (`+1`) from
+    /// `offset`, inside the wrapped cell holding it. Nil when the offset is not
+    /// in a wrapped cell or the move would leave it — the caller then hands the
+    /// key back to ordinary vertical movement, which walks to the row above or
+    /// below.
+    func cellWrapOffset(fromParagraphOffset offset: Int, lineDelta: Int) -> Int? {
+        for (wrap, lines) in resolvedCellWraps where !lines.isEmpty {
+            let cell = NSRange(location: wrap.charStart, length: wrap.styled.length)
+            guard offset >= cell.location, offset <= cell.upperBound else { continue }
+            let local = offset - wrap.charStart
+            guard let index = lines.firstIndex(where: {
+                local < $0.characterRange.upperBound
+            }) ?? (lines.indices.last) else { return nil }
+            let target = index + lineDelta
+            guard lines.indices.contains(target) else { return nil }
+            let here = lines[index], there = lines[target]
+            // Alignment shifts each line independently, so the x has to be
+            // taken back out of the source line's shift and into the target's.
+            let dxHere = cellWrapLineOffset(here, contentWidth: wrap.contentWidth,
+                                            align: wrap.align)
+            let dxThere = cellWrapLineOffset(there, contentWidth: wrap.contentWidth,
+                                             align: wrap.align)
+            let x = here.locationForCharacter(
+                at: min(local, here.characterRange.upperBound)).x
+            let hit = there.characterIndex(
+                for: CGPoint(x: x + dxHere - dxThere, y: there.typographicBounds.midY))
+            guard hit >= 0 else { return nil }
+            return wrap.charStart + hit
+        }
+        return nil
     }
 
     /// Extra row height needed to fit the tallest wrapped cell, beyond the
@@ -311,7 +632,14 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         let tallest = resolvedCellWraps
             .map { $0.lines.reduce(0) { $0 + $1.typographicBounds.height } }
             .max() ?? 0
-        return max(0, tallest - super.layoutFragmentFrame.height)
+        // Measured against the row's own *line* height, not the whole fragment:
+        // the fragment also carries the row's vertical padding, and a row whose
+        // cells all overflow has no visible characters left to give its line any
+        // height at all. Comparing against the fragment then hides the whole
+        // shortfall behind the padding, and the row collapses onto it — which is
+        // what a header of long labels did, while the data rows beside it grew.
+        let lineHeight = textLineFragments.reduce(0) { $0 + $1.typographicBounds.height }
+        return max(0, tallest - lineHeight)
     }
 
     required init?(coder: NSCoder) {
@@ -383,6 +711,11 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             bounds = bounds.union(CGRect(x: containerLeft - 4, y: 0,
                                          width: containerWidth + 8, height: frame.height))
         }
+        // Guides sit left of the item's text, outside the text-hugging frame.
+        if !listGuides.isEmpty {
+            bounds = bounds.union(CGRect(x: containerLeft, y: 0,
+                                         width: containerWidth, height: frame.height))
+        }
         for (offset, overlay) in overlays {
             if let rect = overlayRect(anchorOffset: offset, overlay: overlay) {
                 bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
@@ -393,11 +726,22 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         if let rect = codeBlockLabelRect() {
             bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
         }
+        // The line-ending mark (¬) sits just past the last glyph — give it room.
+        if invisibles != nil {
+            let frame = layoutFragmentFrame
+            bounds = bounds.union(CGRect(x: containerLeft, y: 0,
+                                         width: containerWidth + 12, height: frame.height))
+        }
         return bounds
     }
 
     override func draw(at point: CGPoint, in context: CGContext) {
+        // Focus mode fades this whole fragment — text, boxes, bars, overlays —
+        // as one group. See EditorTextView+FocusMode.
+        let dimming = beginFocusDim(in: context)
+        defer { endFocusDim(dimming, in: context) }
         context.saveGState()
+        drawListGuides(at: point, in: context)
         // Decorations are stacked outermost-first. Each box stops short of the
         // fragment bottom by the padding of the boxes drawn before it, so an
         // outer box's bottom padding stays visible *below* an inner nested box
@@ -430,7 +774,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
                 NSGraphicsContext.saveGraphicsState()
                 NSGraphicsContext.current = nsContext
-                image.draw(in: drawRect, from: .zero, operation: .sourceOver,
+                image.draw(in: deviceAligned(drawRect, in: context), from: .zero,
+                           operation: .sourceOver,
                            fraction: 1, respectFlipped: true, hints: nil)
                 NSGraphicsContext.restoreGraphicsState()
             } else if let path = overlay.path, let color = overlay.pathColor {
@@ -452,17 +797,17 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         }
         // Overflowing table cells: the real characters are hidden, so draw
         // each cell's pre-wrapped lines here instead, stacked top-down at the
-        // cell's column x. Left-aligned regardless of the column's declared
-        // alignment (ponytail: not requested; upgrade path is the same
-        // per-line x-shift math the kern-based alignment above already uses).
-        for cellWrap in resolvedCellWraps {
-            var y = point.y
-            for line in cellWrap.lines {
-                line.draw(at: CGPoint(x: point.x + cellWrap.x, y: y), in: context)
+        // cell's column x, each line shifted for the column's alignment.
+        for (wrap, lines) in resolvedCellWraps {
+            var y = point.y + cellWrapTopInset
+            for line in lines {
+                let dx = cellWrapLineOffset(line, contentWidth: wrap.contentWidth, align: wrap.align)
+                line.draw(at: CGPoint(x: point.x + wrap.x + dx, y: y), in: context)
                 y += line.typographicBounds.height
             }
         }
         drawCodeBlockLabel(at: point, in: context)
+        drawInvisibles(at: point, in: context)
     }
 
     /// The excess of this row's glyph cap-top gap (baseline minus capHeight)
@@ -533,6 +878,21 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         NSGraphicsContext.restoreGraphicsState()
     }
 
+    /// `rect` with its origin moved to the nearest whole device pixel, leaving
+    /// its size alone. An overlay is anchored to a text baseline (and display
+    /// math to a centered x), so its origin is essentially never pixel-aligned —
+    /// and a bitmap blitted to a fractional device offset gets resampled, which
+    /// spread the same ink over ~39% more device pixels and made equations look
+    /// bolder in Edit mode than in Read mode. Rounding happens in *device* space,
+    /// not user space, because a scrolled clip view can leave the CTM's own
+    /// translation on a fraction of a point.
+    private func deviceAligned(_ rect: CGRect, in context: CGContext) -> CGRect {
+        var device = context.convertToDeviceSpace(rect.origin)
+        device.x.round()
+        device.y.round()
+        return CGRect(origin: context.convertToUserSpace(device), size: rect.size)
+    }
+
     /// Fragment-local rect for an overlay image, anchored to the character at
     /// the given paragraph-relative offset.
     private func overlayRect(anchorOffset: Int, overlay: FragmentOverlay) -> CGRect? {
@@ -560,6 +920,60 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                   .font, at: line.characterRange.location, effectiveRange: nil) as? NSFont
         else { return nil }
         return line.typographicBounds.minY + line.glyphOrigin.y - font.ascender
+    }
+
+    /// The gray for editor chrome drawn as thin lines (table borders, list
+    /// indent guides). In dark mode `separatorColor` is ~10% ink and all but
+    /// vanishes, so use the shared marker gray there; light mode keeps
+    /// `separatorColor`. Read mode's `--table-border` matches.
+    private var chromeLineColor: NSColor {
+        NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? EditorTextView.darkRuleGray : NSColor.separatorColor
+    }
+
+    /// Vertical hairlines marking a list item's indent columns, drawn under the
+    /// text. Offsets are container-relative, so they land on the same columns as
+    /// the markers no matter how this item's own first line is indented (an
+    /// ordered or active marker shifts `point.x`, which is the *text* start —
+    /// hence `containerLeft` rather than `point.x` alone). They are measured
+    /// from the container's text origin, which sits `lineFragmentPadding` in
+    /// from its left edge — the same origin the paragraph's head indents use.
+    ///
+    /// All but the last offset are the item's ancestor columns, spanning its
+    /// whole height: consecutive list items tile with no gap (list paragraphs
+    /// carry no paragraph spacing), so the per-fragment fills read as one
+    /// continuous line down a nested run. Height is `decorationDrawHeight`, not
+    /// the raw frame, so a list at the end of the document doesn't paint a stub
+    /// over the absorbed trailing empty line.
+    ///
+    /// The last offset is the item's *own* column, drawn only from its second
+    /// line down — a wrapped continuation line then stays visibly tied to its
+    /// own bullet, while the first line leaves room for the marker itself.
+    private func drawListGuides(at point: CGPoint, in context: CGContext) {
+        guard !listGuides.isEmpty else { return }
+        // Filled at exactly one device pixel rather than stroked, for the same
+        // reason as the table's column borders — see `.tableRow`.
+        let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
+        let hairline = 1 / scale
+        let padding = textLayoutManager?.textContainer?.lineFragmentPadding ?? 0
+        let originX = point.x + containerLeft + padding
+        let height = decorationDrawHeight
+        context.setFillColor(chromeLineColor.cgColor)
+
+        func fill(_ offset: CGFloat, from top: CGFloat) {
+            guard height > top else { return }
+            let lineX = (((originX + offset) * scale).rounded()) / scale
+            context.fill(CGRect(x: lineX, y: point.y + top,
+                                width: hairline, height: height - top))
+        }
+
+        for offset in listGuides.dropLast() { fill(offset, from: 0) }
+        // Second *real* line: a trailing zero-length line is the document's
+        // final empty line absorbed into this fragment, not a wrapped line.
+        if let wrapped = textLineFragments.filter({ $0.characterRange.length > 0 })
+            .dropFirst().first, let own = listGuides.last {
+            fill(own, from: wrapped.typographicBounds.minY)
+        }
     }
 
     private func drawDecoration(_ decoration: BlockDecoration, at point: CGPoint,
@@ -621,17 +1035,10 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             context.fill(CGRect(x: point.x - width + decoration.inset, y: barTop,
                                 width: width, height: barHeight))
 
-        case .tableRow(let xOffsets, let width, let leftInset, let separator, let bottomBorder):
+        case .tableRow(let xOffsets, let width, let leftInset, let separator,
+                       let bottomBorder, let topInset):
             // Offsets are text-relative; the fragment's origin is the text start.
-            // In dark mode `separatorColor` is ~10% ink and the grid all but
-            // vanishes, so use the shared marker gray there; light mode keeps
-            // separatorColor. Read mode's --table-border matches.
-            let darkChrome = NSAppearance.currentDrawing()
-                .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let borderColor = (darkChrome ? EditorTextView.darkRuleGray
-                                          : NSColor.separatorColor)
-            context.setStrokeColor(borderColor.cgColor)
-            context.setLineWidth(1)
+            let borderColor = chromeLineColor
             // Column borders are FILLED at exactly one device pixel rather than
             // stroked: a 1pt stroke straddling a pixel boundary lands on two
             // device rows on a Retina display, which made the verticals read
@@ -641,22 +1048,34 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             let scale = max(1, abs(context.convertToDeviceSpace(CGSize(width: 1, height: 1)).width))
             let hairline = 1 / scale
             context.setFillColor(borderColor.cgColor)
-            for x in xOffsets {
-                let lineX = (((point.x + x) * scale).rounded()) / scale
-                context.fill(CGRect(x: lineX, y: point.y,
-                                    width: hairline, height: frame.height))
+            // The table is closed on all four sides, like Notes': the two outer
+            // verticals join the column borders, and the header carries the top
+            // rule the way the last row carries the bottom one. A closed grid is
+            // also what lets a cell-selection box stand on a real line wherever
+            // it is drawn, rather than floating at an open edge.
+            for x in [0] + xOffsets + [width - leftInset] {
+                let lineX = (((point.x + x - (x == 0 ? leftInset : 0)) * scale).rounded()) / scale
+                context.fill(CGRect(x: lineX, y: point.y + topInset,
+                                    width: hairline, height: frame.height - topInset))
             }
-            if separator {
-                let y = round(point.y + frame.height / 2) + 0.5
-                context.move(to: CGPoint(x: point.x - leftInset, y: y))
-                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
+            // Filled at one device pixel, exactly like the column borders above
+            // — a 1pt stroke is two device rows on a Retina display, which is
+            // what made the row rules read twice the weight of the verticals
+            // they meet. The whole grid is one hairline now.
+            func rule(atY y: CGFloat) {
+                let lineY = ((y * scale).rounded()) / scale
+                context.fill(CGRect(x: point.x - leftInset, y: lineY,
+                                    width: width, height: hairline))
             }
-            if bottomBorder {
-                let y = round(point.y + frame.height) + 0.5
-                context.move(to: CGPoint(x: point.x - leftInset, y: y))
-                context.addLine(to: CGPoint(x: point.x - leftInset + width, y: y))
-            }
-            context.strokePath()
+            // `topInset` is reserved only by the header row, so it also says
+            // which row owns the table's top edge.
+            if topInset > 0 { rule(atY: point.y + topInset) }
+            if separator { rule(atY: point.y + frame.height / 2) }
+            // Inside the drawing row, not below it: the row beneath repaints on
+            // its own (a caret move restyles one row and dirties only its
+            // rect), and it would erase a line it knows nothing about — the row
+            // that owns the line never being asked to draw it again.
+            if bottomBorder { rule(atY: point.y + frame.height - hairline) }
 
         case .horizontalRule(let color, let centerOffset):
             // Filled at a fixed 3 device pixels (1.5pt on Retina) rather than
@@ -712,7 +1131,22 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
         // fragment so its draw can disable antialiasing. (A `.codeBlockLabel`
         // line always also carries the box decoration, so it needs no extra
         // clause here.)
+        let invisibles = self.invisibles
+        // Read only when the setting is on, so a list-heavy document keeps the
+        // plain fast path with guides off (the default).
+        let listGuides = showListIndentGuides
+            ? (str.attribute(.listGuides, at: 0, effectiveRange: nil) as? [CGFloat] ?? [])
+            : []
+        // Focus mode dims from inside the fragment's own draw, so while it is on
+        // every paragraph needs the custom fragment — a plain one has no draw to
+        // hook. (Vending one costs nothing here: with no decorations, overlays
+        // or cell wraps its init does no work.) Only this plain ↔ decorated
+        // swap needs the re-vend a `refreshOverdraw()` forces; whether a
+        // decorated fragment actually dims is read live from `owner`, so
+        // turning the mode *off* takes effect on the next redraw.
+        let focusMode = self.focusMode
         guard !decorations.isEmpty || !overlays.isEmpty || !cellWraps.isEmpty || !textAntialias
+                || (invisibles?.drawsAnything ?? false) || !listGuides.isEmpty || focusMode
         else {
             return NSTextLayoutFragment(textElement: textElement,
                                         range: textElement.elementRange)
@@ -725,7 +1159,10 @@ extension EditorTextView: NSTextLayoutManagerDelegate {
                                            antialias: textAntialias,
                                            codeBlockLabel: codeBlockLabelValue,
                                            codeBlockLabelAnchor: codeBlockLabelAnchorValue,
-                                           codeBlockLabelFont: codeBlockLabelFont)
+                                           codeBlockLabelFont: codeBlockLabelFont,
+                                           invisibles: invisibles,
+                                           listGuides: listGuides,
+                                           owner: self)
     }
 }
 

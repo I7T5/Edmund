@@ -82,6 +82,12 @@ write-ups:
 - [`macos-integrations.md`](macos-integrations.md) — Services, App Intents,
   Quick Look preview, AppleScript syntax; and the two signing/toolchain
   limitations (App Intents metadata, ad-hoc appex launch).
+- [`editor-affordances.md`](editor-affordances.md) — the editor-only display
+  features: invisibles, list indent guides, line numbers, focus mode, and the
+  re-vend rule (`refreshOverdraw()`) they all depend on.
+- [`hard-wrap.md`](hard-wrap.md) — hard wrap as a property of the *file*:
+  unwrap on open, re-wrap on save, and how the column is derived from the
+  file's own existing breaks.
 - Planned, not yet written: `edit-flow-and-undo.md`,
   `app-shell-and-settings.md`.
 

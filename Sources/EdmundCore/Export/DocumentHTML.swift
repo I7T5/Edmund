@@ -1,11 +1,10 @@
 import AppKit
-import SwiftMath
 
 // MARK: - DocumentHTML
 //
 // Assembles the full, self-contained HTML document for Read mode and PDF export:
 // the `HTMLRenderer` body, the `HTMLTheme` stylesheet, and a second pass that
-// fills the renderer's placeholder elements with inlined assets (SwiftMath
+// fills the renderer's placeholder elements with inlined assets (math
 // glyphs and local images) as data URIs. Callout/checkbox icons are inline
 // Lucide SVGs emitted by `HTMLRenderer` (no asset pass needed). Inlining keeps
 // the document self-contained — the webview needs no file/network access.
@@ -40,7 +39,7 @@ enum DocumentHTML {
         """
     }
 
-    // MARK: Math (SwiftMath → PNG data URI)
+    // MARK: Math (active engine → PNG data URI)
 
     private static let inlineMathPattern = "<span class=\"math-inline\" data-tex=\"([^\"]*)\"></span>"
     // Group 1 is the block's `edmund-l<N>` source-line anchor (see
@@ -53,29 +52,42 @@ enum DocumentHTML {
     private static let displayInlineMathPattern = "<span class=\"math-display-inline\" data-tex=\"([^\"]*)\"></span>"
 
     private static func fillMath(_ html: String, theme: EditorTheme, dark: Bool) -> String {
-        let color = NSColor(hex: dark ? "#e6e6e6" : "#1a1a1a") ?? .textColor
+        // Same ink as the editor draws its equations in — one definition for both
+        // modes (EditorTheme.bodyTextColor). Resolved against `dark` rather than
+        // the current appearance because an export can target either.
+        let color = EditorTheme.bodyTextColorResolved(dark: dark)
         var out = replaceMatches(html, pattern: displayMathPattern) { groups in
             let id = groups[1]
             let tex = unescapeAttr(groups[2])
-            guard let r = mathImage(latex: tex, display: true,
-                                    fontSize: theme.fontSize, color: color),
-                  let data = pngData(r.image, scale: 2) else {
+            guard let r = MathRendering.shared.render(latex: tex, displayMode: true,
+                                                      pointSize: theme.fontSize, color: color),
+                  let png = pngData(r.image, scale: 2) else {
                 return "<div\(id) class=\"math-display\"><code>\(HTMLRenderer.escape(tex))</code></div>"
             }
-            let uri = "data:image/png;base64,\(data.base64EncodedString())"
-            return "<div\(id) class=\"math-display\"><img class=\"math\" style=\"height:\(fmt(r.image.size.height))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></div>"
+            let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
+            return "<div\(id) class=\"math-display\"><img class=\"math\" style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></div>"
         }
         out = replaceMatches(out, pattern: inlineMathPattern) { groups in
             let tex = unescapeAttr(groups[1])
-            guard let r = mathImage(latex: tex, display: false,
-                                    fontSize: theme.fontSize, color: color),
-                  let data = pngData(r.image, scale: 2) else {
+            guard let r = MathRendering.shared.render(latex: tex, displayMode: false,
+                                                      pointSize: theme.fontSize, color: color),
+                  let png = pngData(r.image, scale: 2) else {
                 return "<code>\(HTMLRenderer.escape(tex))</code>"
             }
-            let uri = "data:image/png;base64,\(data.base64EncodedString())"
-            // Drop the image so its baseline (descent above its bottom) lands on
-            // the text baseline — same alignment the editor computes.
-            return "<img class=\"math math-inline\" style=\"height:\(fmt(r.image.size.height))px; vertical-align:\(fmt(-r.descent))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\">"
+            let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
+            // Explicit width AND height, derived from the PNG's own pixel
+            // dimensions (not independently rounded from the NSImage's point
+            // size) — guarantees an exact native-pixel-to-CSS-pixel ratio, so
+            // the browser scales the bitmap by precisely 2x with no resampling.
+            // A width/height that's merely "close" to 2x (e.g. 91 native px
+            // shown at a declared 45px — ratio 2.02, not 2.0) still forces a
+            // slight resample, which measurably thinned 1-2px strokes like the
+            // "=" sign's bars (confirmed via connected-component pixel
+            // measurement, not guessed). `vertical-align` is a position, not a
+            // size, so rounding it to a whole pixel (separately) still avoids
+            // the sub-pixel compositing blur that caused — same reasoning,
+            // different axis.
+            return "<img class=\"math math-inline\" style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px; vertical-align:\(fmt(-r.descent.rounded()))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\">"
         }
         out = replaceMatches(out, pattern: displayInlineMathPattern) { groups in
             let tex = unescapeAttr(groups[1])
@@ -83,42 +95,15 @@ enum DocumentHTML {
             // block (a `<span>` promoted to display:block, since the placeholder
             // sits inside a `<p>` where a `<div>` would be invalid). The
             // paragraph's text keeps flowing above and below it.
-            guard let r = mathImage(latex: tex, display: true,
-                                    fontSize: theme.fontSize, color: color),
-                  let data = pngData(r.image, scale: 2) else {
+            guard let r = MathRendering.shared.render(latex: tex, displayMode: true,
+                                                      pointSize: theme.fontSize, color: color),
+                  let png = pngData(r.image, scale: 2) else {
                 return "<span class=\"math-display-block\"><code>\(HTMLRenderer.escape(tex))</code></span>"
             }
-            let uri = "data:image/png;base64,\(data.base64EncodedString())"
-            return "<span class=\"math-display-block\"><img class=\"math\" style=\"height:\(fmt(r.image.size.height))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></span>"
+            let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
+            return "<span class=\"math-display-block\"><img class=\"math\" style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(tex))\"></span>"
         }
         return out
-    }
-
-    /// Renders LaTeX with SwiftMath to an image + baseline descent. Standalone
-    /// (no `EditorTextView`) mirror of `EditorTextView.mathOverlay`'s core.
-    private static func mathImage(latex: String, display: Bool,
-                                  fontSize: CGFloat, color: NSColor)
-        -> (image: NSImage, descent: CGFloat)? {
-        let mode: MTMathUILabelMode = display ? .display : .text
-        let math = MTMathImage(latex: latex, fontSize: fontSize, textColor: color, labelMode: mode)
-        // Inset gives the rasterizer room so a glyph's ink overshoot isn't
-        // cropped — top/bottom for descenders, right for an italic glyph's
-        // top hook (e.g. a lone `F`). Mirrors EditorTextView.mathOverlay.
-        let insetPad: CGFloat = 2
-        math.contentInsets = MTEdgeInsets(top: insetPad, left: 0, bottom: insetPad, right: insetPad)
-        let (error, image) = math.asImage()
-        guard error == nil, let image else { return nil }
-
-        let label = MTMathUILabel()
-        label.latex = latex
-        label.fontSize = fontSize
-        label.labelMode = mode
-        label.layout()
-        let asc = label.displayList?.ascent ?? 0
-        let desc = label.displayList?.descent ?? 0
-        let clamped = max(asc + desc, fontSize / 2)
-        let descent = (asc + desc - clamped) / 2 + desc + insetPad
-        return (image, descent)
     }
 
     // MARK: Images (local → inlined data URI; remote → off by default)
@@ -222,14 +207,32 @@ enum DocumentHTML {
 
     // MARK: Bitmap / escaping helpers
 
+    /// A rasterized PNG plus the CSS `width`/`height` (`pixelSize / scale`)
+    /// that exactly matches it — declaring anything else forces WebKit to
+    /// resample the bitmap, which is what was thinning 1-2px strokes.
+    private struct PNGResult {
+        let data: Data
+        let pixelSize: CGSize
+        let scale: CGFloat
+        var cssWidth: CGFloat { pixelSize.width / scale }
+        var cssHeight: CGFloat { pixelSize.height / scale }
+    }
+
     /// Rasterizes an `NSImage` to PNG `Data` at `scale`× its point size.
-    private static func pngData(_ image: NSImage, scale: CGFloat) -> Data? {
+    /// Returns the PNG's actual pixel dimensions alongside it — those, not an
+    /// independent re-rounding of `image.size * scale`, are what the caller
+    /// must derive the `<img>`'s CSS size from, or the two roundings can
+    /// disagree and leave a non-exact scale ratio (see `PNGResult`).
+    private static func pngData(_ image: NSImage, scale: CGFloat) -> PNGResult? {
         let size = image.size
-        guard size.width > 0, size.height > 0,
+        guard size.width > 0, size.height > 0 else { return nil }
+        let pixelsWide = Int((size.width * scale).rounded())
+        let pixelsHigh = Int((size.height * scale).rounded())
+        guard pixelsWide > 0, pixelsHigh > 0,
               let rep = NSBitmapImageRep(
                 bitmapDataPlanes: nil,
-                pixelsWide: Int((size.width * scale).rounded()),
-                pixelsHigh: Int((size.height * scale).rounded()),
+                pixelsWide: pixelsWide,
+                pixelsHigh: pixelsHigh,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
         rep.size = size
@@ -237,7 +240,8 @@ enum DocumentHTML {
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         image.draw(in: NSRect(origin: .zero, size: size))
         NSGraphicsContext.restoreGraphicsState()
-        return rep.representation(using: .png, properties: [:])
+        guard let data = rep.representation(using: .png, properties: [:]) else { return nil }
+        return PNGResult(data: data, pixelSize: CGSize(width: pixelsWide, height: pixelsHigh), scale: scale)
     }
 
     /// Reverses the HTML-attribute escaping done by `HTMLRenderer.attr` so the
