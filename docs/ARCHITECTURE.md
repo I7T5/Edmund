@@ -315,6 +315,17 @@ Notable subsystems:
   `http`/`https`/`mailto` links open in the browser, `file:`/unknown
   schemes cancelled; wikilinks/relative links use private
   `x-edmund-wiki:`/`x-edmund-link:` schemes the nav coordinator intercepts.
+  The same channel carries the two in-page actions: a code block's copy
+  button (`x-edmund-copy:<base64>`, handled in the web view) and a task
+  item's checkbox (`x-edmund-task:<sourceLine>` → `ReadModeWebView.onToggleTask`
+  → `Document` → `editor.toggleTask(atLine:)` on the hidden editor, then
+  `setTaskChecked` patches the box's DOM in place over the host-side JS
+  channel — never a reload, which blanks a frame and lands the scroll only
+  as near as the anchor restore can; formatting edits post no
+  `NSText.didChangeNotification`, so nothing else refreshes). Line numbers in that HTML are **source**
+  lines: `HTMLRenderer.preprocess` strips front matter and block `%%` comments
+  before swift-markdown parses, and reports what it cut so `originalLine`
+  can map back — the `edmund-l<N>` anchors below use the same map.
   **Inspect Reader (⌥⌘I)** is a semi-toggle on `Document`, not on the web
   view, so it works from Edit too: it switches to Read and opens WebKit's
   private `_inspector`, and closes it when already up; entering Edit always

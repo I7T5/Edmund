@@ -25,6 +25,7 @@ import ScreenCaptureKit
 ///   find on|off|replace  open/close the find bar (⌘F's own handler) without
 ///                     activating the app the way an AX-driven ⌘F would
 ///   readscroll <y>    raw-scroll the Read-mode webview to y
+///   readclick <css>   click the first element matching a CSS selector in Read
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
 ///   logtoolbar        log every toolbar item's identifier and enabled state
@@ -251,6 +252,21 @@ enum ReproScript {
                     web.evaluateJavaScript("document.scrollingElement.scrollTop = \(y)",
                                            completionHandler: nil)
                     Log.info("repro readscroll y=\(y)", category: .app)
+                }
+            case "readclick":
+                // Clicks the first element matching a CSS selector in the
+                // Read-mode webview. A synthetic `click()` on an `<a>` still
+                // navigates, so a private-scheme link (`a.task-toggle`,
+                // `a.code-copy-btn`) takes the real policy-delegate path.
+                scheduleDoc(after: delay) { doc in
+                    guard let content = doc.windowControllers.first?.window?.contentView,
+                          let web = firstWebView(in: content) else {
+                        Log.info("repro readclick: no webview", category: .app); return
+                    }
+                    let selector = arg.replacingOccurrences(of: "'", with: "\\'")
+                    web.evaluateJavaScript("document.querySelector('\(selector)').click()",
+                                           completionHandler: nil)
+                    Log.info("repro readclick \(arg)", category: .app)
                 }
             case "logstate":
                 // Dumps view-swap state to stdout (shell-visible even when the
