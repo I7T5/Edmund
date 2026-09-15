@@ -194,8 +194,7 @@ struct TableWrapRenderingTests {
             #expect(cellWrapLineOffset(last, contentWidth: wrap.contentWidth, align: .left) == 0)
             if align == .right {
                 // Right-aligned means the line's *visible* text ends at the
-                // column edge. The cell's trailing space (`… |`) is excluded
-                // on purpose — counting it would push the text a space short.
+                // column edge.
                 let text = last.attributedString.attributedSubstring(from: last.characterRange)
                 let full = text.size().width
                 let lastInk = (text.string as NSString).rangeOfCharacter(
@@ -203,7 +202,13 @@ struct TableWrapRenderingTests {
                 let visible = text.attributedSubstring(
                     from: NSRange(location: 0, length: lastInk.upperBound)).size().width
                 #expect(abs(offset + visible - wrap.contentWidth) < 0.5)
-                #expect(full > visible)
+                // The cell's padding (`| … |`) never enters the scratch layout
+                // at all — a leading space could take a narrow column's first
+                // line by itself — so the last line ends on ink, and the full
+                // and visible widths are one and the same.
+                #expect(abs(full - visible) < 0.5)
+                #expect(!wrap.styled.string.hasPrefix(" "))
+                #expect(!wrap.styled.string.hasSuffix(" "))
             }
         }
     }
@@ -228,7 +233,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(let offsets, _, _, _, _)? =
+            if case .tableRow(let offsets, _, _, _, _, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 offsetsPerRow.append(offsets)
             }
@@ -240,7 +245,7 @@ struct TableWrapRenderingTests {
         #expect(offsetsPerRow.dropFirst().allSatisfy { $0 == offsetsPerRow[0] })
     }
 
-    @Test("Interior data rows get a bottom grid line; header, separator and last row don't")
+    @Test("Every data row gets a bottom grid line, the last one included")
     func bottomBorderOnDataRowsOnly() {
         let editor = makeEditor()
         let styled = editor.styleBlock("| a | b |\n|---|---|\n| x | y |\n| p | q |", cursorPosition: nil)
@@ -248,7 +253,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(_, _, _, _, let bottomBorder)? =
+            if case .tableRow(_, _, _, _, let bottomBorder, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 bottoms.append(bottomBorder)
             }
@@ -256,9 +261,11 @@ struct TableWrapRenderingTests {
             guard nl.location != NSNotFound else { break }
             lineStart = nl.upperBound
         }
-        // Rows: header, separator, "x | y", "p | q". The last row draws no
-        // bottom rule — the table's bottom edge is open.
-        #expect(bottoms == [false, false, true, false])
+        // Rows: header, separator, "x | y", "p | q". The last row draws its
+        // rule too — the table is closed on all four sides, like Notes'. The
+        // header's own top rule rides its `topInset`, not this flag, and the
+        // separator draws the header divider through its middle instead.
+        #expect(bottoms == [false, false, true, true])
     }
 
     @Test("distributeColumnWidths keeps under-fair-share columns, clamps the rest")
@@ -273,5 +280,40 @@ struct TableWrapRenderingTests {
     func distributeColumnWidthsNoOp() {
         let result = distributeColumnWidths(natural: [20, 30], available: 1000, minWidth: 10)
         #expect(result == [20, 30])
+    }
+}
+
+@Suite("Table width follows the column")
+@MainActor
+struct TableWidthFollowsColumnTests {
+    /// A table's column widths are clamped to the line width when it is
+    /// styled. Narrowing the column afterwards (⌘0 then ⌘−, where the theme is
+    /// applied before the width shrinks; a window pulled in) must restyle the
+    /// table, or its row is wider than the line and TextKit 2 force-wraps it —
+    /// the second column's cells landing on a near-zero-height second line
+    /// drawn over the first column's text.
+    @Test("Narrowing the content column re-fits a wrapped table's row")
+    func narrowingRefitsTable() {
+        let editor = makeEditor()
+        editor.updateContentInset()
+        let longText = Array(repeating: "overflow", count: 30).joined(separator: " ")
+        editor.loadContent("Intro.\n\n| \(longText) | b |\n|---|---|\n| x | y |\n")
+        ensureFullLayout(editor); layOutViewport(editor)
+        let table = editor.blocks.firstIndex { $0.kind == .table }!
+        func rowWidth() -> CGFloat {
+            guard case .tableRow(_, let width, _, _, _, _)? = blockDecoration(
+                at: editor.blocks[table].range.location, in: editor)?.kind
+            else { return -1 }
+            return width
+        }
+        let wide = rowWidth()
+        #expect(wide > 0)
+
+        editor.maxContentWidthPoints = editor.availableContentWidth * 0.6
+        ensureFullLayout(editor); layOutViewport(editor)
+        let narrow = rowWidth()
+        #expect(narrow < wide, "the table kept its width for the wider column")
+        #expect(narrow <= editor.availableContentWidth + 0.5,
+                "the table is wider than the line it sits on")
     }
 }

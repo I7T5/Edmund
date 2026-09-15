@@ -284,6 +284,52 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource == "Plain")
     }
 
+    @Test func headingStepsUpFromBodyAndHoldsAtSix() {
+        let e = mk("Title", NSRange(location: 0, length: 0))
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "# Title")
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "## Title")
+        e.applyHeadingLevel(6)
+        e.formatIncrementHeading(nil)     // the end holds, no wrap to body
+        #expect(e.rawSource == "###### Title")
+    }
+
+    @Test func headingStepsDownToBodyAndHoldsThere() {
+        let e = mk("## Title", NSRange(location: 0, length: 0))
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "# Title")
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "Title")
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "Title")
+    }
+
+    /// Each line steps from its own level; blank lines stay blank.
+    @Test func headingStepKeepsAMixedSelectionsRelativeLevels() {
+        let text = "# One\n\nThree\n### Four"
+        let e = mk(text, NSRange(location: 0, length: (text as NSString).length))
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "## One\n\n# Three\n#### Four")
+    }
+
+    /// A Read-mode checkbox click arrives as a source line, not a selection.
+    @Test func toggleTaskByLineFlipsTheBoxAndKeepsTheCaret() {
+        let e = mk("# Title\n\n- [ ] one\n  * [x] two\n3. [ ] three\nplain", NSRange(location: 0, length: 0))
+        e.viewMode = .reading
+        #expect(e.toggleTask(atLine: 3) == true)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [x] two\n3. [ ] three\nplain")
+        #expect(e.toggleTask(atLine: 4) == false)   // indented, `*` bullet, checked → unchecked
+        #expect(e.toggleTask(atLine: 5) == true)    // ordered task
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [x] three\nplain")
+        #expect(e.toggleTask(atLine: 6) == nil)     // not a task: untouched
+        #expect(e.toggleTask(atLine: 1) == nil)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [x] three\nplain")
+        #expect(e.selectedRange() == NSRange(location: 0, length: 0))
+        e.undo(nil)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [ ] three\nplain")
+    }
+
     @Test func checklistAddsThenTogglesMark() {
         let e = mk("task", NSRange(location: 0, length: 0))
         e.formatChecklist(nil)
@@ -725,24 +771,45 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         _ = doc
     }
 
-    @Test func insertsSyntaxWithCaretInAltSlot() {
+    @Test func insertsSyntaxWithAltPlaceholderSelected() {
         let (e, doc) = editorInDocument(at: "/notes/journal.md")
         e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
-        #expect(e.rawSource == "![](cat.png)")
-        #expect(e.selectedRange() == NSRange(location: 2, length: 0))  // "![|](cat.png)"
+        #expect(e.rawSource == "![alt text](cat.png)")
+        // "![<alt text>](cat.png)" — typing replaces the placeholder.
+        #expect(e.selectedRange() == NSRange(location: 2, length: 8))
         _ = doc
     }
 
     @Test func insertsAtTheCaretWithinExistingText() {
         let (e, doc) = editorInDocument(at: "/notes/journal.md", "see ", NSRange(location: 4, length: 0))
         e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
-        #expect(e.rawSource == "see ![](cat.png)")
+        #expect(e.rawSource == "see ![alt text](cat.png)")
+        #expect(e.selectedRange() == NSRange(location: 6, length: 8))
+        _ = doc
+    }
+
+    /// A Finder drag of several files inserts one image per block.
+    @Test func insertsMultipleImagesBlankLineSeparated() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        e.insertImages(at: [URL(fileURLWithPath: "/notes/cat.png"),
+                            URL(fileURLWithPath: "/notes/dog.png")])
+        #expect(e.rawSource == "![alt text](cat.png)\n\n![alt text](dog.png)")
+        // The first image's placeholder is the one selected.
+        #expect(e.selectedRange() == NSRange(location: 2, length: 8))
+        _ = doc
+    }
+
+    @Test func insertingNoImagesIsANoOp() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md", "hi", NSRange(location: 2, length: 0))
+        e.insertImages(at: [])
+        #expect(e.rawSource == "hi")
         _ = doc
     }
 
     @Test func storageMatchesOracleAfterInsert() {
         let (e, doc) = editorInDocument(at: "/notes/journal.md", "see ", NSRange(location: 4, length: 0))
         e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
+        #expect(e.rawSource == "see ![alt text](cat.png)")
         drainAllStyling(e)
         assertMatchesFullRecomposeOracle(e)
         _ = doc

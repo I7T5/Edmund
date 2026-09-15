@@ -67,8 +67,53 @@ struct HTMLRendererCoreTests {
         #expect(html("1. a").hasPrefix("<ol id=\"edmund-l1\">"))
         #expect(html("3. a\n4. b").hasPrefix("<ol id=\"edmund-l1\" start=\"3\">"))
         let task = html("- [ ] todo\n- [x] done")
-        #expect(task.contains("<li class=\"task\"><span class=\"task-check task-check--unchecked\"><svg"))
-        #expect(task.contains("<span class=\"task-check task-check--checked\"><svg"))
+        // The box is a link (the read view intercepts the scheme) that keeps
+        // the `.task-check` classes, so the CSS still reaches it as a child.
+        #expect(task.contains("<li class=\"task\"><a href=\"x-edmund-task:1\" "
+                              + "class=\"task-check task-check--unchecked\"><svg"))
+        #expect(task.contains("<a href=\"x-edmund-task:2\" class=\"task-check task-check--checked\"><svg"))
+    }
+
+    /// A tight list drops the item's <p>, which is what the checked-item
+    /// strike-through rule matched — so tight task text, nested or not, gets a
+    /// span the rule also targets. Loose items keep their <p>.
+    @Test("Tight task text stays addressable for the checked strike-through")
+    func tightTaskTextSpan() {
+        let tight = html("- [x] done\n  - [x] deep")
+        #expect(tight.contains("</a><span class=\"task-text\">done</span><ul>"))
+        #expect(tight.contains("</a><span class=\"task-text\">deep</span></li>"))
+        let loose = html("- [x] done\n\n- [ ] todo")
+        #expect(loose.contains("</a><p>done</p></li>"))
+        #expect(!loose.contains("task-text"))
+        // Plain items are untouched.
+        #expect(!html("- a\n- b").contains("task-text"))
+    }
+
+    /// The checkbox link carries the item's line in the *document's* numbering,
+    /// including nested items — the editor flips that line.
+    @Test("A nested task's checkbox link names its own source line")
+    func nestedTaskLine() {
+        let out = html("intro\n\n- a\n  - [ ] deep")
+        #expect(out.contains("href=\"x-edmund-task:4\""))
+    }
+
+    /// Front matter and block `%%` comments are cut out before parsing, so
+    /// swift-markdown's lines are short by what was cut; anchors and checkbox
+    /// links have to be in source lines or a click lands on the wrong item.
+    @Test("Anchors and checkbox links count lines the strips removed")
+    func lineNumbersSurviveStripping() {
+        let fm = html("---\ntitle: x\n---\n\n- [ ] first")
+        #expect(fm.contains("<ul id=\"edmund-l5\">"))
+        #expect(fm.contains("href=\"x-edmund-task:5\""))
+
+        let comment = html("para\n\n%%\nhidden\n%%\n\n- [ ] after")
+        #expect(comment.contains("id=\"edmund-l1\">para"))
+        #expect(comment.contains("href=\"x-edmund-task:7\""))
+
+        // Both at once: the comment's line is reported after the front matter
+        // was already cut, and the two offsets add up.
+        let both = html("---\nt: 1\n---\n\n%%\nhidden\n%%\n\n- [x] last")
+        #expect(both.contains("href=\"x-edmund-task:9\""))
     }
 
     @Test("A loose list (blank line between items) keeps <p> wrappers")
