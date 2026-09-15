@@ -111,6 +111,11 @@ extension EditorTextView {
         applyHeadingLevel((sender as? NSMenuItem)?.tag ?? 1)
     }
 
+    /// One level deeper / shallower: body → H1 → … → H6, and back down to body.
+    /// The ends hold (H6 stays H6, body stays body) rather than wrapping.
+    @objc public func formatIncrementHeading(_ sender: Any?) { stepHeadingLevel(by: 1) }
+    @objc public func formatDecrementHeading(_ sender: Any?) { stepHeadingLevel(by: -1) }
+
     /// Callout type read from the menu item's `representedObject` (pre-cased:
     /// uppercase for GitHub alerts, lowercase for Obsidian callouts).
     @objc public func formatCallout(_ sender: Any?) {
@@ -229,6 +234,7 @@ extension EditorTextView {
         #selector(formatChecklist(_:)), #selector(formatBlockQuote(_:)), #selector(formatThematicBreak(_:)),
         #selector(formatCodeBlock(_:)), #selector(formatMathBlock(_:)), #selector(formatTable(_:)),
         #selector(formatHeading(_:)), #selector(formatCallout(_:)),
+        #selector(formatIncrementHeading(_:)), #selector(formatDecrementHeading(_:)),
         #selector(formatAttachImage(_:)),
     ]
 
@@ -252,6 +258,19 @@ extension EditorTextView {
                 guard !line.isEmpty else { return line }
                 let stripped = self.stripLeadingHashes(line)
                 return allAtLevel ? stripped : String(repeating: "#", count: level) + " " + stripped
+            }
+        }
+    }
+
+    /// Per selected line, like `applyHeadingLevel`; each line steps from its
+    /// own level, so a mixed selection keeps its relative structure.
+    func stepHeadingLevel(by delta: Int) {
+        transformSelectedLines { lines in
+            lines.map { line in
+                guard !line.isEmpty else { return line }
+                let level = min(6, max(0, self.leadingHashCount(line) + delta))
+                let stripped = self.stripLeadingHashes(line)
+                return level == 0 ? stripped : String(repeating: "#", count: level) + " " + stripped
             }
         }
     }

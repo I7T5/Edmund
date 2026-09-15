@@ -186,6 +186,13 @@ enum FormatMenu {
                                      action: #selector(EditorTextView.formatHeading(_:)),
                                      tag: level).makeItem())
         }
+        menu.addItem(.separator())
+        menu.addItem(MenuCommand(id: "format.headingIncrement", submenu: "Heading",
+                                 title: "Increment Heading Level",
+                                 action: #selector(EditorTextView.formatIncrementHeading(_:))).makeItem())
+        menu.addItem(MenuCommand(id: "format.headingDecrement", submenu: "Heading",
+                                 title: "Decrement Heading Level",
+                                 action: #selector(EditorTextView.formatDecrementHeading(_:))).makeItem())
         return menu
     }
 
