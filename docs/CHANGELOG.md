@@ -3,28 +3,36 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-09-15
+
+Editor, code syntax, and better organized font theme. More table editing fixes. Various refinements. 
 
 ### Added
-- Tables: Return on a header's separator row fills in the table in canonical aligned form — columns padded to their widest cell, the separator's dashes filling each column — and adds a body row to type in
-- Tables: Delete on a cell selection clears the cells; a second Delete on an empty complete row or column removes it
-- Tables: a divider now sets Delete apart from the add operations in the row/column menu
-
-### Fixed
-- Print and Export as PDF no longer keep the `.md` extension in the PDF filename
-- Tables: the `</>` button no longer leaves a ghost when it steps aside for the row pill
-- Tables: clicking the blank end of a wrapped cell no longer flashes the caret to the start of the cell
-- Tables: the row/column pills no longer linger after clicking in a table with wrapped cells
-- Tables: text can now be drag-selected inside a wrapped cell, and a drag that leaves the cell selects a block of cells
-- Tables: rapid clicks across a wrapped cell's lines no longer leave a copy of the caret behind
-- Tables: a selected block of cells no longer also shows a text highlight inside wrapped cells
-- Tables: the `</>` button, the row/column pills and the cell-selection dots now scale with ⌘+ / ⌘− / ⌘0
-- Tables: zooming out (or narrowing the window) no longer collapses a table with a wrapped cell
-- Tables: a single-dash delimiter row (`- | -`) now renders as a table instead of a bullet list
-- Nested emphasis (italic inside bold, or bold inside italic) now renders
+- Settings > Appearance > Font theme
+- Settings > Themes (#292)
+- Tables: Divider between add and delete operations in row/column menu
+- App Menu > Format > Headings > Increment/Decrement heading level
+- Editor: Quick-wrap selection with `~$%*=` and the backtick
+- Editor: Detect and remove list markers `-/- [ ]/1.` from pasteboard content if pasting into list
+- Editor: Copy button for code blocks
+- Reader: Click to toggle checkbox
 
 ### Changed
-- A setext heading underline now needs three or more `---`/`===`, not one
+- Tables: Delete on cell selection clears cell content; Delete on empty complete row or column removes it
+- Tables: Return on a header's separator row auto-fills in and prettifies the table
+- Tables: Disabled delete pipes between cells in formatted state
+- Tables: Controls (`</>` button, pills) scale with zoom `CMD+=/-/0`
+- Tables: `</>` button makes way only when pills are actually in the way
+- Settings > Autopair parentheses and quotes doesn't pair backticks anymore
+
+### Fixed
+- Nested emphasis (italic inside bold, or bold inside italic)
+- Tables: a single-dash delimiter row (`- | -`) now renders as a table
+- Tables: Selection, caret movement, row/column pills, and zoom behavior with wrapped cells and/or header row containing wrapped cells
+- Tables: `</>` button makes way for row pills with "Show line numbers" off
+- Reader: Nested checkboxes aren't dimmed or strikethrough when checked
+- Settings > Key Bindings: "Format" app menu is in order with the rest
+- Print > PDF no longer keep the `.md` extension in filename
 
 ## [0.6.1] - 2026-09-12
 
