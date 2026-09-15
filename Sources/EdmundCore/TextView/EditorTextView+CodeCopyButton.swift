@@ -75,19 +75,20 @@ extension EditorTextView {
 
     /// The "copied" acknowledgement, as one timeline driven by a display link
     /// (`copiedCodeProgress` 0…1 over `codeCopiedFlashDuration`): the
-    /// background pulses — up over the first `codeCopiedPulseRise` of it,
-    /// then eased out to nothing — while the outline cross-fades into the
-    /// filled glyph over `codeCopiedFillDuration` and holds until the end.
+    /// background blinks — full on the click, gone by `codeCopiedBlinkEnd` of
+    /// the way through, a fast cubic ease-out — while the outline cross-fades
+    /// into the filled glyph over `codeCopiedFillDuration` and holds to the end.
     static let codeCopiedFlashDuration: TimeInterval = 1.2
     static let codeCopiedFillDuration: TimeInterval = 0.2
-    static let codeCopiedPulseRise: CGFloat = 0.15
+    static let codeCopiedBlinkEnd: CGFloat = 0.25
 
-    /// Alpha of the background pulse at `progress`: a quick rise, then a
-    /// quadratic ease-out — quiet, the way a Copy button acknowledges.
+    /// Alpha of the background blink at `progress`: on at once, then a cubic
+    /// ease-out — most of the drop in the first frames, so it reads as a
+    /// blink rather than a glow.
     static func copiedPulseAlpha(at progress: CGFloat) -> CGFloat {
-        if progress < codeCopiedPulseRise { return progress / codeCopiedPulseRise }
-        let t = (progress - codeCopiedPulseRise) / (1 - codeCopiedPulseRise)
-        return (1 - t) * (1 - t)
+        guard progress < codeCopiedBlinkEnd else { return 0 }
+        let t = 1 - progress / codeCopiedBlinkEnd
+        return t * t * t
     }
 
     /// Draws the copy buttons, from the same `drawBackground(in:)` pass as the
@@ -114,9 +115,9 @@ extension EditorTextView {
                 NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
             }
             if copied {
-                // A tier stronger than the hover fill, so it reads over it.
-                NSColor.tertiaryLabelColor
-                    .withAlphaComponent(0.5 * Self.copiedPulseAlpha(at: copiedCodeProgress)).setFill()
+                // Two tiers above the hover fill, so it reads over it.
+                NSColor.secondaryLabelColor
+                    .withAlphaComponent(0.35 * Self.copiedPulseAlpha(at: copiedCodeProgress)).setFill()
                 NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
             }
             let fill: CGFloat = copied

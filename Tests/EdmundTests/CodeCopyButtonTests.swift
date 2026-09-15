@@ -88,13 +88,13 @@ struct CodeCopyButtonTests {
         #expect(editor.revealedCodeCopyButtons().isEmpty)
     }
 
-    /// The pulse rises fast and eases out to nothing by the end of the flash.
-    @Test("The copied pulse rises, then fades to nothing")
-    func pulseShape() {
-        let rise = EditorTextView.codeCopiedPulseRise
-        #expect(EditorTextView.copiedPulseAlpha(at: 0) == 0)
-        #expect(EditorTextView.copiedPulseAlpha(at: rise) == 1)
-        #expect(EditorTextView.copiedPulseAlpha(at: 0.5) < 0.5)
+    /// The blink is on at the click and gone well before the fill releases.
+    @Test("The copied blink is full at once and gone early")
+    func blinkShape() {
+        let end = EditorTextView.codeCopiedBlinkEnd
+        #expect(EditorTextView.copiedPulseAlpha(at: 0) == 1)
+        #expect(EditorTextView.copiedPulseAlpha(at: end / 2) < 0.2)
+        #expect(EditorTextView.copiedPulseAlpha(at: end) == 0)
         #expect(EditorTextView.copiedPulseAlpha(at: 1) == 0)
     }
 
