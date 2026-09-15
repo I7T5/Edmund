@@ -199,6 +199,7 @@ struct SyntaxSettingsView: View {
         let features = AppSettings.markdownFeatures
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.markdownFeatures = features
+            document.refreshFormatBar()
             document.refreshReadView()
         }
     }

@@ -33,20 +33,15 @@ enum ViewMenu {
         viewMenu.addItem(withTitle: "Customize Toolbar…",
                          action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
                          keyEquivalent: "")
+
+        // The format bar across the top of the editor, kept below the toolbar
+        // section with a divider on each side. Titled for the default state
+        // (the bar starts hidden) the way Hide Toolbar above is —
+        // Document.validateMenuItem flips it; no default shortcut.
         viewMenu.addItem(.separator())
-
-        let typewriterItem = MenuCommand(id: "view.typewriterScroll", group: "View",
-                                         title: "Typewriter Scroll",
-                                         action: #selector(AppDelegate.toggleTypewriterMode(_:))).makeItem()
-        typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
-        viewMenu.addItem(typewriterItem)
-
-        // Dims everything but the lines the selection touches. Same setting as
-        // Settings ▸ Edit ▸ Editor, so the two always agree.
-        let focusItem = MenuCommand(id: "view.focusMode", group: "View", title: "Focus Mode",
-                                    action: #selector(AppDelegate.toggleFocusMode(_:))).makeItem()
-        focusItem.state = AppSettings.focusMode ? .on : .off
-        viewMenu.addItem(focusItem)
+        viewMenu.addItem(MenuCommand(id: "view.showFormatBar", group: "View",
+                                     title: "Show Format Bar",
+                                     action: #selector(Document.toggleFormatBar(_:))).makeItem())
 
         // View-mode toggle (Edit ↔ Read) + the Source-mode checkbox.
         viewMenu.addItem(.separator())

@@ -1,0 +1,10 @@
+{
+  "name": "helvetica-neue",
+  "displayName": "Helvetica Neue",
+
+  "fontName": "Helvetica Neue",
+  "fontSize": 16,
+  "monospaceFontName": "Menlo",
+  "monospaceFontSize": 14,
+  "lineHeight": 1.5
+}

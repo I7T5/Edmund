@@ -18,6 +18,10 @@ jobs:
   test:
     name: test
     runs-on: macos-14
+    # The suite runs in ~2 minutes. A test that blocks the main thread (a modal
+    # alert with nobody to dismiss it, say) otherwise sits until the 6-hour
+    # ceiling — billed at the 10x macOS rate the whole way.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 

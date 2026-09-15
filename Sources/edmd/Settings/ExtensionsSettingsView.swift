@@ -24,29 +24,6 @@ struct ExtensionsSettingsView: View {
         ExtensionRegistry.all.first { $0.id == selectedID }
     }
 
-    /// Where names and section titles start. The dot gutter lives to the left of
-    /// it, so a row's name sits at the same margin whether or not a dot is drawn.
-    private static let nameInset: CGFloat = 20
-    /// The dot's column: `dotInset` from the box edge, `dotGutter` wide, with the
-    /// 6pt dot at its leading edge. Tight — the dot belongs to the name beside
-    /// it, and wider gaps read as its own column.
-    private static let dotInset: CGFloat = 8
-    private static let dotGutter: CGFloat = nameInset - dotInset
-    /// Section titles sit at half the names' inset: outdented from the rows they
-    /// head, so they read as a level above them rather than as another row.
-    private static let headerInset: CGFloat = nameInset / 2
-    private static let rowTrailing: CGFloat = 8
-    private static let rowHeight: CGFloat = 24
-    /// Sized to the longest extension name in prospect: "Advanced Tables"
-    /// measures 103pt at the 13pt system font, and with `nameInset` and
-    /// `rowTrailing` needs 135. The rest is slack — a longer name truncates
-    /// rather than widening the pane, whose 600pt total is fixed.
-    private static let sidebarWidth: CGFloat = 140
-    /// The same curve and duration the Key Bindings pane animates its submenu
-    /// disclosure with, so the two panes open and close alike. `.snappy` — a
-    /// spring — was here first and read as abrupt next to it.
-    private static let disclosureAnimation: Animation = .easeInOut(duration: 0.2)
-
     private var installed: [EdmundExtension] { ExtensionRegistry.all.filter(\.isInstalled) }
     private var recommended: [EdmundExtension] { ExtensionRegistry.all.filter { !$0.isInstalled } }
 
@@ -70,10 +47,10 @@ struct ExtensionsSettingsView: View {
                 }
             }
         }
-        // Less at the bottom than the other edges: the footer button sits 10pt
-        // under the boxes (the stack's spacing), so a full 20pt beneath it left
-        // the row looking pushed up rather than centred in its own margin.
-        .padding(EdgeInsets(top: 20, leading: 20, bottom: 12, trailing: 20))
+        // Even margins all round, as the pane originally had them: the
+        // sidebar/detail boxes are the content, and a box wants the same air
+        // under it as beside it.
+        .padding(20)
         // Every settings pane is 600 wide, so switching tabs only ever resizes
         // the window vertically.
         .frame(width: 600)
@@ -105,7 +82,7 @@ struct ExtensionsSettingsView: View {
                 withAnimation(.snappy(duration: 0.18)) { proxy.scrollTo(id) }
             }
         }
-        .frame(width: Self.sidebarWidth)
+        .frame(width: SettingsSidebar.width)
         .settingsSurfaceBackground()
         .border(.separator)
         // Focusable so the arrow keys arrive at all, and focused on appear
@@ -133,24 +110,7 @@ struct ExtensionsSettingsView: View {
     }
 
     private func selectNeighbor(step: Int) {
-        selectedID = Self.neighbor(of: selectedID, in: visibleIDs, step: step) ?? selectedID
-    }
-
-    /// The row an arrow key should land on. Clamps at both ends rather than
-    /// wrapping — a sidebar selection doesn't cycle — and enters from the near
-    /// end when nothing is selected yet.
-    ///
-    /// `nonisolated` because it is a pure function of its arguments, and because
-    /// SwiftUI's `View` is `@MainActor @preconcurrency`: on the toolchain CI uses
-    /// that isolation is inferred for this static too, so the (synchronous,
-    /// nonisolated) test suite couldn't call it — a build failure that does not
-    /// reproduce under a newer local toolchain.
-    nonisolated static func neighbor(of current: String?, in ids: [String], step: Int) -> String? {
-        guard !ids.isEmpty else { return nil }
-        guard let current, let index = ids.firstIndex(of: current) else {
-            return step > 0 ? ids.first : ids.last
-        }
-        return ids[min(max(index + step, 0), ids.count - 1)]
+        selectedID = SettingsSidebar.neighbor(of: selectedID, in: visibleIDs, step: step) ?? selectedID
     }
 
     private var detail: some View {
@@ -200,56 +160,12 @@ struct ExtensionsSettingsView: View {
                     ForEach(items, id: \.id) { row($0) }
                 }
                 .frame(height: isExpanded.wrappedValue
-                       ? Self.rowHeight * CGFloat(items.count)
+                       ? SettingsSidebar.rowHeight * CGFloat(items.count)
                        : 0,
                        alignment: .top)
                 .clipped()
             } header: {
-                sectionHeader(title, isExpanded: isExpanded)
-            }
-        }
-    }
-
-    /// A group's header: the title, and a chevron at the far trailing edge.
-    ///
-    /// Hand-built, so the chevron can sit there at all — `DisclosureGroup` and a
-    /// sidebar list's outline groups both hang it at the *leading* edge and
-    /// indent their children under it, with no API to move it.
-    private func sectionHeader(_ title: String, isExpanded: Binding<Bool>) -> some View {
-        Button {
-            withAnimation(Self.disclosureAnimation) { isExpanded.wrappedValue.toggle() }
-        } label: {
-            HStack(spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
-                    // Shown on hover only. Faded rather than removed, so the
-                    // header's layout doesn't shift as the pointer arrives.
-                    .opacity(hoveredSection == title ? 1 : 0)
-            }
-            .foregroundStyle(.secondary)
-            // Symmetric: the chevron sits as far off the trailing edge as the
-            // title does off the leading one, so neither crowds the border.
-            .padding(.horizontal, Self.headerInset)
-            .frame(height: Self.rowHeight)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        // Not `.plain`: that style dims its whole label while the mouse is down,
-        // and this label is the entire header row — so every toggle flashed the
-        // title a lighter gray on the way down.
-        .buttonStyle(.static)
-        // A pinned header scrolls *over* the rows, so it needs its own backing or
-        // they read through it. Opaque, not the frosted `.bar` Safari uses: a
-        // translucent header takes its tint from whatever is behind it, so it
-        // visibly changed color as the rows left from under it on collapse.
-        .settingsSurfaceBackground()
-        .onHover { inside in
-            withAnimation(.easeOut(duration: 0.12)) {
-                hoveredSection = inside ? title : (hoveredSection == title ? nil : hoveredSection)
+                SettingsSectionHeader(title: title, isExpanded: isExpanded, hoveredSection: $hoveredSection)
             }
         }
     }
@@ -260,17 +176,19 @@ struct ExtensionsSettingsView: View {
     private func row(_ ext: EdmundExtension) -> some View {
         let isSelected = selectedID == ext.id
         let isEmphasized = isSelected && sidebarFocused
-        return ExtensionRow(
+        let isEnabled = enabledIDs.contains(ext.id)
+        return SettingsSidebarRow(
             name: ext.name,
-            isEnabled: enabledIDs.contains(ext.id),
-            isInstalled: ext.isInstalled,
+            dotFilled: isEnabled,
+            // An extension that is not installed reads at full weight even
+            // while disabled — dimming is for "installed but switched off".
+            isDimmed: !isEnabled && ext.isInstalled,
             isEmphasized: isEmphasized,
-            dotInset: Self.dotInset,
-            dotGutter: Self.dotGutter,
-            onToggle: { setEnabled($0, for: ext.id) }
+            dotAccessibilityLabel: isEnabled ? "Enabled" : "Disabled",
+            onDotTap: { setEnabled(!isEnabled, for: ext.id) }
         )
-        .padding(.trailing, Self.rowTrailing)
-        .frame(height: Self.rowHeight)
+        .padding(.trailing, SettingsSidebar.rowTrailing)
+        .frame(height: SettingsSidebar.rowHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isSelected
                     ? Color(nsColor: isEmphasized
@@ -289,75 +207,6 @@ struct ExtensionsSettingsView: View {
         if enabled { enabledIDs.insert(id) } else { enabledIDs.remove(id) }
         AppSettings.setExtensionEnabled(id, enabled)
     }
-}
-
-/// One sidebar row: a dot in its own leading gutter that toggles the extension
-/// on its own tap — independent of selecting the row — then the name.
-///
-/// The dot occupies a real column rather than an offset overlay. An overlay
-/// pushed outside the row's bounds still draws, but it stops reliably
-/// hit-testing there, which would leave the toggle looking present and dead. A
-/// fixed-width gutter every row reserves keeps the names aligned whether or not
-/// a dot is drawn, which is what the overlay was for.
-///
-/// The dot is drawn only when the extension is enabled, and presence — not hue —
-/// is what encodes that: a colored/gray pair would carry the state in hue alone,
-/// the distinction red-green color blindness loses, while presence-vs-absence
-/// survives that, grayscale, and low contrast. The name stays dimmed while
-/// disabled so the row carries the state redundantly, and the tap target keeps
-/// its size either way, so a disabled extension is still togglable here.
-private struct ExtensionRow: View {
-    let name: String
-    let isEnabled: Bool
-    let isInstalled: Bool
-    let isEmphasized: Bool
-    let dotInset: CGFloat
-    let dotGutter: CGFloat
-    let onToggle: (Bool) -> Void
-
-    /// Explicit colors, not `.primary`/`.secondary`: the selection fill is drawn
-    /// by hand here, so nothing else is going to adjust the label for it.
-    /// A disabled extension is dimmed two steps down from an enabled one —
-    /// tertiary, not secondary — so the difference is visible at a glance next to
-    /// an enabled row rather than only in comparison. Dimming means *disabled*,
-    /// so it applies only under "Installed": a recommended row has nothing to
-    /// enable yet, and dimming it would read as a state it can't be in.
-    private var labelColor: Color {
-        if isEmphasized { return Color(nsColor: .selectedMenuItemTextColor) }
-        return Color(nsColor: isEnabled || !isInstalled ? .labelColor : .tertiaryLabelColor)
-    }
-
-    /// Dimmer than the name it marks, so it reads as a quiet indicator rather
-    /// than competing with the text — but the selected row's own text color
-    /// while that row is emphasized, since a faint gray dot would sink into the
-    /// accent fill entirely.
-    private var dotColor: Color {
-        isEmphasized ? Color(nsColor: .selectedMenuItemTextColor)
-                     : Color(nsColor: .tertiaryLabelColor)
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Circle()
-                .fill(isEnabled ? dotColor : .clear)
-                .frame(width: 6, height: 6)
-                // A tap target wider and taller than the visible dot, filling
-                // the gutter — the dot itself is too small to hit comfortably.
-                .frame(width: dotGutter, height: Self.tapHeight, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture { onToggle(!isEnabled) }
-                .accessibilityLabel(isEnabled ? "Enabled" : "Disabled")
-                .accessibilityAddTraits(.isButton)
-
-            Text(name)
-                .foregroundStyle(labelColor)
-                .lineLimit(1)
-        }
-        .padding(.leading, dotInset)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private static let tapHeight: CGFloat = 18
 }
 
 /// One extension's detail pane, top to bottom: name, version line, short

@@ -17,7 +17,7 @@ enum HTMLTheme {
     /// `--bg` variable and `ReadModeWebView.underPageBackgroundColor` so the
     /// webview's own background can't drift from the page it's about to show.
     private static func backgroundHex(dark: Bool) -> String {
-        dark ? "#292929" : "#ffffff"
+        ThemeStore.shared.general(dark: dark).background ?? (dark ? "#292929" : "#ffffff")
     }
 
     /// `NSColor` form of `backgroundHex`, for `WKWebView.underPageBackgroundColor`.
@@ -31,6 +31,7 @@ enum HTMLTheme {
                     callouts: [String: CalloutStyle],
                     dark: Bool,
                     maxContentWidthPoints: Double = .greatestFiniteMagnitude) -> String {
+        let general = ThemeStore.shared.general(dark: dark)
         let bg = backgroundHex(dark: dark)
         // Body ink comes from the editor's own definition, not a second hex, so
         // Edit and Read mode can never drift apart again (EditorTheme
@@ -46,7 +47,10 @@ enum HTMLTheme {
         let darkRule = "#555555"
         // #2a2a2a sat one level above the #292929 page background — code blocks
         // and table header rows had no visible tint at all in dark mode.
-        let codeBg = dark ? "#333333" : "#f4f4f4"
+        // The code theme's own page when it names one, so a block looks the
+        // same read as it does written.
+        let codeBg = ThemeStore.shared.syntax(dark: dark)?.background
+            ?? SyntaxTheme.defaultBackgroundHex(dark: dark)
 
         // line-height: editor `NSParagraphStyle.lineSpacing` adds extra points
         // *between* lines on top of the font's natural line height. That natural
@@ -71,12 +75,14 @@ enum HTMLTheme {
             ? "\(trim(CGFloat(maxContentWidthPoints)))px" : "none"
 
         return """
+        \(cascadeFontFaceBlocks(theme))
         :root {
-          --body-font: \(cssFontStack(theme.fontName, generic: "serif"));
+          --body-font: \(cascadeStackPrefix(theme))\(cssFontStack(theme.fontName, generic: "serif"));
           --body-size: \(trim(theme.fontSize))px;
           --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
           --mono-size: \(trim(theme.monospaceFontSize))px;
-          --accent: \(theme.linkBlueHex);
+          --accent: \(general.link ?? "#3366E6");
+          --highlight: \(general.highlight ?? "rgba(255, 200, 0, 0.3)");
           --code: \(theme.codeHex);
           --bg: \(bg);
           --fg: \(fg);
@@ -90,7 +96,7 @@ enum HTMLTheme {
           --table-border: \(dark ? darkRule : rule);
           --hr: \(dark ? "#4a4a4a" : rule);
           --quote-bar: \(dark ? darkChrome : rule);
-          --check-fill: \(resolvedRGBA(.controlAccentColor, dark: dark));
+          --check-fill: \(general.checkbox ?? resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
           --page-max-width: \(pageMaxWidth);
@@ -243,7 +249,7 @@ enum HTMLTheme {
     blockquote > blockquote:last-child,
     .callout-body > blockquote:last-child { margin-bottom: 0; }
     hr { border: none; border-top: 1.5px solid var(--hr); margin: 1.6em 0; }
-    mark { background: rgba(255, 200, 0, 0.3); color: inherit; padding: 0 0.1em; }
+    mark { background: var(--highlight); color: inherit; padding: 0 0.1em; }
     /* Obsidian #tag: an accent-colored pill. Style only, no navigation. */
     .tag { color: var(--accent);
            background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -316,9 +322,13 @@ enum HTMLTheme {
       margin-left: -1.45em;
     }
     li.task > .task-check svg { display: block; width: 1.2em; height: 1.2em; }
+    /* The box is a link (x-edmund-task:) so a click can toggle it; it must
+       not look like one. */
+    a.task-check { text-decoration: none; cursor: pointer; }
     .task-check--unchecked { color: var(--marker); }
     .task-check--checked { color: var(--check-fill); }
-    li.task--checked > p { opacity: 0.45; text-decoration: line-through; }
+    /* A tight list has no <p>; the renderer wraps the text in .task-text instead. */
+    li.task--checked > p, li.task--checked > .task-text { opacity: 0.45; text-decoration: line-through; }
     li.task > p { display: inline; margin: 0; }
     li.task > ul, li.task > ol { clear: left; }
     /* Contain the checkbox float within its own item. Without this, a task item
@@ -432,6 +442,50 @@ enum HTMLTheme {
     """
 
     // MARK: Helpers
+
+    /// One @font-face block per configured cascade script, mapping a synthetic
+    /// family name to the user's installed family (`src: local()`, which
+    /// WKWebView honors) scoped to the script's unicode-range. A plain ordered
+    /// font-family list is NOT enough here: WebKit picks the first listed font
+    /// that covers a glyph, so a body font that happens to cover Han would
+    /// shadow the user's Han choice — diverging from the editor, where the
+    /// cascade wins over coverage. The unicode-range fence makes the synthetic
+    /// family win only inside its script, exactly like the editor.
+    private static func cascadeFontFaceBlocks(_ theme: EditorTheme) -> String {
+        theme.fontCascade
+            .sorted { $0.key.rawValue < $1.key.rawValue }   // deterministic CSS
+            .map { script, family in
+                // size-adjust carries the script's size ratio (× the run's
+                // size in the editor) so a per-script size reads identically
+                // in both modes and scales with --body-size for free.
+                // Omitted at 1.0, keeping the no-override CSS byte-identical.
+                let ratio = theme.fontCascadeSizeRatios[script] ?? 1.0
+                let sizeAdjust = abs(ratio - 1.0) < 0.001
+                    ? "" : " size-adjust: \(trim(CGFloat(ratio * 100)))%;"
+                return """
+                @font-face { font-family: "\(cascadeFamilyName(script))"; src: local("\(family)");\
+                \(sizeAdjust) unicode-range: \(script.cssUnicodeRange); }
+                """
+            }
+            .joined(separator: "\n")
+    }
+
+    /// The cascade entries that lead the `--body-font` stack, e.g.
+    /// `"edmund-cascade-han", "edmund-cascade-emoji", ` — empty when the theme
+    /// has no cascade, keeping the stack byte-identical to pre-cascade CSS.
+    private static func cascadeStackPrefix(_ theme: EditorTheme) -> String {
+        theme.fontCascade
+            .sorted { $0.key.rawValue < $1.key.rawValue }
+            .map { "\"\(cascadeFamilyName($0.key))\", " }
+            .joined()
+    }
+
+    /// Synthetic family name for one script's @font-face block. Deliberately
+    /// not the user's family name: a real family in the stack without the
+    /// unicode-range fence would swallow Latin too.
+    private static func cascadeFamilyName(_ script: FontCascadeScript) -> String {
+        "edmund-cascade-\(script.rawValue)"
+    }
 
     /// A CSS font stack: the (possibly multi-word) macOS family name quoted, then
     /// a system fallback and a generic. WKWebView resolves installed families

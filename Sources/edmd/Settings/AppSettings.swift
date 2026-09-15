@@ -18,20 +18,6 @@ enum AppSettings {
         }
     }
 
-    enum ConflictResolution: String, CaseIterable, Identifiable {
-        case keepCurrent
-        case ask
-        case updateToModified
-        var id: Self { self }
-        var label: String {
-            switch self {
-            case .keepCurrent: return "Keep Edmund’s edition"
-            case .ask: return "Ask how to resolve"
-            case .updateToModified: return "Update to modified edition"
-            }
-        }
-    }
-
 
     enum AppearanceMode: String, CaseIterable, Identifiable {
         case matchSystem
@@ -97,11 +83,25 @@ enum AppSettings {
         static let automaticallyChecksForUpdates = "SUAutomaticallyChecksForUpdates"
         static let startupAction = "settings.general.startupAction"
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
-        static let conflictResolution = "settings.general.conflictResolution"
+        static let quitWhenAllWindowsClosed = "settings.general.quitWhenAllWindowsClosed"
         static let appearanceMode = "settings.appearance.mode"
         static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
         // "cm" / "in" override the locale default for the content-width control.
         static let contentWidthUnit = "settings.appearance.contentWidthUnit"
+        // Settings ▸ Themes. Which theme is active in each of the four slots —
+        // two kinds (editor chrome, code syntax) × two appearances. Values are
+        // ThemeStore theme names; an unknown one falls back to the built-in.
+        static let themeGeneralLight = "settings.themes.generalLight"
+        static let themeGeneralDark  = "settings.themes.generalDark"
+        static let themeSyntaxLight  = "settings.themes.syntaxLight"
+        static let themeSyntaxDark   = "settings.themes.syntaxDark"
+        /// The font preset in force. Named `settings.themes.*` for continuity
+        /// with the four above and because `ThemeStore` loads it; it is chosen
+        /// in Appearance, and no color theme names it.
+        static let themeFont         = "settings.themes.font"
+        // Whether the "Fonts by script" section at the foot of the Appearance
+        // pane is expanded (per-script cascade rows).
+        static let fontsByScriptExpanded = "settings.appearance.fontsByScriptExpanded"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
         static let diagnosticLogging = "settings.general.diagnosticLogging"
         static let verboseEditorDiagnostics = "settings.advanced.verboseEditorDiagnostics"
@@ -132,6 +132,7 @@ enum AppSettings {
         static let defaultCodeSyntax = "settings.syntax.defaultCodeSyntax"
         // Edit ▸ Display.
         static let showToolbar         = "settings.edit.showToolbar"
+        static let showFormatBar       = "settings.edit.showFormatBar"
         static let autoHideToolbar     = "settings.edit.autoHideToolbar"
         static let showInvisibles      = "settings.edit.showInvisibles"
         // Parked with the rest of the Always mode (see `showInvisibles` below):
@@ -287,15 +288,26 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.autoSaveWithVersions) }
     }
 
-    static var conflictResolution: ConflictResolution {
-        get {
-            guard let raw = UserDefaults.standard.string(forKey: Key.conflictResolution),
-                  let resolution = ConflictResolution(rawValue: raw) else {
-                return .ask
-            }
-            return resolution
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.conflictResolution) }
+    /// Autosave interval for the "elsewhere" backup AppKit keeps when Auto Save with
+    /// Versions is off — a recovery copy in ~/Library/Autosave Information/ that it
+    /// offers back after an unexpected quit, without ever touching the document or
+    /// the version store. TextEdit behaves the same way. Zero is AppKit's "no timer"
+    /// value: with autosave-in-place on, it drives its own change-count schedule.
+    static var autosavingDelay: TimeInterval { autoSaveWithVersions ? 0 : 30 }
+
+    /// Pushes the autosave interval into the document controller. Called at launch
+    /// and whenever the Auto Save toggle changes.
+    @MainActor
+    static func applyAutosaving() {
+        NSDocumentController.shared.autosavingDelay = autosavingDelay
+    }
+
+    /// Whether closing the last window quits the app. Off by default, the way
+    /// most document apps behave — the app stays running and File ▸ New reopens
+    /// a window. Mutually exclusive with `reopenWindows` (see GeneralSettingsView).
+    static var quitWhenAllWindowsClosed: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.quitWhenAllWindowsClosed) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.quitWhenAllWindowsClosed) }
     }
 
     static var appearanceMode: AppearanceMode {
@@ -449,6 +461,144 @@ enum AppSettings {
         SyntaxDefinitionStore.shared.reload()
     }
 
+    // MARK: - Themes pane
+
+    /// The active theme name for a slot, or the built-in when unset. The
+    /// defaults live in `ThemeStore`, not here, so Core still works standalone
+    /// (Quick Look, tests) with no settings to read.
+    static func themeName(_ key: String, default fallback: String) -> String {
+        UserDefaults.standard.string(forKey: key) ?? fallback
+    }
+
+    /// The theme each slot holds when nothing has been chosen — and what
+    /// Restore Defaults puts back. Named rather than spelled out at each use:
+    /// the accessors below, the pane's `@AppStorage` defaults and the restore
+    /// all have to agree, and four copies of "one-dark" is three chances to
+    /// drift.
+    enum DefaultTheme {
+        static let generalLight = "classic-light"
+        static let generalDark = "classic-dark"
+        static let syntaxLight = "tomorrow"
+        static let syntaxDark = "one-dark"
+        /// The shipped typography, saved as a preset — picking it changes
+        /// nothing, which is what makes it the one the picker starts on.
+        static let font = "iowan"
+    }
+
+    static var generalThemeLight: String {
+        get { themeName(Key.themeGeneralLight, default: DefaultTheme.generalLight) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeGeneralLight) }
+    }
+    static var generalThemeDark: String {
+        get { themeName(Key.themeGeneralDark, default: DefaultTheme.generalDark) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeGeneralDark) }
+    }
+    static var syntaxThemeLight: String {
+        get { themeName(Key.themeSyntaxLight, default: DefaultTheme.syntaxLight) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeSyntaxLight) }
+    }
+    static var syntaxThemeDark: String {
+        get { themeName(Key.themeSyntaxDark, default: DefaultTheme.syntaxDark) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeSyntaxDark) }
+    }
+    static var fontTheme: String {
+        get { themeName(Key.themeFont, default: DefaultTheme.font) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.themeFont) }
+    }
+
+    /// Gives the Appearance pane's picker a preset to name, once, for anyone
+    /// arriving from a build without them.
+    ///
+    /// The picker has no "none" state — a preset is always in force — so a user
+    /// who never touched their fonts can be pointed at the one holding the
+    /// shipped values. A user who *did* has theirs in the `Editor*` keys, which
+    /// the chosen preset is about to override; capture them as a preset of
+    /// their own first. Dropping them onto a bundled one would change their
+    /// editor on upgrade with no way back.
+    ///
+    /// Keyed on the setting being absent rather than a version number: that is
+    /// exactly the condition, and it stays true for a user who skips releases.
+    static func migrateFontThemeSelection() {
+        guard UserDefaults.standard.string(forKey: Key.themeFont) == nil else { return }
+
+        // Compared as presets so only the fields one carries count — a changed
+        // accent color is no reason to seed. The names cancel.
+        let probe = "probe"
+        let current = EditorTheme.load().fontTheme(name: probe, displayName: probe)
+        guard current != EditorTheme.default.fontTheme(name: probe, displayName: probe) else {
+            fontTheme = DefaultTheme.font
+            return
+        }
+
+        var name = "custom-fonts"
+        var suffix = 2
+        while ThemeStore.shared.kind(ofThemeNamed: name) != nil {
+            name = "custom-fonts-\(suffix)"
+            suffix += 1
+        }
+        do {
+            try ThemeStore.shared.save(
+                EditorTheme.load().fontTheme(name: name, displayName: "Custom"))
+            fontTheme = name
+        } catch {
+            // The fonts stay as they were in the `Editor*` keys; only the
+            // picker is left pointing at the shipped preset.
+            Log.error("Seeding a font preset from the saved fonts failed: \(error)", category: .app)
+            fontTheme = DefaultTheme.font
+        }
+    }
+
+    /// The bundled editor themes were `default-light` / `default-dark` before
+    /// they were named Classic. A stored selection still pointing at an old
+    /// name resolves to nothing: the editor falls back and keeps drawing, but
+    /// the sidebar shows no theme as active, which reads as broken.
+    ///
+    /// Renaming a *bundled* theme's `name` is normally out of bounds for
+    /// exactly that reason — it is the value stored in settings — and this is
+    /// the migration that buys the exception.
+    static func migrateRenamedThemes() {
+        let renamed = ["default-light": "classic-light", "default-dark": "classic-dark"]
+        for key in [Key.themeGeneralLight, Key.themeGeneralDark] {
+            guard let stored = UserDefaults.standard.string(forKey: key),
+                  let now = renamed[stored] else { continue }
+            UserDefaults.standard.set(now, forKey: key)
+        }
+    }
+
+    /// Pushes the four active theme names into the shared store and reloads
+    /// bundled + user themes. Called at launch, and after the Themes pane
+    /// changes a selection or a theme file is added/removed.
+    ///
+    /// Reload first, then assign: `reload()` rebuilds the tables but leaves the
+    /// active names alone, so assigning after it means a name that only just
+    /// appeared on disk resolves on this pass rather than the next.
+    static func applyThemes() {
+        ThemeStore.shared.reload()
+        migrateRenamedThemes()
+        migrateFontThemeSelection()
+        ThemeStore.shared.activeGeneralLight = generalThemeLight
+        ThemeStore.shared.activeGeneralDark = generalThemeDark
+        ThemeStore.shared.activeSyntaxLight = syntaxThemeLight
+        ThemeStore.shared.activeSyntaxDark = syntaxThemeDark
+    }
+
+    /// Re-renders every open document after a theme change. Colors are baked
+    /// into `NSAttributedString` attributes rather than resolved at draw time, so
+    /// a theme swap needs the same full restyle an appearance flip does.
+    @MainActor static func applyThemesToOpenDocuments() {
+        applyThemes()
+        for case let document as Document in NSDocumentController.shared.documents {
+            guard let editor = document.editor else { continue }
+            // Fonts before colors: a theme may override the font, and
+            // `applyChromeColors` bakes it into `typingAttributes`.
+            editor.resolveTheme()
+            editor.applyChromeColors()
+            editor.invisibles = invisiblesConfig
+            editor.recomposeAllDirty()
+            document.refreshReadView()
+        }
+    }
+
     // MARK: - Edit pane
 
     /// Whether document windows show their toolbar. Mirrored by the View menu's
@@ -463,6 +613,15 @@ enum AppSettings {
     static var autoHideToolbar: Bool {
         get { boolDefaultTrue(Key.autoHideToolbar) }
         set { UserDefaults.standard.set(newValue, forKey: Key.autoHideToolbar) }
+    }
+
+    /// Whether document windows show the format bar across the top of the
+    /// editor. Defaults off: it costs a strip of the window and every command
+    /// on it is already on the Format menu, so it is opt-in. Mirrored by the
+    /// View menu's Show Format Bar item.
+    static var showFormatBar: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.showFormatBar) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.showFormatBar) }
     }
 
     static var indentStyle: IndentStyle {
@@ -548,14 +707,26 @@ enum AppSettings {
     static var invisibleControl: Bool { boolDefaultTrue(Key.invisibleControl) }
 
     /// The invisibles config pushed onto every editor, or nil when off. The mark
-    /// color is `tertiaryLabelColor`, which adapts to light/dark on its own.
-    static var invisiblesConfig: InvisiblesConfig? {
+    /// color comes from the active general theme; unthemed it is
+    /// `tertiaryLabelColor`, which adapts to light/dark on its own.
+    ///
+    /// The theme is resolved for the *app's* appearance rather than a specific
+    /// editor's, because this config is built once and pushed to every open
+    /// document. That is the same appearance every editor has — Edmund does not
+    /// mix light and dark windows.
+    @MainActor static var invisiblesConfig: InvisiblesConfig? {
         guard showInvisibles else { return nil }
+        // `NSApplication.shared`, not `NSApp`: the latter is an implicitly
+        // unwrapped global that is still nil until the app instance is first
+        // created, and this is reachable from early setup.
+        let appearance = NSApplication.shared.effectiveAppearance
+        let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let themed = ThemeStore.shared.general(dark: dark).invisibles.flatMap(NSColor.init(hex:))
         return InvisiblesConfig(
             lineEnding: invisibleLineEnding, tab: invisibleTab, space: invisibleSpace,
             otherWhitespace: invisibleWhitespace, otherControl: invisibleControl,
             // mode: invisiblesMode == .always ? .always : .uponSelection,
-            color: .tertiaryLabelColor)
+            color: themed ?? .tertiaryLabelColor)
     }
 
     /// Draw the vertical guides on nested list items — default off.
@@ -611,6 +782,7 @@ enum AppSettings {
         for case let document as Document in NSDocumentController.shared.documents {
             if let editor = document.editor { applyEditSettings(to: editor) }
             document.applyToolbarVisibility()
+            document.refreshFormatBar()
         }
     }
 

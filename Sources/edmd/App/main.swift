@@ -36,13 +36,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         defaults.object(forKey: typewriterModeKey) as? Bool ?? true
     }
 
+    /// The menu bar is built here, not in `applicationDidFinishLaunching`:
+    /// windows restored from the last session and documents opened at launch
+    /// are created between the two, and a document's format bar builds the
+    /// same Heading and Callout menus. `KeyBindingCatalog` lists commands in
+    /// registration order and keeps the first item registered per id, so the
+    /// menu bar has to register first — or Settings ▸ Key Bindings puts Format
+    /// ahead of File and Heading ahead of Thematic Break, and retunes the
+    /// format bar's pulldown instead of the menu.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        setupMenuBar()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.applyLogging()
+        AppSettings.applyAutosaving()
         Log.info("Edmund launched", category: .app)
         AppSettings.applyAppearance()
         AppSettings.applyCodeSyntax()
+        AppSettings.applyThemes()
         AppSettings.applyExtensionStates()
-        setupMenuBar()
 
         // Right-click ▸ Services entries (see Info.plist NSServices). Held
         // strongly — `NSApplication.servicesProvider` does not retain.
@@ -68,6 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         #if DEBUG
         ReproScript.runIfRequested()
+        SettingsRender.runIfRequested()
         #endif
     }
 
@@ -77,22 +91,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         CommandLine.arguments.count <= 1 && AppSettings.startupAction == .createNewDocument
     }
 
+    // Declares that our restorable state is archived with secure coding — not a
+    // switch for whether windows come back. Wiring it to the "Reopen windows"
+    // preference only opted the app into legacy insecure archiving.
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
-        AppSettings.reopenWindows
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
 
-    // Reopen a new untitled document when the app is activated with no windows.
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            if AppSettings.startupAction == .createNewDocument {
-                NSDocumentController.shared.newDocument(nil)
-            }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        AppSettings.quitWhenAllWindowsClosed
+    }
+
+    // Document windows stay restorable all session so a crash can hand back
+    // unsaved work (Document.makeWindowControllers). On a clean quit, honor
+    // "Reopen windows from last session" instead: drop the flag before AppKit
+    // archives the window state, so the next launch has nothing to restore.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if !AppSettings.reopenWindows {
+            for window in NSApp.windows { window.isRestorable = false }
         }
-        return true
+        return .terminateNow
+    }
+
+    // Reopen a new untitled document when the app is activated with no windows.
+    //
+    // Returning false is what keeps it to *one* document: `true` lets AppKit run
+    // its own reopen handling, which for a document-based app with no windows
+    // opens a second untitled document of its own (`_doOpenUntitled` →
+    // `applicationShouldOpenUntitledFile`, which says yes for the same
+    // preference). That is the double window in #278.
+    //
+    // Miniaturized windows count as visible, so the `!flag` branch is only
+    // reached when there is genuinely nothing to bring back — nothing else for
+    // AppKit's default handling to do here.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        Self.shouldHandleReopen(hasVisibleWindows: flag)
+    }
+
+    /// The decision itself, as a type method so tests can exercise it without
+    /// building an `AppDelegate`: the stored `updaterController` starts Sparkle
+    /// on init, and a failed check puts up a *modal* alert that would sit on the
+    /// main thread forever in a test run.
+    static func shouldHandleReopen(hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        if AppSettings.startupAction == .createNewDocument {
+            NSDocumentController.shared.newDocument(nil)
+        }
+        return false
     }
 
     // MARK: - Settings
@@ -190,6 +235,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     ]
 
     @MainActor private func setupMenuBar() {
+        // Before any `makeItem()`, which resolves each command's override by id.
+        KeyBindingStore.migrateRenamedIDs()
+
         let mainMenu = NSMenu()
 
         // App menu (required for Cmd+Q)
@@ -242,6 +290,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         fileMenu.addItem(recentMenuItem)
 
         fileMenu.addItem(NSMenuItem.separator())
+
+        fileMenu.addItem(withTitle: "Close",
+                         action: #selector(NSWindow.performClose(_:)),
+                         keyEquivalent: "w")
 
         fileMenu.addItem(withTitle: "Save",
                          action: #selector(NSDocument.save(_:)),
@@ -299,6 +351,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenu.addItem(withTitle: "Select All",
                          action: #selector(NSText.selectAll(_:)),
                          keyEquivalent: "a")
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        // Typing behaviour rather than window furniture, so they sit here with
+        // Hard Wrap Paragraphs instead of in View. Renamed off the `view.`
+        // prefix to match; `KeyBindingStore.migrateRenamedIDs` carries any
+        // shortcut the user had set across to the new ids.
+        let typewriterItem = MenuCommand(id: "edit.typewriterScroll", group: "Edit",
+                                         title: "Typewriter Scroll",
+                                         action: #selector(AppDelegate.toggleTypewriterMode(_:))).makeItem()
+        typewriterItem.state = AppDelegate.typewriterModeEnabled() ? .on : .off
+        editMenu.addItem(typewriterItem)
+
+        // Dims everything but the lines the selection touches. Same setting as
+        // Settings ▸ Edit ▸ Editor, so the two always agree.
+        let focusItem = MenuCommand(id: "edit.focusMode", group: "Edit", title: "Focus Mode",
+                                    action: #selector(AppDelegate.toggleFocusMode(_:))).makeItem()
+        focusItem.state = AppSettings.focusMode ? .on : .off
+        editMenu.addItem(focusItem)
 
         editMenu.addItem(NSMenuItem.separator())
 

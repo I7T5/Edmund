@@ -275,7 +275,7 @@ private final class SegmentTabbingControl: NSSegmentedControl {
 ///
 /// Dumb view: owns the controls, reports events through closures. All logic is
 /// in `FindController`.
-final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
+final class FindBarView: ChromeBarView, NSSearchFieldDelegate {
 
     let searchField = CountingSearchField()
     let replaceField = NSTextField()
@@ -296,12 +296,6 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
     private let bottomRightStack = NSStackView()
     /// Row-0 slack, live only in replace mode — see `showsReplaceRow`.
     private let topSpacer = NSView()
-    /// Hairline along the bottom edge, matching the toolbar's separator so the
-    /// bar reads as window chrome. A subview, not a `draw(_:)` override:
-    /// `NSVisualEffectView` renders its material through layers and never calls
-    /// through to a custom `draw`. Pinned to the bottom, so it follows whichever
-    /// row is last — find-only or the revealed replace row.
-    private let bottomBorder = NSView()
     private var grid: NSGridView!
 
     // Event callbacks, wired by the controller.
@@ -336,15 +330,6 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         }
     }
 
-    /// Keeps the hairline's colour correct across a light/dark switch — a
-    /// `cgColor` snapshot doesn't follow the appearance on its own.
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            bottomBorder.layer?.backgroundColor = NSColor.separatorColor.cgColor
-        }
-    }
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         // AppKit rebuilds the window's key-view loop from view geometry whenever
@@ -374,19 +359,8 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         }
     }
 
-    /// The bar's height for the active replace state (drives the content inset).
-    /// `fittingSize` already carries the grid's top/bottom insets, so no padding
-    /// is added here — adding more would stretch the grid and unbalance the rows.
-    var preferredHeight: CGFloat {
-        layoutSubtreeIfNeeded()
-        return fittingSize.height
-    }
-
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        material = .titlebar
-        blendingMode = .withinWindow
-        state = .active
         buildUI()
         showsReplaceRow = false
     }
@@ -459,17 +433,6 @@ final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
         grid.column(at: 1).xPlacement = .leading      // col1 hugs content (driven by the wider cluster)
         grid.row(at: 0).yPlacement = .center
         grid.row(at: 1).yPlacement = .center
-
-        bottomBorder.wantsLayer = true
-        bottomBorder.layer?.backgroundColor = NSColor.separatorColor.cgColor
-        bottomBorder.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(bottomBorder)
-        NSLayoutConstraint.activate([
-            bottomBorder.leadingAnchor.constraint(equalTo: leadingAnchor),
-            bottomBorder.trailingAnchor.constraint(equalTo: trailingAnchor),
-            bottomBorder.bottomAnchor.constraint(equalTo: bottomAnchor),
-            bottomBorder.heightAnchor.constraint(equalToConstant: 1 / (NSScreen.main?.backingScaleFactor ?? 2)),
-        ])
 
         grid.translatesAutoresizingMaskIntoConstraints = false
         addSubview(grid)

@@ -3,14 +3,127 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-15
 
-## [Unreleased]
+Editor, code syntax, and better organized font theme. More table editing fixes. Various refinements. 
 
 ### Added
-- **Mermaid extension**: renders ` ```mermaid ` code blocks as diagrams in Read mode, HTML export and PDF (vector). Supports flowcharts, state, sequence, class, ER, and XY charts, via [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid). Opt-in from Settings > Extensions; the engine is downloaded and hash-verified at runtime, so it adds nothing to the app's size until you enable it. Edit mode still shows the fence as a code block. Adapted in part from #235 (@CaliLuke)
+- Settings > Appearance > Font theme
+- Settings > Themes (#292)
+- Tables: Divider between add and delete operations in row/column menu
+- App Menu > Format > Headings > Increment/Decrement heading level
+- Editor: Quick-wrap selection with `~$%*=` and the backtick
+- Editor: Detect and remove list markers `-/- [ ]/1.` from pasteboard content if pasting into list
+- Editor: Copy button for code blocks
+- Reader: Click to toggle checkbox
 
 ### Changed
-- Extension payloads (Advanced Math, Mermaid) now share one download/verify/install path
+- Tables: Delete on cell selection clears cell content; Delete on empty complete row or column removes it
+- Tables: Return on a header's separator row auto-fills in and prettifies the table
+- Tables: Disabled delete pipes between cells in formatted state
+- Tables: Controls (`</>` button, pills) scale with zoom `CMD+=/-/0`
+- Tables: `</>` button makes way only when pills are actually in the way
+- Settings > Autopair parentheses and quotes doesn't pair backticks anymore
+
+### Fixed
+- Nested emphasis (italic inside bold, or bold inside italic)
+- Tables: a single-dash delimiter row (`- | -`) now renders as a table
+- Tables: Selection, caret movement, row/column pills, and zoom behavior with wrapped cells and/or header row containing wrapped cells
+- Tables: `</>` button makes way for row pills with "Show line numbers" off
+- Reader: Nested checkboxes aren't dimmed or strikethrough when checked
+- Settings > Key Bindings: "Format" app menu is in order with the rest
+- Print > PDF no longer keep the `.md` extension in filename
+
+## [0.6.1] - 2026-09-12
+
+Various table editing fixes.
+
+### Fixed
+- Tables: Content of wrapped cells don't fully display
+- Tables: Caret jumps to start of cell and jumps back if you click at the end
+
+### Changed
+- Tables: Automatically insert pipes when pasting incomplete tables
+- Tables: Users cannot merge columns by deleting pipes
+- Tables: Users cannot remove the padding space before and after pipes
+
+
+## [0.6.0] - 2026-09-10
+
+### Added
+- Table editing within cells, row/column actions, copy as spreadsheet date
+- Image drag and drop
+
+### Changed
+- Deleting opening parentheses/quotes automatically removes corresponding closing character if they are adjacent when pairing setting is on
+- Automatically detect required indent instead of relying on settings tab size when tabbing on nested lists
+
+### Fixed
+- Indent list selection sometimes indents the non-selected
+- PDFs end in `.pdf` instead of `.md.pdf`
+
+
+## [0.5.0] - 2026-08-22
+
+Thanks to @arthurlee116 for their first contribution (#268)
+
+### Added
+- Settings > Appearance > Font per script (#268 @arthurlee116)
+
+## [0.4.3] - 2026-08-17
+
+Thanks to @aahventures for their first contribution (#269)
+
+### Added
+- ⌘W to close window and ⌥⌘W to close all windows (#269 @aahventures)
+
+### Fixed
+- Typewriter scroll not centering while typing on the last line of the document (#277)
+- Launching app after closing every window with autoquit off no longer creates two blank documents (#278)
+
+## [0.4.2] - 2026-08-11
+
+Thanks to @jdobbs for their first contribution (#266)
+
+### Added
+- Format bar in Apple Mail style
+- Toolbar items from Apple Notes: format, table, images, links, share
+- Overscroll: Allow overscroll up to half the viewport height at the bottom of the window by default. Top and bottom with typewriter scroll on
+
+### Changed
+- Moved typewriter scroll and focus mode from View to Edit menu
+
+### Fixed
+- RaTeX path rendering (#265)
+- QuickLook infinite load for macOS 26 (#266 @jdobbs)
+- Open two Untitled windows instead of one at launch without restore window
+
+## [0.4.1] - 2026-08-01
+
+### Fixed
+- Min window width was too wide (temp fix)
+
+## [0.4.0] - 2026-08-01
+
+Fixed table misalignment (#251). Added Settings > Extensions and Advanced Math extension. Various UI improvements. 
+
+### Added
+- Settings > General > Manage Version History...
+- Settings > Extensions
+- Advanced Math extension via [RaTeX](https://ratex.lites.dev)
+
+### Changed
+- Read mode styling now better aligns with edit mode (header size, line height, callout color and padding)
+- Removed document change settings from Settings > General to follow AppKit conventions
+- Removed redundant configs from Settings > Edit and reworded some settings
+
+### Fixed
+- Table misalignment #251
+- Table text alignment in edit mode
+- Auto-hide toolbar now works
+- Open Recent now populates
+- Edmund now actually creates backups when auto-save is off
+- Finder services
 
 
 ## [0.3.0] - 2026-07-27
@@ -38,9 +151,9 @@ Thanks to @CaliLuke for his first contribution (#236) and for being the first co
 - Format > Comments now wraps selection in `<!-- selection -->`
 
 ### Fixed
-- Headers render spaces after `#...`
+- Headers don't render spaces after `#...`
 - Indented code block renders as monospace
-- Replace right-click "Font" menu in edit mode with our Format > Font menu
+- Replaced right-click "Font" menu in edit mode with our custom Format > Font menu
 
 
 ## [0.2.1] - 2026-07-17
