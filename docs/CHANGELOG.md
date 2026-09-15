@@ -15,7 +15,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Tables: the `</>` button no longer leaves a ghost when it steps aside for the row pill
 - Tables: clicking the blank end of a wrapped cell no longer flashes the caret to the start of the cell
 - Tables: the row/column pills no longer linger after clicking in a table with wrapped cells
-- Tables: text can now be drag-selected inside a wrapped cell
+- Tables: text can now be drag-selected inside a wrapped cell, and a drag that leaves the cell selects a block of cells
+- Tables: rapid clicks across a wrapped cell's lines no longer leave a copy of the caret behind
+- Tables: a selected block of cells no longer also shows a text highlight inside wrapped cells
+- Tables: the `</>` button, the row/column pills and the cell-selection dots now scale with ⌘+ / ⌘− / ⌘0
+- Tables: zooming out (or narrowing the window) no longer collapses a table with a wrapped cell
 - Tables: a single-dash delimiter row (`- | -`) now renders as a table instead of a bullet list
 - Nested emphasis (italic inside bold, or bold inside italic) now renders
 

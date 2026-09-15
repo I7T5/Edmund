@@ -67,9 +67,10 @@ extension EditorTextView {
         return trimmed.count >= 3 && trimmed.allSatisfy { $0 == first }
     }
 
-    /// The `</>` button's square, scaled with the zoom (⌘= / ⌘- / ⌘0) so the
-    /// glyph keeps its size against the text it sits beside.
-    var codeCopyButtonSize: CGFloat { Self.tableRawButtonSize * zoomFactor }
+    /// The `</>` button's square — already scaled with the code size, which
+    /// the zoom (⌘= / ⌘- / ⌘0) changes, so the glyph keeps its size against
+    /// the text it sits beside.
+    var codeCopyButtonSize: CGFloat { tableRawButtonSize }
 
     // MARK: - Drawing
 

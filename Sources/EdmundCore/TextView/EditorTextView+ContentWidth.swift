@@ -162,14 +162,23 @@ extension EditorTextView {
         // Scheduled rather than applied — this runs inside `setFrameSize`, and
         // re-tiling the scroll view from inside its own layout is a crash.
         scheduleLineNumberPlacementUpdate()
-        // Image overlays are sized against the column width only, so a
-        // vertical-only change needs no recompose.
+        // Image overlays and table columns are sized against the column width
+        // only, so a vertical-only change needs no recompose.
         guard widthChanged else { return }
 
-        let imageBlocks = IndexSet(blocks.indices.filter { blocks[$0].content.contains("![") })
-        guard !imageBlocks.isEmpty else { return }
-        for idx in imageBlocks { blocks[idx].isStyled = false }
-        recomposeDirty(imageBlocks, cursorInRaw: currentCursorInRaw(), settingSelection: true)
+        // Tables too: a column's width is clamped to the line width when it
+        // is styled (`distributeColumnWidths`), and the cell that overflows
+        // it kerns out the whole column. Styled for a wider line and then
+        // narrowed — ⌘0 then ⌘−, where the theme is applied before the width
+        // shrinks, or a window pulled in — the row's advance no longer fits
+        // and TextKit 2 force-wraps it: the next column's cells land on a
+        // second line of near-zero height, drawn over the first column's text.
+        let dependent = IndexSet(blocks.indices.filter {
+            blocks[$0].kind == .table || blocks[$0].content.contains("![")
+        })
+        guard !dependent.isEmpty else { return }
+        for idx in dependent { blocks[idx].isStyled = false }
+        recomposeDirty(dependent, cursorInRaw: currentCursorInRaw(), settingSelection: true)
     }
 
     /// Recompute the centered inset as the view width changes (window resize).

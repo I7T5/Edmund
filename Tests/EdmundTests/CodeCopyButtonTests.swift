@@ -52,7 +52,7 @@ struct CodeCopyButtonTests {
             - EditorTextView.lineNumberPadding
             - editor.lineNumberStyle.digitWidth
         #expect(abs(copy.rect.maxX - rightEdge) < 0.5)
-        #expect(copy.rect.width == EditorTextView.tableRawButtonSize)
+        #expect(copy.rect.width == editor.tableRawButtonSize)
     }
 
     @Test("Indented code and Source mode get no button")
