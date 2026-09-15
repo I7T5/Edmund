@@ -29,6 +29,14 @@ extension EditorTextView {
     /// `don't` must not sprout a partner).
     private static let symmetricPairs: Set<Character> = ["\"", "'", "`"]
 
+    /// Markdown delimiters that wrap a selection instead of replacing it.
+    /// Typed once they give `*x*`; the inner text stays selected, so typing
+    /// the same key again gives `**x**` / `==x==` / `~~x~~` / `%%x%%`.
+    /// A plain wrap on purpose, not `toggleInlineWrap`: that would *unwrap*
+    /// on the second press.
+    // ponytail: the keys asked for; `_` can join the set.
+    private static let wrapDelimiters: Set<Character> = ["$", "*", "%", "=", "~", "`"]
+
     public override func insertText(_ string: Any, replacementRange: NSRange) {
         // A caret this insertion places is where the user put it; the table
         // caret-resting rule must not yank it out of a cell's trailing pad, or
@@ -36,6 +44,18 @@ extension EditorTextView {
         // `isInsertingText` / `setSelectedRanges`.
         isInsertingText = true
         defer { isInsertingText = false }
+        if !hasMarkedText(),
+           replacementRange.location == NSNotFound,
+           let text = Self.plainText(string), text.count == 1, let ch = text.first,
+           Self.wrapDelimiters.contains(ch) {
+            let sel = selectedRange()
+            if sel.length > 0, sel.upperBound <= (rawSource as NSString).length {
+                let selected = (rawSource as NSString).substring(with: sel)
+                applyFormattingEdit(rawRange: sel, replacement: text + selected + text,
+                                    select: NSRange(location: sel.location + 1, length: sel.length))
+                return
+            }
+        }
         guard autoCloseBracketsEnabled,
               // While an IME is composing, the provisional text runs through
               // here too — never rewrite it.
