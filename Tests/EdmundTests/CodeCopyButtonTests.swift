@@ -88,25 +88,20 @@ struct CodeCopyButtonTests {
         #expect(editor.revealedCodeCopyButtons().isEmpty)
     }
 
-    /// Fill in → blink → hold → fill out, in that order.
-    @Test("The copied flash fills, blinks, holds, then releases")
+    /// Filled and blinking from the click; the blink eases out, the fill
+    /// holds, then fades back.
+    @Test("The copied flash is on at once, blinks out, then releases the fill")
     func flashShape() {
         func at(_ seconds: TimeInterval) -> CGFloat {
             CGFloat(seconds / EditorTextView.codeCopiedFlashDuration)
         }
-        // Fill lands before the blink starts, and holds through it.
-        #expect(EditorTextView.copiedFillAlpha(at: 0) == 0)
-        #expect(EditorTextView.copiedFillAlpha(at: at(0.1)) == 0.5)
-        #expect(EditorTextView.copiedFillAlpha(at: at(0.2)) == 1)
-        #expect(EditorTextView.copiedFillAlpha(at: at(1.0)) == 1)
-        #expect(EditorTextView.copiedFillAlpha(at: at(1.5)) == 0.5)
+        #expect(EditorTextView.copiedFillAlpha(at: 0) == 1)
+        #expect(EditorTextView.copiedFillAlpha(at: at(0.8)) == 1)
+        #expect(abs(EditorTextView.copiedFillAlpha(at: at(1.05)) - 0.5) < 0.001)
         #expect(EditorTextView.copiedFillAlpha(at: 1) == 0)
-        // The blink only begins once the fill has landed, peaks, and is gone
-        // long before the fill releases.
-        #expect(EditorTextView.copiedPulseAlpha(at: at(0.1)) == 0)
-        #expect(EditorTextView.copiedPulseAlpha(at: at(0.3)) == 1)
-        #expect(EditorTextView.copiedPulseAlpha(at: at(0.5)) < 0.5)
-        #expect(EditorTextView.copiedPulseAlpha(at: at(0.7)) == 0)
+        #expect(EditorTextView.copiedPulseAlpha(at: 0) == 1)
+        #expect(EditorTextView.copiedPulseAlpha(at: at(0.2)) < 0.5)
+        #expect(EditorTextView.copiedPulseAlpha(at: at(0.46)) == 0)
         #expect(EditorTextView.copiedPulseAlpha(at: at(1.0)) == 0)
     }
 
