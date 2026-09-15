@@ -3,6 +3,14 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Edmund now runs in the macOS App Sandbox. User themes, syntax definitions and the math engine move into the app's container automatically on first launch; preferences carry over. Diagnostic logs move from `~/.edmund/logs` into Application Support (Settings ▸ Advanced ▸ Show in Finder) — old logs are not carried over
+
+### Added
+- File ▸ Grant Access to Folder… lets the sandboxed app read images and wiki-linked notes beside a document; a blocked image says so and ⌘-click on it opens the same panel. One grant covers every document in that folder, across launches
+
 ## [0.7.0] - 2026-09-15
 
 Editor, code syntax, and better organized font theme. More table editing fixes. Various refinements. 

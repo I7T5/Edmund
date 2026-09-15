@@ -390,8 +390,10 @@ Written 2026-07-05 from direct reads of: `.github/workflows/release.yml`,
 
 Known stale docs at time of writing: `misc/how-to-release.md` (zip vs DMG,
 §1); `Log.swift` header ("always-on (opt-out)" vs the actual default-off
-toggle, §6). Minor oddity, deliberate: `build-app.sh` signs with
-`--identifier "com.i7t5.edmd"` while the bundle id is `com.i7t5.edmund`.
+toggle, §6). Signing ids: the default (sandboxed `sparkle`) variant signs
+with the bundle id `com.i7t5.edmund` — the sandbox container and prefs
+migration key off it; only `--variant adhoc` keeps the historical
+`--identifier "com.i7t5.edmd"`.
 
 Re-verify when any of these change: `release.yml` step names or secrets,
 `build-app.sh` signing order, the CHANGELOG header format (the awk regex in

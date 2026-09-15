@@ -50,6 +50,9 @@ enum ImageLoadFailure: Equatable {
     case blockedBySetting
     case notAnImage
     case notFound
+    /// Sandboxed: the file is in a folder the user hasn't granted yet
+    /// (`FolderAccess`); cmd+click on the placeholder offers the grant.
+    case needsFolderAccess
     /// A `![[file]]` embed of a type Obsidian supports (audio/video/pdf/note)
     /// but Edmund can't render.
     case embedTypeUnsupported
@@ -62,6 +65,7 @@ enum ImageLoadFailure: Equatable {
         case .blockedBySetting: return "External images blocked"
         case .notAnImage: return "Not an image"
         case .notFound: return "Image not found"
+        case .needsFolderAccess: return "Folder access needed — ⌘-click to grant"
         case .embedTypeUnsupported: return "Embeded file not an image"
         case .embedTypeGenerallyUnsupported: return "Embed file type generally unsupported"
         }
@@ -112,6 +116,10 @@ extension EditorTextView {
         guard let url = resolveImageURL(dest) else { return .blocked(.notFound) }
         let key = url.path
         if let cached = imageCache[key] { return .image(cached) }
+        // Before the existence check: under the sandbox `fileExists` answers
+        // true for an ungranted file while the read is denied, which would
+        // misreport it as "Not an image".
+        guard FolderAccess.covers(url) else { return .blocked(.needsFolderAccess) }
         // `resolveImageURL` builds a URL from the path string alone (it doesn't
         // check existence), so a missing file and an undecodable one both fail
         // `NSImage(contentsOf:)` the same way — check existence first so the two
@@ -167,6 +175,13 @@ extension EditorTextView {
             return docDir.appendingPathComponent(dest)
         }
         return nil
+    }
+
+    /// Whether `destination` is a local file the sandbox can't read yet, so the
+    /// token gets the cmd+click-to-grant marker. No I/O.
+    func imageNeedsFolderAccess(destination: String) -> Bool {
+        guard FolderAccess.isSandboxed, let url = resolveImageURL(destination) else { return false }
+        return !FolderAccess.covers(url)
     }
 
     /// A `FragmentOverlay` for `destination`'s image or placeholder, or nil

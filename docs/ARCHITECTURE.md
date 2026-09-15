@@ -18,13 +18,18 @@ rule applies to both.
 swift build                 # debug build of both targets
 swift test                  # full suite (≈1200 tests, ~10s)
 swift test --filter Callout # one suite
-./scripts/build-app.sh      # builds build/Edmund.app (release + bundles + icon + codesign)
+./scripts/build-app.sh      # builds build/Edmund.app — SANDBOXED (release + bundles + icon + codesign)
+./scripts/build-app.sh --variant adhoc   # unsandboxed dev build (ReproScript / CGEvent driver)
 ```
 
 Run the app for visual checks (gotchas in §8):
 ```bash
-pkill -x edmd; build/Edmund.app/Contents/MacOS/edmd /path/to/file.md &
+pkill -x edmd; build/Edmund.app/Contents/MacOS/edmd /path/to/file.md &   # adhoc variant only
+open -n -a "$PWD/build/Edmund.app" /path/to/file.md                      # sandboxed variant
 ```
+A sandboxed build launched by binary path **cannot open the file argument**
+("You don't have permission") — a command-line path is not a powerbox grant.
+`open`/Finder go through LaunchServices, which grants it.
 
 Two SPM targets (`Package.swift`):
 - **`EdmundCore`** — library: all editor logic, parsing, rendering,
@@ -216,7 +221,8 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Format-bar on-state | `EdmundCore/Editing/EditorTextView+FormattingState.swift` — the read-only counterpart to the toggles: `activeFormattingActions()`, `activeHeadingLevel()`, `activeCalloutType()`, refreshed from `editorDidChange` / `editorSelectionDidChange`. It scans **source delimiters, not rendered attributes**, because the attributes are lossy for this: a heading is also bold, and `==mark==` and a code span are both a background fill. Star *run length* is what separates `*x*` / `**x**` / `***x***`. A callout deliberately does not also light Block Quote (it is one underneath, but the callout pulldown gives the more specific answer). Hover/on chips live on `BarControlChip`; a chip is a fixed-height box centred on the bar's `interior`, **not** on the control's own bounds — sizing it per control made every symbol a different chip height. |
 | Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
 | Status bar | `edmd/Views/StatusBarView.swift` |
-| Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
+| Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing, `--variant sparkle\|adhoc`), `Package.swift`, `Info.plist`, `Resources/` |
+| App Sandbox | The shipping build is sandboxed (`Resources/Edmund.entitlements`: sandbox, user-selected r/w, app-scope bookmarks, print, network client, Sparkle's `-spks`/`-spki` mach-lookup exceptions; `Info.plist` `SUEnableInstallerLauncherService`). Container: `~/Library/Containers/com.i7t5.edmund/` — the sparkle variant signs **with the bundle id** (no `--identifier` override) because the container name and macOS's automatic preferences migration key off the signing id. `Resources/container-migration.plist` moves `Application Support/Edmund` (themes, syntaxes, RaTeX payload) into the container on the first sandboxed launch; verified live 2026-09-15, prefs migrate automatically. Logs: `Log.defaultDirectory` = Application Support/Edmund/Logs (container-native, Settings ▸ Advanced ▸ Show in Finder). Files *beside* a document need a grant: `Model/FolderAccess.swift` (app-scoped bookmarks in `folderGrants`, lazily resolved, scope started once per process) + `Rendering/EditorTextView+FolderAccess.swift` (the `NSOpenPanel`, from a ⌘-click on a "Folder access needed" image placeholder, a wiki link that can't be read, or File ▸ Grant Access to Folder… — item exists only when `FolderAccess.isSandboxed`). Gotcha: under the sandbox `fileExists` answers **true** for an ungranted file while the read is denied — gate on `FolderAccess.covers`, never on stat. `-debug.reproScript` / CGEvents need the adhoc variant. Not sandboxed yet: MAS variant (`#if SPARKLE`, MetricKit crash reporter) — `misc/plans/sandboxing.md` SB4. |
 
 Notable subsystems:
 

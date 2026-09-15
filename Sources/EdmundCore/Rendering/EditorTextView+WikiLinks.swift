@@ -65,7 +65,18 @@ extension EditorTextView {
     /// Resolves `path` to a file and opens it, scrolling the opened document to
     /// `heading` when one is named (cross-file, via `HeadingNavigable`).
     private func openLinkedFile(path: String, heading: String?) {
-        guard let fileURL = resolveLinkedFile(path) else { NSSound.beep(); return }
+        let resolved = resolveLinkedFile(path)
+        guard let fileURL = resolved, FolderAccess.covers(fileURL) else {
+            // Sandboxed and the folder isn't granted: the recursive search
+            // can't run and `openDocument` would fail with a permission alert.
+            // Offer the grant, then retry (once granted, `covers` is true).
+            if ungrantedDocumentFolder != nil {
+                requestFolderAccess { [weak self] in self?.openLinkedFile(path: path, heading: heading) }
+            } else {
+                NSSound.beep()
+            }
+            return
+        }
         NSDocumentController.shared.openDocument(withContentsOf: fileURL, display: true) { _, _, _ in
             guard let heading else { return }
             // Re-find the document by URL on the main actor (the NSDocument

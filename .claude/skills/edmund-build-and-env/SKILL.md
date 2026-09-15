@@ -65,7 +65,8 @@ though the app presents as "Edmund" — deliberate, see the comment in
 swift build                    # debug build of both targets
 swift test                     # full suite: ~750+ tests, ~10s (2026-07-05)
 swift test --filter Callout    # one suite
-./scripts/build-app.sh         # release build → build/Edmund.app
+./scripts/build-app.sh         # release build → build/Edmund.app (SANDBOXED; launch via `open -n -a`, not by binary path)
+./scripts/build-app.sh --variant adhoc   # unsandboxed — required for ReproScript / CGEvent live-repro runs
 ```
 
 `swift test` also runs automatically as a Stop hook after code-touching turns.
