@@ -8,6 +8,11 @@ import AppKit
 // Deleting an opening character while its partner still sits next to it removes
 // both. Gated by `autoCloseBracketsEnabled` (Settings ▸ Edit ▸ Editing).
 //
+// Backticks are deliberately not a pair: a third one opens a ``` code fence,
+// and auto-closing turned every fence typed by hand into ```` ` ````-style
+// debris (`` ` `` → `` `` ``, then the next `` ` `` steps over its partner
+// instead of adding one).
+//
 // Everything goes through `super.insertText`, so the edit takes the normal
 // pipeline (shouldChangeText → undo record → didChangeText → resync). The caret
 // is nudged left only *after* that returns: `didChangeText` re-asserts the caret
@@ -18,18 +23,44 @@ extension EditorTextView {
 
     /// Opening character → its closing partner.
     private static let autoPairs: [Character: Character] = [
-        "(": ")", "[": "]", "{": "}", "\"": "\"", "'": "'", "`": "`",
+        "(": ")", "[": "]", "{": "}", "\"": "\"", "'": "'",
     ]
 
     /// Characters that can be "typed over" when they already sit at the caret.
-    private static let autoPairClosers: Set<Character> = [")", "]", "}", "\"", "'", "`"]
+    private static let autoPairClosers: Set<Character> = [")", "]", "}", "\"", "'"]
 
     /// Quote-like pairs, where the opener and closer are the same character.
     /// These need the extra word-boundary checks below (an apostrophe inside
     /// `don't` must not sprout a partner).
-    private static let symmetricPairs: Set<Character> = ["\"", "'", "`"]
+    private static let symmetricPairs: Set<Character> = ["\"", "'"]
+
+    /// Markdown delimiters that wrap a selection instead of replacing it.
+    /// Typed once they give `*x*`; the inner text stays selected, so typing
+    /// the same key again gives `**x**` / `==x==` / `~~x~~` / `%%x%%`.
+    /// A plain wrap on purpose, not `toggleInlineWrap`: that would *unwrap*
+    /// on the second press.
+    // ponytail: the keys asked for; `_` can join the set.
+    private static let wrapDelimiters: Set<Character> = ["$", "*", "%", "=", "~", "`"]
 
     public override func insertText(_ string: Any, replacementRange: NSRange) {
+        // A caret this insertion places is where the user put it; the table
+        // caret-resting rule must not yank it out of a cell's trailing pad, or
+        // a space typed at the end of a cell can never be typed. See
+        // `isInsertingText` / `setSelectedRanges`.
+        isInsertingText = true
+        defer { isInsertingText = false }
+        if !hasMarkedText(),
+           replacementRange.location == NSNotFound,
+           let text = Self.plainText(string), text.count == 1, let ch = text.first,
+           Self.wrapDelimiters.contains(ch) {
+            let sel = selectedRange()
+            if sel.length > 0, sel.upperBound <= (rawSource as NSString).length {
+                let selected = (rawSource as NSString).substring(with: sel)
+                applyFormattingEdit(rawRange: sel, replacement: text + selected + text,
+                                    select: NSRange(location: sel.location + 1, length: sel.length))
+                return
+            }
+        }
         guard autoCloseBracketsEnabled,
               // While an IME is composing, the provisional text runs through
               // here too — never rewrite it.
@@ -74,6 +105,9 @@ extension EditorTextView {
     /// Once anything sits between them the pair is ordinary text and the closer
     /// stays put.
     public override func deleteBackward(_ sender: Any?) {
+        // A block of selected cells deletes as whole rows/columns, or clears
+        // its cells' contents — never as a plain character delete of the ranges.
+        if handleTableCellSelectionDelete() { return }
         let target = selectedRange()
         guard autoCloseBracketsEnabled,
               !hasMarkedText(),
@@ -96,15 +130,21 @@ extension EditorTextView {
         super.deleteBackward(sender)
     }
 
+    /// Forward delete (fn+Delete) on a cell selection does the same as Delete —
+    /// whole rows/columns, or clearing the cells. Otherwise it is untouched.
+    public override func deleteForward(_ sender: Any?) {
+        if handleTableCellSelectionDelete() { return }
+        super.deleteForward(sender)
+    }
+
     /// Whether typing `ch` at `location` should bring a closing partner along.
     private func shouldAutoClose(_ ch: Character, at location: Int) -> Bool {
         // Never auto-close directly before a word: the user is typing around
         // existing text (`(` before `foo` should not orphan a `)` mid-word).
         if let next = character(at: location), next.isLetter || next.isNumber { return false }
 
-        // A quote or backtick right after a word character is almost always an
-        // apostrophe or a closing mark, not the start of a pair — `don't`,
-        // `it's`, a closing `` ` `` after inline code.
+        // A quote right after a word character is almost always an apostrophe
+        // or a closing mark, not the start of a pair — `don't`, `it's`.
         if Self.symmetricPairs.contains(ch),
            let prev = character(at: location - 1),
            prev.isLetter || prev.isNumber {

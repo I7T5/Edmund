@@ -194,8 +194,7 @@ struct TableWrapRenderingTests {
             #expect(cellWrapLineOffset(last, contentWidth: wrap.contentWidth, align: .left) == 0)
             if align == .right {
                 // Right-aligned means the line's *visible* text ends at the
-                // column edge. The cell's trailing space (`… |`) is excluded
-                // on purpose — counting it would push the text a space short.
+                // column edge.
                 let text = last.attributedString.attributedSubstring(from: last.characterRange)
                 let full = text.size().width
                 let lastInk = (text.string as NSString).rangeOfCharacter(
@@ -203,7 +202,13 @@ struct TableWrapRenderingTests {
                 let visible = text.attributedSubstring(
                     from: NSRange(location: 0, length: lastInk.upperBound)).size().width
                 #expect(abs(offset + visible - wrap.contentWidth) < 0.5)
-                #expect(full > visible)
+                // The cell's padding (`| … |`) never enters the scratch layout
+                // at all — a leading space could take a narrow column's first
+                // line by itself — so the last line ends on ink, and the full
+                // and visible widths are one and the same.
+                #expect(abs(full - visible) < 0.5)
+                #expect(!wrap.styled.string.hasPrefix(" "))
+                #expect(!wrap.styled.string.hasSuffix(" "))
             }
         }
     }
@@ -228,7 +233,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(let offsets, _, _, _, _)? =
+            if case .tableRow(let offsets, _, _, _, _, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 offsetsPerRow.append(offsets)
             }
@@ -240,7 +245,7 @@ struct TableWrapRenderingTests {
         #expect(offsetsPerRow.dropFirst().allSatisfy { $0 == offsetsPerRow[0] })
     }
 
-    @Test("Interior data rows get a bottom grid line; header, separator and last row don't")
+    @Test("Every data row gets a bottom grid line, the last one included")
     func bottomBorderOnDataRowsOnly() {
         let editor = makeEditor()
         let styled = editor.styleBlock("| a | b |\n|---|---|\n| x | y |\n| p | q |", cursorPosition: nil)
@@ -248,7 +253,7 @@ struct TableWrapRenderingTests {
         let s = styled.string as NSString
         var lineStart = 0
         while lineStart <= s.length {
-            if case .tableRow(_, _, _, _, let bottomBorder)? =
+            if case .tableRow(_, _, _, _, let bottomBorder, _)? =
                 blockDecoration(at: lineStart, in: styled)?.kind {
                 bottoms.append(bottomBorder)
             }
@@ -256,9 +261,11 @@ struct TableWrapRenderingTests {
             guard nl.location != NSNotFound else { break }
             lineStart = nl.upperBound
         }
-        // Rows: header, separator, "x | y", "p | q". The last row draws no
-        // bottom rule — the table's bottom edge is open.
-        #expect(bottoms == [false, false, true, false])
+        // Rows: header, separator, "x | y", "p | q". The last row draws its
+        // rule too — the table is closed on all four sides, like Notes'. The
+        // header's own top rule rides its `topInset`, not this flag, and the
+        // separator draws the header divider through its middle instead.
+        #expect(bottoms == [false, false, true, true])
     }
 
     @Test("distributeColumnWidths keeps under-fair-share columns, clamps the rest")

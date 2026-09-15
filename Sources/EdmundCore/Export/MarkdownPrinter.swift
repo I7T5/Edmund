@@ -25,9 +25,12 @@ public enum MarkdownPrinter {
                                  options: ReadRenderOptions = .default,
                                  suggestedName: String,
                                  window: NSWindow?) {
+        // The document name arrives with its Markdown extension ("notes.md");
+        // the PDF is named after the document, not after the source file.
+        let base = (suggestedName as NSString).deletingPathExtension
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = suggestedName + ".pdf"
+        panel.nameFieldStringValue = base + ".pdf"
 
         let html = DocumentHTML.full(markdown: markdown, theme: theme,
                                      callouts: callouts, dark: false,
@@ -36,7 +39,8 @@ public enum MarkdownPrinter {
             let info = makePrintInfo()
             info.jobDisposition = .save
             info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = url
-            PrintJob.start(html: html, parentWindow: window, printInfo: info, showsPanel: false)
+            PrintJob.start(html: html, parentWindow: window, printInfo: info,
+                           showsPanel: false, jobName: base)
         }
 
         if let window {
@@ -52,11 +56,13 @@ public enum MarkdownPrinter {
                              callouts: [String: CalloutStyle],
                              baseURL: URL? = nil,
                              options: ReadRenderOptions = .default,
+                             suggestedName: String,
                              window: NSWindow?) {
         let html = DocumentHTML.full(markdown: markdown, theme: theme,
                                      callouts: callouts, dark: false,
                                      baseURL: baseURL, options: options)
-        PrintJob.start(html: html, parentWindow: window, printInfo: makePrintInfo(), showsPanel: true)
+        PrintJob.start(html: html, parentWindow: window, printInfo: makePrintInfo(),
+                       showsPanel: true, jobName: (suggestedName as NSString).deletingPathExtension)
     }
 
     /// US-Letter with 0.75" margins; WKWebView reflows content to the imageable
@@ -89,16 +95,17 @@ private final class PrintJob: NSObject, WKNavigationDelegate {
     private let parentWindow: NSWindow?
     private let printInfo: NSPrintInfo
     private let showsPanel: Bool
+    private let jobName: String
 
     static func start(html: String, parentWindow: NSWindow?,
-                      printInfo: NSPrintInfo, showsPanel: Bool) {
+                      printInfo: NSPrintInfo, showsPanel: Bool, jobName: String) {
         let job = PrintJob(html: html, parentWindow: parentWindow,
-                           printInfo: printInfo, showsPanel: showsPanel)
+                           printInfo: printInfo, showsPanel: showsPanel, jobName: jobName)
         live.insert(job)
     }
 
     private init(html: String, parentWindow: NSWindow?,
-                 printInfo: NSPrintInfo, showsPanel: Bool) {
+                 printInfo: NSPrintInfo, showsPanel: Bool, jobName: String) {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 1000),
@@ -114,6 +121,7 @@ private final class PrintJob: NSObject, WKNavigationDelegate {
         self.parentWindow = parentWindow
         self.printInfo = printInfo
         self.showsPanel = showsPanel
+        self.jobName = jobName
         super.init()
         webView.navigationDelegate = self
         webView.loadHTMLString(html, baseURL: ReadModeNavigationPolicy.trustedBaseURL)
@@ -121,6 +129,10 @@ private final class PrintJob: NSObject, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let op = webView.printOperation(with: printInfo)
+        // Names the job in the print queue and seeds the default filename of the
+        // print dialog's "Save as PDF" sheet. The page carries no <title>, so
+        // without this AppKit falls back to the window/document name ("notes.md").
+        if !jobName.isEmpty { op.jobTitle = jobName }
         op.showsPrintPanel = showsPanel
         op.showsProgressPanel = showsPanel
         if let parentWindow {

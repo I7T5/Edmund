@@ -444,16 +444,33 @@ struct TableActiveTests {
         let text = displayText(for: 0, in: editor)
         #expect(text.contains("| A | B |"))
         #expect(text.contains("| --- | --- |"))
+        // Weak on its own — storage is always rawSource, so the pipes are in
+        // the string whether they are drawn or not. `rawPipesDimmed` below is
+        // what actually distinguishes raw from rendered.
     }
 
-    @Test("Active table pipes are dimmed")
-    @MainActor func activePipesDimmed() {
+    /// A caret in a table no longer reveals its pipes — the table stays
+    /// rendered and the cell is edited in place, so the pipe keeps the clear
+    /// colour that hides it.
+    @Test("A caret in a table leaves its pipes hidden")
+    @MainActor func activePipesStayHidden() {
         let editor = makeEditor()
         editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
         activateBlock(0, in: editor)
 
-        let color = fgColor(at: 0, in: editor)
-        #expect(color == expectedDimColor)
+        #expect(fgColor(at: 0, in: editor) == NSColor.clear)
+    }
+
+    /// Raw is still reachable, but only by asking for it — the `</>` button,
+    /// which is what `rawTableEditing` records.
+    @Test("Raw table pipes are dimmed")
+    @MainActor func rawPipesDimmed() {
+        let editor = makeEditor()
+        editor.loadContent("| A | B |\n| --- | --- |\n| 1 | 2 |\nother")
+        editor.rawTableEditing = true
+        activateBlock(0, in: editor)
+
+        #expect(fgColor(at: 0, in: editor) == expectedDimColor)
     }
 }
 

@@ -5,8 +5,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+### Added
+- Tables: Return on a header's separator row fills in the table in canonical aligned form — columns padded to their widest cell, the separator's dashes filling each column — and adds a body row to type in
+- Tables: Delete on a cell selection clears the cells; a second Delete on an empty complete row or column removes it
+- Tables: a divider now sets Delete apart from the add operations in the row/column menu
+
+### Fixed
+- Print and Export as PDF no longer keep the `.md` extension in the PDF filename
+- Tables: the `</>` button no longer leaves a ghost when it steps aside for the row pill
+- Tables: clicking the blank end of a wrapped cell no longer flashes the caret to the start of the cell
+- Tables: the row/column pills no longer linger after clicking in a table with wrapped cells
+- Tables: text can now be drag-selected inside a wrapped cell
+- Tables: a single-dash delimiter row (`- | -`) now renders as a table instead of a bullet list
+- Nested emphasis (italic inside bold, or bold inside italic) now renders
+
 ### Changed
-- Deleting an opening bracket or quote now removes its auto-inserted partner too, while the two are still next to each other
+- A setext heading underline now needs three or more `---`/`===`, not one
+
+## [0.6.1] - 2026-09-12
+
+Various table editing fixes.
+
+### Fixed
+- Tables: Content of wrapped cells don't fully display
+- Tables: Caret jumps to start of cell and jumps back if you click at the end
+
+### Changed
+- Tables: Automatically insert pipes when pasting incomplete tables
+- Tables: Users cannot merge columns by deleting pipes
+- Tables: Users cannot remove the padding space before and after pipes
+
+
+## [0.6.0] - 2026-09-10
+
+### Added
+- Table editing within cells, row/column actions, copy as spreadsheet date
+- Image drag and drop
+
+### Changed
+- Deleting opening parentheses/quotes automatically removes corresponding closing character if they are adjacent when pairing setting is on
+- Automatically detect required indent instead of relying on settings tab size when tabbing on nested lists
+
+### Fixed
+- Indent list selection sometimes indents the non-selected
+- PDFs end in `.pdf` instead of `.md.pdf`
+
 
 ## [0.5.0] - 2026-08-22
 

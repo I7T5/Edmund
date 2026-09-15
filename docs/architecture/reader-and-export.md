@@ -36,7 +36,7 @@ flowchart LR
 | `HTMLTheme.swift` | `EditorTheme` → CSS |
 | `DocumentHTML.swift` | Page assembly, CSP meta, asset inlining (math + local images → data URIs), the image-policy chokepoint |
 | `ReadModeWebView.swift` | The sandboxed webview + scroll-position mapping |
-| `MarkdownPrinter.swift` | Same HTML through `WKWebView.printOperation` — real vector (selectable) text |
+| `MarkdownPrinter.swift` | Same HTML through `WKWebView.printOperation` — real vector (selectable) text. Both entry points take the document name and strip its extension: Export seeds the save panel with `<name>.pdf`; Print sets `NSPrintOperation.jobTitle`, which is what the print dialog's "Save as PDF" sheet uses for its default filename (the page has no `<title>`, so without it AppKit falls back to the window name, `notes.md`) |
 
 `Document.refreshReadView()` keeps an open Read view in sync with edits and
 theme changes. Code blocks are syntax-colored by the same `CodeHighlighter`

@@ -1,0 +1,16 @@
+{
+  "name": "anura-dark",
+  "displayName": "Anura",
+  "appearance": "dark",
+
+  "plain": "#e5e5e5",
+  "keyword": "#5199b3",
+  "command": "#d4a046",
+  "type": "#ed734c",
+  "attribute": "#c76090",
+  "variable": "#75c9c6",
+  "value": "#f26669",
+  "number": "#a97dd1",
+  "string": "#90ad65",
+  "comment": "#808080"
+}

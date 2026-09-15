@@ -76,9 +76,12 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   callouts, `==highlight==`, wikilinks, `%%` and `<!-- -->` comments,
   footnotes, math, backslash escapes, inline HTML tags incl. `<img>`, GFM
   autolinks.
-- **`styleBlock(_:cursorPosition:)`** (`Rendering/EditorTextView+Rendering.swift`)
-  renders ONE block. Each feature has a `Rendering/` extension: Callout,
-  Code, Image, List, ListMarker, Math, Table, WikiLinks.
+- **`styleBlock(_:cursorPosition:listDepth:)`**
+  (`Rendering/EditorTextView+Rendering.swift`) renders ONE block. Each feature
+  has a `Rendering/` extension: Callout, Code, Image, List, ListMarker, Math,
+  Table, WikiLinks. `listDepth` is the one piece of *document* context a block
+  can't derive from its own text (see §6's list nesting); callers without a
+  block index pass nil and get a whitespace estimate.
 - **Recompose** (`TextView/EditorTextView+Composition.swift`) drives styling:
   - `recompose(cursorInRaw:)` — full: replace storage with rawSource, restyle
     all blocks (load, undo, indent).
@@ -148,10 +151,13 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
   `NSColor(hex:)` or `calibratedWhite:` — the calibrated space renders visibly
   lighter than the hex it was given (same trap as `editorBackgroundColor`).
 - **Hairlines are filled, not stroked.** A 1pt stroke straddles a pixel
-  boundary and covers *two* device rows on Retina, so stroked table verticals
-  read twice as heavy as the row rules beside them. Table column borders fill
-  exactly one device pixel and the `---` rule fills three. The backing scale
-  comes from `context.convertToDeviceSpace(CGSize(width: 1, height: 1))` —
+  boundary and covers *two* device rows on Retina, so a stroked line reads
+  twice as heavy as a filled one beside it. The whole table grid — column
+  borders *and* row rules — fills exactly one device pixel; the `---` rule
+  fills three. The verticals were filled first and the row rules left stroked,
+  which is what put the heavier weight around a table once the grid was closed
+  on all four sides. The backing scale comes from
+  `context.convertToDeviceSpace(CGSize(width: 1, height: 1))` —
   `context.ctm.a` reports 1 even at 2x.
 - **Image overlays only work on single-line fragments.** An *image* on a
   *multi-line* (wrapping) fragment re-triggers a layout pass that wedges it
@@ -179,11 +185,15 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Editor core / state | `TextView/EditorTextView.swift` (+ many extensions) |
 | Parsing | `Parsing/BlockParser.swift`, `SyntaxHighlighter*.swift`, `CodeHighlighter.swift`, `CodeSyntaxPalette.swift` (shared Tomorrow/One-Dark hex table — read by both the editor's `NSColor` palette and the HTML CSS generator) |
 | Code-fence highlighting | A pluggable seam, not a hardcoded scanner. `CodeHighlighter` is the facade: it resolves the effective language, then hands `(code, language)` to the active `CodeSyntaxBackend`. `BuiltinSyntaxBackend` is the default — one single-pass O(n) char scanner driven by a declarative `LanguageDefinition` (keywords, comment/string delimiters) rather than per-language code. `SyntaxDefinitionStore` loads those definitions from two places: the bundled JSON in `EdmundCore/Resources/Syntaxes/` and the user's Application Support dir, so **users can add a language without a rebuild**. Settings ▸ Syntax picks the fallback language (`settings.syntax.defaultCodeSyntax`). |
-| Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift`, `LinkDefinitionState.swift` (incremental index of `[label]: dest` reference-link definitions, which resolve across blocks — so a definition edit dirties the blocks that cite it), `LineEnding.swift` (buffer is always LF internally so `BlockParser`'s `\n` split stays clean; the file's original CRLF/CR style is remembered and written back on save), `StatusBarPrefs.swift`, `SVGPath.swift` (minimal SVG→`CGPath` for the vendored Lucide geometry — §5's wrapping-callout icon) |
+| Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift`, `ListDepthMap.swift` (list nesting depth per block — see the List nesting row below), `LinkDefinitionState.swift` (incremental index of `[label]: dest` reference-link definitions, which resolve across blocks — so a definition edit dirties the blocks that cite it), `LineEnding.swift` (buffer is always LF internally so `BlockParser`'s `\n` split stays clean; the file's original CRLF/CR style is remembered and written back on save), `StatusBarPrefs.swift`, `SVGPath.swift` (minimal SVG→`CGPath` for the vendored Lucide geometry — §5's wrapping-callout icon) |
 | Text storage | `TextView/EditorTextStorage.swift` — `NSTextStorage` subclass whose `fixAttributes` does **font substitution only**. The editor manages every attribute on every character (incl. custom keys like `.blockDecoration`/`.fragmentOverlay`), so AppKit's usual attribute fixing would fight it. Substitution is **cascade-aware**: when `EditorTheme.fontCascade` assigns a font to a script (`Model/FontCascade.swift` — `FontCascadeScript` classifier + `FontCascadeResolver` cache), graphemes of that script get the user's font (at the run's size × the script's `fontCascadeSizeRatios` entry) *before* coverage is even checked, and the generic CoreText fallback pass skips those sequences (applied later in the same fix list, it would silently overwrite the cascade). The UTF-16 pre-scan bound is U+00A9, not U+0300: ©/® are `isEmoji` and lead the emoji CSS range, so a higher bound would let a "© 2026" line keep the body font in Edit while Read paints the emoji face. Empty cascade ⇒ byte-identical pre-cascade behavior. Also carries the `pendingEdit` that drives incremental reparse (§4) and the bypassed-edit heal (§8). |
 | Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout gated at render via `calloutInfo`), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Syntax pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
+| Table editing (interactive) | `TextView/EditorTextView+TableHandles.swift` (row/column ⋯ pills and their menus, the cell-selection box and its corner dots, and every rule about where a caret may rest in a table), `TextView/EditorTextView+TableRawButton.swift` (the `</>` toggle: revealed by hover *or* the caret being in the table, sharing the line-number margin with the row pill), `Rendering/EditorTextView+TableGeometry.swift` (`TableGrid` — row rects and column edges read back off the `.tableRow` decoration), `Editing/EditorTextView+TableStructure.swift` (add/delete row and column), `Editing/EditorTextView+TableCopy.swift` (⌘C: a cell's own text, or a selected block as tab-separated rows for a spreadsheet). The gestures and their traps: §8. |
+| Images | Edit mode renders `![alt](path)` **inline**: outside the token an overlay draws the picture (raw, editable markdown shows when the caret is inside it); an image that can't load draws a small icon + the reason instead. Resolution: absolute/`~`/`file:` load directly, relative resolves against the document's directory, `https` only when `allowRemoteImages` (`AppSettings.blockExternalImages`) and always async, `http` never (ATS). Loaded images are cached in a plain dict, **not** `NSCache` — eviction re-fetched remote badges and tripped host rate limits. Failure reasons are one shared `ImageLoadFailure` enum so Edit and Read report the same words. `Rendering/EditorTextView+ImageRendering.swift`. |
+| Inserting images | Format ▸ Image ▸ Attach File… and **drag & drop from Finder** both land on `insertImages(at:)` (`Editing/EditorTextView+FormattingCommands.swift`), inserting `![alt text](dest)` with the placeholder selected. `imageDestination(for:)` writes a path relative to the document's folder when the file sits under it, absolute otherwise, percent-encoded (a raw space or `)` would truncate the destination; `DocumentHTML.resolveLocalImage` decodes symmetrically). Files are referenced where they lie — Edmund never copies them, so moving an image later breaks the link. Drop mechanics: `Editing/EditorTextView+ImageDrop.swift`. |
 | Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: no characters inserted, TextKit 2 only. `EditorTextView.invisibles` ← `AppSettings.invisiblesConfig`; Settings ▸ Edit. Mechanism: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
+| List nesting depth | `Model/ListDepthMap.swift` — how far in a list item is drawn. A **stack of the indent columns of the lines above it**, so depth is local to its own list: `EditorTextView.listDepths` (built lazily, dropped by `blocks`' `didSet`), read per block by `listDepth(ofBlock:)` and handed to `styleBlock`. The nesting rule is the editor's own, **not** CommonMark's: *any* deeper indent opens a level, where CommonMark makes a child reach its parent's content column (3 for `1. `) — hence the editor/read-mode split in §9. This replaced `columns / listIndentUnit`: that unit is the document's *narrowest* list indent, so one Tab writing a narrower indent than the document used re-depthed every other list on screen. `listIndentUnit` now only serves `styleBlock` calls with no block index (a list in a table cell or callout, the styling tests). An edit that moves one item re-parents the items nested under it, so `listDepthChanges(from:)` diffs the pre/post depth arrays (by common prefix and suffix) to dirty exactly those. |
 | List indent guides | Faint vertical hairlines on list items: one per *ancestor* level spanning the item, plus the item's own column beside its wrapped continuation lines. Offsets from `listGuideOffsets(depth:slotWidth:)` (`Rendering/EditorTextView+ListRendering.swift`), written to `.listGuides` **whether or not the setting is on** — the fragment gates the drawing, so toggling is a re-vend, never a restyle. `EditorTextView.showListIndentGuides`; Settings ▸ Edit. Geometry traps (container-relative offsets, `lineFragmentPadding`): [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Line numbers | `TextView/EditorTextView+LineNumbers.swift` — source line numbers (Settings ▸ Edit ▸ Lines, off by default), `EditorTextView.showLineNumbers`. **Two placements over one walk**, and the placement is **not** a setting: it follows whether the margin can hold them (beside the content by default, a `LineNumberRulerView` at the window edge otherwise). Also home to `line(forOffset:)`/`offset(forLine:)`, binary-searching the cached `lineStarts`. Editor-only; never printed. Placement rules, the macOS 14 SIGSEGV, draw rules and the tabular-figure face: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Focus mode | `TextView/EditorTextView+FocusMode.swift` — dims all but the lines the selection touches (Settings ▸ Edit ▸ Editor, Edit ▸ Focus Mode; off by default), `EditorTextView.focusMode`. **One transparency layer around `DecoratedTextLayoutFragment.draw`**, so text and its decorations fade as one composite; it cannot be a scrim (NSTextView composites fragments *after* `draw(_:)` returns). Editor-only. Why, and the measurements: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
@@ -314,6 +324,17 @@ Notable subsystems:
   `http`/`https`/`mailto` links open in the browser, `file:`/unknown
   schemes cancelled; wikilinks/relative links use private
   `x-edmund-wiki:`/`x-edmund-link:` schemes the nav coordinator intercepts.
+  The same channel carries the two in-page actions: a code block's copy
+  button (`x-edmund-copy:<base64>`, handled in the web view) and a task
+  item's checkbox (`x-edmund-task:<sourceLine>` → `ReadModeWebView.onToggleTask`
+  → `Document` → `editor.toggleTask(atLine:)` on the hidden editor, then
+  `setTaskChecked` patches the box's DOM in place over the host-side JS
+  channel — never a reload, which blanks a frame and lands the scroll only
+  as near as the anchor restore can; formatting edits post no
+  `NSText.didChangeNotification`, so nothing else refreshes). Line numbers in that HTML are **source**
+  lines: `HTMLRenderer.preprocess` strips front matter and block `%%` comments
+  before swift-markdown parses, and reports what it cut so `originalLine`
+  can map back — the `edmund-l<N>` anchors below use the same map.
   **Inspect Reader (⌥⌘I)** is a semi-toggle on `Document`, not on the web
   view, so it works from Edit too: it switches to Read and opens WebKit's
   private `_inspector`, and closes it when already up; entering Edit always
@@ -321,7 +342,9 @@ Notable subsystems:
   Element", with WebKit's own duplicate removed.
   **Export as PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
-  high-DPI PNG). Full spec: `docs/architecture/reader-and-export.md`.
+  high-DPI PNG). The PDF is named after the document minus its extension —
+  Print via `NSPrintOperation.jobTitle`, since the page has no `<title>`.
+  Full spec: `docs/architecture/reader-and-export.md`.
 - **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
   `NSTextFinder` — it renders the system bar rather than the Notes look, and
   its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire
@@ -382,11 +405,33 @@ Notable subsystems:
 - `AppSettings` (`edmd/Settings`) = UserDefaults keys + typed accessors.
   SwiftUI panes use `@AppStorage`. Live changes broadcast to every open
   `Document.editor` (the font/line-height/content-width `applyTo…` helpers).
-- **Seven panes**, built by `SettingsWindowController.addPane`: General,
-  Appearance, Edit, Syntax, Key Bindings, Extensions, Advanced. Keys are
+- **Eight panes**, built by `SettingsWindowController.addPane`: General,
+  Appearance, Themes, Edit, Syntax, Key Bindings, Extensions, Advanced. Keys are
   namespaced to match (`settings.<pane>.<name>`), so the key tells you which
   pane owns it. There is no "Markdown" pane — the Markdown feature toggles
-  (§6) live under `settings.syntax.*`. The per-script font cascade is NOT a
+  (§6) live under `settings.syntax.*`.
+- **Appearance and Themes are separate on purpose.** Appearance owns typography
+  and the broad choices (light/dark, the measure, both faces, line height, the
+  per-script cascade); Themes owns color, and is the authoring pane — it makes
+  and edits themes. Fonts were briefly a third *theme kind*, named by an editor
+  theme; that added a third noun with an assignment between it and the others,
+  and it let the light↔dark switch change the reader's typeface. A writing app's
+  font is chosen once and kept, so it is a setting, and a theme is a color
+  scheme. Typography keys therefore keep their old `Editor*` names
+  (`EditorFontName`, `EditorLineSpacing`, …) rather than moving to a
+  `settings.font.*` namespace: they are the shipped keys, and renaming them
+  would strand every existing install.
+- **Themes are JSON, loaded by `ThemeStore`** (§`Sources/EdmundCore/Model/`).
+  Two kinds — `GeneralTheme` (editor chrome) and `SyntaxTheme` (code tokens) —
+  each declaring the appearance it is legible on; the app holds one active theme
+  per kind per appearance and swaps on light↔dark. A file's stem is the theme's
+  `name` and the value stored in settings, so renaming touches `displayName`
+  only. Bundled themes load first and a user file of the same name shadows one,
+  which is what lets a shipped theme be edited without being replaced and
+  restored by deleting the shadow. A `nil` color means "use the platform default
+  for this role" and is resolved at the call site, beside the value it falls
+  back to — not the same as missing data, because a semantic color like
+  `NSColor.textColor` tracks Increase Contrast and a hex cannot. The per-script font cascade is NOT a
   pane: it is a collapsed "Fonts by script" section at the foot of Appearance
   (`EditorFontCascade` = `[script: family]` dict, `EditorFontCascadeSizeRatios`
   = `[script: ratio]` — ratios of the body size, so zoom and body-size changes
@@ -562,6 +607,12 @@ Notable subsystems:
   windows, state restoration) —
   `rm -rf ~/Library/"Saved Application State"/com.i7t5.edmund.savedState`
   and relaunch.
+- **Settings panes render offscreen** (DEBUG builds): `.build/debug/edmd
+  -debug.render pane:Appearance -debug.renderOut out.png [-debug.renderDark YES]
+  -debug.disableUpdater YES` — also `editor:<name>` / `syntax:<name>` for a
+  theme's detail box (`Sources/edmd/App/SettingsRender.swift`). Live
+  `screencapture` has never worked for these panes; use this, don't
+  hand-build a scaffold.
 - **Counting an app's windows is the flakiest measurement in this repo — don't
   trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
   `winid.swift` uses) lists windows the app has already *closed*, so a stale
@@ -678,6 +729,23 @@ Notable subsystems:
 
 ### Edit, selection & storage integrity
 
+- **`updateDragTypeRegistration()` is a no-op during `commonInit`.** Measured:
+  `registeredDraggedTypes` stays empty after calling it there, so an
+  overridden `acceptableDragTypes` never reaches the drag system and drops
+  silently do nothing — until something later flips `isEditable` (the
+  `viewMode` setter does), at which point AppKit re-registers on its own and
+  the feature spontaneously starts working. Register explicitly
+  (`registerForDraggedTypes(acceptableDragTypes)`) instead. AppKit's later
+  re-registration reads the same overridden property, so it survives Read-mode
+  round trips — there is a test pinning that (`ImageDropTests`).
+- **`readSelection(from:type:)` serves drag *and* paste.** It is the hook
+  NSTextView's drag destination calls after moving the insertion point to the
+  drop location (so overriding it gets drop-caret tracking for free, unlike a
+  hand-rolled `performDragOperation`) — but `readablePasteboardTypes` also
+  drives `paste:`, so a type added for dropping changes pasting too. Order
+  matters: a Finder drag carries a file URL **and** a plain-string path, and
+  the first supported type wins, so `.fileURL` has to lead or a drop pastes a
+  bare path (`Editing/EditorTextView+ImageDrop.swift`).
 - **Never mutate storage while an IME is composing (`hasMarkedText()`)**:
   during composition storage holds the provisional marked text, so
   `storage == rawSource` is transiently false and `didChangeText` defers
@@ -723,6 +791,33 @@ Notable subsystems:
   blocks everything until dismissed. Chronicle:
   `docs/investigations/delete-drift-investigation.md` round 6; method:
   `docs/dev-guides/live-repro-guide.md`.
+- **AppKit's caret on macOS 14+ is a view (`NSTextInsertionIndicator`, a
+  direct subview of the text view) and it hides with an animated fade —
+  *after* it has moved to the new selection.** Clearing `insertionPointColor`
+  or `updateInsertionPointStateAndRestartTimer(false)` shortens the fade but
+  never skips it, so a caret carried live into a wrapped table cell ghosted
+  ~100 ms at the cell's hidden characters (the cell start) — the "caret
+  flash". Only `isHidden` on that view (not animated) removes it:
+  `setAppKitCaretHidden` in `EditorTextView+TableCellCaret.swift`, called
+  *before* the selection moves. The view exists only once the window has
+  been key, so in-process probes (`clickprobe`) never see any of this — use
+  real clicks (`realclick`/`realoff`) with `burst` capture. Chronicle:
+  `docs/investigations/caret-flash-investigation.md`.
+- **Never read layout-fragment geometry right after a restyle without
+  `ensureLayout` first — and ensure from the document start.** A click's
+  own selection change restyles the active block (`applyBlockStyle`), which
+  invalidates its fragments *and* the newline before it; until the next
+  layout pass `textLayoutFragment(for:)` hands back a fragment whose frame
+  sits at the origin (rects ~120pt high, 10pt left). The wrapped-cell caret
+  remembered such a band as "where the old caret is" and the next click never
+  repainted the real one: a solid ghost caret on the previous visual line,
+  only when the second click came before the first blink tick (the tick
+  re-reads after layout). `ensureLayout` for the caret's paragraph alone
+  stacked the row after the last *valid* fragment (66pt off), from the
+  block start 5pt off (the paragraph above is invalid too); from
+  `documentRange.location` it is exact and ~15µs when nothing is pending
+  (`wrappedCellRects`). Found by logging what `setNeedsDisplay` was
+  actually called with (`-debug.caretTrace`).
 - **The `viewMode` setter recomposes every block, collapsing far geometry
   to estimates** (~17pt/line base vs ~27pt styled) — `recomposeDirty` on a
   large dirty set defers non-viewport styling to the idle drain. Two
@@ -856,6 +951,38 @@ Notable subsystems:
   the parser chokes past it until the next `{`). Use `/* */`. Cost a whole
   round of "why doesn't this CSS change do anything" — see
   `docs/investigations/math-ratex-weight-investigation.md` Round 1.
+- **Correct a click's selection in `setSelectedRanges`, not after
+  `super.mouseDown`.** `super.mouseDown` runs the whole tracking loop and does
+  not return until the mouse comes *up* — and it paints while it tracks. A
+  correction applied after it returns is one the user watches happen: the caret
+  sits in the wrong place for the length of the click and then jumps. Every
+  table click rule (the caret off a cell's padding, the blank-space
+  double-click, the drag-across-cells block) is applied to the `ranges` going
+  in, so the first selection installed is the right one and there is no
+  intermediate state to paint. `tableClickPoint`/`tableClickCount`/
+  `tableClickHit` carry the gesture's facts for exactly that span, because
+  `setSelectedRanges` knows none of them on its own.
+- **Read the table grid with layout forced on the click paths.**
+  `tableGrid` enumerates the rows' layout fragments, and enumerating with no
+  options does **not** force layout. A click restyles the block it lands in, so
+  by the time the grid is read those fragments can be invalidated and not laid
+  out again — and an unlaid-out fragment reports a frame with *no height*,
+  collapsing the whole grid onto one line (`bounds` y18–18) so that no point is
+  ever inside the table. Every geometric lookup then fails silently and the
+  caret rules fall back to offset-only paths that cannot tell one cell's pad
+  from the next cell's start. `tableGrid(blockIndex:ensuringLayout:)` forces it
+  for the click paths; the draw pass must not (forcing layout there re-enters
+  the viewport layout controller and blanks the view), and a collapsed grid is
+  reported as *no* grid rather than a zero-height one.
+- **A cell's padding is one kerned glyph, and the hidden pipe sits in the
+  middle of it.** The column's slack is split between the cell's trailing space
+  and the row's closing pipe, so that pipe draws at the visual midpoint of the
+  blank space — and AppKit hit-tests both like any glyph, splitting each
+  advance at its midpoint. That is why a click in a cell's empty space could
+  land anywhere from the cell's text end to the *next* cell's first character
+  depending on which half of the pad it was in, and why a caret resting on the
+  pipe looks like it is floating in mid-cell. Judge such a click by the cell
+  the *point* is in, never by the offset alone.
 - **The format bar has no alignment buttons** (left/center/right/justify),
   despite being the natural home for them, per an explicit decision with the
   maintainer: block-alignment has no Markdown representation, so the buttons
@@ -866,6 +993,16 @@ Notable subsystems:
 
 ## 9. Known issues / lurking problems
 
+- **Edit and Read mode nest lists by different rules.** The editor opens a
+  level on *any* deeper indent (`ListDepthMap`, §6); Read mode is cmark, which
+  needs a child to reach its parent's content column — 2 for `- `, 3 for `2. `,
+  4 for `10. `. So `1. a` / `  1. x` draws nested in the editor and parses flat
+  in Read mode (and on GitHub, and in pandoc). Tab writes the cmark-correct
+  column so *new* nesting agrees (`indentString(from:)`), but hand-typed or
+  imported indents can still disagree. Tightening the editor to cmark is a
+  one-line change in `ListDepthMap` — and it silently re-draws every existing
+  document that nests two spaces under an ordered marker, which is why it
+  hasn't been made.
 - **Images can't be drawn on multi-line (wrapping) fragments** (TK2 image
   wedge — collapses the fragment's layout to one line). Resolved for the
   callout custom-title icon via stroked `CGPath` (shapes don't wedge); the
@@ -956,10 +1093,15 @@ Notable subsystems:
   cell has to match both or it draws a pad right of, and a hair above, the
   in-line cells beside it. Column widths also leave the row a little slack
   at the container edge, or a right-aligned column's glyphs reach the edge
-  and force-wrap the row. Interior data rows draw a full-width bottom grid line (`.tableRow`'s
-  `bottomBorder`) — the header/body boundary already gets its line from
-  `separator`, and the last row draws none, so the table's bottom edge is open
-  like its left and right edges.
+  and force-wrap the row. The table is closed on all four sides, after Notes': every data row
+  draws a full-width bottom grid line (`.tableRow`'s `bottomBorder`, the last
+  row included), the header/body boundary gets its line from `separator`, the
+  header carries the top rule on its `topInset`, and the two outer verticals
+  join the column borders. **A row's bottom rule is drawn inside the row that
+  owns it**, not on the far side of the boundary: the editor repaints one row
+  at a time, so a line lying in the next row's rect is one that row erases
+  without knowing it was there — and it disappears until something forces a
+  full redraw.
 - *(Track larger roadmap items in README/ROADMAP; track code-debt here.)*
 
 ---

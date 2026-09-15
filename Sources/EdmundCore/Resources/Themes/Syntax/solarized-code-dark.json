@@ -1,0 +1,18 @@
+{
+  "name": "solarized-code-dark",
+  "displayName": "Solarized",
+  "appearance": "dark",
+
+  "plain": "#93a1a1",
+  "keyword": "#6c71c4",
+  "command": "#268bd2",
+  "type": "#b58900",
+  "attribute": "#2aa198",
+  "variable": "#dc322f",
+  "value": "#d33682",
+  "number": "#cb4b16",
+  "string": "#859900",
+  "comment": "#586e75",
+
+  "background": "#073642"
+}

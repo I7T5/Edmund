@@ -218,6 +218,10 @@ extension EditorTextView {
         }
         super.setFrameSize(size)
         updateContentInset()
+        // A narrower column can push a table cell into wrapping, or a wider one
+        // pull it back out, without the selection moving — and which of the two
+        // carets is drawn depends on that. See EditorTextView+TableCellCaret.
+        updateWrappedCaret()
     }
 
 }

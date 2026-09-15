@@ -12,7 +12,7 @@ extension EditorTextView {
 
     /// Regex that captures a list marker prefix:
     /// Group 1 = leading whitespace, Group 2 = marker (e.g. "- ", "* ", "1. ", "- [ ] ", "- [x] ")
-    private static let listMarkerRegex = try! NSRegularExpression(
+    static let listMarkerRegex = try! NSRegularExpression(
         pattern: #"^(\s*)([-*+]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)"#
     )
 
@@ -68,6 +68,12 @@ extension EditorTextView {
             super.insertNewline(sender)
             return
         }
+        // In a table, Return adds a row — splitting the line would cut the
+        // cell's text in half. See EditorTextView+TableInlineEditing.
+        if handleTableNewline() { return }
+        // On the separator line of a header-only table, Return finishes the
+        // table: pad the separator to the header and add a body row to type in.
+        if handleTableSeparatorNewline() { return }
         // Blockquote/callout continuation is deliberately not gated: the setting
         // is worded "Automatically continue lists".
         if listContinuationEnabled, handleListNewline(sel) { return }

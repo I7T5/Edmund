@@ -12,6 +12,8 @@ import EdmundCore
 @MainActor
 @Suite("Font settings — cascade rows", .serialized)
 struct FontSettingsCascadeTests {
+    init() { ThemeScratch.activate() }
+
 
     /// The keys `EditorTheme.save()` writes (`EditorTheme.Keys` is private).
     private static let themeKeys = [
@@ -83,6 +85,31 @@ struct FontSettingsCascadeTests {
         #expect(fonts.cascadeSizeRatios[.han] == nil)
     }
 
+    /// One size for the whole preset: the standard size is the anchor, and
+    /// the monospaced size and every per-script ratio keep their proportion to
+    /// it. A scale that moved only the body would silently change the
+    /// relationship between prose and code.
+    @Test("Scaling every size keeps the faces in proportion")
+    func scaleAllKeepsProportions() throws {
+        let snapshot = snapshotThemeDefaults()
+        defer { restoreThemeDefaults(snapshot) }
+
+        let fonts = FontSettings()
+        fonts.setStandardSize(16)
+        fonts.setMonospaceSize(14)
+        fonts.setCascadeFont(.han, family: "Helvetica")
+        fonts.setCascadePointSize(.han, points: 20)   // ratio 1.25
+
+        fonts.scaleAllSizes(toStandard: 20)
+
+        #expect(fonts.standardFont.pointSize == 20)
+        // 14 × 1.25 = 17.5, rounded to a whole point.
+        #expect(fonts.monospaceFont.pointSize == 18)
+        // The ratio is untouched, so the script follows the body on its own.
+        #expect(fonts.cascadeSizeRatio(for: .han) == 1.25)
+        #expect(fonts.cascadePointSize(for: .han) == 25)
+    }
+
     @Test("The stepper's point range is the ratio clamp rendered against the body size")
     func stepperRangeTracksBodySize() {
         let snapshot = snapshotThemeDefaults()
@@ -106,7 +133,7 @@ struct FontSettingsCascadeTests {
         }
     }
 
-    @Test("Unset rows show the script's sample; set rows show family and points")
+    @Test("Every row names a family and a size — the fallback's when unset")
     func cascadeSummaryShape() throws {
         let snapshot = snapshotThemeDefaults()
         defer { restoreThemeDefaults(snapshot) }
@@ -114,15 +141,22 @@ struct FontSettingsCascadeTests {
         let fonts = FontSettings()
         // Explicitly clear first — a dev machine may have a real Han cascade.
         fonts.setCascadeFont(.han, family: nil)
-        #expect(fonts.cascadeSummary(for: .han) == FontCascadeScript.han.sample)
-
         fonts.setStandardSize(20)
+        // An unset script still names something: the system fallback the editor
+        // will really render it in, at the body size. The row greys it — the
+        // sample beside it is what the script itself looks like. (Which family
+        // that is depends on the host's installed fonts, so only the shape is
+        // pinned here.)
+        let unset = fonts.cascadeSummary(for: .han)
+        #expect(!unset.isEmpty)
+        #expect(unset.hasSuffix("  20"))
+        #expect(unset != FontCascadeScript.han.sample)
+
         fonts.setCascadeFont(.han, family: "Helvetica")
         fonts.setCascadePointSize(.han, points: 25)
         let summary = fonts.cascadeSummary(for: .han)
         // The display name's localization is the host's business; the row's
         // contract is that the family is named and the point size is shown…
-        #expect(summary != FontCascadeScript.han.sample)
         #expect(summary.hasSuffix("  25"))
         // …and that the field draws at the size it names.
         #expect(try #require(fonts.previewFont(for: .han)).pointSize == 25)

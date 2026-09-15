@@ -31,6 +31,16 @@ extension EditorTextView {
             traceEdit("shouldChangeText REJECTED (isUpdating) range=\(affectedCharRange) repl=\(logSnippet(replacementString))")
             return false
         }
+        // A table's pipes and the space beside each are structure, not content:
+        // an edit that would remove one is refused whatever produced it —
+        // backspace, forward delete, ⌥⌫, ⌘⌫, cut, or typing over a selection
+        // that spans a pipe. Rows and columns are changed through the pill menu,
+        // never by deleting a delimiter out from under the render. See
+        // `deletionHitsTableStructure`.
+        if deletionHitsTableStructure(affectedCharRange) {
+            traceEdit("shouldChangeText REJECTED (table structure) range=\(affectedCharRange)")
+            return false
+        }
         if let replacement = replacementString {
             if !isUndoRedoing {
                 recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
@@ -132,7 +142,7 @@ extension EditorTextView {
     private func syncRawSourceFromDisplay() {
         guard let ts = textStorage else { return }
 
-        let oldIndentUnit = listIndentUnit
+        let oldDepths = listDepths
         rawSource = ts.string
         let sel = selectedRange()
         let cursorRaw = min(sel.location, (rawSource as NSString).length)
@@ -218,13 +228,9 @@ extension EditorTextView {
             dirty.insert(newActive)
         }
 
-        // listIndentUnit is document-global: when it changes, the rendered
-        // indentation of every list block changes with it.
-        if listIndentUnit != oldIndentUnit {
-            for (i, block) in blocks.enumerated() where block.kind == .listItem {
-                dirty.insert(i)
-            }
-        }
+        // A list line's depth comes from the column stack over the lines above
+        // it, so typing into one item's indent re-depths the items below.
+        dirty.formUnion(listDepthChanges(from: oldDepths))
 
         // A changed link definition can flip any reference link (even a bare
         // `[label]` shortcut) elsewhere in the document, so restyle every block

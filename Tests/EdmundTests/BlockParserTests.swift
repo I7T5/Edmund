@@ -275,6 +275,45 @@ struct BlockParserTests {
         #expect(blocks.map(\.kind) == [.table])
     }
 
+    /// A separator may use a single dash per column, not only three. Requiring
+    /// `---` misread `- | -` as a bullet list (its leading `- ` looked like a
+    /// marker) instead of a table separator.
+    @Test("A single-dash delimiter row makes a table")
+    func tableAcceptsSingleDashDelimiter() {
+        #expect(BlockParser.parse("a | b\n- | -").map(\.kind) == [.table])
+        #expect(BlockParser.parse("| a | b |\n| :- | -: |").map(\.kind) == [.table])
+        #expect(BlockParser.parse("a | b\n- | -\nc | d").map(\.kind) == [.table])
+    }
+
+    /// A bullet list is still a bullet list — a `- ` line with no pipe, or with
+    /// non-delimiter content, is not a separator.
+    @Test("A real bullet list is not mistaken for a separator")
+    func bulletListIsNotASeparator() {
+        #expect(BlockParser.parse("- one\n- two").map(\.kind) == [.listItem, .listItem])
+        // A pipe in list content does not make the line a delimiter row.
+        #expect(BlockParser.parse("intro\n- a | b").map(\.kind) == [.paragraph, .listItem])
+    }
+
+    /// A setext underline needs a run of three now, not one: a lone dash or two
+    /// under a line turned it into a heading by accident. Three matches the
+    /// `---`/`===` the eye already reads as a rule.
+    @Test("Setext underline needs three or more")
+    func setextNeedsThree() {
+        #expect(BlockParser.parse("Title\n===").map(\.kind) == [.heading(level: 1)])
+        #expect(BlockParser.parse("Title\n---").map(\.kind) == [.heading(level: 2)])
+        // One or two: not a heading — the line above stays a paragraph.
+        #expect(BlockParser.parse("Title\n=").map(\.kind) == [.paragraph, .paragraph])
+        #expect(BlockParser.parse("Title\n--").map(\.kind) == [.paragraph, .paragraph])
+    }
+
+    /// A thematic break still needs three, unchanged.
+    @Test("Thematic break needs three")
+    func thematicBreakNeedsThree() {
+        #expect(BlockParser.parse("---").map(\.kind) == [.thematicBreak])
+        #expect(BlockParser.parse("***").map(\.kind) == [.thematicBreak])
+        #expect(BlockParser.parse("--").map(\.kind) == [.paragraph])
+    }
+
     // MARK: - Code Fence Merging
 
     @Test("Fenced code block merges into single block")
