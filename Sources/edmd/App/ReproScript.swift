@@ -1015,7 +1015,6 @@ enum ReproScript {
         window.sendEvent(event)
     }
 }
-#endif
 
 /// Writes every frame a burst stream delivers as a PNG named by its index and
 /// the process-uptime ms at delivery — the clock the caret trace uses.
@@ -1042,3 +1041,4 @@ private final class BurstOutput: NSObject, SCStreamOutput, @unchecked Sendable {
         if CGImageDestinationFinalize(dest) { lock.lock(); written += 1; lock.unlock() }
     }
 }
+#endif
