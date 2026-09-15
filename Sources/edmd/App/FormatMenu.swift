@@ -149,10 +149,6 @@ enum FormatMenu {
                     action: #selector(EditorTextView.formatKeyboard(_:))),
         MenuCommand(id: "format.comment", submenu: "Font", title: "Comments",
                     action: #selector(EditorTextView.formatComment(_:))),
-        MenuCommand(id: "format.subscript", submenu: "Font", title: "Subscript",
-                    action: #selector(EditorTextView.formatSubscript(_:))),
-        MenuCommand(id: "format.superscript", submenu: "Font", title: "Superscript",
-                    action: #selector(EditorTextView.formatSuperscript(_:))),
     ]
 
     /// GitHub alert types (uppercase in source: `> [!NOTE]`).
