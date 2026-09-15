@@ -297,12 +297,31 @@ extension EditorTextView {
         defer { suppressTypewriterCentering = false }
         setSelectedRange(NSRange(location: anchor, length: 0))
         updateWrappedCaret()
+        var crossedCells = false
         while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if e.type == .leftMouseUp { break }
             let point = convert(e.locationInWindow, from: nil)
-            // Stay inside the anchor's cell: a point that leaves it (another cell,
-            // the pad, off the text) maps to nil or a different cell and is
-            // ignored, so the selection never spills across a pipe.
+            // Out of the anchor's cell: the gesture becomes a block of cells,
+            // from the anchor's cell to the one under the pointer (clamped to
+            // the table), exactly as a drag out of a non-wrapped cell does.
+            if let now = tableCellPosition(at: point, blockIndex: anchorCell.blockIndex,
+                                           ensuringLayout: true),
+               now.row != anchorCell.row || now.column != anchorCell.column {
+                crossedCells = true
+                selectTableCells(blockIndex: anchorCell.blockIndex,
+                                 from: (anchorCell.row, anchorCell.column), to: now)
+                updateWrappedCaret()
+                continue
+            }
+            if crossedCells {
+                // Back inside after having left: the cell whole, not the sliver
+                // under the pointer — the gesture keeps reading as picking cells.
+                setSelectedRange(anchorCell.contentRange)
+                updateWrappedCaret()
+                continue
+            }
+            // Inside the anchor's cell but off its drawn text (the pad): keep
+            // what is selected rather than spill across a pipe.
             guard let current = wrappedCellCharIndex(atViewPoint: point),
                   let cell = tableCell(atRawOffset: current),
                   cell.blockIndex == anchorCell.blockIndex,
