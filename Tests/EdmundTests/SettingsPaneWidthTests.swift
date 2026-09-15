@@ -10,6 +10,8 @@ import AppKit
 @MainActor
 @Suite("Settings pane width")
 struct SettingsPaneWidthTests {
+    init() { ThemeScratch.activate() }
+
 
     private func fittingWidth(_ view: some View) -> CGFloat {
         let hosting = NSHostingController(rootView: view)
@@ -22,11 +24,22 @@ struct SettingsPaneWidthTests {
     func panesShareOneWidth() {
         let general = fittingWidth(GeneralSettingsView())
         #expect(general == 600)
-        #expect(fittingWidth(AppearanceSettingsView(fonts: FontSettings())) == general)
+        #expect(fittingWidth(ThemesSettingsView()) == general)
         #expect(fittingWidth(EditSettingsView()) == general)
         #expect(fittingWidth(SyntaxSettingsView()) == general)
         #expect(fittingWidth(KeyBindingsSettingsView()) == general)
         #expect(fittingWidth(ExtensionsSettingsView()) == general)
         #expect(fittingWidth(AdvancedSettingsView()) == general)
+    }
+
+    /// The nine per-script rows must not widen the pane. They are always shown
+    /// now — the section stopped being a disclosure — so this needs no setup;
+    /// it is the row content, not its visibility, that threatens the width.
+    ///
+    /// (The hard 600pt frame in settingsPanePadding() means this can only catch
+    /// structural regressions; overflow inside the frame is a visual check.)
+    @Test("The per-script rows do not widen the Themes pane")
+    func scriptRowsDoNotWidenThePane() {
+        #expect(fittingWidth(ThemesSettingsView()) == 600)
     }
 }

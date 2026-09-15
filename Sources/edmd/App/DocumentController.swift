@@ -91,6 +91,30 @@ class DocumentController: NSDocumentController {
         }
     }
 
+    // MARK: - Draft Reopening
+    //
+    // With autosave-in-place on, AppKit keeps every unsaved *untitled* document as
+    // a draft in ~/Library/Autosave Information and reopens it through this method
+    // at the next launch. That path is not gated by `NSWindow.isRestorable`, so the
+    // clearing in `AppDelegate.applicationShouldTerminate` never reached it: drafts
+    // came back at every launch — stacking up as "Untitled", "Untitled 2", … on top
+    // of the blank launch document — whatever "Reopen windows from last session"
+    // said. Honor that preference here too. Nothing is deleted: the draft files stay
+    // in ~/Library/Autosave Information, they are simply not reopened.
+    //
+    // `urlOrNil == nil` is exactly the draft case; a document that has a file on
+    // disk reopens as before.
+    override func reopenDocument(for urlOrNil: URL?, withContentsOf contentsURL: URL,
+                                 display displayDocument: Bool,
+                                 completionHandler: @escaping (NSDocument?, Bool, Error?) -> Void) {
+        if urlOrNil == nil && !AppSettings.reopenWindows {
+            completionHandler(nil, false, nil)
+            return
+        }
+        super.reopenDocument(for: urlOrNil, withContentsOf: contentsURL,
+                             display: displayDocument, completionHandler: completionHandler)
+    }
+
     /// Closes the most-recently-opened blank Untitled window the user never
     /// typed into — e.g. the automatic blank document from launch — once a
     /// real file opens. Only the last one, so opening several Untitled

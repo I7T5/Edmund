@@ -44,6 +44,10 @@ Faint vertical hairlines on list items: one per *ancestor* level spanning the
 item, plus the item's **own** column drawn only beside its wrapped continuation
 lines (the first line holds the marker).
 
+`depth` comes from `ListDepthMap` — a stack of the indent columns of the lines
+above the item, not the item's own indent divided by anything — so a guide's
+column depends only on its own list.
+
 Columns are computed by `listGuideOffsets(depth:slotWidth:)`
 (`Rendering/EditorTextView+ListRendering.swift`) as the center of each level's
 marker slot, and written to `.listGuides` by `styleListItemSpan` **whether or

@@ -1,5 +1,5 @@
 # Roadmap
-Last updated: 2026-07-09
+Last updated: 2026-08-04
 
 ## v1.0.0
 
@@ -15,7 +15,7 @@ Basic editing experience
 Advanced editing features
 - [ ] File outline
 - [ ] Find and replace within file
-- [ ] Format bar
+- [x] Format bar
 - [ ] Advanced Code official extension
 - [ ] Advanced Math official extension
 
@@ -77,7 +77,7 @@ Funsies
 ## v2.x
 
 Official extensions
-- [ ] Mermaid diagrams (Read mode only)
+- [x] Mermaid diagrams (Read mode only)
 - [ ] Slides (read mode preview)
 - [ ] Typst: Import from / Export to Typst
 

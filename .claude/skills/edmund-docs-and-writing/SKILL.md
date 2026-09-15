@@ -9,8 +9,9 @@ description: >
   bug, or feature idea belongs. Covers the docs-of-record map, the
   fact-routing decision table, the investigation-doc template, CHANGELOG
   format (machine-extracted for release notes), commit-message conventions,
-  and doc maintenance duties. Not for making the code change itself, release
-  mechanics, or debugging — see "When NOT to use this skill".
+  doc maintenance duties, and which docs are the maintainer's own prose that
+  agents must not edit unasked (§7). Not for making the code change itself,
+  release mechanics, or debugging — see "When NOT to use this skill".
 ---
 
 # Edmund docs and writing
@@ -243,6 +244,36 @@ Do these whenever you touch the relevant doc; they rot otherwise.
 - **Section renumbering** in ARCHITECTURE: grep the whole repo (docs, misc,
   CLAUDE.md, skills) for `§` references before and after.
 - **Never edit `test-files/todo.md`** — the maintainer owns it.
+
+## 7. Whose prose is it — ask before editing
+
+Some docs are the maintainer's own voice; the rest are the engineering
+record. Agents may write freely in the second group and **not at all** in the
+first without being asked for that specific edit.
+
+| | Files | What an agent may do |
+| --- | --- | --- |
+| **Maintainer's voice — don't edit unasked** | `README.md`, `misc/backlog.md`, and any other user-facing or personal prose (blog drafts, marketing copy, `test-files/todo.md`) | Nothing. Report what you'd change and let the maintainer decide. |
+| **Engineering record — edit freely** | `docs/ARCHITECTURE.md`, `docs/architecture/**`, `docs/investigations/**`, `docs/dev-guides/**`, `.claude/skills/**`, code comments | Write, restructure, correct. The same-PR rule (§2) *requires* it. |
+| **Mixed** | `CHANGELOG.md`, `docs/ROADMAP.md` | Add the mechanical entry — a new bullet, a ticked `- [x]` box, a `Last updated:` bump. Leave the surrounding wording and the maintainer's priority ordering alone. |
+
+`misc/` is the exception in the other direction: **creating** a new file
+there is always fine, no permission needed, and it's the default home for any
+doc that doesn't have one yet (`misc/` is gitignored, so nothing you put
+there lands in a commit). Editing `misc/backlog.md` is still off-limits.
+
+The two named files are enforced, not just documented: a `PreToolUse` hook
+(`.claude/hooks/guard-maintainer-prose.sh`, wired in `.claude/settings.json`)
+denies `Edit`/`Write`/`NotebookEdit` on the repo-root `README.md` and
+`misc/backlog.md`. Reading them is untouched. If you get that denial, you are
+not blocked from *working* — report the edit you wanted and move on. The rest
+of the "maintainer's voice" column is on your judgment.
+
+Why this rule exists: a "small wording fix" to README lands in the file
+users read first, in a voice that isn't yours, and the maintainer usually
+can't tell it happened without diffing. A typo in `README.md` is worth one
+line in your report — never a silent commit. This includes uncommenting the
+maintainer's own `<!-- -->` edit notes (§6).
 
 ## Provenance and maintenance
 

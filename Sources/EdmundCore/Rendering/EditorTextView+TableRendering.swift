@@ -9,6 +9,11 @@ extension EditorTextView {
 
     /// Styles the `.table` content for one span. The caller has already
     /// bounds-checked `span.fullRange` against `result`.
+    /// Every row wraps its overflowing cells, the row holding the caret
+    /// included: the caret follows the drawn text through
+    /// `DecoratedTextLayoutFragment.cellWrapRects` (see
+    /// EditorTextView+TableCellCaret), so nothing has to run long to stay
+    /// editable.
     func styleTableSpan(_ result: NSMutableAttributedString,
                         span: SyntaxHighlighter.Span,
                         cursorInToken: Bool) {
@@ -47,10 +52,8 @@ extension EditorTextView {
             // are row-owned, see the transplant below); tall math or image
             // overlays get no extra line height in cells. A wrapped (overflowing)
             // cell is drawn from a detached scratch text layout rather than the
-            // live glyph run, so click-to-caret placement inside it is
-            // approximate while the table is non-active — clicking anywhere in
-            // the cell still enters the table and lands the caret at the raw
-            // source's nearest position once active.
+            // live glyph run, so its caret, selection and vertical movement all
+            // come from that layout instead (EditorTextView+TableCellCaret).
             let headerCells = splitTableRow(lines[0])
             let numCols = headerCells.count
             guard numCols > 0 else { return }
@@ -97,8 +100,16 @@ extension EditorTextView {
             // a trailing pad may hang past the edge but glyphs may not. Same
             // reason `applyOverlay` caps its kern short of the full width.
             let rowSlack: CGFloat = 8
+            // The row's paragraph is indented by `cellHPad` (its head indent,
+            // set below) so the table's left border can stand that far left of
+            // the text — which takes the same amount off the line. It has to
+            // come out of this budget too, or the slack is eaten before the row
+            // is laid out: at a 4.8pt pad it left 3.2pt, at 8pt it left none and
+            // every row's closing pipe wrapped onto a second line, dragging the
+            // last cell down under the first once the window was a little
+            // narrower.
             let available = max(0, availableContentWidth
-                - CGFloat(numCols) * 2 * cellHPad - rowSlack)
+                - CGFloat(numCols) * 2 * cellHPad - cellHPad - rowSlack)
             let clamped = distributeColumnWidths(natural: natural, available: available,
                                                  minWidth: minColWidth)
             // Add horizontal padding to each column (space after cell text).
@@ -153,8 +164,14 @@ extension EditorTextView {
                     ps.paragraphSpacingBefore = 0
                     ps.paragraphSpacing = 0
                 } else {
+                    // The header row reserves the band its column handle sits
+                    // in, above everything the table draws. Unconditionally, so
+                    // that clicking into a table never shifts the page — the
+                    // cost is a little more air above every table.
                     ps.paragraphSpacingBefore = cellVPad + ((i == 0)
-                        ? bodyParagraphStyle.paragraphSpacingBefore : 0)
+                        ? max(bodyParagraphStyle.paragraphSpacingBefore,
+                              tableHandleBand)
+                        : 0)
                     ps.paragraphSpacing = cellVPad
                 }
                 result.addAttribute(.paragraphStyle, value: ps, range: lineRange)
@@ -164,10 +181,10 @@ extension EditorTextView {
                                                      width: totalWidth,
                                                      leftInset: cellHPad,
                                                      separator: i == 1,
-                                                     // No rule under the last row: the
-                                                     // table's bottom edge is open, like
-                                                     // its left and right edges.
-                                                     bottomBorder: i > 1 && i < lines.count - 1)),
+                                                     // Including the last row: the table
+                                                     // is closed on all four sides.
+                                                     bottomBorder: i > 1,
+                                                     topInset: i == 0 ? tableHandleBand : 0)),
                     range: lineRange)
 
                 // Cells whose styled width exceeds their column's (clamped)
@@ -201,9 +218,23 @@ extension EditorTextView {
                             guard hideRange.upperBound <= result.length else { continue }
                             result.addAttribute(.font, value: hiddenFont, range: hideRange)
                             result.addAttribute(.foregroundColor, value: NSColor.clear, range: hideRange)
-                            wraps.append(TableCellWrap(styled: cell.styled, x: colStartX[ci],
+                            // The cell's padding is not content and must not
+                            // go into the scratch layout: in a narrow column a
+                            // leading space can take the first line by itself,
+                            // and the text then starts a line lower than the
+                            // cells beside it. `charStart` moves with the trim
+                            // so caret and hit-test mapping stay exact.
+                            let text = cell.styled.string as NSString
+                            var lead = 0
+                            while lead < text.length, text.character(at: lead) == 0x20 { lead += 1 }
+                            var trail = text.length
+                            while trail > lead, text.character(at: trail - 1) == 0x20 { trail -= 1 }
+                            let trimmed = cell.styled.attributedSubstring(
+                                from: NSRange(location: lead, length: trail - lead))
+                            wraps.append(TableCellWrap(styled: trimmed, x: colStartX[ci],
                                                        contentWidth: colWidths[ci] - 2 * cellHPad,
-                                                       align: aligns[ci], charStart: cell.start))
+                                                       align: aligns[ci],
+                                                       charStart: cell.start + lead))
                         } else {
                             cell.styled.enumerateAttributes(
                                 in: NSRange(location: 0, length: cell.styled.length)

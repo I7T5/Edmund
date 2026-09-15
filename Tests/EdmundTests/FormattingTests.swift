@@ -14,6 +14,35 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
     return e
 }
 
+// MARK: - Format-bar routing
+
+/// The format bar's buttons and pulldowns carry their own selectors with a nil
+/// target, exactly like the Format-menu items, so selection routes through the
+/// responder chain to the focused editor — the same mechanism the whole Format
+/// menu relies on in the live app. That nil-target path needs a *key* window,
+/// which the headless test runner can't provide (`makeKeyAndOrderFront` yields a
+/// window that reports `isKeyWindow == false`), so it is pinned below at the
+/// explicit-target level: `formatHeading(_:)` reads `tag`, `formatCallout(_:)`
+/// reads `representedObject`. Live selection is verified by click-testing the
+/// bar against the running app.
+@MainActor @Suite struct FormatBarRoutingTests {
+
+    @Test func headingTagAndCalloutRepresentedObjectDriveActions() {
+        let e = mk("Body line one", NSRange(location: 0, length: 0))
+        let item = NSMenuItem(title: "Heading 2", action: #selector(EditorTextView.formatHeading(_:)),
+                              keyEquivalent: "")
+        item.tag = 2
+        _ = e.perform(item.action!, with: item)
+        #expect(e.rawSource.hasPrefix("## "))
+
+        let callout = NSMenuItem(title: "Note", action: #selector(EditorTextView.formatCallout(_:)),
+                                 keyEquivalent: "")
+        callout.representedObject = "NOTE"
+        _ = e.perform(callout.action!, with: callout)
+        #expect(e.rawSource.contains("[!NOTE]"))
+    }
+}
+
 // MARK: - Inline font styles
 
 @MainActor @Suite struct FormatInlineWrapTests {
@@ -91,6 +120,35 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         e.formatMathBlock(nil)
         #expect(e.rawSource == "$$\nE=mc^2\n$$")
         #expect(e.selectedRange() == NSRange(location: 3, length: 0))  // caret on content line
+    }
+}
+
+// MARK: - Subscript / superscript
+
+@MainActor @Suite struct FormatSubSupTests {
+
+    @Test func subscriptWrapsSelectionAndInverts() {
+        let e = mk("2", NSRange(location: 0, length: 1))
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "<sub>2</sub>")
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "2")
+    }
+
+    @Test func superscriptWrapsSelectionAndInverts() {
+        let e = mk("2", NSRange(location: 0, length: 1))
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "<sup>2</sup>")
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "2")
+    }
+
+    @Test func subAndSuperscriptExpandToWordAtCaret() {
+        let e = mk("H2O", NSRange(location: 2, length: 0))  // caret inside "H2O"
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "<sub>H2O</sub>")
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "<sub><sup>H2O</sup></sub>")
     }
 }
 
@@ -212,6 +270,64 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         #expect(e.rawSource == "### Title")
         e.applyHeadingLevel(3)            // same level clears
         #expect(e.rawSource == "Title")
+    }
+
+    @Test func headingLevelZeroStripsPrefixToBody() {
+        let e = mk("### Title", NSRange(location: 0, length: 0))
+        e.applyHeadingLevel(0)
+        #expect(e.rawSource == "Title")
+    }
+
+    @Test func headingLevelZeroLeavesBodyLineUntouched() {
+        let e = mk("Plain", NSRange(location: 0, length: 0))
+        e.applyHeadingLevel(0)
+        #expect(e.rawSource == "Plain")
+    }
+
+    @Test func headingStepsUpFromBodyAndHoldsAtSix() {
+        let e = mk("Title", NSRange(location: 0, length: 0))
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "# Title")
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "## Title")
+        e.applyHeadingLevel(6)
+        e.formatIncrementHeading(nil)     // the end holds, no wrap to body
+        #expect(e.rawSource == "###### Title")
+    }
+
+    @Test func headingStepsDownToBodyAndHoldsThere() {
+        let e = mk("## Title", NSRange(location: 0, length: 0))
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "# Title")
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "Title")
+        e.formatDecrementHeading(nil)
+        #expect(e.rawSource == "Title")
+    }
+
+    /// Each line steps from its own level; blank lines stay blank.
+    @Test func headingStepKeepsAMixedSelectionsRelativeLevels() {
+        let text = "# One\n\nThree\n### Four"
+        let e = mk(text, NSRange(location: 0, length: (text as NSString).length))
+        e.formatIncrementHeading(nil)
+        #expect(e.rawSource == "## One\n\n# Three\n#### Four")
+    }
+
+    /// A Read-mode checkbox click arrives as a source line, not a selection.
+    @Test func toggleTaskByLineFlipsTheBoxAndKeepsTheCaret() {
+        let e = mk("# Title\n\n- [ ] one\n  * [x] two\n3. [ ] three\nplain", NSRange(location: 0, length: 0))
+        e.viewMode = .reading
+        #expect(e.toggleTask(atLine: 3) == true)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [x] two\n3. [ ] three\nplain")
+        #expect(e.toggleTask(atLine: 4) == false)   // indented, `*` bullet, checked → unchecked
+        #expect(e.toggleTask(atLine: 5) == true)    // ordered task
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [x] three\nplain")
+        #expect(e.toggleTask(atLine: 6) == nil)     // not a task: untouched
+        #expect(e.toggleTask(atLine: 1) == nil)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [x] three\nplain")
+        #expect(e.selectedRange() == NSRange(location: 0, length: 0))
+        e.undo(nil)
+        #expect(e.rawSource == "# Title\n\n- [x] one\n  * [ ] two\n3. [ ] three\nplain")
     }
 
     @Test func checklistAddsThenTogglesMark() {
@@ -554,5 +670,148 @@ private func mk(_ content: String, _ sel: NSRange) -> EditorTextView {
         e.formatThematicBreak(nil)
         #expect(e.rawSource.contains("---"))
         #expect(e.rawSource.contains("Line"))
+    }
+}
+
+// MARK: - Subscript / superscript
+//
+// `sub` and `sup` are already in SyntaxHighlighter.htmlFormatTags, so the editor
+// renders them; these cover the commands that write them.
+
+@MainActor @Suite struct FormatSubSuperscriptTests {
+
+    @Test func subscriptWrapsSelection() {
+        let e = mk("H2O", NSRange(location: 1, length: 1))
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "H<sub>2</sub>O")
+        #expect(e.selectedRange() == NSRange(location: 6, length: 1))
+    }
+
+    @Test func subscriptIsInvertible() {
+        let e = mk("H2O", NSRange(location: 1, length: 1))
+        e.formatSubscript(nil)
+        e.formatSubscript(nil)
+        #expect(e.rawSource == "H2O")
+        #expect(e.selectedRange() == NSRange(location: 1, length: 1))
+    }
+
+    @Test func superscriptWrapsWordAtCaret() {
+        let e = mk("x squared", NSRange(location: 4, length: 0))  // "x sq|uared"
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "x <sup>squared</sup>")
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "x squared")
+    }
+
+    @Test func superscriptIsIndependentOfSubscript() {
+        let e = mk("n", NSRange(location: 0, length: 1))
+        e.formatSuperscript(nil)
+        #expect(e.rawSource == "<sup>n</sup>")
+    }
+}
+
+// MARK: - Attach image
+
+@MainActor @Suite struct FormatAttachImageTests {
+
+    /// `imageDestination` reads the document's directory, so the editor needs a
+    /// document with a fileURL. `EditorTextView.document` is weak — the caller
+    /// must hold on to the returned document for the life of the test.
+    private func editorInDocument(at path: String, _ content: String = "",
+                                  _ sel: NSRange = NSRange(location: 0, length: 0))
+    -> (EditorTextView, NSDocument) {
+        let e = mk(content, sel)
+        let doc = NSDocument()
+        doc.fileURL = URL(fileURLWithPath: path)
+        e.document = doc
+        return (e, doc)
+    }
+
+    @Test func pathBelowDocumentIsRelative() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/notes/img/cat.png")) == "img/cat.png")
+        _ = doc
+    }
+
+    @Test func siblingFileIsRelative() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/notes/cat.png")) == "cat.png")
+        _ = doc
+    }
+
+    @Test func pathOutsideDocumentDirectoryStaysAbsolute() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/elsewhere/cat.png"))
+                == "/elsewhere/cat.png")
+        _ = doc
+    }
+
+    /// A sibling *directory* whose name merely starts with the document's
+    /// directory name must not be mistaken for a child ("/notes" vs "/notesx").
+    @Test func siblingDirectoryWithSharedPrefixStaysAbsolute() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/notesx/cat.png"))
+                == "/notesx/cat.png")
+        _ = doc
+    }
+
+    /// A raw space or `)` would truncate the `![](…)` destination.
+    @Test func spacesAndParensArePercentEncoded() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        #expect(e.imageDestination(for: URL(fileURLWithPath: "/notes/my cat (1).png"))
+                == "my%20cat%20%281%29.png")
+        _ = doc
+    }
+
+    /// Round-trips through the same decode Read mode uses to resolve the path.
+    @Test func encodedDestinationDecodesBackToTheFilename() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        let dest = e.imageDestination(for: URL(fileURLWithPath: "/notes/my cat (1).png"))
+        #expect(dest.removingPercentEncoding == "my cat (1).png")
+        _ = doc
+    }
+
+    @Test func insertsSyntaxWithAltPlaceholderSelected() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
+        #expect(e.rawSource == "![alt text](cat.png)")
+        // "![<alt text>](cat.png)" — typing replaces the placeholder.
+        #expect(e.selectedRange() == NSRange(location: 2, length: 8))
+        _ = doc
+    }
+
+    @Test func insertsAtTheCaretWithinExistingText() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md", "see ", NSRange(location: 4, length: 0))
+        e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
+        #expect(e.rawSource == "see ![alt text](cat.png)")
+        #expect(e.selectedRange() == NSRange(location: 6, length: 8))
+        _ = doc
+    }
+
+    /// A Finder drag of several files inserts one image per block.
+    @Test func insertsMultipleImagesBlankLineSeparated() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md")
+        e.insertImages(at: [URL(fileURLWithPath: "/notes/cat.png"),
+                            URL(fileURLWithPath: "/notes/dog.png")])
+        #expect(e.rawSource == "![alt text](cat.png)\n\n![alt text](dog.png)")
+        // The first image's placeholder is the one selected.
+        #expect(e.selectedRange() == NSRange(location: 2, length: 8))
+        _ = doc
+    }
+
+    @Test func insertingNoImagesIsANoOp() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md", "hi", NSRange(location: 2, length: 0))
+        e.insertImages(at: [])
+        #expect(e.rawSource == "hi")
+        _ = doc
+    }
+
+    @Test func storageMatchesOracleAfterInsert() {
+        let (e, doc) = editorInDocument(at: "/notes/journal.md", "see ", NSRange(location: 4, length: 0))
+        e.insertImage(at: URL(fileURLWithPath: "/notes/cat.png"))
+        #expect(e.rawSource == "see ![alt text](cat.png)")
+        drainAllStyling(e)
+        assertMatchesFullRecomposeOracle(e)
+        _ = doc
     }
 }

@@ -16,7 +16,7 @@ let package = Package(
                 .product(name: "Markdown", package: "swift-markdown"),
                 .product(name: "SwiftMath", package: "SwiftMath"),
             ],
-            resources: [.copy("Resources/Syntaxes")]),
+            resources: [.copy("Resources/Syntaxes"), .copy("Resources/Themes")]),
         // The user-facing app is "Edmund" (CFBundleName); the executable target —
         // and so the Mach-O binary at Edmund.app/Contents/MacOS/edmd — is "edmd",
         // an expansion of "Editor for Markdown". A quiet backronym for anyone who

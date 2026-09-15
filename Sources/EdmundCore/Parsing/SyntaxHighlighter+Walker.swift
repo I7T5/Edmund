@@ -430,7 +430,20 @@ extension SyntaxHighlighter {
                 descendInto(table)
                 return
             }
-            let full = nsRange(for: range)
+            var full = nsRange(for: range)
+            // cmark starts a table at its first *non-blank* column, so a header
+            // row written with a leading space (` a | b`, legal when the table
+            // has no outer pipes) leaves that space outside the span. The row's
+            // paragraph style and `.tableRow` decoration then start one
+            // character in — and a fragment reads both from character 0, so the
+            // header row came out undecorated: no column borders, and indented
+            // a pad less than every row below it. Take the whole line.
+            let lineStart = (source as NSString)
+                .lineRange(for: NSRange(location: full.location, length: 0)).location
+            if lineStart < full.location {
+                full = NSRange(location: lineStart,
+                               length: full.length + (full.location - lineStart))
+            }
 
             // Compute gaps between child rows (head/body) as delimiters
             // (this captures the separator row between head and body)

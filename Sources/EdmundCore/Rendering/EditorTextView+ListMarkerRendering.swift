@@ -9,12 +9,16 @@ extension EditorTextView {
 
     /// Styles the `.listItem` content for one span. The caller has already
     /// bounds-checked `span.fullRange` against `result`.
+    /// `depth` is the document's column-stack answer for this block; nil when
+    /// the caller has no block index (table cell, callout body, styling tests),
+    /// which falls back to the whitespace-and-unit estimate.
     func styleListItemSpan(_ result: NSMutableAttributedString,
                            span: SyntaxHighlighter.Span,
                            markdown: String,
                            ordered: Bool,
                            checkbox: SyntaxHighlighter.Span.Kind.CheckboxState?,
-                           cursorInToken: Bool) {
+                           cursorInToken: Bool,
+                           depth: Int? = nil) {
         // Indentation model (Apple Notes style): each nesting level steps
         // in by one marker "slot" (pointSize-wide icon + a space), so a
         // child's marker lands under its parent's content. All list types
@@ -25,7 +29,7 @@ extension EditorTextView {
         let leadingWS = markerStr.prefix(while: { $0 == " " || $0 == "\t" })
         let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
         let slotWidth = bodyFont.pointSize + spaceWidth
-        let depth = listDepth(leadingWhitespace: String(leadingWS))
+        let depth = depth ?? listDepth(leadingWhitespace: String(leadingWS))
         let markerStart = listPadding + CGFloat(depth) * slotWidth
         let contentIndent = markerStart + slotWidth
         // The visible marker text ("- ", "1. ", "- [ ] "), without the

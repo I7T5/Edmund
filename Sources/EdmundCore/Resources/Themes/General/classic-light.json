@@ -1,0 +1,17 @@
+{
+  "name": "classic-light",
+  "displayName": "Classic",
+  "appearance": "light",
+
+  "text": null,
+  "invisibles": null,
+  "checkbox": null,
+  "link": "#3366E6",
+  "highlight": null,
+  "background": null,
+  "selection": null,
+  "cursor": null,
+
+  "fontTheme": null,
+  "syntaxTheme": "tomorrow"
+}

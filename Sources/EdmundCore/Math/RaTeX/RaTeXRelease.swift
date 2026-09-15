@@ -38,4 +38,12 @@ public enum RaTeXRelease {
 
     /// Whether a real artifact hash has been pinned.
     public static var isConfigured: Bool { !archiveSHA256.isEmpty }
+
+    /// Coordinates for the shared installer. A version-stamped directory means
+    /// a new pinned version installs fresh.
+    public static let payload = ExtensionPayload(
+        directoryName: "Math/ratex-\(version)",
+        archiveURL: archiveURL,
+        archiveSHA256: archiveSHA256,
+        sentinelFile: "ratex_wasm_bg.wasm")
 }

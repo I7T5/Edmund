@@ -14,6 +14,9 @@ class Document: NSDocument, HeadingNavigable {
     private var viewModeButton: NSButton?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
+    /// Builds and owns the formatting toolbar items (see `FormatToolbar`).
+    private var formatToolbar: FormatToolbar!
+
     /// Session-only zoom scale (View ▸ Actual Size/Zoom In/Zoom Out), applied on
     /// top of the persisted font size and content width. Not saved — each new
     /// window starts back at 100%.
@@ -26,6 +29,7 @@ class Document: NSDocument, HeadingNavigable {
     private var scrollView: NSScrollView!
     private var containerView: NSView!
     private var findController: FindController!
+    private var formatBar: FormatBarView!
     private var readView: ReadModeWebView?
 
     /// Editor character offset captured when entering Read mode (the topmost
@@ -93,13 +97,34 @@ class Document: NSDocument, HeadingNavigable {
 
     // MARK: - Window Setup
 
+    /// Whether this document has anything a restored window could hand back: a
+    /// file on disk, or unsaved edits. False only for an untitled document
+    /// nobody has typed into.
+    private var isWorthRestoring: Bool { fileURL != nil || isDocumentEdited }
+
+    /// Every edit funnels through here (`EditorTextView+EditFlow.swift`), as does
+    /// saving, so this is where a window becomes worth restoring — or stops
+    /// being, if the last edit is undone away.
+    override func updateChangeCount(_ change: NSDocument.ChangeType) {
+        super.updateChangeCount(change)
+        let restorable = isWorthRestoring
+        for controller in windowControllers where controller.window?.isRestorable != restorable {
+            controller.window?.isRestorable = restorable
+        }
+    }
+
     override func makeWindowControllers() {
         // Default content size for first launch. Any saved size is applied as a
         // full window frame at the end of setup (below), once the toolbar is in
         // place — so the frame round-trips exactly and doesn't drift by the
         // title bar + toolbar height each time.
+        //
+        // Sized so the *window* lands on a canonical 800x600: the height is the
+        // content area, and the title bar + unified toolbar add 80pt on top.
+        // The width also leaves the reading column (12cm / 5in physical, ~605pt
+        // on a 14" display) balanced margins rather than being arbitrary.
         let windowWidth: CGFloat = 800
-        let windowHeight: CGFloat = 560
+        let windowHeight: CGFloat = 520
 
         let window = DocumentWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -117,7 +142,15 @@ class Document: NSDocument, HeadingNavigable {
         // the preference applies — AppDelegate.applicationShouldTerminate turns
         // this off before terminating when it is disabled, so nothing is archived
         // and the next launch starts fresh.
-        window.isRestorable = true
+        //
+        // A blank untitled document is the exception: there is nothing in it for
+        // a crash to hand back, and archiving it means the next launch restores
+        // it — through `NSDocumentController`'s own restoration path, which
+        // neither `reopenDocument` nor `applicationShouldOpenUntitledFile` gates,
+        // so it lands *on top of* the startup document as a second blank window
+        // with "Reopen windows" off. It earns the flag on its first edit
+        // (`updateChangeCount`).
+        window.isRestorable = isWorthRestoring
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 
@@ -132,7 +165,8 @@ class Document: NSDocument, HeadingNavigable {
         editor.isVerticallyResizable = true
         editor.isHorizontallyResizable = false
         editor.autoresizingMask = [.width]
-        editor.textContainerInset = NSSize(width: 24, height: 18)
+        editor.textContainerInset = NSSize(width: 24,
+                                           height: EditorTextView.contentBaseVerticalInset)
         // Centered reading column (see EditorTextView+ContentWidth). Convert the
         // persisted cm value to points using the main screen PPI at window-creation
         // time; recomputed on resize (setFrameSize) and when the window moves to a
@@ -151,22 +185,39 @@ class Document: NSDocument, HeadingNavigable {
             self?.readView?.setScrollPosition(line: line, fraction: 0)
         }
 
-        // Toolbar holds the right-aligned view-mode toggle (and gives the
-        // titlebar extra height for roomy traffic lights). Set it only after
-        // `editor` exists — assigning the toolbar synchronously vends its items.
-        let toolbar = NSToolbar(identifier: "MainToolbar")
+        // Toolbar holds the formatting items plus the right-aligned view-mode
+        // toggle (and gives the titlebar extra height for roomy traffic lights).
+        // Set it only after `editor` exists — assigning the toolbar synchronously
+        // vends its items.
+        //
+        // The identifier is versioned: `autosavesConfiguration` persists the item
+        // layout per identifier, so every window that ever ran the one-item
+        // toolbar has `[flexibleSpace, viewMode]` on disk, and that saved set
+        // wins over any new defaults. Bumping the identifier is what makes the
+        // format items appear for existing users; the only customization it
+        // discards is the ordering of a single item.
+        formatToolbar = FormatToolbar(document: self)
+        let toolbar = NSToolbar(identifier: "MainToolbar2")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
-        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar"
+        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar2"
+        // Flexible space alone does not centre the group: measured on a 1500pt
+        // window, the leading one absorbed all 1077pt of slack and the trailing
+        // one got nothing. This is the API that actually centres.
+        toolbar.centeredItemIdentifiers = FormatToolbar.centeredIdentifiers
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .line
 
-        // Wire the window's secondary-click interception now that the toolbar has
-        // synchronously vended the view-mode button (see DocumentWindow).
-        window.viewModeButton = viewModeButton
-        window.makeViewModeMenu = { [weak self] in self?.viewModeMenu() ?? NSMenu() }
+        // Wire the window's secondary-click interceptions now that the toolbar has
+        // synchronously vended its buttons (see DocumentWindow).
+        window.secondaryClickTargets = [
+            .init(viewModeButton) { [weak self] in self?.viewModeMenu() ?? NSMenu() },
+            .init(formatToolbar.linkButton) { [weak self] in
+                self?.formatToolbar.linkMenu() ?? NSMenu()
+            },
+        ]
 
         let statusBarHeight: CGFloat = 22
         let contentBounds = window.contentView!.bounds
@@ -179,6 +230,10 @@ class Document: NSDocument, HeadingNavigable {
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.documentView = editor
+        // The overscroll past the document's ends is half the clip view's
+        // height, so it can only be computed once the editor has an enclosing
+        // scroll view — the content-inset call above ran before this line.
+        editor.updateScrollOverscroll()
 
         // Floating status bar: hidden by default, fades in when the pointer
         // enters its strip. Counts on the left, line ending on the right.
@@ -196,6 +251,20 @@ class Document: NSDocument, HeadingNavigable {
 
         findController = FindController(editor: editor, scrollView: scrollView,
                                        container: containerView, statusBar: statusBar)
+        findController.onLayoutNeeded = { [weak self] in self?.layoutTopBars() }
+
+        // The format bar: a chrome strip across the top of the editor, above
+        // the find bar. Parked exactly like the find bar — sized to the
+        // container *before* `addSubview`, because a flexible-width autoresizing
+        // view only grows by the delta from the width it was added at, and a
+        // zero-width bar would inflate the window's opening frame (the
+        // contentMinSize scar documented at FindController.init).
+        formatBar = FormatBarView(frame: .zero)
+        formatBar.isHidden = true
+        formatBar.autoresizingMask = [.width, .minYMargin]   // pinned to the top edge
+        formatBar.setFrameSize(NSSize(width: containerView.bounds.width, height: formatBar.preferredHeight))
+        // Below the floating status bar so counts stay on top.
+        containerView.addSubview(formatBar, positioned: .below, relativeTo: statusBar)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(editorDidChange(_:)),
@@ -243,6 +312,7 @@ class Document: NSDocument, HeadingNavigable {
         window.delegate = wc
         window.makeFirstResponder(editor)
         applyToolbarVisibility()
+        refreshFormatBar()
         // Before the source-mode switch below, which reads the editor's text.
         adoptPendingContent()
         // Honor the persisted source-mode preference for the editing view.
@@ -283,11 +353,7 @@ class Document: NSDocument, HeadingNavigable {
         guard let editor else { return }
         zoomFactor = min(Self.zoomRange.upperBound, max(Self.zoomRange.lowerBound, factor))
 
-        let base = EditorTheme.load(from: editor.themeDefaults)
-        var zoomed = base
-        zoomed.fontSize = base.fontSize * zoomFactor
-        zoomed.monospaceFontSize = base.monospaceFontSize * zoomFactor
-        editor.applyTheme(zoomed, persist: false)
+        editor.setZoom(zoomFactor)
 
         let screen = editor.window?.screen ?? NSScreen.main
         editor.maxContentWidthPoints = (screen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000) * zoomFactor
@@ -297,12 +363,16 @@ class Document: NSDocument, HeadingNavigable {
 
     @objc private func editorDidChange(_ notification: Notification) {
         updateStatusBar()
+        // An edit can add or remove the delimiters around the caret without
+        // moving the selection, so the bar's on-state has to follow edits too.
+        refreshFormatBarState()
         // Keep an open Read view in sync with edits (it renders a snapshot).
         refreshReadView()
     }
 
     @objc private func editorSelectionDidChange(_ notification: Notification) {
         updateStatusBar()
+        refreshFormatBarState()
     }
 
     private func updateStatusBar() {
@@ -462,9 +532,23 @@ class Document: NSDocument, HeadingNavigable {
     /// Shows the active mode's icon on the button and keeps the tooltip in sync.
     private func refreshViewModeButton() {
         guard let editor else { return }
+        // 15pt matches the formatting glyphs beside it (FormatToolbar.symbol).
+        // `book` is sized down from that: its intrinsic box is taller than
+        // `pencil`'s, so at a shared point size it draws visibly bigger (measured
+        // 17.5pt tall against the pencil's 15.0pt) and the button appears to
+        // change size when the mode flips. These two numbers are chosen so the
+        // *drawn* glyphs match, which is what the eye compares.
+        let pointSize: CGFloat = editor.viewMode == .reading ? 12.9 : 15
         viewModeButton?.image = icon(for: editor.viewMode)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
-        viewModeButton?.toolTip = "View mode: \(label(for: editor.viewMode))"
+            .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))
+        // Names what the click does, not what the mode is: the icon already shows
+        // the current mode, and AppKit's own toolbars read "Hide Sidebar" /
+        // "Show Sidebar" rather than stating the state back. Source is a display
+        // option *of* the editing view, not a third destination, so the toggle
+        // only ever has these two halves to name — even when `toggledViewMode`
+        // lands in `.source`.
+        viewModeButton?.toolTip = editor.viewMode == .reading
+            ? "Switch to Edit View" : "Switch to Read View"
     }
 
     private func setViewMode(_ mode: EditorTextView.ViewMode) {
@@ -528,6 +612,15 @@ class Document: NSDocument, HeadingNavigable {
                 // NSDocumentController) instead of navigating the webview.
                 v.onOpenWikiLink = { [weak self] in self?.editor.followWikiLink($0) }
                 v.onOpenInternalLink = { [weak self] in self?.editor.followLinkDestination($0) }
+                // A checkbox click edits the (hidden) editor, then the page is
+                // patched in place rather than re-rendered: a reload flashes and
+                // only approximately keeps the scroll position. Formatting edits
+                // post no text-change notification, so nothing else refreshes.
+                v.onToggleTask = { [weak self] line in
+                    guard let self, let checked = self.editor.toggleTask(atLine: line) else { return }
+                    self.readView?.setTaskChecked(line: line, checked: checked,
+                                                  markdown: self.editor.rawSource)
+                }
                 // The ONLY place the Edit→Read view swap happens: the editor
                 // stays on screen (and interactive) until the rendered
                 // document is actually ready, so there's never a blank gap.
@@ -595,6 +688,9 @@ class Document: NSDocument, HeadingNavigable {
                 swapToEditor()
             }
         }
+        // The bar hides in Reading mode (a read-only editor has no formatting
+        // commands) and returns on the way back — refresh on every mode change.
+        refreshFormatBar()
     }
 
     /// Reveals the editor's scroll view (hiding any read view) and repairs
@@ -663,11 +759,13 @@ class Document: NSDocument, HeadingNavigable {
     }
 
     @objc override func printDocument(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
         MarkdownPrinter.print(markdown: editor.rawSource,
                               theme: editor.theme,
                               callouts: mergedCallouts,
                               baseURL: documentDirectory,
                               options: renderOptions,
+                              suggestedName: name.isEmpty ? "Untitled" : name,
                               window: windowControllers.first?.window)
     }
 
@@ -737,6 +835,52 @@ class Document: NSDocument, HeadingNavigable {
         window.toolbar?.isVisible = AppSettings.showToolbar && !AppSettings.autoHideToolbar
     }
 
+    // MARK: - Format bar (top of the editor, above the find bar)
+
+    /// View ▸ Show Format Bar. Goes through the setting rather than a direct
+    /// `isHidden` flip so the menu item and any future Settings ▸ Edit checkbox
+    /// can't drift apart — the same idiom as `toggleToolbarShown`.
+    @objc func toggleFormatBar(_ sender: Any?) {
+        AppSettings.showFormatBar.toggle()
+        AppSettings.applyEditSettingsToOpenDocuments()
+    }
+
+    /// Applies the format bar's visibility rule (hidden in Reading mode or when
+    /// the Show Format Bar setting is off — the latter also removes any chance
+    /// of a click reaching a read-only editor), refreshes its controls' enabled
+    /// state, and re-stacks the top bars. Called on show, on view-mode change
+    /// and from `AppSettings.applyEditSettingsToOpenDocuments()`.
+    func refreshFormatBar() {
+        formatBar.isHidden = !AppSettings.showFormatBar || editor.viewMode == .reading
+        formatBar.refreshEnabledState(editor: editor)
+        refreshFormatBarState()
+        layoutTopBars()
+    }
+
+    /// Just the lit/unlit state of the bar's buttons. Split out from
+    /// `refreshFormatBar` because this one runs on every caret move and every
+    /// keystroke, where re-deciding visibility and re-stacking the bars would be
+    /// wasted work.
+    private func refreshFormatBarState() {
+        guard let formatBar, !formatBar.isHidden, let editor else { return }
+        formatBar.refreshActiveState(editor: editor)
+    }
+
+    /// Stacks the visible top bars under the toolbar and hands the editor their
+    /// combined height. The sole writer of `additionalTopInset` — the find bar
+    /// used to write it directly, and a second writer (this bar) would clobber
+    /// whichever ran last. Order in the array is the on-screen order (top
+    /// first): format bar above find bar.
+    func layoutTopBars() {
+        var y = containerView.bounds.height
+        for bar in [formatBar!, findController.barView] where !bar.isHidden {
+            let h = bar.preferredHeight
+            y -= h
+            bar.frame = NSRect(x: 0, y: y, width: containerView.bounds.width, height: h)
+        }
+        editor.additionalTopInset = containerView.bounds.height - y
+    }
+
     /// Keeps the View-menu "Show Source in Editor" checkmark and the
     /// Show/Hide Toolbar title in sync with the settings.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -745,6 +889,10 @@ class Document: NSDocument, HeadingNavigable {
         }
         if item.action == #selector(toggleToolbarShown(_:)) {
             item.title = AppSettings.showToolbar ? "Hide Toolbar" : "Show Toolbar"
+        }
+        if item.action == #selector(toggleFormatBar(_:)) {
+            // Title, not a checkmark — the same idiom as Hide Toolbar above.
+            item.title = AppSettings.showFormatBar ? "Hide Format Bar" : "Show Format Bar"
         }
         if item.action == #selector(toggleAutoHideToolbar(_:)) {
             item.state = AppSettings.autoHideToolbar ? .on : .off
@@ -758,7 +906,13 @@ class Document: NSDocument, HeadingNavigable {
     /// button). With source mode on the editing view is Source, so this flips
     /// Source ↔ Read; otherwise Edit ↔ Read.
     @objc func toggleViewMode(_ sender: Any?) {
-        setViewMode(editor.viewMode == .reading ? editingMode : .reading)
+        setViewMode(toggledViewMode)
+    }
+
+    /// Where `toggleViewMode` would land — also what the button's tooltip names,
+    /// so the two can't say different things.
+    private var toggledViewMode: EditorTextView.ViewMode {
+        editor?.viewMode == .reading ? editingMode : .reading
     }
 
     /// "Inspect Reader" (⌥⌘I) — a semi-toggle, so one shortcut always gets you
@@ -837,17 +991,20 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.viewModeItemID]
+        FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID)
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .space, Self.viewModeItemID]
+        FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID)
     }
 
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard itemIdentifier == Self.viewModeItemID else { return nil }
+        // Everything but the view-mode toggle belongs to FormatToolbar.
+        guard itemIdentifier == Self.viewModeItemID else {
+            return formatToolbar.makeItem(itemIdentifier)
+        }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         item.label = "View Mode"
         item.visibilityPriority = .high
@@ -867,22 +1024,40 @@ extension Document: NSToolbarDelegate {
     }
 }
 
-/// Document window that intercepts a secondary (right / control) click on the
-/// view-mode toolbar button and shows the mode menu itself. `sendEvent` is the
-/// single funnel all window events pass through *before* the toolbar/titlebar
-/// can turn the click into its own "Customize Toolbar…" context menu, so this is
-/// the one place the interception reliably wins.
+/// Document window that intercepts a secondary (right / control) click on a
+/// toolbar button and shows that button's own menu. `sendEvent` is the single
+/// funnel all window events pass through *before* the toolbar/titlebar can turn
+/// the click into its own "Customize Toolbar…" context menu, so this is the one
+/// place the interception reliably wins — the view's `menu`, a `rightMouseDown`
+/// override and a gesture recognizer all lose it.
+///
+/// Caveat: true full screen moves the toolbar into a separate window this
+/// main-window hook does not cover.
 final class DocumentWindow: NSWindow {
-    weak var viewModeButton: NSView?
-    var makeViewModeMenu: (() -> NSMenu)?
+    /// A button that claims its own secondary click, with the menu to show.
+    /// The view is weak: the toolbar owns it and may vend a replacement.
+    struct SecondaryClickTarget {
+        weak var view: NSView?
+        let makeMenu: () -> NSMenu
+
+        init(_ view: NSView?, makeMenu: @escaping () -> NSMenu) {
+            self.view = view
+            self.makeMenu = makeMenu
+        }
+    }
+
+    var secondaryClickTargets: [SecondaryClickTarget] = []
 
     override func sendEvent(_ event: NSEvent) {
-        if isSecondaryClick(event), let button = viewModeButton,
-           button.bounds.contains(button.convert(event.locationInWindow, from: nil)),
-           let menu = makeViewModeMenu?() {
-            menu.popUp(positioning: nil,
-                       at: NSPoint(x: 0, y: button.bounds.maxY + 4), in: button)
-            return
+        if isSecondaryClick(event) {
+            for target in secondaryClickTargets {
+                guard let button = target.view,
+                      button.bounds.contains(button.convert(event.locationInWindow, from: nil))
+                else { continue }
+                target.makeMenu().popUp(positioning: nil,
+                                        at: NSPoint(x: 0, y: button.bounds.maxY + 4), in: button)
+                return
+            }
         }
         super.sendEvent(event)
     }

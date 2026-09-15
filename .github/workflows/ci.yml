@@ -18,20 +18,50 @@ jobs:
   test:
     name: test
     runs-on: macos-14
+    # The suite runs in ~2 minutes. A test that blocks the main thread (a modal
+    # alert with nobody to dismiss it, say) otherwise sits until the 6-hour
+    # ceiling — billed at the 10x macOS rate the whole way.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
+      # `test` is a REQUIRED status check, so this job must always run and report
+      # — a paths-ignore trigger would leave the check pending forever on
+      # docs/site PRs and block the merge. Instead detect whether any *code*
+      # changed and skip only the expensive swift steps when it didn't. Docs/site
+      # PRs still get a green `test` in seconds.
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # `code` = anything that isn't docs/site/markdown. `**` matches all,
+          # then the `!` lines subtract the doc-only paths (picomatch idiom).
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!site/**'
+              - '!misc/**'
+              - '!**/*.md'
+              - '!.github/ISSUE_TEMPLATE/**'
+
+      - name: Skip note
+        if: steps.filter.outputs.code != 'true'
+        run: echo "Only docs/site/markdown changed — skipping swift tests."
+
       # Package.swift declares swift-tools-version 6.0, which needs Xcode 16+.
       - uses: maxim-lobanov/setup-xcode@v1
+        if: steps.filter.outputs.code == 'true'
         with:
           xcode-version: latest-stable
 
       - name: Swift version
+        if: steps.filter.outputs.code == 'true'
         run: swift --version
 
       # Cache the SwiftPM build (deps + compiled objects) keyed on the resolved
       # dependency graph, so green runs don't recompile SwiftMath etc. each time.
       - name: Cache .build
+        if: steps.filter.outputs.code == 'true'
         uses: actions/cache@v5
         with:
           path: .build
@@ -42,4 +72,5 @@ jobs:
           restore-keys: spm-v2-${{ runner.os }}-
 
       - name: Test
+        if: steps.filter.outputs.code == 'true'
         run: swift test

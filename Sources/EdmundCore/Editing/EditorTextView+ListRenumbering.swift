@@ -28,11 +28,11 @@ extension EditorTextView {
         return (indent, number, m.range(at: 2), delim)
     }
 
-    /// Reuses the render-time indent→depth mapping so renumbering agrees with
-    /// what's actually drawn.
-    private func depthOf(_ block: Block) -> Int {
-        let indent = block.content.prefix(while: { $0 == " " || $0 == "\t" })
-        return listDepth(leadingWhitespace: String(indent))
+    /// Reuses the render-time depth so renumbering agrees with what's actually
+    /// drawn. Non-list blocks report a depth no list item can hold, so a
+    /// same-depth test never matches one.
+    private func depthOf(_ index: Int) -> Int {
+        listDepth(ofBlock: index) ?? ListDepthMap.notAList
     }
 
     /// Entry point: renumbers every distinct contiguous ordered run touched
@@ -60,7 +60,7 @@ extension EditorTextView {
             guard !processed.contains(idx),
                   blocks[idx].kind == .listItem,
                   orderedMarker(blocks[idx].content) != nil else { continue }
-            let depth = depthOf(blocks[idx])
+            let depth = depthOf(idx)
             let bounds = orderedRunBounds(seedIndex: idx, depth: depth)
             // Only the same-depth ordered members actually belong to this
             // run's numbering — `bounds` also spans deeper nested children
@@ -68,7 +68,7 @@ extension EditorTextView {
             // text, and marking those processed here would wrongly suppress
             // their own, separate depth's renumbering pass later in this loop.
             let sequence = bounds.filter {
-                depthOf(blocks[$0]) == depth && orderedMarker(blocks[$0].content) != nil
+                depthOf($0) == depth && orderedMarker(blocks[$0].content) != nil
             }
             for seqIdx in sequence { processed.insert(seqIdx) }
             renumberOrderedListRun(bounds: bounds, sequence: sequence, depthChanged: depthChanged)
@@ -85,7 +85,7 @@ extension EditorTextView {
     private func orderedRunBounds(seedIndex: Int, depth: Int) -> ClosedRange<Int> {
         func sameOrDeeper(_ idx: Int) -> Bool {
             guard blocks[idx].kind == .listItem else { return false }
-            let d = depthOf(blocks[idx])
+            let d = depthOf(idx)
             if d < depth { return false }
             if d == depth { return orderedMarker(blocks[idx].content) != nil }
             return true // deeper: nested child, part of the span
