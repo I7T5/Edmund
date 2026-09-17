@@ -50,8 +50,7 @@ enum ImageLoadFailure: Equatable {
     case blockedBySetting
     case notAnImage
     case notFound
-    /// Sandboxed: the file is in a folder the user hasn't granted yet
-    /// (`FolderAccess`); cmd+click on the placeholder offers the grant.
+    /// Sandboxed: the file's folder isn't granted yet (`FolderAccess`).
     case needsFolderAccess
     /// A `![[file]]` embed of a type Obsidian supports (audio/video/pdf/note)
     /// but Edmund can't render.
@@ -65,7 +64,7 @@ enum ImageLoadFailure: Equatable {
         case .blockedBySetting: return "External images blocked"
         case .notAnImage: return "Not an image"
         case .notFound: return "Image not found"
-        case .needsFolderAccess: return "Folder access needed — ⌘-click to grant"
+        case .needsFolderAccess: return "Folder access needed"
         case .embedTypeUnsupported: return "Embeded file not an image"
         case .embedTypeGenerallyUnsupported: return "Embed file type generally unsupported"
         }
@@ -177,8 +176,7 @@ extension EditorTextView {
         return nil
     }
 
-    /// Whether `destination` is a local file the sandbox can't read yet, so the
-    /// token gets the cmd+click-to-grant marker. No I/O.
+    /// Whether `destination` is a local file the sandbox can't read yet. No I/O.
     func imageNeedsFolderAccess(destination: String) -> Bool {
         guard FolderAccess.isSandboxed, let url = resolveImageURL(destination) else { return false }
         return !FolderAccess.covers(url)

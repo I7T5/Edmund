@@ -340,6 +340,7 @@ extension EditorTextView {
                                       forOverlayAt: span.fullRange.location, in: result)
                     if imageNeedsFolderAccess(destination: destination) {
                         result.addAttribute(.editorNeedsFolderAccess, value: true, range: span.fullRange)
+                        promptForFolderAccessOnce()
                     }
                 } else if (markdown as NSString).character(at: span.fullRange.location) == 0x3C {
                     // Active (or pending) `<img …>`: show the raw tag as colored

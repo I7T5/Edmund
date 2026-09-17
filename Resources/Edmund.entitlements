@@ -14,6 +14,8 @@
     <true/>
     <key>com.apple.security.print</key>
     <true/>
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
     <!-- RaTeX payload download (runs as WASM in JavaScriptCore — the
          guideline 2.5.2 exception) and remote images. -->
     <key>com.apple.security.network.client</key>

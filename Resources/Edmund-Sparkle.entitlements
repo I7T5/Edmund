@@ -16,6 +16,15 @@
     <true/>
     <key>com.apple.security.print</key>
     <true/>
+    <!-- The usual document folders, so most notes need no folder grant.
+         GitHub build only: App Review scrutinizes temporary exceptions
+         (the MAS file carries just the Apple-blessed Downloads one). -->
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+    <array>
+        <string>/Documents/</string>
+        <string>/Desktop/</string>
+        <string>/Downloads/</string>
+    </array>
     <!-- Sparkle feed/downloads, the RaTeX payload download, remote images. -->
     <key>com.apple.security.network.client</key>
     <true/>

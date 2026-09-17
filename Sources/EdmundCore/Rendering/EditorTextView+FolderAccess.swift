@@ -1,19 +1,24 @@
 import AppKit
 
 extension NSAttributedString.Key {
-    /// Marks an image token whose file sits in a folder the sandbox hasn't
-    /// granted, so a cmd+click offers the folder grant (`FolderAccess`).
+    /// Marks an image token whose folder the sandbox hasn't granted, so a
+    /// cmd+click re-offers the grant (`FolderAccess`).
     static let editorNeedsFolderAccess = NSAttributedString.Key("EditorNeedsFolderAccess")
 }
 
 // MARK: - Folder grants (App Sandbox)
 //
 // The one UI surface of `FolderAccess`: an open panel preset to the document's
-// folder, reached from a cmd+click on a "Folder access needed" image
-// placeholder, from a wiki link whose target can't be read, or from
-// File ▸ Grant Access to Folder…. No prompt is ever raised mid-render.
+// folder. Raised automatically, once per folder per launch, when a render
+// meets a sibling image it can't read; again from a wiki link whose target
+// can't be read; and on cmd+click of a placeholder (the retry after Cancel).
 
 extension EditorTextView {
+
+    /// Folders already prompted this launch — Cancel means "not now", not
+    /// "ask again on every restyle".
+    // ponytail: main-thread only, same as the store.
+    nonisolated(unsafe) private static var promptedFolders = Set<String>()
 
     /// The document's folder when the sandbox needs a grant to read beside it.
     var ungrantedDocumentFolder: URL? {
@@ -23,15 +28,23 @@ extension EditorTextView {
         return dir
     }
 
-    /// Whether the click lands on a placeholder that offers the grant.
     func needsFolderAccessHit(at event: NSEvent) -> Bool {
         guard let storage = textStorage, let i = clickCharIndex(at: event) else { return false }
         return storage.attribute(.editorNeedsFolderAccess, at: i, effectiveRange: nil) != nil
     }
 
-    /// File ▸ Grant Access to Folder… (responder chain).
-    @objc public func grantFolderAccess(_ sender: Any?) {
-        requestFolderAccess()
+    /// Called from styling: defers the panel off the render path and out of
+    /// the initial layout, when the window may not exist yet.
+    func promptForFolderAccessOnce() {
+        guard let dir = ungrantedDocumentFolder,
+              Self.promptedFolders.insert(dir.path).inserted else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window != nil else {
+                Self.promptedFolders.remove(dir.path)   // no window yet; retry on the next restyle
+                return
+            }
+            self.requestFolderAccess()
+        }
     }
 
     /// Asks for the document's folder; on OK stores the grant, restyles so
@@ -44,7 +57,7 @@ extension EditorTextView {
         panel.canCreateDirectories = false
         panel.directoryURL = dir
         panel.prompt = "Grant Access"
-        panel.message = "Allow Edmund to read images and linked notes next to this document."
+        panel.message = "Allow Edmund to read images and linked notes next to this document. A parent folder covers everything inside it."
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             FolderAccess.grant(url)

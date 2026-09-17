@@ -317,14 +317,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         fileMenu.addItem(MenuCommand(id: "file.moveTo", group: "File", title: "Move To\u{2026}",
                                      action: #selector(Document.move(_:))).makeItem())
 
-        // Sandboxed builds only: the folder grant for sibling images and wiki
-        // links (FolderAccess). Meaningless unsandboxed, so the item isn't there.
-        if FolderAccess.isSandboxed {
-            fileMenu.addItem(MenuCommand(id: "file.grantFolderAccess", group: "File",
-                                         title: "Grant Access to Folder\u{2026}",
-                                         action: #selector(EditorTextView.grantFolderAccess(_:))).makeItem())
-        }
-
         fileMenu.addItem(NSMenuItem.separator())
 
         fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "Export as PDF\u{2026}",

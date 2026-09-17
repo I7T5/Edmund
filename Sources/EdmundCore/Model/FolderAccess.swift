@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Security-scoped folder grants for files *next to* a document — sibling
 /// images and wiki-link targets.
@@ -15,6 +16,9 @@ import Foundation
 /// grants a handful of folders at most, and stopping would race with
 /// documents still open in them.
 ///
+/// Folders the entitlements already open (Downloads; Documents/Desktop on the
+/// GitHub build) count as covered without a grant.
+///
 /// Unsandboxed builds (`--variant adhoc`): `isSandboxed` is false, every
 /// folder counts as covered, and `grant` is a no-op.
 public enum FolderAccess {
@@ -29,12 +33,31 @@ public enum FolderAccess {
     nonisolated(unsafe) private static var active: [String: URL] = [:]
     nonisolated(unsafe) private static var loadedStored = false
 
-    /// True when `url` sits in a granted folder (or the build isn't sandboxed).
+    /// True when `url` sits in a granted or entitled folder (or the build isn't sandboxed).
     public static func covers(_ url: URL) -> Bool {
         guard isSandboxed else { return true }
         loadStored()
-        return folder(covering: url.standardizedFileURL.path, in: Array(active.keys)) != nil
+        return folder(covering: url.standardizedFileURL.path, in: entitledFolders + Array(active.keys)) != nil
     }
+
+    /// Home folders the code signature's entitlements open. Read from the
+    /// running signature so the two entitlements files never need mirroring
+    /// here. The real home comes from passwd — `homeDirectoryForCurrentUser`
+    /// is the container when sandboxed.
+    static let entitledFolders: [String] = {
+        guard let task = SecTaskCreateFromSelf(nil) else { return [] }
+        let home = String(cString: getpwuid(getuid()).pointee.pw_dir)
+        var folders: [String] = []
+        if SecTaskCopyValueForEntitlement(task, "com.apple.security.files.downloads.read-write" as CFString, nil) as? Bool == true {
+            folders.append(home + "/Downloads")
+        }
+        for key in ["com.apple.security.temporary-exception.files.home-relative-path.read-write",
+                    "com.apple.security.temporary-exception.files.home-relative-path.read-only"] {
+            let paths = SecTaskCopyValueForEntitlement(task, key as CFString, nil) as? [String] ?? []
+            folders += paths.map { home + $0 }
+        }
+        return folders
+    }()
 
     /// Stores an app-scoped bookmark for `folder` and starts access. `folder`
     /// must come from an open panel (that's what makes the bookmark creatable).
