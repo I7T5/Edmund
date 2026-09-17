@@ -67,6 +67,7 @@ swift test                     # full suite: ~750+ tests, ~10s (2026-07-05)
 swift test --filter Callout    # one suite
 ./scripts/build-app.sh         # release build → build/Edmund.app (SANDBOXED; launch via `open -n -a`, not by binary path)
 ./scripts/build-app.sh --variant adhoc   # unsandboxed — required for ReproScript / CGEvent live-repro runs
+./scripts/build-app.sh --variant mas     # Mac App Store build: EDMUND_MAS=1 drops Sparkle from the edmd target
 ```
 
 `swift test` also runs automatically as a Stop hook after code-touching turns.

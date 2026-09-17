@@ -1,11 +1,16 @@
 #!/bin/bash
 # Build Edmund.app — a standalone macOS application bundle.
-# Usage: ./scripts/build-app.sh [--variant sparkle|adhoc]
-#   sparkle (default): App Sandbox on (Resources/Edmund.entitlements), signed
-#                      with the bundle id. What releases ship.
+# Usage: ./scripts/build-app.sh [--variant sparkle|adhoc|mas]
+#   sparkle (default): App Sandbox on (Resources/Edmund-Sparkle.entitlements),
+#                      signed with the bundle id. What GitHub releases ship.
 #   adhoc:             no entitlements, today's dev build. The sandbox blocks
 #                      posting CGEvents, which the ReproScript live-repro driver
 #                      needs, so local debugging stays on this variant.
+#   mas:               Mac App Store: no Sparkle linked or embedded, no SU*
+#                      Info.plist keys, Resources/Edmund.entitlements. Still
+#                      ad-hoc signed here — App Store Connect signing
+#                      (3rd Party Mac Developer certs + provisioning profile)
+#                      is a separate, certificate-holding step.
 # Output: build/Edmund.app (ready to drag into /Applications)
 
 set -euo pipefail
@@ -18,7 +23,7 @@ while [ $# -gt 0 ]; do
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
-case "$VARIANT" in sparkle|adhoc) ;; *) echo "Unknown variant: $VARIANT" >&2; exit 2 ;; esac
+case "$VARIANT" in sparkle|adhoc|mas) ;; *) echo "Unknown variant: $VARIANT" >&2; exit 2 ;; esac
 
 APP_NAME="Edmund"
 BUNDLE="build/${APP_NAME}.app"
@@ -26,8 +31,13 @@ BUNDLE="build/${APP_NAME}.app"
 # inside the bundle even though the app presents as "Edmund".
 EXECUTABLE="edmd"
 
-echo "Building release binary..."
-swift build -c release 2>&1 | tail -3
+echo "Building release binary (${VARIANT})..."
+if [ "$VARIANT" = "mas" ]; then
+    # EDMUND_MAS drops the Sparkle product from the edmd target (Package.swift).
+    EDMUND_MAS=1 swift build -c release 2>&1 | tail -3
+else
+    swift build -c release 2>&1 | tail -3
+fi
 
 echo "Creating ${APP_NAME}.app bundle..."
 rm -rf "$BUNDLE"
@@ -36,6 +46,12 @@ mkdir -p "${BUNDLE}/Contents/Resources"
 
 cp ".build/release/${EXECUTABLE}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
 cp Info.plist "${BUNDLE}/Contents/"
+if [ "$VARIANT" = "mas" ]; then
+    # No updater on the App Store: Sparkle's keys must not ship there.
+    for key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUEnableInstallerLauncherService; do
+        plutil -remove "$key" "${BUNDLE}/Contents/Info.plist"
+    done
+fi
 cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
 # First-sandboxed-launch migration of Application Support/Edmund into the
 # container (see the plist). Copied for every variant; inert unsandboxed.
@@ -104,6 +120,7 @@ fi
 # SwiftPM links Sparkle but doesn't copy the framework (which carries the XPC
 # helpers and Autoupdate.app) into the bundle; without this the updater crashes
 # on the first check because it can't locate its helper processes.
+if [ "$VARIANT" != "mas" ]; then
 echo "Embedding Sparkle.framework..."
 mkdir -p "${BUNDLE}/Contents/Frameworks"
 SPARKLE_FW="$(find .build -type d -name 'Sparkle.framework' | grep -v '\.dSYM' | head -1)"
@@ -118,6 +135,7 @@ cp -R "$SPARKLE_FW" "${BUNDLE}/Contents/Frameworks/"
 # the app is installed.
 install_name_tool -add_rpath "@executable_path/../Frameworks" \
     "${BUNDLE}/Contents/MacOS/${EXECUTABLE}" 2>/dev/null || true
+fi
 
 # Assemble the Quick Look preview extension as an .appex in Contents/PlugIns.
 # It's an executable target (SwiftPM has no app-extension product); its entry
@@ -162,18 +180,18 @@ echo "Code signing..."
 # sign each nested item explicitly (Sparkle deep so its own XPC helpers are
 # covered; the appex with its entitlements) and let the non-deep app sign just
 # seal the container over the already-signed contents.
-codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
+[ "$VARIANT" != "mas" ] && codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
     --identifier "com.i7t5.edmund.quicklook" "$APPEX"
-# The sandboxed variant signs with no --identifier override: the signing id
+# The sandboxed variants sign with no --identifier override: the signing id
 # names the container (~/Library/Containers/<id>) and keys the automatic
 # preferences migration, so it must equal the Info.plist bundle id. The ad-hoc
 # variant keeps its historical "com.i7t5.edmd" id.
-if [ "$VARIANT" = "sparkle" ]; then
-    codesign --force --sign - --entitlements Resources/Edmund.entitlements "$BUNDLE"
-else
-    codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
-fi
+case "$VARIANT" in
+    sparkle) codesign --force --sign - --entitlements Resources/Edmund-Sparkle.entitlements "$BUNDLE" ;;
+    mas)     codesign --force --sign - --entitlements Resources/Edmund.entitlements "$BUNDLE" ;;
+    adhoc)   codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE" ;;
+esac
 
 # SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
 # per-target bundle next to the binary. SwiftMath's generated Bundle.module

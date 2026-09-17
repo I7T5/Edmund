@@ -2,29 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Entitlements for the shipping (GitHub + Sparkle) build. The ad-hoc dev
-         variant of build-app.sh signs without any entitlements so the
-         ReproScript CGEvent driver keeps working. -->
+    <!-- Entitlements for the Mac App Store variant (build-app.sh variant
+         mas). Same as Edmund-Sparkle.entitlements minus Sparkle's mach-lookup
+         exceptions: the MAS build has no updater. App Store Connect signing
+         adds com.apple.application-identifier / team-identifier itself. -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
-    <!-- NSDocument open/save panels; also the folder grant panel (FolderAccess). -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
-    <!-- Security-scoped bookmarks for document folders (sibling images, wiki
-         links) survive relaunch only with app-scope bookmarks. -->
     <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
     <key>com.apple.security.print</key>
     <true/>
-    <!-- Sparkle feed/downloads, the RaTeX payload download, remote images. -->
+    <!-- RaTeX payload download (runs as WASM in JavaScriptCore — the
+         guideline 2.5.2 exception) and remote images. -->
     <key>com.apple.security.network.client</key>
     <true/>
-    <!-- Sparkle 2's sandbox XPC services (installer launcher + status). The
-         names derive from the Info.plist bundle id, not the signing id. -->
-    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
-    <array>
-        <string>com.i7t5.edmund-spks</string>
-        <string>com.i7t5.edmund-spki</string>
-    </array>
 </dict>
 </plist>
