@@ -356,6 +356,19 @@ struct HTMLRendererInlineTests {
         #expect(out.contains("\\int_0^1"))
     }
 
+    // #325: the block on its own lines, indented under the item. The paragraph's
+    // raw source slice keeps the continuation lines' indentation before the
+    // closing `$$`, which used to disqualify the close. (Without the blank line
+    // cmark lazy-continues the `$$` lines into the item's text paragraph — the
+    // same pre-existing read-mode limit as `para\n$$\n…\n$$` outside a list.)
+    @Test("Indented $$…$$ block under a list item → math-display div in the <li>")
+    func listIndentedDisplayMath() {
+        let out = html("- item\n\n  $$\n  \\int_0^1 x\\,dx\n  $$")
+        #expect(out.contains("<li>"))
+        #expect(out.contains("class=\"math-display\""))
+        #expect(out.contains("\\int_0^1"))
+    }
+
     // A `$$…$$` inside inline code is literal source, not a display-math block.
     // Regression: visitParagraph used to promote any paragraph containing a
     // `$$…$$` span to a math block, blanking the surrounding text.
