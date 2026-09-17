@@ -56,8 +56,8 @@ extension EditorTextView {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = false
         panel.directoryURL = dir
-        panel.prompt = "Grant Access"
-        panel.message = "Allow Edmund to read images and linked notes next to this document. A parent folder covers everything inside it."
+        panel.prompt = "Allow"
+        panel.message = "Edmund needs access to \u{201C}\(dir.lastPathComponent)\u{201D} to show its images and linked notes."
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             FolderAccess.grant(url)
