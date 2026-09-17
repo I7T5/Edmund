@@ -284,7 +284,8 @@ Notable subsystems:
 - **Content width** (`+ContentWidth.swift`): an **absolute physical**
   max-column width — set in cm/in in Settings, stored as cm, converted to
   points via the display's real PPI (`NSScreen.physicalPPI`, from
-  `CGDisplayScreenSize`). Applied as a symmetric `textContainerInset.width`
+  `CGDisplayScreenSize`; long edge ÷ long edge, because `frame` rotates with
+  a portrait display and the mm size doesn't — #324). Applied as a symmetric `textContainerInset.width`
   cap: wider windows center the column, narrower ones fill. Recomputed on
   resize and on moving to a differently-scaled display
   (`NSWindow.didChangeScreenNotification`).
