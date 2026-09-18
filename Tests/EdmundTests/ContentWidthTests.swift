@@ -1,6 +1,7 @@
 import Testing
 import AppKit
 @testable import EdmundCore
+@testable import edmd
 
 /// The centered reading-column math: `horizontalInset` turns a view width and
 /// a physical max-column cap into a symmetric text inset.
@@ -72,5 +73,16 @@ struct ContentWidthTests {
                 #expect(abs(column - cap) < 0.01)
             }
         }
+    }
+
+    @Test("Screen PPI is the same in landscape and portrait (#324)")
+    func ppiIgnoresRotation() {
+        // 27-inch 2560x1440 panel, 597x336 mm. NSScreen.frame rotates with
+        // the display; CGDisplayScreenSize does not.
+        let mm = CGSize(width: 597, height: 336)
+        let landscape = NSScreen.physicalPPI(points: CGSize(width: 2560, height: 1440), millimetres: mm)
+        let portrait = NSScreen.physicalPPI(points: CGSize(width: 1440, height: 2560), millimetres: mm)
+        #expect(abs(landscape - 108.9) < 0.1)
+        #expect(abs(portrait - landscape) < 0.001)
     }
 }
