@@ -306,7 +306,79 @@ struct HTMLRenderer: MarkupVisitor {
             footnotes.append((id: id, bodyHTML: bodyHTML))
             return ""
         }
+        if options.features.contains(.math),
+           let split = splitAtOwnLineDisplayMath(paragraph, raw: raw, spans: dm) {
+            return split
+        }
         return "<p>\(renderChildren(of: paragraph))</p>"
+    }
+
+    /// A paragraph that *contains* own-line `$$…$$` runs: cmark lazy-continues
+    /// fence lines into the preceding text (`item\n$$\n…\n$$`, #325), while the
+    /// editor's BlockParser starts a fresh block at the `$$` line. Split here so
+    /// the two views agree — the prose around each run renders as usual, the run
+    /// becomes a math-display div. Children are partitioned by source *line*: a
+    /// Text node never crosses one, and an own-line run's lines are wholly inside
+    /// it. Not by column — cmark reports a lazy-continuation line inside a list
+    /// item at the item's content column, not the column it really starts at.
+    /// Returns nil when the paragraph has no such run.
+    private mutating func splitAtOwnLineDisplayMath(_ paragraph: Paragraph, raw: String,
+                                                    spans: [SyntaxHighlighter.Span]) -> String? {
+        guard let pRange = paragraph.range else { return nil }
+        let ns = raw as NSString
+        func isSpace(_ c: unichar) -> Bool { c == 0x20 || c == 0x09 }
+        // Own-line: only indentation between the line start and the opener, only
+        // whitespace between the closer and the line end.
+        let runs = spans.filter { s in
+            guard case .math(true) = s.kind else { return false }
+            var p = s.fullRange.location - 1
+            while p >= 0, isSpace(ns.character(at: p)) { p -= 1 }
+            guard p < 0 || ns.character(at: p) == 0x0A else { return false }
+            var q = s.fullRange.upperBound
+            while q < ns.length, isSpace(ns.character(at: q)) { q += 1 }
+            return q == ns.length || ns.character(at: q) == 0x0A
+        }
+        guard !runs.isEmpty else { return nil }
+
+        let firstLine = pRange.lowerBound.line
+        func line(at offset: Int) -> Int {
+            firstLine + ns.substring(to: offset).components(separatedBy: "\n").count - 1
+        }
+        let runLines = runs.map { line(at: $0.fullRange.location)...line(at: $0.fullRange.upperBound) }
+        func run(containing child: Markup) -> SyntaxHighlighter.Span? {
+            guard let l = child.range?.lowerBound.line else { return nil }
+            return zip(runs, runLines).first { $0.1.contains(l) }?.0
+        }
+
+        var out = ""
+        var prose: [Markup] = []
+        var lastRun: Int?
+        for child in paragraph.children {
+            if let r = run(containing: child) {
+                guard lastRun != r.fullRange.location else { continue }
+                // Drop the break that separated the prose from the fence line.
+                if prose.last is SoftBreak || prose.last is LineBreak { prose.removeLast() }
+                if !prose.isEmpty {
+                    var html = ""
+                    for c in prose { html += visit(c) }
+                    out += "<p>\(html)</p>"
+                    prose = []
+                }
+                let tex = ns.substring(with: r.contentRange)
+                out += "<div class=\"math-display\" data-tex=\"\(Self.attr(tex))\"></div>"
+                lastRun = r.fullRange.location
+                continue
+            }
+            // Drop the break that follows a fence's closing line.
+            if lastRun != nil, prose.isEmpty, child is SoftBreak || child is LineBreak { continue }
+            prose.append(child)
+        }
+        if !prose.isEmpty {
+            var html = ""
+            for c in prose { html += visit(c) }
+            out += "<p>\(html)</p>"
+        }
+        return out
     }
 
     mutating func visitHeading(_ heading: Heading) -> String {
@@ -492,7 +564,11 @@ struct HTMLRenderer: MarkupVisitor {
         var out = ""
         for child in item.children {
             var html = visit(child)
-            if child is Paragraph, html.hasPrefix("<p>"), html.hasSuffix("</p>") {
+            // A paragraph split around a display-math run (`<p>a</p><div…>
+            // <p>b</p>`) is several elements; stripping its outer tags would
+            // leave broken markup, so only a single <p>…</p> is unwrapped.
+            if child is Paragraph, html.hasPrefix("<p>"), html.hasSuffix("</p>"),
+               !html.dropLast(4).contains("</p>") {
                 html = String(html.dropFirst(3).dropLast(4))
                 if let tightTextClass { html = "<span class=\"\(tightTextClass)\">\(html)</span>" }
             }

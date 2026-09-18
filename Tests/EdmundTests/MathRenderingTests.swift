@@ -116,6 +116,23 @@ struct DisplayMathRenderingTests {
         #expect(ps?.alignment == .center)
     }
 
+    // #325: a `$$` block indented under a list item. The indentation precedes
+    // the span, so the paragraph style must be set from char 0 (TextKit reads
+    // a paragraph's style from its first character) or the first line keeps
+    // body style: no centering, no height reserved for the image.
+    @Test("Indented $$…$$ block renders centered with the indentation hidden")
+    @MainActor func indentedBlockIsCentered() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("  $$\nx+y\n  $$")
+        #expect(styled.attribute(.fragmentOverlay, at: 2, effectiveRange: nil) is FragmentOverlay)
+        #expect(isHidden(at: 0, in: styled))             // leading indentation
+        #expect(isHidden(at: 1, in: styled))
+        #expect(isHidden(at: 3, in: styled))             // second `$`
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps?.alignment == .center)
+        #expect((ps?.minimumLineHeight ?? 0) > 0)
+    }
+
     @Test("Active $$…$$ (cursor inside) shows raw, no attachment")
     @MainActor func activeShowsRaw() {
         let editor = makeEditor()

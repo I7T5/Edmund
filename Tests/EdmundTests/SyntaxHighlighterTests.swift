@@ -1152,6 +1152,18 @@ struct DisplayMathTests {
     func looseProseDollarsNotDisplay() {
         #expect(mathSpans("cost $$5 for $$10 today").isEmpty)
     }
+
+    // #325: a `$$` block indented under a list item. The closing `$$` is
+    // preceded by indentation, which must not count as a "loose" delimiter.
+    @Test("Indented $$…$$ block (list continuation) is display math")
+    func indentedBlockIsDisplay() {
+        let text = "  $$\nx = y\n  $$"
+        let spans = mathSpans(text)
+        #expect(spans.count == 1)
+        #expect(spans[0].kind == .math(display: true))
+        #expect(spans[0].fullRange == NSRange(location: 2, length: (text as NSString).length - 2))
+        #expect((text as NSString).substring(with: spans[0].contentRange) == "\nx = y\n  ")
+    }
 }
 
 // MARK: - Autolinks (GFM extension)
