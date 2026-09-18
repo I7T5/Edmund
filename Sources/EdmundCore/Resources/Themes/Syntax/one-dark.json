@@ -1,0 +1,16 @@
+{
+  "name": "one-dark",
+  "displayName": "One Dark",
+  "appearance": "dark",
+
+  "plain": "#abb2bf",
+  "keyword": "#c678dd",
+  "command": "#61afef",
+  "type": "#e5c07b",
+  "attribute": "#56b6c2",
+  "variable": "#e06c75",
+  "value": "#d19a66",
+  "number": "#d19a66",
+  "string": "#98c379",
+  "comment": "#5c6370"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "tomorrow",
+  "displayName": "Tomorrow",
+  "appearance": "light",
+
+  "plain": "#4d4d4c",
+  "keyword": "#8959a8",
+  "command": "#4271ae",
+  "type": "#c18401",
+  "attribute": "#3e999f",
+  "variable": "#c82829",
+  "value": "#986801",
+  "number": "#f5871f",
+  "string": "#718c00",
+  "comment": "#8e908c"
+}

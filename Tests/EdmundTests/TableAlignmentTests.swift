@@ -69,9 +69,22 @@ struct TableAlignmentRenderTests {
         #expect(kern(at: start, in: styled) == nil)
     }
 
-    @Test("Active table has no alignment kern (raw monospace)")
-    func activeUnaffected() {
+    /// A caret in a table used to strip it back to raw monospace. It no longer
+    /// does — the table stays aligned and the cell is edited in place — so the
+    /// column kern must survive the caret.
+    @Test("A caret in a table keeps its alignment kern")
+    func caretKeepsAlignment() {
         let editor = makeEditor()
+        let table = "| aaa | bbb |\n|--:|--:|\n| x | y |"
+        let styled = editor.styleBlock(table, cursorPosition: 2)
+        let start = lastRowStart(styled)
+        #expect(kern(at: start, in: styled) != nil)
+    }
+
+    @Test("A raw table has no alignment kern (raw monospace)")
+    func rawUnaffected() {
+        let editor = makeEditor()
+        editor.rawTableEditing = true
         let table = "| aaa | bbb |\n|--:|--:|\n| x | y |"
         let styled = editor.styleBlock(table, cursorPosition: 2)
         let start = lastRowStart(styled)
@@ -166,6 +179,20 @@ struct TableInlineStylingTests {
         let lastRow = s.range(of: "\n", options: .backwards).location + 1
         let structuralPipeFont = styled.attribute(.font, at: lastRow, effectiveRange: nil) as? NSFont
         #expect((structuralPipeFont?.pointSize ?? 99) < 1.0)
+    }
+
+    /// A table with no outer pipes may start its header with a space. cmark
+    /// puts the table's source range at the first non-blank column, which used
+    /// to leave that space outside the span — and a layout fragment reads its
+    /// paragraph style and decoration from character 0, so the header row lost
+    /// its column borders and its indent while every row below kept both.
+    @Test("A header row indented by a space still owns its row geometry")
+    func leadingSpaceHeaderKeepsRowGeometry() {
+        let editor = makeEditor()
+        let styled = editor.styleBlock(" a | b\n---|---\n c | d", cursorPosition: nil)
+        let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(ps != nil && ps!.firstLineHeadIndent > 0)
+        #expect(styled.attribute(.blockDecoration, at: 0, effectiveRange: nil) != nil)
     }
 
     @Test("Row paragraph geometry survives cell styling (table owns it)")

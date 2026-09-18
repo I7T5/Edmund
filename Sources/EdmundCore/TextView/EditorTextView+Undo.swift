@@ -100,7 +100,7 @@ extension EditorTextView {
         }
 
         isUndoRedoing = true
-        let oldIndentUnit = listIndentUnit
+        let oldDepths = listDepths
         let oldActive = activeBlockIndex
         let oldCount = blocks.count
 
@@ -123,13 +123,9 @@ extension EditorTextView {
                 dirty.insert(old + (newBlocks.count - oldCount))
             }
         }
-        // listIndentUnit is document-global: when it changes, every list
-        // block's rendered indentation changes with it.
-        if listIndentUnit != oldIndentUnit {
-            for (i, block) in blocks.enumerated() where block.kind == .listItem {
-                dirty.insert(i)
-            }
-        }
+        // Undoing an indent moves a list line back across a column boundary,
+        // which re-depths the items nested below it too.
+        dirty.formUnion(listDepthChanges(from: oldDepths))
 
         // The changed text in restored coordinates: select it so the user sees
         // exactly what this undo/redo did. A pure deletion has no new text to

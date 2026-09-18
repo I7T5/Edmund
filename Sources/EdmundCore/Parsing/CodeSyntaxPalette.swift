@@ -15,7 +15,20 @@ enum CodeSyntaxPalette {
     /// The hex color for a token kind (`nil` = plain, un-tokenized code text) in
     /// the given appearance. Only foregrounds are themed; the block keeps its
     /// background, so each palette is paired with the appearance it's legible on.
+    ///
+    /// Comes from the active `SyntaxTheme`. The compiled-in palettes below are
+    /// the fallback for when no theme JSON can be read at all — without one,
+    /// every code block would render colorless. They are also the parity oracle
+    /// the theme tests check the bundled Tomorrow / One Dark JSON against, so
+    /// the two can't drift.
     static func hex(_ type: CodeHighlighter.TokenType?, dark: Bool) -> String {
+        if let theme = ThemeStore.shared.syntax(dark: dark) { return theme.hex(type) }
+        return dark ? oneDark(type) : tomorrow(type)
+    }
+
+    /// The compiled-in palette, bypassing the active theme — the fallback path,
+    /// exposed so the parity test can assert the bundled JSON still matches it.
+    static func builtinHex(_ type: CodeHighlighter.TokenType?, dark: Bool) -> String {
         dark ? oneDark(type) : tomorrow(type)
     }
 

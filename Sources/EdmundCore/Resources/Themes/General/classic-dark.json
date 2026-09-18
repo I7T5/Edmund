@@ -1,0 +1,17 @@
+{
+  "name": "classic-dark",
+  "displayName": "Classic",
+  "appearance": "dark",
+
+  "text": "#E6E6E6",
+  "invisibles": null,
+  "checkbox": null,
+  "link": "#3366E6",
+  "highlight": null,
+  "background": "#292929",
+  "selection": null,
+  "cursor": null,
+
+  "fontTheme": null,
+  "syntaxTheme": "one-dark"
+}

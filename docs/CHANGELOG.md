@@ -3,6 +3,73 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-15
+
+Editor, code syntax, and better organized font theme. More table editing fixes. Various refinements. 
+
+### Added
+- Settings > Appearance > Font theme
+- Settings > Themes (#292)
+- Tables: Divider between add and delete operations in row/column menu
+- App Menu > Format > Headings > Increment/Decrement heading level
+- Editor: Quick-wrap selection with `~$%*=` and the backtick
+- Editor: Detect and remove list markers `-/- [ ]/1.` from pasteboard content if pasting into list
+- Editor: Copy button for code blocks
+- Reader: Click to toggle checkbox
+
+### Changed
+- Tables: Delete on cell selection clears cell content; Delete on empty complete row or column removes it
+- Tables: Return on a header's separator row auto-fills in and prettifies the table
+- Tables: Disabled delete pipes between cells in formatted state
+- Tables: Controls (`</>` button, pills) scale with zoom `CMD+=/-/0`
+- Tables: `</>` button makes way only when pills are actually in the way
+- Settings > Autopair parentheses and quotes doesn't pair backticks anymore
+
+### Fixed
+- Nested emphasis (italic inside bold, or bold inside italic)
+- Tables: a single-dash delimiter row (`- | -`) now renders as a table
+- Tables: Selection, caret movement, row/column pills, and zoom behavior with wrapped cells and/or header row containing wrapped cells
+- Tables: `</>` button makes way for row pills with "Show line numbers" off
+- Reader: Nested checkboxes aren't dimmed or strikethrough when checked
+- Settings > Key Bindings: "Format" app menu is in order with the rest
+- Print > PDF no longer keep the `.md` extension in filename
+
+## [0.6.1] - 2026-09-12
+
+Various table editing fixes.
+
+### Fixed
+- Tables: Content of wrapped cells don't fully display
+- Tables: Caret jumps to start of cell and jumps back if you click at the end
+
+### Changed
+- Tables: Automatically insert pipes when pasting incomplete tables
+- Tables: Users cannot merge columns by deleting pipes
+- Tables: Users cannot remove the padding space before and after pipes
+
+
+## [0.6.0] - 2026-09-10
+
+### Added
+- Table editing within cells, row/column actions, copy as spreadsheet date
+- Image drag and drop
+
+### Changed
+- Deleting opening parentheses/quotes automatically removes corresponding closing character if they are adjacent when pairing setting is on
+- Automatically detect required indent instead of relying on settings tab size when tabbing on nested lists
+
+### Fixed
+- Indent list selection sometimes indents the non-selected
+- PDFs end in `.pdf` instead of `.md.pdf`
+
+
+## [0.5.0] - 2026-08-22
+
+Thanks to @arthurlee116 for their first contribution (#268)
+
+### Added
+- Settings > Appearance > Font per script (#268 @arthurlee116)
+
 ## [0.4.3] - 2026-08-17
 
 Thanks to @aahventures for their first contribution (#269)

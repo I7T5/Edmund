@@ -293,7 +293,13 @@ extension EditorTextView {
         // can't go ragged with `9` drawn and `100` missing.
         guard lineNumbersFitBesideContent else { return }
 
+        // A revealed `</>` button stands in the slot of its table's header-row
+        // number. One slot, one occupant — so that row's number gives way while
+        // the button shows, rather than the two overdrawing each other.
+        let covered = linesCoveredByTableRawButtons()
+
         enumerateVisibleLineNumbers { line, capCenterY in
+            guard !covered.contains(line) else { return }
             let label = NSAttributedString(string: "\(line)", attributes: style.attributed(line))
             // dev: Add one-char space between content and line number
             let x = rightEdge - style.digitWidth * CGFloat(label.length + 1)

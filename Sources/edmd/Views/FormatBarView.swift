@@ -87,12 +87,14 @@ final class FormatBarView: ChromeBarView {
 
     /// Ticks the heading level and callout type the caret is currently in.
     ///
-    /// Items with no action are skipped: that is the hidden item 0 carrying the
-    /// button's icon, and its tag of 0 would otherwise read as "Body".
+    /// Only the level items are ticked — by selector, not "has an action": the
+    /// hidden item 0 carrying the button's icon has none, and the Increment /
+    /// Decrement items at the foot of the menu have their own actions and a
+    /// tag of 0, which would otherwise read as "Body".
     private func refreshPullDownState(editor: EditorTextView) {
         if let menu = pullDownMenus[#selector(EditorTextView.formatHeading(_:))] {
             let level = editor.activeHeadingLevel()
-            for item in menu.items where item.action != nil {
+            for item in menu.items where item.action == #selector(EditorTextView.formatHeading(_:)) {
                 item.state = item.tag == level ? .on : .off
             }
         }

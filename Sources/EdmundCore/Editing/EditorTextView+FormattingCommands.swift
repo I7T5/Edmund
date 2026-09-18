@@ -111,6 +111,11 @@ extension EditorTextView {
         applyHeadingLevel((sender as? NSMenuItem)?.tag ?? 1)
     }
 
+    /// One level deeper / shallower: body → H1 → … → H6, and back down to body.
+    /// The ends hold (H6 stays H6, body stays body) rather than wrapping.
+    @objc public func formatIncrementHeading(_ sender: Any?) { stepHeadingLevel(by: 1) }
+    @objc public func formatDecrementHeading(_ sender: Any?) { stepHeadingLevel(by: -1) }
+
     /// Callout type read from the menu item's `representedObject` (pre-cased:
     /// uppercase for GitHub alerts, lowercase for Obsidian callouts).
     @objc public func formatCallout(_ sender: Any?) {
@@ -129,6 +134,9 @@ extension EditorTextView {
     /// Markdown Font menu (Bold, Italic, Highlight, Comments, …) so right-click
     /// offers the same commands as Format ▸ Font.
     public override func menu(for event: NSEvent) -> NSMenu? {
+        // A right-click on a row/column handle is that handle's menu, not the
+        // editor's — the pointer is out in the margin, over no text at all.
+        if let handle = tableHandleHit(at: event) { return tableHandleMenu(handle) }
         guard let menu = super.menu(for: event) else { return nil }
         if let provider = Self.contextFontMenuProvider,
            let fontItem = menu.items.first(where: { item in
@@ -138,7 +146,31 @@ extension EditorTextView {
            }) {
             fontItem.submenu = provider()
         }
+        attachTableSection(to: menu, for: event)
         return menu
+    }
+
+    /// A right-click inside a rendered table cell appends a Table submenu of
+    /// the row and column operations. Everything else about the standard menu
+    /// is left alone — including the selection: a right-click used to select
+    /// the whole cell so Cut/Copy would take it, but silently moving the
+    /// selection under a menu the user only meant to open is a surprise, and
+    /// the cell box is now reserved for a real drag across cells.
+    private func attachTableSection(to menu: NSMenu, for event: NSEvent) {
+        guard !rawTableEditing,
+              let offset = wrappedCellCharIndex(at: event) ?? clickCharIndex(at: event),
+              let cell = tableCell(atRawOffset: offset) else { return }
+
+        let submenu = NSMenu(title: "Table")
+        // Only this submenu: the standard items around it rely on AppKit's own
+        // validation, while these carry their guards on the item already.
+        submenu.autoenablesItems = false
+        addTableItems(to: submenu, blockIndex: cell.blockIndex,
+                      row: cell.row, column: cell.column, axis: nil)
+        let item = NSMenuItem(title: "Table", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        menu.addItem(.separator())
+        menu.addItem(item)
     }
 
     // MARK: - Menu validation
@@ -202,6 +234,7 @@ extension EditorTextView {
         #selector(formatChecklist(_:)), #selector(formatBlockQuote(_:)), #selector(formatThematicBreak(_:)),
         #selector(formatCodeBlock(_:)), #selector(formatMathBlock(_:)), #selector(formatTable(_:)),
         #selector(formatHeading(_:)), #selector(formatCallout(_:)),
+        #selector(formatIncrementHeading(_:)), #selector(formatDecrementHeading(_:)),
         #selector(formatAttachImage(_:)),
     ]
 
@@ -227,6 +260,42 @@ extension EditorTextView {
                 return allAtLevel ? stripped : String(repeating: "#", count: level) + " " + stripped
             }
         }
+    }
+
+    /// Per selected line, like `applyHeadingLevel`; each line steps from its
+    /// own level, so a mixed selection keeps its relative structure.
+    func stepHeadingLevel(by delta: Int) {
+        transformSelectedLines { lines in
+            lines.map { line in
+                guard !line.isEmpty else { return line }
+                let level = min(6, max(0, self.leadingHashCount(line) + delta))
+                let stripped = self.stripLeadingHashes(line)
+                return level == 0 ? stripped : String(repeating: "#", count: level) + " " + stripped
+            }
+        }
+    }
+
+    // MARK: - Task toggle by line
+
+    /// The `[ ]` / `[x]` mark of a task item: indent, any list marker, the box.
+    private static let taskMarkRegex = try! NSRegularExpression(
+        pattern: #"^\s*(?:[-*+]|\d+[.)])\s+\[([ xX])\]"#)
+
+    /// Flips the checkbox of the task item on 1-based source `line` — how a
+    /// click on a Read-mode checkbox edits the document. A line that is not a
+    /// task item is left alone (nil); the caret stays where it was. One undo
+    /// step. Returns the box's new state.
+    @discardableResult
+    public func toggleTask(atLine line: Int) -> Bool? {
+        guard let block = blockIndexForRawOffset(offset(forLine: line)), block < blocks.count else { return nil }
+        let content = blocks[block].content
+        guard let match = Self.taskMarkRegex.firstMatch(
+            in: content, range: NSRange(location: 0, length: (content as NSString).length))
+        else { return nil }
+        let mark = NSRange(location: blocks[block].range.location + match.range(at: 1).location, length: 1)
+        let wasChecked = (content as NSString).substring(with: match.range(at: 1)) != " "
+        applyFormattingEdit(rawRange: mark, replacement: wasChecked ? " " : "x", select: selectedRange())
+        return !wasChecked
     }
 
     // MARK: - Lists / quote
@@ -402,10 +471,10 @@ extension EditorTextView {
                             select: NSRange(location: sel.location + 4, length: 0))
     }
 
-    /// Image ▸ Attach File…: pick an image on disk and insert `![](path)` for it.
-    /// Unlike `formatImage`, which only lays down empty syntax, this one knows the
-    /// destination — so the caret lands in the *alt-text* slot, the part still
-    /// missing.
+    /// Image ▸ Attach File…: pick an image on disk and insert
+    /// `![alt text](path)` for it. Unlike `formatImage`, which only lays down
+    /// empty syntax, this one knows the destination — so the selection lands on
+    /// the *alt-text* placeholder, the part still missing.
     @objc public func formatAttachImage(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
@@ -417,13 +486,29 @@ extension EditorTextView {
         insertImage(at: url)
     }
 
-    /// Inserts `![](destination)` for `url` at the caret. Split from the panel
-    /// above so the path logic is testable without UI.
-    public func insertImage(at url: URL) {
+    /// The alt text `insertImage` lays down. Selected after the insert, so the
+    /// first keystroke replaces it — the destination is already known, the alt
+    /// text is the part still missing.
+    static let imageAltPlaceholder = "alt text"
+
+    /// Inserts `![alt text](destination)` for `url` at the caret. Split from the
+    /// panel above so the path logic is testable without UI.
+    public func insertImage(at url: URL) { insertImages(at: [url]) }
+
+    /// Inserts one `![alt text](destination)` per URL at the caret, blank-line
+    /// separated so each image is its own block (adjacent lines would parse as
+    /// a single paragraph). The *first* image's alt text ends up selected.
+    /// A drop of several files from Finder is the multi-URL case.
+    public func insertImages(at urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let alt = Self.imageAltPlaceholder
+        let replacement = urls
+            .map { "![" + alt + "](" + imageDestination(for: $0) + ")" }
+            .joined(separator: "\n\n")
         let sel = selectedRange()
-        applyFormattingEdit(rawRange: sel,
-                            replacement: "![](" + imageDestination(for: url) + ")",
-                            select: NSRange(location: sel.location + 2, length: 0))
+        applyFormattingEdit(rawRange: sel, replacement: replacement,
+                            select: NSRange(location: sel.location + 2,
+                                            length: (alt as NSString).length))
     }
 
     /// The destination to write into `![](…)`: relative to the document's own
