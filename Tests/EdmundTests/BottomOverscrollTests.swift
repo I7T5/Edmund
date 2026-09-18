@@ -71,6 +71,28 @@ struct BottomOverscrollTests {
                 "bottom overscroll missing in typewriter mode: \(editor.overscrollBottomPad)")
     }
 
+    /// The other half of #277: the caret at `documentRange.endLocation` had no
+    /// measurable line rect, so the plain autoscroll (`scrollRangeToVisible`)
+    /// silently did nothing there too — with typewriter scroll off, typing past
+    /// the bottom of the window walked the caret out of sight.
+    @Test("Plain autoscroll follows the caret typing at the document end")
+    @MainActor func autoscrollFollowsCaretAtEnd() {
+        let (editor, scroll) = makeWindowed(typewriter: false)
+        // Start with the end of the document at the bottom edge of the viewport,
+        // so the next line typed has to move the viewport to stay visible.
+        editor.setSelectedRange(NSRange(location: (editor.rawSource as NSString).length, length: 0))
+        editor.scrollRangeToVisible(editor.selectedRange())
+        editor.layoutSubtreeIfNeeded()
+        for i in 1...4 {
+            editor.insertText("new line \(i)", replacementRange: editor.selectedRange())
+            editor.insertNewline(nil)
+            editor.layoutSubtreeIfNeeded()
+            let visible = scroll.contentView.bounds
+            #expect(editor.caretIsVisible(forViewportOrigin: visible.origin),
+                    "caret left the viewport after typing line \(i)")
+        }
+    }
+
     /// The blank band below the last line is part of the text view, so clicking
     /// it puts the caret on the nearest character instead of doing nothing.
     @Test("Clicks in the blank band below the text reach the editor")

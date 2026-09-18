@@ -39,6 +39,12 @@ struct ReadModeWebViewTests {
             for: URL(string: "x-edmund-copy:bGV0IHggPSAx")!,
             navigationType: .linkActivated) == .copyCode("bGV0IHggPSAx"))
         #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "x-edmund-task:12")!,
+            navigationType: .linkActivated) == .toggleTask(12))
+        #expect(ReadModeNavigationPolicy.decision(
+            for: URL(string: "x-edmund-task:twelve")!,
+            navigationType: .linkActivated) == .cancel)
+        #expect(ReadModeNavigationPolicy.decision(
             for: URL(string: "file:///etc/passwd")!,
             navigationType: .linkActivated) == .cancel)
         #expect(ReadModeNavigationPolicy.decision(

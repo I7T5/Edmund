@@ -260,7 +260,15 @@ extension EditorTextView {
         guard let loc = tlm.location(tlm.documentRange.location, offsetBy: offset)
         else { return nil }
         tlm.ensureLayout(for: NSTextRange(location: loc))
-        guard let fragment = tlm.textLayoutFragment(for: loc) else { return nil }
+        // TextKit 2 has no fragment *at* `documentRange.endLocation` — the caret
+        // there belongs to the last fragment (whose final line fragment is the
+        // empty trailing line when the document ends with a newline). Without
+        // this fallback every caller measuring a caret at the document's end got
+        // nil and silently did nothing: typewriter centering froze and the plain
+        // caret autoscroll stopped following, so typing past the bottom of the
+        // window ran on off-screen (#277).
+        guard let fragment = tlm.textLayoutFragment(for: loc) ?? lastLayoutFragment()
+        else { return nil }
         let frame = fragment.layoutFragmentFrame
 
         guard let paraStart = fragment.textElement?.elementRange?.location else { return frame }
@@ -270,6 +278,20 @@ extension EditorTextView {
         } ?? fragment.textLineFragments.last
         guard let line else { return frame }
         return line.typographicBounds.offsetBy(dx: frame.minX, dy: frame.minY)
+    }
+
+    /// The document's last layout fragment. One reverse step, so it costs the
+    /// layout of that fragment alone — not the walk from the document start
+    /// the rest of this file exists to avoid.
+    private func lastLayoutFragment() -> NSTextLayoutFragment? {
+        guard let tlm = textLayoutManager else { return nil }
+        var last: NSTextLayoutFragment?
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.endLocation,
+                                         options: [.reverse, .ensuresLayout]) { frag in
+            last = frag
+            return false
+        }
+        return last
     }
 
     /// AppKit's TextKit 2 implementation of scroll-to-range kills the process

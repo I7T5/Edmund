@@ -1,0 +1,16 @@
+{
+  "name": "anura",
+  "displayName": "Anura",
+  "appearance": "light",
+
+  "plain": "#313131",
+  "keyword": "#1b556b",
+  "command": "#806126",
+  "type": "#ad4315",
+  "attribute": "#862753",
+  "variable": "#2d807d",
+  "value": "#ad263d",
+  "number": "#683a91",
+  "string": "#4d6629",
+  "comment": "#66747a"
+}

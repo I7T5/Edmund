@@ -17,8 +17,20 @@ extension SyntaxHighlighter.SpanCollector {
         let full = nsRange(for: range)
 
         if insideStrong {
-            // Already inside Strong — parent will have emitted boldItalic
-            // or we're a nested emphasis. Just descend.
+            // A partial emphasis inside bold — `**a *b* c**`. The whole-range
+            // `***…***` case is caught in visitStrong before it descends, so
+            // reaching here means only *part* of the bold run is also italic.
+            // Emit boldItalic for this emphasis's own range, or the inner run
+            // would render bold but not italic (the nested `*` was dropped).
+            let rawDelims = delimiterRanges(parent: full, children: emphasis.children)
+            let (trimmedFull, delims) = trimEmphasisDelimiters(
+                expectedWidth: 1, full: full, delims: rawDelims)
+            spans.append(SyntaxHighlighter.Span(
+                kind: .boldItalic,
+                fullRange: trimmedFull,
+                contentRange: contentRange(full: trimmedFull, delims: delims),
+                delimiterRanges: delims
+            ))
             descendInto(emphasis)
             return
         }
@@ -72,8 +84,20 @@ extension SyntaxHighlighter.SpanCollector {
         let full = nsRange(for: range)
 
         if insideEmphasis {
-            // Already inside Emphasis — parent will have emitted boldItalic
-            // or we're nested. Just descend.
+            // A partial bold inside italic — `*a **b** c*`. The whole-range
+            // `***…***` case is caught in visitEmphasis before it descends, so
+            // reaching here means only *part* of the italic run is also bold.
+            // Emit boldItalic for this strong's own range, or the inner run
+            // would render italic but not bold.
+            let rawDelims = delimiterRanges(parent: full, children: strong.children)
+            let (trimmedFull, delims) = trimEmphasisDelimiters(
+                expectedWidth: 2, full: full, delims: rawDelims)
+            spans.append(SyntaxHighlighter.Span(
+                kind: .boldItalic,
+                fullRange: trimmedFull,
+                contentRange: contentRange(full: trimmedFull, delims: delims),
+                delimiterRanges: delims
+            ))
             descendInto(strong)
             return
         }
