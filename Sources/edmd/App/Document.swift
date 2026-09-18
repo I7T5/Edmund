@@ -169,8 +169,8 @@ class Document: NSDocument, HeadingNavigable {
                                            height: EditorTextView.contentBaseVerticalInset)
         // Centered reading column (see EditorTextView+ContentWidth). Convert the
         // persisted cm value to points using the main screen PPI at window-creation
-        // time; recomputed on resize (setFrameSize) and when the window moves to a
-        // different display (windowDidChangeScreen).
+        // time; recomputed on resize (setFrameSize), when the window first becomes
+        // key, and when it moves to a different display (windowDidChangeScreen).
         let initScreen = NSScreen.main
         editor.maxContentWidthPoints = initScreen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000
         editor.updateContentInset()
@@ -281,6 +281,14 @@ class Document: NSDocument, HeadingNavigable {
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSWindow.didChangeScreenNotification, object: window
+        )
+        // The initial cap above was converted with NSScreen.main's PPI because
+        // the window isn't on any screen yet. A window that first appears on a
+        // secondary display doesn't reliably get didChangeScreen, so re-apply
+        // once it's key (cheap: the setter no-ops on an unchanged value).
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidChangeScreen(_:)),
+            name: NSWindow.didBecomeKeyNotification, object: window
         )
         // Auto-hide is a full-screen-only affair, and applyToolbarAutoHide may
         // have hidden the toolbar outright to honour it. Put it back on the way
