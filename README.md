@@ -93,9 +93,12 @@ The list is by no means exhaustive, and neither was it meant to be. I just wante
 - [CotEditor](https://coteditor.com) for the philosophy
 - [Typora](https://typora.io) and [Obsidian](https://obsidian.md) for much of the vision
 - [Swift Markdown Engine](https://github.com/nodes-app/swift-markdown-engine) for the architecture reference
-- Apple, Iowan Old Style, [Tomorrow](https://github.com/chriskempson/tomorrow-theme) and [One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) for the aesthetics
-- The bundled code themes: [Tomorrow and Tomorrow Night](https://github.com/chriskempson/tomorrow-theme) (Chris Kempson, MIT), [One Light and One Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax) (Atom, MIT), [Solarized](https://ethanschoonover.com/solarized/) (Ethan Schoonover, MIT), and Anura and Dendrobates (1024jp, from [CotEditor](https://github.com/coteditor/CotEditor), Apache 2.0)
-- [create-dmg](https://github.com/sindresorhus/create-dmg), [screenshot-studio](screenshot-studio.com), and [shields](shields.io) for the utilities
+- Apple and Iowan Old Style for the aesthetics
+  - [Tomorrow/Tomorrow Night](https://github.com/chriskempson/tomorrow-theme),
+    [One Light/Dark](https://github.com/atom/atom/tree/master/packages/one-dark-syntax), 
+    [Solarized](https://ethanschoonover.com/solarized/), and
+    Anura and Dendrobates (from [CotEditor](https://github.com/coteditor/CotEditor)) for the editor/code themes
+- [create-dmg](https://github.com/sindresorhus/create-dmg), [screenshot-studio](https://screenshot-studio.com), and [shields](https://shields.io) for the utilities
 - Claude, [caveman](https://github.com/JuliusBrussee/caveman), and [ponytail](https://github.com/DietrichGebert/ponytail) for the engineering. 
 - [RaTeX](https://ratex.lites.dev) and [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) for extension functionalities
 <!-- Shiki stays out until a Shiki/TextMate backend actually ships — see CodeSyntaxBackend.swift -->
