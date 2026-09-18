@@ -5,9 +5,11 @@ description: >
   interpretation guides, and working scripts. Load when a bug involves LIVE
   behavior (caret, IME, drag, viewport timing), when a unit test cannot
   reproduce a report, when you need to read diagnostic traces, drive the
-  running app with scripted keystrokes, or measure pixels from a screenshot.
-  Contains the repro escalation ladder, the ReproScript driver, the CGEvent
-  fallback, and screencapture measurement, plus scripts/ helpers. Not the
+  running app with scripted keystrokes, measure pixels from a screenshot, or
+  drive non-editor chrome (menu bar, context menus, Settings panes) via
+  Accessibility. Contains the repro escalation ladder, the ReproScript driver,
+  the CGEvent fallback, screencapture measurement, and the AX chrome-driving
+  traps (§5b), plus scripts/ helpers. Not the
   symptom→mechanism table (edmund-debugging-playbook), not the campaign
   (edmund-caret-integrity-campaign), not build hygiene (edmund-build-and-env).
 ---
@@ -273,6 +275,51 @@ before "simplifying" it:
 
 ---
 
+## 5b. AX-driving chrome: menu bar, context menus, Settings
+
+Traps from verifying the Appearance pane for PR #268 (macOS 26, on
+`feat/font-cascade`). They apply to any task that reads or presses Edmund's
+non-editor UI — Settings panes, menu bar, context menus — from a script.
+
+- **Menu-bar AX clicks are silent no-ops until the app has been activated
+  once.** With no live responder chain, auto-validation marks every item
+  except Quit disabled, and System Events' `click menu item` *returns the
+  item* — it looks like success — without firing it. Raise first
+  (`ui-harness.sh raise`), THEN click. (The §5a table's "raise before the
+  first AX query" row covers window enumeration; this one is worse because
+  nothing errors.)
+- **AX stops vending a deactivated app's windows** — System Events AND the
+  raw AX C API both come up empty shortly after the app loses focus.
+  Re-`raise` immediately before EACH interaction, in the same breath; a
+  script that raises once at the top finds a windowless app three calls
+  later.
+- **The AX C API drives a background app without any activation** —
+  `AXUIElementCreateApplication` + `kAXWindowsAttribute` +
+  `AXUIElementPerformAction` work where System Events demands an activation
+  first. `scripts/axfind.swift <pid> <windowTitle>
+  --dump|--press <t>|--showmenu <t>` walks the tree (role, title, position,
+  actions per element) and presses by title; exit 3 means window or target
+  not found — read that as "the UI did not reach the expected state", never
+  as success.
+- **SwiftUI `.contextMenu` on a `Button` lists `AXShowMenu` but performing it
+  fails with -25204** (`kAXErrorActionUnsupported`) on macOS 26 — the action
+  is advertised, not implemented. Fallback: post a real CGEvent right-click
+  at the control's screen coordinates (the §4 path;
+  `scripts/rightclick.swift <x> <y>`), after which the menu's items are
+  ordinary `AXMenuItem`s that `AXPress` fine.
+- **Force `@AppStorage`-backed settings-UI state at launch via
+  NSArgumentDomain** — `-settings.appearance.fontsByScriptExpanded YES` —
+  skipping the disclosure click-through AND never writing the user's real
+  UserDefaults (same mechanism as the §5a `-settings.appearance.mode dark`
+  row). Dict values take old-style plist syntax:
+  `-EditorFontCascade '{ han = "Songti SC"; }'`.
+- **The Settings window's title follows the selected pane** (state
+  restoration) — look it up as `"Appearance"`, not `"Settings"`.
+- Rapid launch/kill cycles while iterating on any of this → the savedState
+  reset (§5, ARCHITECTURE §8) un-glues the window server again.
+
+---
+
 ## 6. The loop, end to end
 
 1. Verbose trace from the occurrence → find the **first bad line**, walk
@@ -303,9 +350,11 @@ mechanism.
 | `capture-window.sh <needle> <out.png>` | Screenshot a window by id + report bounds | **exercised** 2026-07-26 (its old JXA lookup never worked — see §5) |
 | `ui-harness.sh <subcommand>` | Launch / raise / read find-bar state / toggle replace / capture, appearance per-launch | **every subcommand exercised** 2026-07-26 |
 | `ui-measure.py box\|runs\|rows` | Ink bounding box, control gaps, colour transitions | **exercised** 2026-07-26 |
+| `axfind.swift <pid> <title> --dump\|--press\|--showmenu <t>` | AX-dump/press a **background** app's window elements via the AX C API — no activation needed (§5b) | **exercised** 2026-08-18 (Appearance pane, PR #268) |
+| `rightclick.swift <x> <y>` | Real CGEvent right-click at screen coords — the `.contextMenu` fallback (§5b) | **exercised** 2026-08-18 |
 | `launch-debug.sh <file.md> [script.repro]` | Build + assemble EdmundDbg.app + direct-exec with flags | **verify on first use** (assumes arm64 debug triple; guards user instance) |
 
-All pass `bash -n`. One caveat on `launch-debug.sh`: its header claims a bare
+All shell scripts pass `bash -n`. One caveat on `launch-debug.sh`: its header claims a bare
 `.build/debug/edmd` "never makes a window". That is **not true** — the find-bar
 work drove the bare debug binary for a whole session and it windows fine, which
 is what `ui-harness.sh launch` does. The EdmundDbg bundle is still the right
@@ -338,3 +387,8 @@ grep -n 'healing storage edit' Sources/EdmundCore/TextView/EditorTextView+EditFl
 
 Re-verify the scripts against `docs/dev-guides/live-repro-guide.md` §4 if the debug-bundle
 assembly recipe changes.
+
+§5b and scripts `axfind.swift` / `rightclick.swift` added 2026-08-18 from the
+PR #268 Appearance-pane verification on `feat/font-cascade` (macOS 26) — the
+scripts were rescued verbatim from `/tmp/edmund-cascade-check/` per §5a's
+fixtures-not-scratch rule.
