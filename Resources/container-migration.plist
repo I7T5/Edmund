@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Processed by macOS exactly once, when it creates the sandbox container
+         on the first sandboxed launch: user themes, syntax defs and the RaTeX
+         payload move from the pre-sandbox Application Support folder into the
+         container's copy. Inert on unsandboxed builds. Logs (~/.edmund/logs)
+         are deliberately not migrated — retention-pruned diagnostics. -->
+    <key>Move</key>
+    <array>
+        <string>${ApplicationSupport}/Edmund</string>
+        <string>${ApplicationSupport}/Edmund</string>
+    </array>
+</dict>
+</plist>

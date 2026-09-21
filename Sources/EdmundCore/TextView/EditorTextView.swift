@@ -972,6 +972,10 @@ public class EditorTextView: NSTextView {
                 followLinkDestination(dest)
                 return
             }
+            if needsFolderAccessHit(at: event) {
+                requestFolderAccess()
+                return
+            }
         }
         // A table's `</>` button hangs in the margin outside the text column,
         // where AppKit has nothing to select — so this takes the click whole and

@@ -24,6 +24,11 @@ struct LogTests {
         return try? String(contentsOf: url, encoding: .utf8)
     }
 
+    @Test("Default directory is container-native Application Support, not a home dotfile")
+    func defaultDirectory() {
+        #expect(Log.defaultDirectory.path.hasSuffix("/Library/Application Support/Edmund/Logs"))
+    }
+
     @Test("Enabled: writes a line per level with tag and category")
     func writesLines() {
         LogTestIsolation.withLock {

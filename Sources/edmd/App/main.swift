@@ -1,6 +1,8 @@
 import AppKit
 import EdmundCore
+#if canImport(Sparkle)
 import Sparkle
+#endif
 
 // Entry point for the app the user knows as "Edmund" (CFBundleName). The
 // executable target — and so this binary at Edmund.app/Contents/MacOS/edmd — is
@@ -22,9 +24,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // failed check throws a *modal* "updater failed" alert at launch that
     // blocks the whole app (no document window until dismissed), which breaks
     // scripted/automated runs.
+    // Absent from the Mac App Store variant (build-app.sh --variant mas builds
+    // without the Sparkle product; see Package.swift).
+    #if canImport(Sparkle)
     let updaterController = SPUStandardUpdaterController(
         startingUpdater: !UserDefaults.standard.bool(forKey: "debug.disableUpdater"),
         updaterDelegate: nil, userDriverDelegate: nil)
+    #endif
 
     // MARK: - Typewriter Mode (persisted)
 
@@ -251,11 +257,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                         action: #selector(AppDelegate.showSettings(_:)),
                         keyEquivalent: ",")
 
+        #if canImport(Sparkle)
         let updatesItem = appMenu.addItem(
             withTitle: "Check for Updates\u{2026}",
             action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
             keyEquivalent: "")
         updatesItem.target = updaterController
+        #endif
 
         appMenu.addItem(NSMenuItem.separator())
 

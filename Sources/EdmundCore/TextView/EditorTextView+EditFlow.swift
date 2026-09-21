@@ -81,7 +81,7 @@ extension EditorTextView {
                       // legitimate — didChangeText defers the sync until commit.
                       !self.hasMarkedText() else { return }
                 // Permanent breadcrumb (release builds too): if a desync recurs,
-                // grep ~/.edmund/logs for this line to see which path bypassed
+                // grep the diagnostic log for this line to see which path bypassed
                 // didChangeText.
                 Log.info("healing storage edit that bypassed didChangeText: " +
                          "storLen=\(storage.length) rawLen=\((self.rawSource as NSString).length)",

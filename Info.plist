@@ -22,6 +22,8 @@
     <string>0.7.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticTermination</key>
@@ -33,6 +35,11 @@
     <key>SUPublicEDKey</key>
     <string>0XdLbbuOm0NonqWeDJkQuFF0CGnhKmpAfq+RNKVwEDs=</string>
     <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <!-- Sparkle's installer runs through its XPC launcher service; required
+         once the app is sandboxed (Resources/Edmund.entitlements), harmless
+         on the unsandboxed ad-hoc variant. -->
+    <key>SUEnableInstallerLauncherService</key>
     <true/>
     <key>CFBundleDocumentTypes</key>
     <array>

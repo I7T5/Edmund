@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import EdmundCore
 
 struct AdvancedSettingsView: View {
     @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
@@ -73,11 +74,14 @@ struct AdvancedSettingsView: View {
                     }
                     .disabled(!diagnosticLogging)
                     .padding(.leading, 20)
-                    Text("Logs are kept locally at ~/.edmund/logs and will never leave that folder unless you move them. They are only useful if you want to improve your bug reports / GitHub issues.")
+                    Text("Logs are kept locally in Edmund's Application Support folder and will never leave that folder unless you move them. They are only useful if you want to improve your bug reports / GitHub issues.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                    Button("Show in Finder", action: revealLogs)
+                        .controlSize(.small)
                         .padding(.leading, 20)
                     Toggle("Verbose editor tracing", isOn: $verboseEditorDiagnostics)
                         .onChange(of: verboseEditorDiagnostics) { AppSettings.applyLogging() }
@@ -114,6 +118,15 @@ struct AdvancedSettingsView: View {
 
     /// Pushes the toggle to every open document's editor (Edit mode's inline
     /// image overlay) and Read view, so the change takes effect immediately.
+    /// Reveals the log folder. Created first so Finder has something to
+    /// select — under the sandbox the folder is deep inside the container and
+    /// nobody finds it by hand.
+    private func revealLogs() {
+        let dir = Log.defaultDirectory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
+    }
+
     private func refreshOpenReadViews() {
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.allowRemoteImages = !blockExternalImages
