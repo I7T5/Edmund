@@ -148,7 +148,7 @@ public final class AdvancedMathExtension: EdmundExtension {
     /// version themselves separately from any library they wrap).
     public let summary = AttributedString(
         inlineMarkdown:
-            ">99.5% KaTeX syntax coverage via [RaTeX](https://ratex.lites.dev) (Rust).")
+            ">99.5% KaTeX syntax coverage via [RaTeX](https://ratex.lites.dev).")
     public let version = "1.0.0"
     public var isInstalled: Bool { renderer.isReady }
     public var mathRenderer: MathRenderer? { renderer }
