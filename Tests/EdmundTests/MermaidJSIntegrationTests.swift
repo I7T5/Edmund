@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AppKit
 import CryptoKit
 @testable import EdmundCore
 
@@ -138,6 +139,54 @@ struct MermaidJSIntegrationTests {
         let darkSVG = try #require(renderer.svg(source: source, style: dark))
         #expect(darkSVG.contains("--bg:#292929"))
         #expect(darkSVG != first)
+    }
+
+    @Test("Every diagram type rasterises through CoreSVG to a non-blank image")
+    @MainActor func coreSVGRasters() async throws {
+        guard archiveURL != nil else { return }
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mermaid-it-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let renderer = try await loadedRenderer(into: dir)
+
+        // The same six as `endToEnd`, plus the edge kinds whose arrowheads the
+        // flattener has to inline (bidirectional, dotted, thick).
+        let diagrams: [(String, String)] = [
+            ("flowchart", "graph LR\n  A[Write] --> B[Preview]\n  B <--> C{Export?}\n  C -.->|PDF| D[Print]\n  C ==> E[Save]"),
+            ("state", "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running: start\n  Running --> [*]"),
+            ("sequence", "sequenceDiagram\n  Alice->>Bob: Hello\n  Bob-->>Alice: Hi"),
+            ("class", "classDiagram\n  class Doc { +String title\n +save() }\n  Doc <|-- Markdown\n  Doc *-- Block"),
+            ("er", "erDiagram\n  DOC ||--o{ BLOCK : contains"),
+            ("xychart", "xychart-beta\n  title \"Sales\"\n  x-axis [jan, feb, mar]\n  y-axis \"Rev\" 0 --> 100\n  bar [30, 60, 90]\n  line [30, 60, 90]"),
+        ]
+        for (name, source) in diagrams {
+            let image = try #require(renderer.image(source: source, style: style), "\(name) should raster")
+            #expect(image.size.width > 0 && image.size.height > 0, "\(name) has no size")
+            // CoreSVG accepting the document isn't the same as drawing it: an
+            // unresolved var() draws black boxes, an unsupported element draws
+            // nothing. Count ink that is neither the page nor the (flattened)
+            // node fill — labels and edges — as the proof it actually rendered.
+            #expect(inkedPixelFraction(image) > 0.002, "\(name) rendered blank or unlabelled")
+        }
+    }
+
+    /// Fraction of pixels darker than the near-white node fill, in a 1× raster.
+    private func inkedPixelFraction(_ image: NSImage) -> Double {
+        let w = Int(image.size.width), h = Int(image.size.height)
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return 0 }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        NSColor.white.setFill(); NSRect(x: 0, y: 0, width: w, height: h).fill()
+        image.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
+        NSGraphicsContext.restoreGraphicsState()
+        var inked = 0
+        for y in 0..<h { for x in 0..<w {
+            if let c = rep.colorAt(x: x, y: y), c.redComponent < 0.85 { inked += 1 }
+        } }
+        return Double(inked) / Double(w * h)
     }
 
     // Exercises the pinned coordinates themselves — downloads

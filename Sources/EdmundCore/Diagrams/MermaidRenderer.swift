@@ -67,10 +67,15 @@ public final class MermaidRenderer {
     /// Read mode re-renders the whole document on every keystroke-driven
     /// refresh, so an unbounded miss rate here would be felt.
     private let cache = NSCache<NSString, NSString>()
+    /// Edit mode's raster of the same SVG, keyed on the SVG string itself
+    /// (already unique per source + palette). CoreSVG parsing is the cost
+    /// being saved; the flattened string is never kept.
+    private let imageCache = NSCache<NSString, NSImage>()
 
     public init(installer: ExtensionPayloadInstaller = ExtensionPayloadInstaller(payload: MermaidRelease.payload)) {
         self.installer = installer
         cache.countLimit = 64
+        imageCache.countLimit = 64
     }
 
     /// Whether the payload is loaded and rendering can be attempted.
@@ -123,12 +128,14 @@ public final class MermaidRenderer {
         context = ctx
         render = fn
         cache.removeAllObjects()
+        imageCache.removeAllObjects()
     }
 
     func unload() {
         render = nil
         context = nil
         cache.removeAllObjects()
+        imageCache.removeAllObjects()
     }
 
     /// Renders `source` to a self-contained SVG string, or nil when the
@@ -156,6 +163,25 @@ public final class MermaidRenderer {
         }
         cache.setObject(result as NSString, forKey: key)
         return result
+    }
+
+    /// Edit mode's form of the same diagram: the SVG drawn by CoreSVG into a
+    /// vector-backed `NSImage`, after `MermaidSVGFlattener` has rewritten the
+    /// CSS CoreSVG doesn't understand. `svg()` is the trust boundary and the
+    /// parse-failure path; this only reshapes what it approved. Nil for the
+    /// same reasons `svg()` is nil, plus one that is a bug rather than user
+    /// input: CoreSVG refusing the flattened document, logged as such.
+    func image(source: String, style: MermaidStyle) -> NSImage? {
+        guard let svg = svg(source: source, style: style) else { return nil }
+        let key = svg as NSString
+        if let hit = imageCache.object(forKey: key) { return hit }
+        guard let image = NSImage(data: Data(MermaidSVGFlattener.flatten(svg).utf8)),
+              image.size.width > 0, image.size.height > 0 else {
+            Log.error("Mermaid: CoreSVG could not decode a flattened diagram")
+            return nil
+        }
+        imageCache.setObject(image, forKey: key)
+        return image
     }
 
     /// Read mode's page promises to reach the network for nothing and to run
