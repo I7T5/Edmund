@@ -356,6 +356,48 @@ struct HTMLRendererInlineTests {
         #expect(out.contains("\\int_0^1"))
     }
 
+    // #325: the block on its own lines, indented under the item. The paragraph's
+    // raw source slice keeps the continuation lines' indentation before the
+    // closing `$$`, which used to disqualify the close.
+    @Test("Indented $$…$$ block under a list item → math-display div in the <li>")
+    func listIndentedDisplayMath() {
+        let out = html("- item\n\n  $$\n  \\int_0^1 x\\,dx\n  $$")
+        #expect(out.contains("<li>"))
+        #expect(out.contains("class=\"math-display\""))
+        #expect(out.contains("\\int_0^1"))
+    }
+
+    // #325, the issue's exact shape: no blank line, so cmark lazy-continues the
+    // `$$` lines into the item's text paragraph. The paragraph is split at the
+    // own-line run — prose, then the math-display div — like the editor, whose
+    // BlockParser starts a new block at the `$$` line.
+    @Test("$$ block right after list text (no blank line) splits out of the paragraph")
+    func listDisplayMathWithoutBlankLine() {
+        let out = html("- item\n  $$\n  \\int_0^1 x\\,dx\n  $$")
+        #expect(out.contains("<li><p>item</p><div class=\"math-display\""))
+        #expect(out.contains("\\int_0^1"))
+        #expect(!out.contains("$$"))
+    }
+
+    @Test("$$ block right after a paragraph line splits out of the paragraph")
+    func paragraphThenDisplayMathWithoutBlankLine() {
+        let out = html("para\n$$\nx+y\n$$")
+        #expect(out == "<p id=\"edmund-l1\">para</p><div class=\"math-display\" data-tex=\"\nx+y\n\"></div>")
+    }
+
+    // Prose on both sides of the run, inside a tight list: the surrounding
+    // paragraphs keep their own <p>, and the item's tight-list unwrapping must
+    // not strip the outer tags of the split output.
+    @Test("Prose after a split-out $$ block stays a paragraph, also in a tight list")
+    func proseAfterSplitDisplayMath() {
+        let out = html("a\n$$\nx\n$$\nb")
+        #expect(out.hasSuffix("</div><p>b</p>"))
+        #expect(!out.contains("<br>"))
+        let li = html("- a\n$$\nx\n$$\nb")
+        #expect(li.contains("<li><p>a</p><div class=\"math-display\""))
+        #expect(li.contains("</div><p>b</p></li>"))
+    }
+
     // A `$$…$$` inside inline code is literal source, not a display-math block.
     // Regression: visitParagraph used to promote any paragraph containing a
     // `$$…$$` span to a math block, blanking the surrounding text.

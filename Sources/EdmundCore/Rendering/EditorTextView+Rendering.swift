@@ -596,13 +596,21 @@ extension EditorTextView {
                                 ps.minimumLineHeight = imageAscent
                                 result.addAttribute(.paragraphStyle, value: ps, range: firstLine)
                             } else {
+                                // Style from the block start, not the span: leading
+                                // indentation (a block indented under a list item,
+                                // #325) sits before the `$$`, and TextKit takes the
+                                // paragraph's style from char 0. Hide that indentation
+                                // too so the equation centers like an unindented block.
+                                if span.fullRange.location > 0 {
+                                    let indent = NSRange(location: 0, length: span.fullRange.location)
+                                    result.addAttribute(.font, value: hiddenFont, range: indent)
+                                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: indent)
+                                }
                                 result.addAttribute(.paragraphStyle,
                                                     value: displayMathParagraphStyle(padded: false),
-                                                    range: span.fullRange)
-                                let firstLine = nl.location == NSNotFound
-                                    ? span.fullRange
-                                    : NSRange(location: span.fullRange.location,
-                                              length: nl.location - span.fullRange.location + 1)
+                                                    range: NSRange(location: 0, length: span.fullRange.upperBound))
+                                let firstLine = NSRange(location: 0, length: nl.location == NSNotFound
+                                                        ? span.fullRange.upperBound : nl.location + 1)
                                 result.addAttribute(.paragraphStyle,
                                                     value: displayMathParagraphStyle(padded: true,
                                                                                      imageAscent: imageAscent,

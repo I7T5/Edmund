@@ -169,8 +169,8 @@ class Document: NSDocument, HeadingNavigable {
                                            height: EditorTextView.contentBaseVerticalInset)
         // Centered reading column (see EditorTextView+ContentWidth). Convert the
         // persisted cm value to points using the main screen PPI at window-creation
-        // time; recomputed on resize (setFrameSize) and when the window moves to a
-        // different display (windowDidChangeScreen).
+        // time; recomputed on resize (setFrameSize), when the window first becomes
+        // key, and when it moves to a different display (windowDidChangeScreen).
         let initScreen = NSScreen.main
         editor.maxContentWidthPoints = initScreen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000
         editor.updateContentInset()
@@ -281,6 +281,14 @@ class Document: NSDocument, HeadingNavigable {
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSWindow.didChangeScreenNotification, object: window
+        )
+        // The initial cap above was converted with NSScreen.main's PPI because
+        // the window isn't on any screen yet. A window that first appears on a
+        // secondary display doesn't reliably get didChangeScreen, so re-apply
+        // once it's key (cheap: the setter no-ops on an unchanged value).
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidChangeScreen(_:)),
+            name: NSWindow.didBecomeKeyNotification, object: window
         )
         // Auto-hide is a full-screen-only affair, and applyToolbarAutoHide may
         // have hidden the toolbar outright to honour it. Put it back on the way
@@ -439,6 +447,98 @@ class Document: NSDocument, HeadingNavigable {
             warnIfInconsistentLineEndings(in: content)
         }
         updateStatusBar()
+    }
+
+    /// Every reload of the file on disk lands here: AppKit's silent re-read when
+    /// another app changes a document that has no unsaved edits, the Revert
+    /// button on its "changed by another application" sheet, and File ▸ Revert
+    /// To. `read(from:ofType:)` only parks the text in `pendingContent` and
+    /// nothing after the window is up ever adopted it — so the revert cleared
+    /// the change count while the editor kept the old text, and the next save
+    /// wrote that stale buffer over the other app's changes (#293).
+    override func revert(toContentsOf url: URL, ofType typeName: String) throws {
+        let caret = editor?.selectedRange().location ?? 0
+        try super.revert(toContentsOf: url, ofType: typeName)
+        adoptPendingContent()
+        // The line-ending sheet is an open-time warning only.
+        contentPendingWarning = nil
+        guard let editor else { return }
+        // `loadContent` recomposes at offset 0; put the caret back where it was
+        // (clamped — the file may have shrunk) so a reload doesn't jump to the top.
+        let offset = min(caret, (editor.rawSource as NSString).length)
+        editor.setSelectedRange(NSRange(location: offset, length: 0))
+        editor.scrollRangeToVisible(editor.selectedRange())
+        refreshReadView()
+        Log.info("Reloaded from disk", category: .io)
+    }
+
+    // MARK: - Watching the file on disk
+
+    /// AppKit only hears about *coordinated* writes (other Cocoa apps going
+    /// through NSFileCoordinator). Command-line tools, git, vim, VS Code and
+    /// friends write without coordination, so a document kept showing stale
+    /// text however often the file changed underneath it (#293). kqueue sees
+    /// every write; what happens next is still AppKit's own policy — a clean
+    /// document reloads, a dirty one gets AppKit's "changed by another
+    /// application" sheet at its next (auto)save because the modification
+    /// date no longer matches.
+    private var fileWatcher: DispatchSourceFileSystemObject?
+
+    override nonisolated var fileURL: URL? {
+        // The setter is nonisolated (AppKit may set it off-main); the watch
+        // lives on main. Hop only when actually off-main: a queued hop runs
+        // after the caller's run-loop turn, which is too late for a
+        // synchronous test — and for a `Save As` that is about to write.
+        didSet {
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { watchFile() }
+            } else {
+                Task { @MainActor in self.watchFile() }
+            }
+        }
+    }
+
+    private func watchFile() {
+        fileWatcher?.cancel()
+        fileWatcher = nil
+        guard let url = fileURL else { return }
+        let fd = open(url.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        // Events land on a private queue and hop to main through the run loop
+        // rather than `DispatchQueue.main`: a run-loop block is drained by
+        // `RunLoop.main.run(until:)`, which is what a synchronous test spins.
+        nonisolated(unsafe) let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: [.write, .rename, .delete],
+            queue: DispatchQueue(label: "edmund.file-watch"))
+        // The handler holds `source` (it needs `.data`); `close()` cancels
+        // the source, which drops the handler and breaks that cycle.
+        source.setEventHandler { @Sendable [weak self] in
+            let replaced = !source.data.isDisjoint(with: [.rename, .delete])
+            RunLoop.main.perform {
+                MainActor.assumeIsolated { self?.fileDidChangeOnDisk(replaced: replaced) }
+            }
+        }
+        source.setCancelHandler { @Sendable in Darwin.close(fd) }
+        source.resume()
+        fileWatcher = source
+    }
+
+    override func close() {
+        fileWatcher?.cancel()
+        fileWatcher = nil
+        super.close()
+    }
+
+    private func fileDidChangeOnDisk(replaced: Bool) {
+        // An atomic save (most editors) replaces the file, so the watched
+        // inode is gone: re-arm on the path, which now names the new file.
+        // ponytail: a delete-then-recreate loses the watch; reopening the
+        // document restores it.
+        if replaced { watchFile() }
+        guard let url = fileURL, !isDocumentEdited,
+              let onDisk = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+              onDisk != fileModificationDate else { return }
+        try? revert(toContentsOf: url, ofType: fileType ?? "net.daringfireball.markdown")
     }
 
     /// Warn (once, suppressibly) when an opened file mixed line-ending styles.

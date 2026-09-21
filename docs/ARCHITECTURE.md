@@ -291,7 +291,8 @@ Notable subsystems:
 - **Content width** (`+ContentWidth.swift`): an **absolute physical**
   max-column width — set in cm/in in Settings, stored as cm, converted to
   points via the display's real PPI (`NSScreen.physicalPPI`, from
-  `CGDisplayScreenSize`). Applied as a symmetric `textContainerInset.width`
+  `CGDisplayScreenSize`; long edge ÷ long edge, because `frame` rotates with
+  a portrait display and the mm size doesn't — #324). Applied as a symmetric `textContainerInset.width`
   cap: wider windows center the column, narrower ones fill. Recomputed on
   resize and on moving to a differently-scaled display
   (`NSWindow.didChangeScreenNotification`).
@@ -499,6 +500,21 @@ Notable subsystems:
   the delegate returns `false` once it has handled the no-window case.
   Miniaturized windows count as visible, so that branch only runs when there is
   genuinely nothing to bring back.
+- **The file changing on disk** is AppKit's policy, with two Edmund pieces
+  (`Document.swift`, "Watching the file on disk"; #293). A clean document
+  reloads; a dirty one gets AppKit's own "changed by another application"
+  sheet (Save Anyway / Revert / Save As) at its next (auto)save — no custom
+  alert, the wording is Apple's. Piece 1: every reload lands in
+  `revert(toContentsOf:ofType:)`, and `read(from:ofType:)` only parks the
+  text in `pendingContent`, so the override adopts it into the editor (caret
+  clamped, Read view refreshed) — without it the revert cleared the change
+  count while the editor kept the old text, and the next save wrote that back
+  over the other app's changes. Piece 2: AppKit's file presenter only hears
+  *coordinated* writes (other Cocoa apps); CLI tools, git, vim, VS Code write
+  without coordination, so a kqueue `DispatchSource` on `fileURL` re-arms
+  across atomic replaces and calls `revert` when the modification date no
+  longer matches and the document is clean. Our own save also fires it, but
+  the dates match by then, so it is a no-op.
 - **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to

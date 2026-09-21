@@ -807,8 +807,16 @@ extension NSScreen {
         }
         let mm = CGDisplayScreenSize(CGDirectDisplayID(n.uint32Value))
         guard mm.width > 0 else { return 109 }
-        // frame.width is in points (not pixels); mm.width is physical mm.
-        return frame.width / (mm.width / 25.4)
+        return Self.physicalPPI(points: frame.size, millimetres: mm)
+    }
+
+    /// PPI from a display's size in points and in physical mm. Compares long
+    /// edge to long edge: `NSScreen.frame` rotates with the display but
+    /// `CGDisplayScreenSize` reports the unrotated panel, so a portrait monitor
+    /// would otherwise pair the short point edge with the long mm edge and
+    /// under-report PPI by the aspect ratio (#324).
+    static func physicalPPI(points: CGSize, millimetres mm: CGSize) -> CGFloat {
+        max(points.width, points.height) / (max(mm.width, mm.height) / 25.4)
     }
 
     /// Convert a physical centimetre value to AppKit points on this display.
