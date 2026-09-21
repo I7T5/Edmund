@@ -1,13 +1,11 @@
 import Foundation
 
 /// "Mermaid" — renders ```` ```mermaid ```` fenced code blocks as diagrams in
-/// Read mode and in HTML/PDF export, using `beautiful-mermaid` (MIT) run as
-/// plain JavaScript in JavaScriptCore rather than shipped in the binary.
-/// See `MermaidRelease`/`MermaidRenderer` for the download, verify, and load
-/// machinery this wraps.
-///
-/// Edit mode deliberately still shows the raw fence as a code block; see
-/// `docs/architecture/reader-and-export.md`.
+/// Edit mode, Read mode and HTML/PDF export, using `beautiful-mermaid` (MIT)
+/// run as plain JavaScript in JavaScriptCore rather than shipped in the
+/// binary. See `MermaidRelease`/`MermaidRenderer` for the download, verify,
+/// and load machinery this wraps, and `EditorTextView+MermaidRendering` for
+/// the Edit-mode overlay.
 @MainActor
 public final class MermaidExtension: EdmundExtension {
     public static let shared = MermaidExtension()
