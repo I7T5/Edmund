@@ -57,7 +57,7 @@ extension EditorTextView {
         panel.canCreateDirectories = false
         panel.directoryURL = dir
         panel.prompt = "Allow"
-        panel.message = "Edmund needs access to \u{201C}\(dir.lastPathComponent)\u{201D} to show its images and linked notes."
+        panel.message = "Edmund needs access to \(dir.lastPathComponent) to show its images and linked notes."
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             FolderAccess.grant(url)
