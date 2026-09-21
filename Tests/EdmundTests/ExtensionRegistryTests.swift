@@ -108,7 +108,7 @@ struct ExtensionRegistryTests {
         // parser that swallowed it (a code span opened by ``` and never
         // closed) would leave the user guessing at the syntax. Inline-only
         // parsing preserves it verbatim.
-        #expect(text.contains("(```mermaid)"))
+        #expect(text.contains("```mermaid code blocks"))
         // The link markup is consumed, not shown.
         #expect(!text.contains("https://"))
         #expect(!text.contains("]("))
@@ -122,7 +122,7 @@ struct ExtensionRegistryTests {
 
         // Every diagram type the description claims is one the payload can
         // actually render (asserted end-to-end in MermaidJSIntegrationTests).
-        for kind in ["flowchart", "state", "sequence", "class", "ER", "XY Chart"] {
+        for kind in ["flowchart", "state", "sequence", "class", "ER", "XY chart"] {
             #expect(text.contains(kind), "summary should mention \(kind)")
         }
     }
