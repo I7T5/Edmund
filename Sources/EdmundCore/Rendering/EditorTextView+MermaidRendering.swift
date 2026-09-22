@@ -95,8 +95,11 @@ extension EditorTextView {
 
         // …except the anchor's own line, the diagram's top margin and the only
         // line here with height: it is where the caret and the line number live.
+        // Its height is therefore also the gap above the picture, so the same
+        // value pads below and the margins come out even.
+        let margin = mermaidDiagramMargin
         let anchor = (collapsed.mutableCopy() as! NSMutableParagraphStyle)
-        anchor.minimumLineHeight = NSLayoutManager().defaultLineHeight(for: codeBlockFont)
+        anchor.minimumLineHeight = margin
         anchor.paragraphSpacingBefore = base.paragraphSpacingBefore
         result.addAttribute(.paragraphStyle, value: anchor, range: firstLine)
 
@@ -104,10 +107,15 @@ extension EditorTextView {
         // `bottomPad` reserves the picture's height inside the fragment.
         let spacer = BlockDecoration(.box(background: .clear, borderColor: nil,
                                           borderEdges: [], borderWidth: 0,
-                                          bottomPad: overlay.bounds.height + Self.mermaidBottomGap))
+                                          bottomPad: overlay.bounds.height + margin))
         result.addAttribute(.blockDecoration, value: spacer, range: firstLine)
     }
 
-    /// Air below the picture, before whatever follows the fence.
-    private static let mermaidBottomGap: CGFloat = 8
+    /// The air above and below a rendered diagram: one line of the code face,
+    /// the line the fence itself would have occupied. Read mode's
+    /// `.mermaid-diagram` margin is computed the same way (`HTMLTheme`), so a
+    /// diagram sits in the same amount of space in both modes.
+    var mermaidDiagramMargin: CGFloat {
+        NSLayoutManager().defaultLineHeight(for: codeBlockFont)
+    }
 }

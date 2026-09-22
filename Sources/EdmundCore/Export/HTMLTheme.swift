@@ -67,6 +67,15 @@ enum HTMLTheme {
         let naturalLineHeight = NSLayoutManager().defaultLineHeight(for: theme.bodyFont)
         let lineHeight = (naturalLineHeight + theme.lineSpacing) / theme.fontSize
 
+        // Air above and below a Mermaid diagram. One line of the code face —
+        // the line its fence occupies in Edit mode, which reserves exactly this
+        // (`EditorTextView.mermaidDiagramMargin`), so a diagram sits in the same
+        // space in both modes. An em of the body font would drift from it with
+        // any font-size or face change; this tracks it by construction. The
+        // library's own canvas padding is cropped before either mode sees the
+        // SVG (`MermaidRenderer.tighteningCanvas`), so this is the whole margin.
+        let diagramMargin = NSLayoutManager().defaultLineHeight(for: theme.monospaceFont())
+
         // CSS px and AppKit points are both device-independent, so the editor's
         // physical cap (EditorTextView.maxContentWidthPoints) carries over as-is.
         // A huge/infinite value means "uncapped" in the editor too; `none` skips
@@ -81,6 +90,7 @@ enum HTMLTheme {
           --body-size: \(trim(theme.fontSize))px;
           --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
           --mono-size: \(trim(theme.monospaceFontSize))px;
+          --diagram-margin: \(trim(diagramMargin))px;
           --accent: \(general.link ?? "#3366E6");
           --highlight: \(general.highlight ?? "rgba(255, 200, 0, 0.3)");
           --code: \(theme.codeHex);
@@ -209,7 +219,7 @@ enum HTMLTheme {
        `height: auto` keeps the aspect ratio. A diagram wider than the column
        (a long sequence chart) scrolls horizontally rather than forcing the
        page to. */
-    .mermaid-diagram { margin: 1em 0; overflow-x: auto; }
+    .mermaid-diagram { margin: var(--diagram-margin) 0; overflow-x: auto; }
     .mermaid-diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto;
       /* The diagram reads --line/--accent/--muted/--surface/--border and falls
          back to shades derived from its own --bg/--fg when they are unset. The

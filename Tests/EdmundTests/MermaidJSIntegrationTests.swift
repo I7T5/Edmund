@@ -178,40 +178,66 @@ struct MermaidJSIntegrationTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let renderer = try await loadedRenderer(into: dir)
 
-        let source = "graph TD\n  A[One] --> B[Two]"
-        let svg = try #require(renderer.svg(source: source, style: style))
-        let declared = try #require(svg.range(of: #"viewBox="0 0 ([\d.]+) ([\d.]+)""#,
-                                              options: .regularExpression))
-        let numbers = svg[declared].split(separator: " ").compactMap { Double($0.filter { $0.isNumber || $0 == "." }) }
-        let declaredHeight = try #require(numbers.last)
+        // beautiful-mermaid pads its canvas by 29-53pt depending on the diagram
+        // type and the side. Both modes want to control that space themselves,
+        // so it comes off the SVG before either sees it — which means the
+        // canvas should end up hugging the drawing, whatever type it is.
+        for (name, source) in [("flowchart", "graph TD\n  A[One] --> B[Two]"),
+                               ("sequence", "sequenceDiagram\n  Alice->>Bob: Hello"),
+                               ("xychart", "xychart-beta\n  x-axis [jan, feb]\n  bar [30, 60]")] {
+            let svg = try #require(renderer.svg(source: source, style: style))
+            // The library's canvas always starts at the origin; a cropped one
+            // starts at the drawing.
+            #expect(!svg.contains(##"viewBox="0 0 "##), "\(name) should have been cropped")
 
-        let image = try #require(renderer.image(source: source, style: style))
-        // beautiful-mermaid pads its canvas by ~30-50pt a side; Edit mode reads
-        // that as dead space. The crop is measured per image, so this asserts
-        // only that it happened and that it didn't eat the drawing.
-        #expect(image.size.height < declaredHeight - 20)
-        #expect(image.size.height > 0)
-        #expect(inkedPixelFraction(image) > 0.01,
-                "the crop should tighten around the drawing, not remove it")
+            let image = try #require(renderer.image(source: source, style: style))
+            let margins = inkMargins(image)
+            #expect(margins.allSatisfy { $0 <= 2 },
+                    "\(name) still has page padding: \(margins)")
+            #expect(inkedPixelFraction(image) > 0.01,
+                    "\(name) should be tightened around the drawing, not cropped away")
+        }
+    }
+
+    /// Blank left, right, top and bottom edges of `image`, in pixels.
+    private func inkMargins(_ image: NSImage) -> [Int] {
+        let w = Int(image.size.width), h = Int(image.size.height)
+        guard let rep = raster(image) else { return [] }
+        var minX = w, maxX = -1, minY = h, maxY = -1
+        for y in 0..<h { for x in 0..<w {
+            guard let c = rep.colorAt(x: x, y: y), c.redComponent < 0.99 else { continue }
+            minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = y
+        } }
+        guard maxX >= minX else { return [] }
+        return [minX, w - 1 - maxX, minY, h - 1 - maxY]
     }
 
     /// Fraction of pixels darker than the near-white node fill, in a 1× raster.
     private func inkedPixelFraction(_ image: NSImage) -> Double {
         let w = Int(image.size.width), h = Int(image.size.height)
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
-              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return 0 }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = ctx
-        NSColor.white.setFill(); NSRect(x: 0, y: 0, width: w, height: h).fill()
-        image.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
-        NSGraphicsContext.restoreGraphicsState()
+        guard let rep = raster(image) else { return 0 }
         var inked = 0
         for y in 0..<h { for x in 0..<w {
             if let c = rep.colorAt(x: x, y: y), c.redComponent < 0.85 { inked += 1 }
         } }
         return Double(inked) / Double(w * h)
+    }
+
+    /// `image` drawn onto white at 1x, so a blank pixel reads as white whether
+    /// it was transparent or painted.
+    private func raster(_ image: NSImage) -> NSBitmapImageRep? {
+        let w = Int(image.size.width), h = Int(image.size.height)
+        guard w > 0, h > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        NSColor.white.setFill(); NSRect(x: 0, y: 0, width: w, height: h).fill()
+        image.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
+        NSGraphicsContext.restoreGraphicsState()
+        return rep
     }
 
     // Exercises the pinned coordinates themselves — downloads

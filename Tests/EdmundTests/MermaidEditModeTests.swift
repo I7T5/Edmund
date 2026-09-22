@@ -25,6 +25,17 @@ struct MermaidEditModeTests {
         #expect(label == "Mermaid")
     }
 
+    @Test("Read mode reserves the same margin around a diagram as Edit mode")
+    @MainActor func marginsMatchReadMode() {
+        let editor = makeEditor()
+        let css = HTMLTheme.css(.default, callouts: [:], dark: false)
+        // Both are one line of the code face. Asserted as the rendered CSS
+        // rather than by re-deriving the metric, so a change to either side
+        // that silently parts them fails here.
+        #expect(css.contains("--diagram-margin: \(Int(editor.mermaidDiagramMargin))px"))
+        #expect(css.contains(".mermaid-diagram { margin: var(--diagram-margin) 0;"))
+    }
+
     // MARK: Rendered (gated on a real payload)
 
     private var archiveURL: URL? {
@@ -83,10 +94,15 @@ struct MermaidEditModeTests {
                                                      effectiveRange: nil) as? BlockDecoration)
             guard case .box(let background, _, let edges, let borderWidth, let bottomPad) = deco.kind
             else { Issue.record("expected a box decoration"); return }
-            #expect(bottomPad > image.size.height)   // the picture, plus a little air
-            #expect(background == .clear)            // …and it paints nothing
+            #expect(background == .clear)            // it paints nothing
             #expect(edges.isEmpty)
             #expect(borderWidth == 0)
+
+            // Even margins: TextKit puts the baseline of a line box sized by
+            // minimumLineHeight on its bottom edge, and the picture hangs from
+            // that baseline — so the anchor line *is* the gap above it, and the
+            // padding left below the picture has to be the same to match.
+            #expect(bottomPad - image.size.height == ps.minimumLineHeight)
         }
     }
 

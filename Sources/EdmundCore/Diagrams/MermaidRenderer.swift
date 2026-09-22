@@ -161,8 +161,106 @@ public final class MermaidRenderer {
             Log.error("Mermaid: rejected an SVG that failed the safety check")
             return nil
         }
-        cache.setObject(result as NSString, forKey: key)
-        return result
+        let tightened = Self.tighteningCanvas(result)
+        cache.setObject(tightened as NSString, forKey: key)
+        return tightened
+    }
+
+    /// Shrinks the SVG's canvas to the drawing inside it.
+    ///
+    /// beautiful-mermaid pads its canvas — 29 to 53 pt depending on the diagram
+    /// type and even the side — which is right for a standalone picture and
+    /// wrong for a block in a document: it lands as a slab of dead space above
+    /// and below, it can't be styled away from outside, and it holds the
+    /// drawing off the text's left edge. Both modes want the margin to come
+    /// from the page (Read mode's CSS, Edit mode's line height), so it is taken
+    /// off here, once, before either sees the SVG.
+    ///
+    /// Measured, never assumed: the padding differs per side and per diagram
+    /// type, so a constant would clip one of them. The measurement rasterizes
+    /// the *flattened* form through CoreSVG — which ignores the SVG's CSS
+    /// `background`, so the padding is genuinely transparent and the alpha
+    /// channel is the whole test. The flattened form's ink can sit a couple of
+    /// points below WebKit's (folding `dy` moves a baseline), which the point
+    /// of air below covers.
+    ///
+    /// Returns the SVG unchanged if anything about it is unexpected — a canvas
+    /// that is already tight, an unreadable viewBox, a diagram that drew
+    /// nothing.
+    private static func tighteningCanvas(_ svg: String) -> String {
+        guard let viewBox = firstMatch(#"viewBox="([\d.\-]+) ([\d.\-]+) ([\d.]+) ([\d.]+)""#, in: svg),
+              let x = Double(viewBox[1]), let y = Double(viewBox[2]),
+              let width = Double(viewBox[3]), let height = Double(viewBox[4]),
+              width > 0, height > 0,
+              let image = NSImage(data: Data(MermaidSVGFlattener.flatten(svg).utf8)),
+              let ink = inkBox(of: image),
+              // User units per rendered pixel — 1:1 here (the width attribute
+              // matches the viewBox), but not worth assuming.
+              image.size.width > 0, image.size.height > 0
+        else { return svg }
+        let scaleX = width / Double(image.size.width), scaleY = height / Double(image.size.height)
+        let box = CGRect(x: x + ink.minX * scaleX, y: y + ink.minY * scaleY,
+                         width: ink.width * scaleX, height: ink.height * scaleY)
+        guard box.width < width || box.height < height else { return svg }
+
+        // Only the opening tag's own geometry: a diagram's body can carry the
+        // same attribute names on its shapes.
+        guard let openTag = svg.range(of: #"<svg[^>]*>"#, options: .regularExpression) else { return svg }
+        var tag = String(svg[openTag])
+        for (attribute, value) in [("viewBox", String(format: "%g %g %g %g",
+                                                      box.minX, box.minY, box.width, box.height)),
+                                   ("width", String(format: "%g", box.width)),
+                                   ("height", String(format: "%g", box.height))] {
+            tag = tag.replacingOccurrences(of: "\\s\(attribute)=\"[^\"]*\"",
+                                           with: " \(attribute)=\"\(value)\"",
+                                           options: .regularExpression)
+        }
+        return svg.replacingCharacters(in: openTag, with: tag)
+    }
+
+    /// Bounding box of everything `image` actually draws, in its own points.
+    /// One point of air so an antialiased edge can't be shaved.
+    private static func inkBox(of image: NSImage) -> CGRect? {
+        let w = Int(image.size.width.rounded()), h = Int(image.size.height.rounded())
+        guard w > 0, h > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        image.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
+        NSGraphicsContext.restoreGraphicsState()
+        guard let pixels = rep.bitmapData else { return nil }
+
+        let rowBytes = rep.bytesPerRow, pixelBytes = rep.bitsPerPixel / 8
+        var minX = w, maxX = -1, minY = h, maxY = -1
+        for row in 0..<h {
+            let base = pixels + row * rowBytes
+            for column in 0..<w where base[column * pixelBytes + 3] > 8 {   // alpha
+                if column < minX { minX = column }
+                if column > maxX { maxX = column }
+                if row < minY { minY = row }
+                maxY = row
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        let left = max(0, minX - 1), top = max(0, minY - 1)
+        return CGRect(x: left, y: top,
+                      width: min(w, maxX + 2) - left, height: min(h, maxY + 2) - top)
+    }
+
+    /// Capture groups of the first match, `[whole, 1, 2, …]`, or nil.
+    private static func firstMatch(_ pattern: String, in s: String) -> [String]? {
+        let ns = s as NSString
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let m = regex.firstMatch(in: s, range: NSRange(location: 0, length: ns.length))
+        else { return nil }
+        return (0..<m.numberOfRanges).map { i in
+            let r = m.range(at: i)
+            return r.location == NSNotFound ? "" : ns.substring(with: r)
+        }
     }
 
     /// Edit mode's form of the same diagram: the SVG drawn by CoreSVG into a
@@ -180,66 +278,8 @@ public final class MermaidRenderer {
             Log.error("Mermaid: CoreSVG could not decode a flattened diagram")
             return nil
         }
-        let image = Self.trimmingTransparentMargin(decoded)
-        imageCache.setObject(image, forKey: key)
-        return image
-    }
-
-    /// Crops the library's own page margin off a decoded diagram.
-    ///
-    /// beautiful-mermaid pads its canvas — 29 to 53 pt depending on the diagram
-    /// type and the side — which Read mode wants (the SVG is a block in a web
-    /// page) and Edit mode does not: there it lands as a slab of dead space
-    /// above and below the picture, and holds the drawing off the text's left
-    /// edge. The padding is *measured*, not assumed: it differs per side and
-    /// per diagram type, so a constant would clip one of them.
-    ///
-    /// CoreSVG ignores the SVG's CSS `background`, so the margin is genuinely
-    /// transparent and the alpha channel is the whole test. The crop is
-    /// re-drawn through a handler rather than captured as a bitmap, so the
-    /// result stays resolution-independent.
-    private static func trimmingTransparentMargin(_ image: NSImage) -> NSImage {
-        let w = Int(image.size.width.rounded()), h = Int(image.size.height.rounded())
-        guard w > 0, h > 0,
-              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                                         isPlanar: false, colorSpaceName: .deviceRGB,
-                                         bytesPerRow: 0, bitsPerPixel: 0),
-              let context = NSGraphicsContext(bitmapImageRep: rep) else { return image }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        image.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
-        NSGraphicsContext.restoreGraphicsState()
-        guard let pixels = rep.bitmapData else { return image }
-
-        let rowBytes = rep.bytesPerRow, pixelBytes = rep.bitsPerPixel / 8
-        var minX = w, maxX = -1, minY = h, maxY = -1
-        for y in 0..<h {
-            let row = pixels + y * rowBytes
-            for x in 0..<w where row[x * pixelBytes + 3] > 8 {   // alpha, ignoring near-nothing
-                if x < minX { minX = x }
-                if x > maxX { maxX = x }
-                if y < minY { minY = y }
-                maxY = y
-            }
-        }
-        guard maxX >= minX, maxY >= minY else { return image }   // nothing drawn: leave it alone
-
-        // One point of air so an antialiased edge can't be shaved.
-        let box = CGRect(x: max(0, minX - 1), y: max(0, minY - 1),
-                         width: min(w, maxX + 2) - max(0, minX - 1),
-                         height: min(h, maxY + 2) - max(0, minY - 1))
-        guard box.width < image.size.width || box.height < image.size.height else { return image }
-
-        // The raster's y runs top-down; NSImage's drawing space is bottom-up.
-        let bottomInset = image.size.height - box.maxY
-        let cropped = NSImage(size: box.size, flipped: false) { rect in
-            image.draw(in: CGRect(x: rect.minX - box.minX, y: rect.minY - bottomInset,
-                                  width: image.size.width, height: image.size.height))
-            return true
-        }
-        cropped.cacheMode = .never   // re-rasterize at the screen's scale, like other overlays
-        return cropped
+        imageCache.setObject(decoded, forKey: key)
+        return decoded
     }
 
     /// Read mode's page promises to reach the network for nothing and to run
