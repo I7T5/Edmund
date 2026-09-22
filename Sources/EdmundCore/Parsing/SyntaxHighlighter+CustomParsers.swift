@@ -278,13 +278,15 @@ extension SyntaxHighlighter {
         }
     }
 
+    private static let highlightRegex =
+        try! NSRegularExpression(pattern: "==(?!\\s)(.+?)(?<!\\s)==")
+
     /// Parses ==highlight== spans using regex (not supported by swift-markdown).
     /// GFM-style flanking: the content must not begin or end with whitespace
     /// (`== spaced ==` stays literal), matching how cmark treats `**`/`~~`.
     static func parseHighlight(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString
-        guard let regex = try? NSRegularExpression(pattern: "==(?!\\s)(.+?)(?<!\\s)==", options: []) else { return }
-        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
+        let matches = highlightRegex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
         for match in matches {
             let full = match.range(at: 0)
             let content = match.range(at: 1)
