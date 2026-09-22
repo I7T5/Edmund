@@ -36,6 +36,9 @@ flowchart LR
 | `HTMLTheme.swift` | `EditorTheme` → CSS |
 | `DocumentHTML.swift` | Page assembly, CSP meta, asset inlining (math + local images → data URIs, Mermaid → inline SVG), the image-policy chokepoint |
 | `ReadModeWebView.swift` | The sandboxed webview + scroll-position mapping |
+| `DocumentExporter.swift` | File ▸ Export To ▸ entry points (Markdown with Embedded Images, HTML, Rich Text, Plain Text): save panel, then write |
+| `RichTextExport.swift` | Rich Text: `DocumentHTML.full(forAttributedString:)` through AppKit's HTML importer. The importer drops inline SVG, so that flavor rasterizes Mermaid, turns task checkboxes into ☐/☑ and unwraps `x-edmund-*` links; ordered lists get the period the importer leaves off. RTFD when the page has an `<img>`, else RTF (TextEdit's rule) |
+| `PlainTextExport.swift` | Plain Text, from the **source**, not the HTML (the importer flattens tables, list nesting and task state): removes each span's `delimiterRanges` — what Edit mode hides — keeping list markers, `> `, and tables re-aligned by `prettyAlignedTableLines` |
 | `MarkdownPrinter.swift` | Same HTML through `WKWebView.printOperation` — real vector (selectable) text. Both entry points take the document name and strip its extension: Export seeds the save panel with `<name>.pdf`; Print sets `NSPrintOperation.jobTitle`, which is what the print dialog's "Save as PDF" sheet uses for its default filename (the page has no `<title>`, so without it AppKit falls back to the window name, `notes.md`) |
 
 `Document.refreshReadView()` keeps an open Read view in sync with edits and

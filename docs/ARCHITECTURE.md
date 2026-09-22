@@ -345,6 +345,10 @@ Notable subsystems:
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
   high-DPI PNG). The PDF is named after the document minus its extension —
   Print via `NSPrintOperation.jobTitle`, since the page has no `<title>`.
+  **File ▸ Export To ▸** holds the conversions, ordered by how much of the
+  document survives: Markdown with Embedded Images, HTML, Rich Text (RTF,
+  or RTFD with pictures), Plain Text. PDF stays beside Print. Rich Text is
+  the HTML through AppKit's importer; Plain Text is built from the source.
   Full spec: `docs/architecture/reader-and-export.md`.
 - **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
   `NSTextFinder` — it renders the system bar rather than the Notes look, and
