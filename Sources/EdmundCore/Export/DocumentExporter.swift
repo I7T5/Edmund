@@ -3,17 +3,20 @@ import UniformTypeIdentifiers
 
 // MARK: - DocumentExporter
 //
-// File-menu exports other than PDF/Print (which live in `MarkdownPrinter`):
-//   - HTML — the same self-contained themed document Read mode renders.
-//   - Self-contained Markdown — a share copy with local images inlined as
-//     base64 data URIs (see `SelfContainedMarkdown`), for handing someone a
+// File ▸ Export To ▸ … (PDF/Print live in `MarkdownPrinter`):
+//   - Markdown with Embedded Images — a share copy with local images inlined
+//     as base64 data URIs (see `SelfContainedMarkdown`), for handing someone a
 //     single .md file that still shows its pictures. GitHub strips `data:`
 //     image URIs, so this is for direct sharing, not for pushing to a repo —
 //     the working document's relative paths + assets folder are the right form
 //     there.
+//   - HTML — the same self-contained themed document Read mode renders.
+//   - Rich Text — RTF, or RTFD when it has pictures (see `RichTextExport`).
+//   - Plain Text — the words without the Markdown syntax (`PlainTextExport`).
 //
-// The HTML/markdown is built only after the save panel is confirmed, so a
-// cancelled export never pays the render cost.
+// The output is built only after the save panel is confirmed, so a cancelled
+// export never pays the render cost — except Rich Text's page, which decides
+// the extension the panel offers.
 @MainActor
 public enum DocumentExporter {
 
@@ -43,11 +46,46 @@ public enum DocumentExporter {
                                                    suggestedName: String,
                                                    window: NSWindow?) {
         prompt(extension: "md", contentType: .plainText,
-               suggestedName: suggestedName + " (Self-contained)", window: window) { url in
+               suggestedName: suggestedName + " (Embedded Images)", window: window) { url in
             let inlined = SelfContainedMarkdown.inlineLocalImages(markdown: markdown,
                                                                   baseURL: baseURL,
                                                                   features: features)
             try inlined.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// Prompts for a destination and writes the document as rich text (see
+    /// `RichTextExport`): RTFD when it has pictures, RTF otherwise. The page
+    /// is built before the panel — it decides which of the two the panel
+    /// offers — but the slow part, AppKit's HTML import, runs only after Save.
+    public static func exportRichText(markdown: String,
+                                      theme: EditorTheme,
+                                      callouts: [String: CalloutStyle],
+                                      baseURL: URL? = nil,
+                                      options: ReadRenderOptions = .default,
+                                      suggestedName: String,
+                                      window: NSWindow?) {
+        let html = RichTextExport.html(markdown: markdown, theme: theme, callouts: callouts,
+                                       baseURL: baseURL, options: options)
+        let rtfd = RichTextExport.needsAttachments(html)
+        prompt(extension: rtfd ? "rtfd" : "rtf", contentType: rtfd ? .rtfd : .rtf,
+               suggestedName: suggestedName, window: window) { url in
+            let text = try RichTextExport.attributedString(fromHTML: html)
+            try RichTextExport.fileWrapper(for: text, rtfd: rtfd)
+                .write(to: url, options: .atomic, originalContentsURL: nil)
+        }
+    }
+
+    /// Prompts for a destination and writes the document's text without its
+    /// Markdown syntax (see `PlainTextExport`).
+    public static func exportPlainText(markdown: String,
+                                       features: MarkdownFeatures = .all,
+                                       suggestedName: String,
+                                       window: NSWindow?) {
+        prompt(extension: "txt", contentType: .plainText,
+               suggestedName: suggestedName, window: window) { url in
+            try PlainTextExport.text(markdown: markdown, features: features)
+                .write(to: url, atomically: true, encoding: .utf8)
         }
     }
 

@@ -240,6 +240,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     action: #selector(EditorTextView.findPrevious(_:)), shortcut: .cmdShift("g")),
     ]
 
+    /// File ▸ Export To. Order and naming: see `setupMenuBar`. The ids predate
+    /// the submenu and are kept, so a rebound shortcut survives the move.
+    @MainActor private static let exportCommands: [MenuCommand] = [
+        MenuCommand(id: "file.exportSelfContainedMarkdown", group: "File", submenu: "Export To",
+                    title: "Markdown with Embedded Images\u{2026}",
+                    action: #selector(Document.exportSelfContainedMarkdown(_:))),
+        MenuCommand(id: "file.exportHTML", group: "File", submenu: "Export To", title: "HTML\u{2026}",
+                    action: #selector(Document.exportToHTML(_:))),
+        MenuCommand(id: "file.exportRichText", group: "File", submenu: "Export To", title: "Rich Text\u{2026}",
+                    action: #selector(Document.exportToRichText(_:))),
+        MenuCommand(id: "file.exportPlainText", group: "File", submenu: "Export To", title: "Plain Text\u{2026}",
+                    action: #selector(Document.exportToPlainText(_:))),
+    ]
+
     @MainActor private func setupMenuBar() {
         // Before any `makeItem()`, which resolves each command's override by id.
         KeyBindingStore.migrateRenamedIDs()
@@ -319,15 +333,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         fileMenu.addItem(NSMenuItem.separator())
 
+        // Export To ▸ holds the conversions, named by format only as in Pages
+        // and Keynote. Ordered by how much of the document survives: the
+        // Markdown copy keeps every character, HTML keeps the look, Rich Text
+        // keeps the formatting a word processor understands, Plain Text keeps
+        // only the words.
+        let exportMenu = NSMenu(title: "Export To")
+        for command in Self.exportCommands { exportMenu.addItem(command.makeItem()) }
+        let exportItem = NSMenuItem(title: "Export To", action: nil, keyEquivalent: "")
+        exportItem.submenu = exportMenu
+        fileMenu.addItem(exportItem)
+
+        // PDF stays out of the submenu, beside Print: it is the print pipeline
+        // writing to a file (`MarkdownPrinter`), not a conversion, and it is
+        // where TextEdit and Safari put it.
         fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "Export as PDF\u{2026}",
                                      action: #selector(Document.exportToPDF(_:))).makeItem())
-
-        fileMenu.addItem(MenuCommand(id: "file.exportHTML", group: "File", title: "Export as HTML\u{2026}",
-                                     action: #selector(Document.exportToHTML(_:))).makeItem())
-
-        fileMenu.addItem(MenuCommand(id: "file.exportSelfContainedMarkdown", group: "File",
-                                     title: "Export Self-contained Markdown\u{2026}",
-                                     action: #selector(Document.exportSelfContainedMarkdown(_:))).makeItem())
 
         fileMenu.addItem(withTitle: "Print\u{2026}",
                          action: #selector(Document.printDocument(_:)),

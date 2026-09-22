@@ -887,7 +887,7 @@ class Document: NSDocument, HeadingNavigable {
                                   window: windowControllers.first?.window)
     }
 
-    /// File ▸ Export as HTML…: the self-contained themed page Read mode shows
+    /// File ▸ Export To ▸ HTML…: the self-contained themed page Read mode shows
     /// (images and math inlined), written to a single .html file.
     @objc func exportToHTML(_ sender: Any?) {
         let name = (displayName as NSString).deletingPathExtension
@@ -900,8 +900,8 @@ class Document: NSDocument, HeadingNavigable {
                                     window: windowControllers.first?.window)
     }
 
-    /// File ▸ Export Self-contained Markdown…: a share copy with local images
-    /// inlined as data URIs, for handing someone a single .md file.
+    /// File ▸ Export To ▸ Markdown with Embedded Images…: a share copy with
+    /// local images inlined as data URIs, for handing someone a single .md file.
     @objc func exportSelfContainedMarkdown(_ sender: Any?) {
         let name = (displayName as NSString).deletingPathExtension
         DocumentExporter.exportSelfContainedMarkdown(markdown: editor.rawSource,
@@ -909,6 +909,27 @@ class Document: NSDocument, HeadingNavigable {
                                                      features: AppSettings.markdownFeatures,
                                                      suggestedName: name.isEmpty ? "Untitled" : name,
                                                      window: windowControllers.first?.window)
+    }
+
+    /// File ▸ Export To ▸ Rich Text…: RTF, or RTFD when the document has pictures.
+    @objc func exportToRichText(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        DocumentExporter.exportRichText(markdown: editor.rawSource,
+                                        theme: editor.theme,
+                                        callouts: mergedCallouts,
+                                        baseURL: documentDirectory,
+                                        options: renderOptions,
+                                        suggestedName: name.isEmpty ? "Untitled" : name,
+                                        window: windowControllers.first?.window)
+    }
+
+    /// File ▸ Export To ▸ Plain Text…: the words without the Markdown syntax.
+    @objc func exportToPlainText(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        DocumentExporter.exportPlainText(markdown: editor.rawSource,
+                                         features: AppSettings.markdownFeatures,
+                                         suggestedName: name.isEmpty ? "Untitled" : name,
+                                         window: windowControllers.first?.window)
     }
 
     @objc override func printDocument(_ sender: Any?) {

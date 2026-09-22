@@ -6,7 +6,7 @@ import Markdown
 // Rewrites a markdown document so every locally-referenced image is embedded
 // as a base64 data URI — the "one file you can just send someone" share copy.
 // The working document keeps its sibling-assets relative paths; this transform
-// produces a separate artifact (File ▸ Export Self-contained Markdown).
+// produces a separate artifact (File ▸ Export To ▸ Markdown with Embedded Images…).
 //
 // What gets rewritten, and what doesn't:
 //   - `![alt](local/path.png)`     → `![alt](data:image/png;base64,…)`

@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import CryptoKit
 @testable import EdmundCore
 
 @Suite("Rich text export")
@@ -83,5 +84,37 @@ struct RichTextExportTests {
         #expect(rtfd.isDirectory)
         #expect(rtfd.fileWrappers?.keys.contains("TXT.rtf") == true)
         #expect(rtfd.fileWrappers?.keys.contains { $0.hasSuffix(".png") } == true)
+    }
+
+    // MARK: Mermaid (gated on a real payload, like MermaidEditModeTests)
+
+    @Test("A diagram arrives as a picture — the importer would drop its SVG")
+    func mermaidPicture() async throws {
+        guard let path = ProcessInfo.processInfo.environment["MERMAID_ARCHIVE"] else { return }
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let sha = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mermaid-rt-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: dir)
+            MermaidRenderer.shared.unload()
+            MermaidRenderer.shared.isEnabled = false
+        }
+        try await ExtensionPayloadInstaller(payload: MermaidRelease.payload)
+            .installAtomically(archive: data, sha256: sha, into: dir)
+        MermaidRenderer.shared.load(dir: dir)
+        MermaidRenderer.shared.isEnabled = true
+
+        let page = html("```mermaid\ngraph TD\n  A[Write] --> B[Preview]\n```")
+        let body = try #require(page.range(of: "<body>").map { String(page[$0.upperBound...]) })
+        #expect(body.contains("class=\"mermaid-diagram\"><img "))
+        #expect(!body.contains("<svg"))
+        #expect(RichTextExport.needsAttachments(page))
+        let text = try RichTextExport.attributedString(fromHTML: page)
+        var attachments = 0
+        text.enumerateAttribute(.attachment, in: NSRange(location: 0, length: text.length)) { v, _, _ in
+            if v != nil { attachments += 1 }
+        }
+        #expect(attachments == 1)
     }
 }
