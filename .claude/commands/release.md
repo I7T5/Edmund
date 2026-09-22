@@ -24,10 +24,25 @@ notes. Report the script's output verbatim, then:
 
 - **Changelog section present** ⇒ run `swift test`, show the version/build
   change, and hand back for the commit. Do not publish.
-- **Changelog section missing** ⇒ stop. Put the proposed notes in
-  `misc/changelog-tmp` (untracked scratch) and ask the maintainer to move them
-  into `docs/CHANGELOG.md`. Never write `docs/CHANGELOG.md` yourself — a hook
-  blocks it, and that file is the maintainer's voice.
+- **Changelog section missing** ⇒ write it with the maintainer, never for
+  them. Users read that section verbatim (GitHub release body, Sparkle's update
+  dialog), so it stays in the maintainer's words:
+  1. **Ask for their wording.** Ask for the notes for this version, or where
+     they are (a scratch file, a message). Don't draft notes of your own
+     unasked.
+  2. **Check it against what shipped:** every merged PR and direct commit since
+     the last `v*` tag. Internal work (CI, agents, release tooling) needs no
+     entry.
+  3. **Ask before changing anything, and say why.** For each change you'd make
+     — a user-facing change that's missing, a wrong PR number or handle, a
+     slip from the Keep a Changelog format — ask one question naming the change
+     and the reason. Everything else goes in exactly as written; a typo stays
+     unless they approve the fix.
+  4. **Write only what they approved** into `docs/CHANGELOG.md` with the Edit
+     tool, above the previous release's section. The changelog guard hook
+     makes that edit ask them to confirm the diff; shell writes to the file
+     are blocked.
+  5. **Re-run the script** and carry on as for "section present".
 
 Publishing is a separate, deliberate step: `./scripts/release.sh` builds, signs
 with the Sparkle key, updates `appcast.xml`, and creates the GitHub Release.
