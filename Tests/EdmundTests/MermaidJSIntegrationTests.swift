@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AppKit
 import CryptoKit
 @testable import EdmundCore
 
@@ -138,6 +139,105 @@ struct MermaidJSIntegrationTests {
         let darkSVG = try #require(renderer.svg(source: source, style: dark))
         #expect(darkSVG.contains("--bg:#292929"))
         #expect(darkSVG != first)
+    }
+
+    @Test("Every diagram type rasterises through CoreSVG to a non-blank image")
+    @MainActor func coreSVGRasters() async throws {
+        guard archiveURL != nil else { return }
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mermaid-it-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let renderer = try await loadedRenderer(into: dir)
+
+        // The same six as `endToEnd`, plus the edge kinds whose arrowheads the
+        // flattener has to inline (bidirectional, dotted, thick).
+        let diagrams: [(String, String)] = [
+            ("flowchart", "graph LR\n  A[Write] --> B[Preview]\n  B <--> C{Export?}\n  C -.->|PDF| D[Print]\n  C ==> E[Save]"),
+            ("state", "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running: start\n  Running --> [*]"),
+            ("sequence", "sequenceDiagram\n  Alice->>Bob: Hello\n  Bob-->>Alice: Hi"),
+            ("class", "classDiagram\n  class Doc { +String title\n +save() }\n  Doc <|-- Markdown\n  Doc *-- Block"),
+            ("er", "erDiagram\n  DOC ||--o{ BLOCK : contains"),
+            ("xychart", "xychart-beta\n  title \"Sales\"\n  x-axis [jan, feb, mar]\n  y-axis \"Rev\" 0 --> 100\n  bar [30, 60, 90]\n  line [30, 60, 90]"),
+        ]
+        for (name, source) in diagrams {
+            let image = try #require(renderer.image(source: source, style: style), "\(name) should raster")
+            #expect(image.size.width > 0 && image.size.height > 0, "\(name) has no size")
+            // CoreSVG accepting the document isn't the same as drawing it: an
+            // unresolved var() draws black boxes, an unsupported element draws
+            // nothing. Count ink that is neither the page nor the (flattened)
+            // node fill — labels and edges — as the proof it actually rendered.
+            #expect(inkedPixelFraction(image) > 0.002, "\(name) rendered blank or unlabelled")
+        }
+    }
+
+    @Test("The library's page margin is cropped off the rendered image")
+    @MainActor func cropsPageMargin() async throws {
+        guard archiveURL != nil else { return }
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mermaid-it-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let renderer = try await loadedRenderer(into: dir)
+
+        // beautiful-mermaid pads its canvas by 29-53pt depending on the diagram
+        // type and the side. Both modes want to control that space themselves,
+        // so it comes off the SVG before either sees it — which means the
+        // canvas should end up hugging the drawing, whatever type it is.
+        for (name, source) in [("flowchart", "graph TD\n  A[One] --> B[Two]"),
+                               ("sequence", "sequenceDiagram\n  Alice->>Bob: Hello"),
+                               ("xychart", "xychart-beta\n  x-axis [jan, feb]\n  bar [30, 60]")] {
+            let svg = try #require(renderer.svg(source: source, style: style))
+            // The library's canvas always starts at the origin; a cropped one
+            // starts at the drawing.
+            #expect(!svg.contains(##"viewBox="0 0 "##), "\(name) should have been cropped")
+
+            let image = try #require(renderer.image(source: source, style: style))
+            let margins = inkMargins(image)
+            #expect(margins.allSatisfy { $0 <= 2 },
+                    "\(name) still has page padding: \(margins)")
+            #expect(inkedPixelFraction(image) > 0.01,
+                    "\(name) should be tightened around the drawing, not cropped away")
+        }
+    }
+
+    /// Blank left, right, top and bottom edges of `image`, in pixels.
+    private func inkMargins(_ image: NSImage) -> [Int] {
+        let w = Int(image.size.width), h = Int(image.size.height)
+        guard let rep = raster(image) else { return [] }
+        var minX = w, maxX = -1, minY = h, maxY = -1
+        for y in 0..<h { for x in 0..<w {
+            guard let c = rep.colorAt(x: x, y: y), c.redComponent < 0.99 else { continue }
+            minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = y
+        } }
+        guard maxX >= minX else { return [] }
+        return [minX, w - 1 - maxX, minY, h - 1 - maxY]
+    }
+
+    /// Fraction of pixels darker than the near-white node fill, in a 1× raster.
+    private func inkedPixelFraction(_ image: NSImage) -> Double {
+        let w = Int(image.size.width), h = Int(image.size.height)
+        guard let rep = raster(image) else { return 0 }
+        var inked = 0
+        for y in 0..<h { for x in 0..<w {
+            if let c = rep.colorAt(x: x, y: y), c.redComponent < 0.85 { inked += 1 }
+        } }
+        return Double(inked) / Double(w * h)
+    }
+
+    /// `image` drawn onto white at 1x, so a blank pixel reads as white whether
+    /// it was transparent or painted.
+    private func raster(_ image: NSImage) -> NSBitmapImageRep? {
+        let w = Int(image.size.width), h = Int(image.size.height)
+        guard w > 0, h > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        NSColor.white.setFill(); NSRect(x: 0, y: 0, width: w, height: h).fill()
+        image.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
+        NSGraphicsContext.restoreGraphicsState()
+        return rep
     }
 
     // Exercises the pinned coordinates themselves — downloads

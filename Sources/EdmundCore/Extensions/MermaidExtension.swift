@@ -1,13 +1,11 @@
 import Foundation
 
 /// "Mermaid" — renders ```` ```mermaid ```` fenced code blocks as diagrams in
-/// Read mode and in HTML/PDF export, using `beautiful-mermaid` (MIT) run as
-/// plain JavaScript in JavaScriptCore rather than shipped in the binary.
-/// See `MermaidRelease`/`MermaidRenderer` for the download, verify, and load
-/// machinery this wraps.
-///
-/// Edit mode deliberately still shows the raw fence as a code block; see
-/// `docs/architecture/reader-and-export.md`.
+/// Edit mode, Read mode and HTML/PDF export, using `beautiful-mermaid` (MIT)
+/// run as plain JavaScript in JavaScriptCore rather than shipped in the
+/// binary. See `MermaidRelease`/`MermaidRenderer` for the download, verify,
+/// and load machinery this wraps, and `EditorTextView+MermaidRendering` for
+/// the Edit-mode overlay.
 @MainActor
 public final class MermaidExtension: EdmundExtension {
     public static let shared = MermaidExtension()
@@ -18,11 +16,16 @@ public final class MermaidExtension: EdmundExtension {
     /// upstream project is named and linked in `summary` instead (mirrors how
     /// Obsidian plugins version themselves separately from any library they
     /// wrap).
+    ///
+    /// Wording follows the HIG's settings-text rule: say what it does when
+    /// on, most important thing first, no word that isn't earning its place.
+    /// Deliberately silent on *where* it renders — Edit mode is planned, and
+    /// a "Read mode only" caveat here would go stale the day it ships.
     public let summary = AttributedString(
         inlineMarkdown:
-            "Render Mermaid diagrams with code block syntax (```mermaid) using "
+            "Renders ```mermaid code blocks as diagrams via "
             + "[beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid). "
-            + "Currently supports flowcharts, state, sequence, class, ER, and XY Charts (bar, line, combined).")
+            + "Supports flowchart, state, sequence, class, ER, and XY chart diagrams.")
     public let version = "1.0.0"
     public var isInstalled: Bool { renderer.isReady }
     /// This extension provides diagram rendering, not math.

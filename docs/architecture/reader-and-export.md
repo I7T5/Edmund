@@ -94,12 +94,16 @@ were being painted link-blue. No font is passed either: the library's box sizes
 come from an Inter-calibrated character-width heuristic, so the editor's serif
 body face would risk labels overflowing their boxes.
 
-**This is a deliberate divergence**: Edit mode still shows the raw fence as a
-code block. Rendering there needs a raster `NSImage`, and CoreSVG (what
-`NSImage(data:)` uses) is tuned for SF Symbols and would likely drop the `<text>`
-and `<marker>` elements — a diagram with no labels or arrowheads. The
-alternative, an async offscreen `WKWebView` snapshot, reintroduces the
-fragment-height-estimate churn documented in ARCHITECTURE §6.1.
+Edit mode renders the same diagram (`Rendering/EditorTextView+MermaidRendering.swift`),
+so both back-ends draw it as ARCHITECTURE §5 asks. Same SVG, different
+consumer: CoreSVG (`NSImage(data:)`) ignores CSS custom properties,
+`color-mix()` and `<marker>` — and draws black boxes with no labels or
+arrowheads when it meets them — so `MermaidSVGFlattener` rewrites those three
+and nothing else before the raster. Read mode never sees the flattened form.
+The result is vector-backed and synchronous, which is why the Edit-mode path is
+the display-math path (overlay on the first character, source hidden, height
+reserved) and not an async `WKWebView` snapshot with the §6.1 estimate churn
+that would bring.
 
 ## 3. Specs
 

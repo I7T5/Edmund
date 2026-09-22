@@ -742,6 +742,15 @@ Notable subsystems:
   pixels at the same total ink, with solid-coverage pixels collapsing
   (173 → 31). Read mode pins its `<img>` to the PNG's exact pixel count for
   the same reason (`DocumentHTML.fillMath`).
+- **CoreSVG (`NSImage(data:)` on an SVG) ignores CSS custom properties,
+  `color-mix()` and `<marker>`** — and fails *quietly*: unresolved colours
+  draw black, markers draw nothing, so a beautiful-mermaid diagram comes out
+  as black boxes with no labels or arrowheads. It does honour `<style>` class
+  rules, `<text>`, `text-anchor`, `opacity`, `stroke-dasharray`, `transform`.
+  `Diagrams/MermaidSVGFlattener.swift` rewrites exactly those three and
+  nothing else; the result is a vector-backed rep, so Mermaid's Edit-mode
+  overlay needs none of the device-grid snapping above. Read mode hands
+  WebKit the original — never the flattened form.
 
 ### Edit, selection & storage integrity
 

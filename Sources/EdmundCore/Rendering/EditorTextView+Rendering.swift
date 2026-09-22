@@ -280,7 +280,17 @@ extension EditorTextView {
                 result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
                 highlightCodeBlock(result, contentRange: span.contentRange, language: language)
                 if !cursorInToken {
-                    styleCodeBlockBox(result, span: span, language: language)
+                    // A mermaid fence becomes its diagram when the extension can
+                    // draw one; every other outcome is the ordinary code box.
+                    if MermaidSyntax.matches(language: language),
+                       span.contentRange.upperBound <= result.length,
+                       let overlay = mermaidOverlay(
+                        source: (markdown as NSString).substring(with: span.contentRange)
+                            .trimmingCharacters(in: .whitespacesAndNewlines)) {
+                        styleMermaidDiagram(result, span: span, overlay: overlay)
+                    } else {
+                        styleCodeBlockBox(result, span: span, language: language)
+                    }
                 }
 
             case .strikethrough:
