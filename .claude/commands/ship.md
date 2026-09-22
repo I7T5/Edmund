@@ -27,7 +27,10 @@ stopping and reporting if any step fails:
    If it prints `ui`, spawn the `hig-reviewer` subagent on `git diff main`.
    Any `blocker` line: stop, show the findings, and ask before continuing —
    this PR auto-merges, so there is no later review. `should`/`nit` lines:
-   include them in the step 8 report and carry on. No output from the gate
+   include them in the step 8 report and carry on. `doc` lines: list them
+   and ask whether to apply; on yes, edit them into this change before
+   committing. `README.md` lines are report-only (the maintainer's prose).
+   No output from the gate
    (or no subagent support): skip this step silently.
 
 3. **Branch.** If currently on `main`, create a topic branch named
