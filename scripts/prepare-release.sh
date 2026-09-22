@@ -81,7 +81,8 @@ if [ -z "$(echo "$SECTION" | tr -d '[:space:]')" ]; then
     else
         echo "           Collect the notes in misc/changelog-tmp first (untracked)."
     fi
-    echo "           ${CHANGELOG} is yours to edit — no script or agent writes it."
+    echo "           ${CHANGELOG} is yours: write it, or have /release write your"
+    echo "           approved wording (it asks first). This script never writes it."
 else
     echo
     echo "Changelog: found the ${VERSION} section ($(echo "$SECTION" | grep -c '^- ') entries)."
