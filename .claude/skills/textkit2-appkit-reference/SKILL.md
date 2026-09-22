@@ -39,7 +39,7 @@ content near the visible viewport, not the whole document. That is what makes
 big documents fast — and it is the root of most viewport pain (§2).
 
 **Where it bites:** Edmund subclasses the fragment as `DecoratedTextLayoutFragment`
-(`EditorTextView+TextKit2.swift`) to draw callout boxes, bars, and overlays.
+(`DecoratedTextLayoutFragment.swift`) to draw callout boxes, bars, and overlays.
 
 ---
 

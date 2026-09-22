@@ -29,7 +29,7 @@ really there.
 ## 2. High-level overview
 
 `DecoratedTextLayoutFragment`
-(`Sources/EdmundCore/TextView/EditorTextView+TextKit2.swift`) is a custom
+(`Sources/EdmundCore/TextView/DecoratedTextLayoutFragment.swift`) is a custom
 `NSTextLayoutFragment` — the object TextKit 2 uses to lay out and draw one
 paragraph. It reads two custom attributes out of the styled text and paints
 them behind/over the laid-out characters:

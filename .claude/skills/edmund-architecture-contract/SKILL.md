@@ -199,9 +199,9 @@ does not reproduce headless; see the routing in §8.
 
 All custom visuals are drawn by `DecoratedTextLayoutFragment` (custom
 `NSTextLayoutFragment`,
-`Sources/EdmundCore/TextView/EditorTextView+TextKit2.swift:160`), vended via
-the layout-manager delegate. Two custom attribute keys (same file, lines
-28/32):
+`Sources/EdmundCore/TextView/DecoratedTextLayoutFragment.swift`), vended via
+the layout-manager delegate (`EditorTextView+TextKit2.swift`). Two custom
+attribute keys (`TextKit2Attributes.swift`):
 
 | Attribute | Level | Draws | Rules |
 | --- | --- | --- | --- |
@@ -347,7 +347,7 @@ grep -n "func recompose" Sources/EdmundCore/TextView/EditorTextView+Composition.
 # Bypass heal
 grep -n "scheduleBypassedEditSyncCheck" Sources/EdmundCore/TextView/EditorTextView+EditFlow.swift
 # Custom draw attributes + fragment class
-grep -n "blockDecoration\|fragmentOverlay\|class DecoratedTextLayoutFragment" Sources/EdmundCore/TextView/EditorTextView+TextKit2.swift
+grep -rn "blockDecoration\|fragmentOverlay\|class DecoratedTextLayoutFragment" Sources/EdmundCore/TextView/
 # hiddenFont hiding trick
 grep -n "hiddenFont" Sources/EdmundCore/Rendering/EditorTextView+Rendering.swift
 # Viewport mitigations
