@@ -1,7 +1,7 @@
 ---
 description: Branch, test, commit, push, open a PR, and enable auto-merge for the current working-tree changes
 argument-hint: [short description of the change]
-allowed-tools: Bash, Read, Edit
+allowed-tools: Bash, Read, Edit, Agent
 ---
 
 Ship the current uncommitted changes in this repo as a self-merging PR. The
@@ -16,6 +16,19 @@ stopping and reporting if any step fails:
 
 2. **Test first (project rule).** Run `swift test`. If anything fails, stop and
    show the failure — do not commit.
+
+2b. **HIG check (UI changes only).** Run this gate; it prints `ui` only when
+   the change touches app chrome:
+
+   ```sh
+   { git diff main --name-only -- Sources/edmd Sources/EdmundQuickLook; git diff main -U0 -- Sources | grep -E '^\+.*(NSMenu|keyEquivalent|NSButton|NSAlert|NSPopover|NSToolbar|NSWindow|NSColor|accessibility|toolTip|SwiftUI)'; } | grep -q . && echo ui
+   ```
+
+   If it prints `ui`, spawn the `hig-reviewer` subagent on `git diff main`.
+   Any `blocker` line: stop, show the findings, and ask before continuing —
+   this PR auto-merges, so there is no later review. `should`/`nit` lines:
+   include them in the step 8 report and carry on. No output from the gate
+   (or no subagent support): skip this step silently.
 
 3. **Branch.** If currently on `main`, create a topic branch named
    `fix/…`, `feature/…`, `ci/…`, or `chore/…` as fits the change (kebab-case,
