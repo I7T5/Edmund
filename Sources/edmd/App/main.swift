@@ -322,6 +322,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "Export as PDF\u{2026}",
                                      action: #selector(Document.exportToPDF(_:))).makeItem())
 
+        fileMenu.addItem(MenuCommand(id: "file.exportHTML", group: "File", title: "Export as HTML\u{2026}",
+                                     action: #selector(Document.exportToHTML(_:))).makeItem())
+
+        fileMenu.addItem(MenuCommand(id: "file.exportSelfContainedMarkdown", group: "File",
+                                     title: "Export Self-contained Markdown\u{2026}",
+                                     action: #selector(Document.exportSelfContainedMarkdown(_:))).makeItem())
+
         fileMenu.addItem(withTitle: "Print\u{2026}",
                          action: #selector(Document.printDocument(_:)),
                          keyEquivalent: "p")

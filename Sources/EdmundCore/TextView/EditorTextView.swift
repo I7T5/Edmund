@@ -32,6 +32,13 @@ public class EditorTextView: NSTextView {
     /// Set by Document.makeWindowControllers(). Not available in unit tests.
     public weak var document: NSDocument?
 
+    /// Save-before-attach hook: pasting/dropping an image into an *unsaved*
+    /// document has no directory to anchor the assets folder to, so the attach
+    /// flow calls this (wired by Document to the standard save panel) and
+    /// proceeds only when the completion reports the document was saved.
+    /// See EditorTextView+ImageAttachments.
+    public var requestSaveForAttachment: ((@escaping (Bool) -> Void) -> Void)?
+
     // MARK: - Find
 
     /// Character ranges of the current search's matches, in raw/display index
@@ -179,10 +186,6 @@ public class EditorTextView: NSTextView {
     /// Coalesces the didChangeText-bypass check scheduled from
     /// shouldChangeText (see EditorTextView+EditFlow).
     var bypassedEditCheckScheduled = false
-    /// Image files dropped on an untitled document, held while the Save sheet
-    /// runs (see EditorTextView+ImageDrop). Only one sheet can be up at a time,
-    /// so a single slot is enough.
-    var pendingDroppedImages: [URL] = []
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0
@@ -810,6 +813,11 @@ public class EditorTextView: NSTextView {
         rebuildLinkDefState()
         blocks = BlockParser.parse(rawSource, features: markdownFeatures)
         recompose(cursorInRaw: 0)
+
+        // Image files, raw bitmaps (screenshots) and web-image URLs attach as
+        // markdown images on drop (see EditorTextView+ImageAttachments).
+        // Additive to the types NSTextView registers for plain text drags.
+        registerForDraggedTypes([.fileURL, .png, .tiff, .URL])
 
         // Vend decoration-drawing layout fragments (TextKit 2).
         textLayoutManager?.delegate = self

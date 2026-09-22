@@ -179,6 +179,13 @@ class Document: NSDocument, HeadingNavigable {
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         AppSettings.applyEditSettings(to: editor)
         editor.document = self
+        // Pasting/dropping an image into an unsaved document triggers the save
+        // flow first — the assets folder is a sibling of the document file, so
+        // there is nowhere to put it until the document has a path.
+        editor.requestSaveForAttachment = { [weak self] completion in
+            guard let self else { completion(false); return }
+            self.saveForAttachment(then: completion)
+        }
         // Following an internal link while in Read mode scrolls the visible web
         // view (the editor is hidden), not the editor itself.
         editor.onReadScrollToLine = { [weak self] line in
@@ -847,6 +854,28 @@ class Document: NSDocument, HeadingNavigable {
 
     // MARK: - Export / Print
 
+    /// Runs the standard save flow (save panel for an untitled document) so an
+    /// image attachment has a document directory to land in, then reports
+    /// whether the document ended up saved. Called via the editor's
+    /// `requestSaveForAttachment` hook.
+    func saveForAttachment(then completion: @escaping (Bool) -> Void) {
+        guard let window = windowControllers.first?.window else { completion(false); return }
+        let panel = NSSavePanel()
+        _ = prepareSavePanel(panel)   // seeds the "Untitled.md" name like a real save
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { completion(false); return }
+            self.save(to: url, ofType: "net.daringfireball.markdown",
+                      for: .saveOperation) { error in
+                if let error {
+                    NSAlert(error: error).runModal()
+                    completion(false)
+                } else {
+                    completion(true)
+                }
+            }
+        }
+    }
+
     @objc func exportToPDF(_ sender: Any?) {
         let name = (displayName as NSString).deletingPathExtension
         MarkdownPrinter.exportPDF(markdown: editor.rawSource,
@@ -856,6 +885,30 @@ class Document: NSDocument, HeadingNavigable {
                                   options: renderOptions,
                                   suggestedName: name.isEmpty ? "Untitled" : name,
                                   window: windowControllers.first?.window)
+    }
+
+    /// File ▸ Export as HTML…: the self-contained themed page Read mode shows
+    /// (images and math inlined), written to a single .html file.
+    @objc func exportToHTML(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        DocumentExporter.exportHTML(markdown: editor.rawSource,
+                                    theme: editor.theme,
+                                    callouts: mergedCallouts,
+                                    baseURL: documentDirectory,
+                                    options: renderOptions,
+                                    suggestedName: name.isEmpty ? "Untitled" : name,
+                                    window: windowControllers.first?.window)
+    }
+
+    /// File ▸ Export Self-contained Markdown…: a share copy with local images
+    /// inlined as data URIs, for handing someone a single .md file.
+    @objc func exportSelfContainedMarkdown(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        DocumentExporter.exportSelfContainedMarkdown(markdown: editor.rawSource,
+                                                     baseURL: documentDirectory,
+                                                     features: AppSettings.markdownFeatures,
+                                                     suggestedName: name.isEmpty ? "Untitled" : name,
+                                                     window: windowControllers.first?.window)
     }
 
     @objc override func printDocument(_ sender: Any?) {

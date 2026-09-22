@@ -320,8 +320,14 @@ extension EditorTextView {
 
             case .image(let destination, let width, let height):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                if !cursorInToken, let overlay = imageOverlay(destination: destination,
-                                                              width: width, height: height) {
+                // A `data:` URI is machine-generated (the self-contained
+                // markdown export) — never hand-edited, and its base64 payload
+                // would fill the screen if shown raw. Always render it (or its
+                // failure placeholder), even with the caret inside the token.
+                let showRaw = cursorInToken
+                    && !destination.lowercased().hasPrefix("data:")
+                if !showRaw, let overlay = imageOverlay(destination: destination,
+                                                        width: width, height: height) {
                     // Rendered: draw the image at the leading character (`!` of
                     // `![alt](path)`, `<` of `<img …>`) and hide the rest of the
                     // source, reserving the line height so the picture has room.
