@@ -108,6 +108,20 @@ struct MermaidSVGFlattenerTests {
         #expect(!out.contains("marker-start"))
     }
 
+    @Test("A <text>'s dy is folded into its y, in both absolute and em units")
+    func foldsBaselineShift() {
+        let out = MermaidSVGFlattener.flatten(svg(body: """
+            <text x="10" y="58.45" font-size="13" dy="4.55">A</text>
+            <text x="20" y="100" font-size="14" dy="0.35em">B</text>
+            <text x="30" y="200">C</text>
+            """))
+        // CoreSVG ignores dy, so it has to land in y or every label rides high.
+        #expect(out.contains(##"<text x="10" y="63" font-size="13">A</text>"##))
+        #expect(out.contains(##"<text x="20" y="104.9" font-size="14">B</text>"##))
+        #expect(out.contains(##"<text x="30" y="200">C</text>"##))
+        #expect(!out.contains("dy="))
+    }
+
     @Test("A document with no markers or colour functions passes through unchanged")
     func passthrough() {
         let plain = svg(body: ##"<rect fill="#FF0000"/>"##)

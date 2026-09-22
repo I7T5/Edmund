@@ -170,6 +170,31 @@ struct MermaidJSIntegrationTests {
         }
     }
 
+    @Test("The library's page margin is cropped off the rendered image")
+    @MainActor func cropsPageMargin() async throws {
+        guard archiveURL != nil else { return }
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mermaid-it-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let renderer = try await loadedRenderer(into: dir)
+
+        let source = "graph TD\n  A[One] --> B[Two]"
+        let svg = try #require(renderer.svg(source: source, style: style))
+        let declared = try #require(svg.range(of: #"viewBox="0 0 ([\d.]+) ([\d.]+)""#,
+                                              options: .regularExpression))
+        let numbers = svg[declared].split(separator: " ").compactMap { Double($0.filter { $0.isNumber || $0 == "." }) }
+        let declaredHeight = try #require(numbers.last)
+
+        let image = try #require(renderer.image(source: source, style: style))
+        // beautiful-mermaid pads its canvas by ~30-50pt a side; Edit mode reads
+        // that as dead space. The crop is measured per image, so this asserts
+        // only that it happened and that it didn't eat the drawing.
+        #expect(image.size.height < declaredHeight - 20)
+        #expect(image.size.height > 0)
+        #expect(inkedPixelFraction(image) > 0.01,
+                "the crop should tighten around the drawing, not remove it")
+    }
+
     /// Fraction of pixels darker than the near-white node fill, in a 1× raster.
     private func inkedPixelFraction(_ image: NSImage) -> Double {
         let w = Int(image.size.width), h = Int(image.size.height)

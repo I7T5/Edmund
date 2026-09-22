@@ -40,17 +40,33 @@ extension EditorTextView {
         let key = String(format: "%@|%@|%.3f|%.3f|%@", style.backgroundHex, style.foregroundHex,
                          size.width, size.height, source) as NSString
         if let cached = mermaidOverlayCache.object(forKey: key) { return cached }
-        let overlay = FragmentOverlay(image: image,
-                                      bounds: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+        // `bounds.minY` is the drawing's bottom relative to the baseline, so
+        // -height hangs the whole picture *below* the anchor's line rather than
+        // above it. That is what keeps the anchor line itself a normal text
+        // line — see `styleMermaidDiagram`.
+        let overlay = FragmentOverlay(
+            image: image,
+            bounds: CGRect(x: 0, y: -size.height, width: size.width, height: size.height))
         mermaidOverlayCache.setObject(overlay, forKey: key)
         return overlay
     }
 
     /// Replaces an inactive mermaid fence with `overlay`: the whole span goes
     /// to the hidden font (its lines collapse to near-zero height, as a
-    /// multi-line `$$` block's inner lines do), the first character carries the
-    /// overlay, and the first line reserves the image's height plus the
-    /// display-math padding, centred.
+    /// multi-line `$$` block's inner lines do) and the first character carries
+    /// the picture, which hangs below that line.
+    ///
+    /// The height is reserved as a decoration's `bottomPad` — which grows the
+    /// *fragment*, keeping the space clickable and the next block clear — and
+    /// deliberately **not** as a tall `minimumLineHeight` the way display math
+    /// does it. A line box as tall as a diagram takes three things with it:
+    /// AppKit draws the caret the full height of the line it lands on (a
+    /// 300 pt bar the moment you click the picture), the line number centres on
+    /// that line's baseline and so sits at the diagram's bottom edge rather
+    /// than beside its first line, and the anchor can only be centred or not at
+    /// all. Keeping the anchor a normal code line and hanging the image off its
+    /// baseline gives a normal caret, a number at the top, and a left edge that
+    /// lines up with the text column.
     func styleMermaidDiagram(_ result: NSMutableAttributedString,
                              span: SyntaxHighlighter.Span,
                              overlay: FragmentOverlay) {
@@ -60,14 +76,38 @@ extension EditorTextView {
         applyOverlay(overlay, anchor: NSRange(location: span.fullRange.location, length: 1), in: result)
 
         let ns = result.string as NSString
-        result.addAttribute(.paragraphStyle, value: displayMathParagraphStyle(padded: false),
-                            range: span.fullRange)
         let firstLine = NSIntersectionRange(
             ns.lineRange(for: NSRange(location: span.fullRange.location, length: 0)), span.fullRange)
-        result.addAttribute(.paragraphStyle,
-                            value: displayMathParagraphStyle(padded: true,
-                                                             imageAscent: overlay.bounds.height,
-                                                             imageDescent: 0),
-                            range: firstLine)
+        guard firstLine.length > 0 else { return }
+
+        let base = (result.attribute(.paragraphStyle, at: span.fullRange.location,
+                                     effectiveRange: nil) as? NSParagraphStyle) ?? bodyParagraphStyle
+        // Every source line collapses to nothing — the picture stands in for
+        // all of them. Each is its own layout fragment, so a line height left
+        // on them would stack up as blank rows (and numbered ones) under the
+        // diagram.
+        let collapsed = (base.mutableCopy() as! NSMutableParagraphStyle)
+        collapsed.minimumLineHeight = 0
+        collapsed.lineSpacing = 0
+        collapsed.paragraphSpacingBefore = 0
+        collapsed.paragraphSpacing = 0
+        result.addAttribute(.paragraphStyle, value: collapsed, range: span.fullRange)
+
+        // …except the anchor's own line, the diagram's top margin and the only
+        // line here with height: it is where the caret and the line number live.
+        let anchor = (collapsed.mutableCopy() as! NSMutableParagraphStyle)
+        anchor.minimumLineHeight = NSLayoutManager().defaultLineHeight(for: codeBlockFont)
+        anchor.paragraphSpacingBefore = base.paragraphSpacingBefore
+        result.addAttribute(.paragraphStyle, value: anchor, range: firstLine)
+
+        // An invisible box: it paints nothing, and exists only so its
+        // `bottomPad` reserves the picture's height inside the fragment.
+        let spacer = BlockDecoration(.box(background: .clear, borderColor: nil,
+                                          borderEdges: [], borderWidth: 0,
+                                          bottomPad: overlay.bounds.height + Self.mermaidBottomGap))
+        result.addAttribute(.blockDecoration, value: spacer, range: firstLine)
     }
+
+    /// Air below the picture, before whatever follows the fence.
+    private static let mermaidBottomGap: CGFloat = 8
 }

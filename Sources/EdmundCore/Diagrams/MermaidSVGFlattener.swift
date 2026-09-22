@@ -11,9 +11,12 @@ import Foundation
 /// 1. CSS custom properties — every colour is `fill="var(--_line)"`.
 /// 2. `color-mix()` — every derived shade is `color-mix(in srgb, var(--fg) 50%, var(--bg))`.
 /// 3. `<marker>` — every arrowhead is `marker-end="url(#arrowhead)"`.
+/// 4. `dy` on `<text>` — the library centres every label in its node by
+///    shifting the baseline down ~0.35em, so ignoring it leaves every label
+///    riding high in its box.
 ///
 /// Everything else CoreSVG needs it already handles: `<style>` class rules,
-/// `<text>`/`text-anchor`/`dy`/`font-weight`, `opacity`, `rx`, `stroke-dasharray`,
+/// `<text>`/`text-anchor`/`font-weight`, `opacity`, `rx`, `stroke-dasharray`,
 /// `transform`. So this is deliberately no more than those three rewrites, and
 /// it takes its inputs from the SVG itself — the `--bg`/`--fg` on the `<svg>`
 /// tag and the `--_x: …` declarations in its `<style>` — rather than a table
@@ -25,7 +28,7 @@ enum MermaidSVGFlattener {
     static func flatten(_ svg: String) -> String {
         let declarations = collectDeclarations(svg)
         let resolved = substituteColorFunctions(in: svg, declarations: declarations)
-        return inlineMarkers(in: resolved)
+        return foldTextBaselineShift(in: inlineMarkers(in: resolved))
     }
 
     // MARK: - Custom properties and color-mix()
@@ -213,6 +216,35 @@ enum MermaidSVGFlattener {
         guard let x1 = Double(attrs["x1"] ?? ""), let y1 = Double(attrs["y1"] ?? ""),
               let x2 = Double(attrs["x2"] ?? ""), let y2 = Double(attrs["y2"] ?? "") else { return nil }
         return [(x1, y1), (x2, y2)]
+    }
+
+    // MARK: - Text baseline shift
+
+    /// Adds each `<text>`'s `dy` into its `y` and drops the attribute. The
+    /// library writes `dy="0.35em"` (or the same shift already multiplied out)
+    /// to sit a label on the optical centre of its node; CoreSVG ignores `dy`
+    /// entirely, which leaves every label a third of a line-height too high.
+    /// Only `<text>` carries one here — no `<tspan>`, no `dx` — so this
+    /// deliberately handles no more than that.
+    private static func foldTextBaselineShift(in svg: String) -> String {
+        replaceMatches(#"<text [^>]*\sdy="[^"]*"[^>]*>"#, in: svg) { tag in
+            let attrs = attributes(tag)
+            guard let y = Double(attrs["y"] ?? ""), let raw = attrs["dy"] else { return tag }
+            let shift: Double
+            if raw.hasSuffix("em") {
+                // em resolves against this element's own font-size; the library
+                // always sets one on the same tag. 16 is the SVG default.
+                let fontSize = Double(attrs["font-size"] ?? "") ?? 16
+                shift = (Double(raw.dropLast(2)) ?? 0) * fontSize
+            } else {
+                shift = Double(raw) ?? 0
+            }
+            return tag
+                .replacingOccurrences(of: #"\sdy="[^"]*""#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"\sy="[^"]*""#,
+                                      with: String(format: " y=\"%g\"", y + shift),
+                                      options: .regularExpression)
+        }
     }
 
     // MARK: - Small helpers

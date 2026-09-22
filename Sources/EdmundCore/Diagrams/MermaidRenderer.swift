@@ -175,13 +175,71 @@ public final class MermaidRenderer {
         guard let svg = svg(source: source, style: style) else { return nil }
         let key = svg as NSString
         if let hit = imageCache.object(forKey: key) { return hit }
-        guard let image = NSImage(data: Data(MermaidSVGFlattener.flatten(svg).utf8)),
-              image.size.width > 0, image.size.height > 0 else {
+        guard let decoded = NSImage(data: Data(MermaidSVGFlattener.flatten(svg).utf8)),
+              decoded.size.width > 0, decoded.size.height > 0 else {
             Log.error("Mermaid: CoreSVG could not decode a flattened diagram")
             return nil
         }
+        let image = Self.trimmingTransparentMargin(decoded)
         imageCache.setObject(image, forKey: key)
         return image
+    }
+
+    /// Crops the library's own page margin off a decoded diagram.
+    ///
+    /// beautiful-mermaid pads its canvas — 29 to 53 pt depending on the diagram
+    /// type and the side — which Read mode wants (the SVG is a block in a web
+    /// page) and Edit mode does not: there it lands as a slab of dead space
+    /// above and below the picture, and holds the drawing off the text's left
+    /// edge. The padding is *measured*, not assumed: it differs per side and
+    /// per diagram type, so a constant would clip one of them.
+    ///
+    /// CoreSVG ignores the SVG's CSS `background`, so the margin is genuinely
+    /// transparent and the alpha channel is the whole test. The crop is
+    /// re-drawn through a handler rather than captured as a bitmap, so the
+    /// result stays resolution-independent.
+    private static func trimmingTransparentMargin(_ image: NSImage) -> NSImage {
+        let w = Int(image.size.width.rounded()), h = Int(image.size.height.rounded())
+        guard w > 0, h > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return image }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        image.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
+        NSGraphicsContext.restoreGraphicsState()
+        guard let pixels = rep.bitmapData else { return image }
+
+        let rowBytes = rep.bytesPerRow, pixelBytes = rep.bitsPerPixel / 8
+        var minX = w, maxX = -1, minY = h, maxY = -1
+        for y in 0..<h {
+            let row = pixels + y * rowBytes
+            for x in 0..<w where row[x * pixelBytes + 3] > 8 {   // alpha, ignoring near-nothing
+                if x < minX { minX = x }
+                if x > maxX { maxX = x }
+                if y < minY { minY = y }
+                maxY = y
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return image }   // nothing drawn: leave it alone
+
+        // One point of air so an antialiased edge can't be shaved.
+        let box = CGRect(x: max(0, minX - 1), y: max(0, minY - 1),
+                         width: min(w, maxX + 2) - max(0, minX - 1),
+                         height: min(h, maxY + 2) - max(0, minY - 1))
+        guard box.width < image.size.width || box.height < image.size.height else { return image }
+
+        // The raster's y runs top-down; NSImage's drawing space is bottom-up.
+        let bottomInset = image.size.height - box.maxY
+        let cropped = NSImage(size: box.size, flipped: false) { rect in
+            image.draw(in: CGRect(x: rect.minX - box.minX, y: rect.minY - bottomInset,
+                                  width: image.size.width, height: image.size.height))
+            return true
+        }
+        cropped.cacheMode = .never   // re-rasterize at the screen's scale, like other overlays
+        return cropped
     }
 
     /// Read mode's page promises to reach the network for nothing and to run

@@ -66,11 +66,27 @@ struct MermaidEditModeTests {
             #expect(isHidden(at: 1, in: styled))
             #expect(isHidden(at: 11, in: styled))
             #expect(isHidden(at: (fence as NSString).length - 1, in: styled))
-            // The first line reserves the image's height; no code box.
-            let ps = styled.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-            #expect(ps?.minimumLineHeight == overlay?.bounds.height)
-            #expect(ps?.alignment == .center)
-            #expect(styled.attribute(.blockDecoration, at: 0, effectiveRange: nil) == nil)
+            // The picture hangs below the anchor's baseline, and the anchor
+            // line keeps an ordinary code-line height — that is what keeps the
+            // caret and the line number the size and place they'd be on any
+            // other line (a line box as tall as the diagram takes both with it).
+            #expect(overlay?.bounds.minY == -(overlay?.bounds.height ?? 0))
+            let ps = try #require(styled.attribute(.paragraphStyle, at: 0,
+                                                   effectiveRange: nil) as? NSParagraphStyle)
+            let normalLine = NSLayoutManager().defaultLineHeight(for: editor.codeBlockFont)
+            #expect(ps.minimumLineHeight == normalLine)
+            #expect(ps.minimumLineHeight < image.size.height)
+
+            // Its height is reserved as fragment padding instead, so the space
+            // is clickable and the next block tiles clear of it.
+            let deco = try #require(styled.attribute(.blockDecoration, at: 0,
+                                                     effectiveRange: nil) as? BlockDecoration)
+            guard case .box(let background, _, let edges, let borderWidth, let bottomPad) = deco.kind
+            else { Issue.record("expected a box decoration"); return }
+            #expect(bottomPad > image.size.height)   // the picture, plus a little air
+            #expect(background == .clear)            // …and it paints nothing
+            #expect(edges.isEmpty)
+            #expect(borderWidth == 0)
         }
     }
 
