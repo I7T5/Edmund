@@ -255,7 +255,7 @@ first without being asked for that specific edit.
 | --- | --- | --- |
 | **Maintainer's voice — don't edit unasked** | `README.md`, `misc/backlog.md`, and any other user-facing or personal prose (blog drafts, marketing copy, `test-files/todo.md`) | Nothing. Report what you'd change and let the maintainer decide. |
 | **Engineering record — edit freely** | `docs/ARCHITECTURE.md`, `docs/architecture/**`, `docs/investigations/**`, `docs/dev-guides/**`, `.claude/skills/**`, code comments | Write, restructure, correct. The same-PR rule (§2) *requires* it. |
-| **Release notes — only with approval** | `docs/CHANGELOG.md` | Only through `/release`: ask for the maintainer's wording, ask before each change you'd make and say why, then write exactly what they approved. The changelog guard hook makes every edit ask them to confirm; shell writes are blocked. |
+| **Release notes — only with approval** | `docs/CHANGELOG.md` | Only through `/release`: ask for the maintainer's wording, ask before each change you'd make and say why, then write exactly what they approved. The changelog guard hook denies any edit unless the maintainer's latest message is a `/release` invocation, and even then asks them to confirm; shell writes are always blocked. |
 | **Mixed** | `docs/ROADMAP.md` | Add the mechanical entry — a ticked `- [x]` box, a `Last updated:` bump. Leave the surrounding wording and the maintainer's priority ordering alone. |
 
 `misc/` is the exception in the other direction: **creating** a new file

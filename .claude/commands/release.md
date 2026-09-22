@@ -40,8 +40,10 @@ notes. Report the script's output verbatim, then:
      unless they approve the fix.
   4. **Write only what they approved** into `docs/CHANGELOG.md` with the Edit
      tool, above the previous release's section. The changelog guard hook
-     makes that edit ask them to confirm the diff; shell writes to the file
-     are blocked.
+     allows the edit only while the maintainer's latest message is this
+     `/release` invocation, and makes it ask them to confirm the diff; shell
+     writes to the file are always blocked. A message from them mid-run
+     re-locks it — ask them to run `/release` again.
   5. **Re-run the script** and carry on as for "section present".
 
 Publishing is a separate, deliberate step: `./scripts/release.sh` builds, signs
