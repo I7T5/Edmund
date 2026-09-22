@@ -164,6 +164,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         settingsWindowController?.window?.makeKeyAndOrderFront(nil)
     }
 
+    /// Help ▸ Keyboard Shortcuts: Settings, opened on the Key Bindings pane.
+    @MainActor @objc func showKeyBindings(_ sender: Any?) {
+        showSettings(sender)
+        settingsWindowController?.selectPane(label: "Key Bindings")
+    }
+
     // MARK: - View
 
     /// Toggles typewriter scrolling, persists the choice, and applies it to every
@@ -485,6 +491,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let windowMenuItem = WindowMenu.build()
         mainMenu.addItem(windowMenuItem)
         NSApplication.shared.windowsMenu = windowMenuItem.submenu
+
+        // Help menu — built in its own file (HelpMenu.swift). Assigning
+        // `helpMenu` gets AppKit's menu-search field at the top.
+        let helpMenuItem = HelpMenu.build()
+        mainMenu.addItem(helpMenuItem)
+        NSApplication.shared.helpMenu = helpMenuItem.submenu
 
         NSApplication.shared.mainMenu = mainMenu
     }

@@ -23,6 +23,13 @@ final class SettingsWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         self.init(window: window)
     }
+
+    /// Selects the pane with the given toolbar label (e.g. "Key Bindings").
+    func selectPane(label: String) {
+        guard let tabs = contentViewController as? NSTabViewController,
+              let index = tabs.tabViewItems.firstIndex(where: { $0.label == label }) else { return }
+        tabs.selectedTabViewItemIndex = index
+    }
 }
 
 /// Hosts the Settings panes as toolbar tabs and animates the window resize on
