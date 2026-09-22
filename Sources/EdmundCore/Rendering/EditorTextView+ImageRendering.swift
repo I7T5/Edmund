@@ -112,6 +112,12 @@ extension EditorTextView {
             guard allowRemoteImages else { return .blocked(.blockedBySetting) }
             return loadRemoteImage(dest)
         }
+        // Already-inlined `data:` URIs (the self-contained markdown export
+        // emits these): decode locally, no I/O. Anything else with a scheme
+        // (`file:` handled below; other schemes) resolves to nil → notFound.
+        if dest.lowercased().hasPrefix("data:") {
+            return loadDataURI(dest)
+        }
         guard let url = resolveImageURL(dest) else { return .blocked(.notFound) }
         let key = url.path
         if let cached = imageCache[key] { return .image(cached) }
@@ -127,6 +133,39 @@ extension EditorTextView {
         guard let image = NSImage(contentsOf: url) else { return .blocked(.notAnImage) }
         imageCache[key] = image
         return .image(image)
+    }
+
+    /// Decodes an already-inlined `data:` URI, caching by a digest of the
+    /// (potentially megabyte-long) string so the restyled block doesn't hold a
+    /// second copy of the payload as a dictionary key and doesn't re-decode on
+    /// every recompose. Non-base64 or undecodable payloads are "Not an image".
+    private func loadDataURI(_ dest: String) -> ImageDisplay {
+        let key = Self.dataURIKey(dest)
+        if let cached = imageCache[key] { return .image(cached) }
+        guard let data = Self.decodeBase64DataURI(dest), let image = NSImage(data: data) else {
+            return .blocked(.notAnImage)
+        }
+        imageCache[key] = image
+        return .image(image)
+    }
+
+    /// A short, stable cache key for a `data:` URI: byte count + FNV-1a hash.
+    /// Full string as key would keep a second copy of a multi-megabyte payload.
+    static func dataURIKey(_ s: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in s.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100000001b3 }
+        return "data:\(s.utf8.count):\(String(hash, radix: 16))"
+    }
+
+    /// The raw bytes of a `data:...;base64,<payload>` URI. Only base64 is
+    /// supported — that is what every inliner here (export, clipboard) writes;
+    /// percent-encoded non-base64 data URIs stay "Not an image".
+    static func decodeBase64DataURI(_ dest: String) -> Data? {
+        guard dest.lowercased().hasPrefix("data:") else { return nil }
+        guard let comma = dest.firstIndex(of: ",") else { return nil }
+        let header = dest[dest.index(after: dest.startIndex)..<comma]
+        guard header.lowercased().hasSuffix(";base64") else { return nil }
+        return Data(base64Encoded: String(dest[dest.index(after: comma)...]))
     }
 
     /// Returns the cached/decoded outcome for a remote `urlString`; otherwise
@@ -165,13 +204,17 @@ extension EditorTextView {
         if let url = URL(string: dest), let scheme = url.scheme {
             return scheme == "file" ? url : nil
         }
-        if dest.hasPrefix("/") { return URL(fileURLWithPath: dest) }
-        if dest.hasPrefix("~") {
-            return URL(fileURLWithPath: (dest as NSString).expandingTildeInPath)
+        // A markdown destination may be percent-encoded (`%20`, or a non-ASCII
+        // assets-folder name written by `imageDestination(for:)`) — decode
+        // before treating it as a path, mirroring LocalImageInlining.resolve.
+        let decoded = dest.removingPercentEncoding ?? dest
+        if decoded.hasPrefix("/") { return URL(fileURLWithPath: decoded) }
+        if decoded.hasPrefix("~") {
+            return URL(fileURLWithPath: (decoded as NSString).expandingTildeInPath)
         }
         // Relative to the document's directory.
         if let docDir = document?.fileURL?.deletingLastPathComponent() {
-            return docDir.appendingPathComponent(dest)
+            return docDir.appendingPathComponent(decoded)
         }
         return nil
     }

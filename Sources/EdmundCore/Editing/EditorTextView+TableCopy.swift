@@ -24,6 +24,9 @@ extension EditorTextView {
     /// reads nothing like the ones this editor writes. Only the delimiters are
     /// touched; the pasted text itself is never reflowed.
     public override func paste(_ sender: Any?) {
+        // Image content (files, bitmaps, web URLs) attaches as markdown first;
+        // see EditorTextView+ImageAttachments.
+        if handleImagePasteboard(NSPasteboard.general, at: nil, linkOnly: false) { return }
         // A list pasted into a list is rewritten first; see EditorTextView+ListPaste.
         if let adjusted = listAdjustedPasteText() {
             insertText(adjusted, replacementRange: selectedRange())

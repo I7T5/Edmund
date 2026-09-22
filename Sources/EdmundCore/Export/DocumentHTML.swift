@@ -190,20 +190,19 @@ enum DocumentHTML {
                 return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\"\(dims)>"
             }
             // Local: resolve against the document directory, read, inline.
-            guard let fileURL = resolveLocalImage(src, baseURL: baseURL) else {
+            // `LocalImageInlining.resolve`'s absolute/`~` branches don't check
+            // existence (only the relative-path branch does), so a missing file
+            // and an undecodable one would otherwise fail `dataURI` identically
+            // — check existence first so the two get distinct, accurate
+            // messages.
+            guard let fileURL = LocalImageInlining.resolve(src, baseURL: baseURL),
+                  FileManager.default.fileExists(atPath: fileURL.path) else {
                 return blockedImagePlaceholder(reason:.notFound)
             }
             if let cached = cache[fileURL.path] {
                 return "<img class=\"md-image\" src=\"\(cached)\" alt=\"\(alt)\"\(dims)>"
             }
-            // `resolveLocalImage`'s absolute/`~` branches don't check existence
-            // (only the relative-path branch does), so a missing file and an
-            // undecodable one would otherwise fail `imageDataURI` identically —
-            // check existence first so the two get distinct, accurate messages.
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                return blockedImagePlaceholder(reason:.notFound)
-            }
-            guard let uri = imageDataURI(fileURL) else {
+            guard let uri = LocalImageInlining.dataURI(fileURL) else {
                 return blockedImagePlaceholder(reason:.notAnImage)
             }
             cache[fileURL.path] = uri
@@ -216,41 +215,6 @@ enum DocumentHTML {
     private static func blockedImagePlaceholder(reason: ImageLoadFailure) -> String {
         let icon = LucideIcons.inlineSVG("image-off") ?? ""
         return "<span class=\"md-image-blocked\">\(icon)<span>\(reason.label)</span></span>"
-    }
-
-    /// Resolves a local image `path` to a file URL: absolute / `~` / `file:`
-    /// load directly; a relative path resolves against the document's directory.
-    private static func resolveLocalImage(_ path: String, baseURL: URL?) -> URL? {
-        if let url = URL(string: path), url.scheme == "file" { return url }
-        // A markdown image destination may be percent-encoded (e.g. `%20`).
-        let decoded = path.removingPercentEncoding ?? path
-        if decoded.hasPrefix("/") { return URL(fileURLWithPath: decoded) }
-        if decoded.hasPrefix("~") { return URL(fileURLWithPath: (decoded as NSString).expandingTildeInPath) }
-        guard let baseURL else { return nil }
-        let resolved = baseURL.appendingPathComponent(decoded)
-        return FileManager.default.fileExists(atPath: resolved.path) ? resolved : nil
-    }
-
-    /// Reads an image file and returns a `data:` URI, with the MIME type guessed
-    /// from the file extension (covers the common web image formats). Decodes
-    /// the bytes first (discarding the result) so a file that merely has an
-    /// image extension but isn't actually image data is caught here — as
-    /// "Not an image" — rather than silently inlining garbage the browser
-    /// then fails to render with no explanation.
-    private static func imageDataURI(_ url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url), NSImage(data: data) != nil else { return nil }
-        let mime: String
-        switch url.pathExtension.lowercased() {
-        case "png":          mime = "image/png"
-        case "jpg", "jpeg":  mime = "image/jpeg"
-        case "gif":          mime = "image/gif"
-        case "svg":          mime = "image/svg+xml"
-        case "webp":         mime = "image/webp"
-        case "bmp":          mime = "image/bmp"
-        case "tiff", "tif":  mime = "image/tiff"
-        default:             mime = "application/octet-stream"
-        }
-        return "data:\(mime);base64,\(data.base64EncodedString())"
     }
 
     // MARK: Bitmap / escaping helpers
