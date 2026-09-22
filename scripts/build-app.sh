@@ -57,6 +57,30 @@ cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
 # container (see the plist). Copied for every variant; inert unsandboxed.
 cp Resources/container-migration.plist "${BUNDLE}/Contents/Resources/"
 
+# Help ▸ Acknowledgments opens this page, the way Safari does its own:
+# contributors, then every third-party license in LICENSES/.
+{
+    cat <<'HTML'
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Edmund Acknowledgments</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 13px -apple-system, sans-serif; max-width: 46em; margin: 2em auto; padding: 0 1em; }
+pre { white-space: pre-wrap; font-size: 11px; }
+</style></head><body>
+<h1>Acknowledgments</h1>
+<h2>Contributors</h2>
+<p>Edmund is made by <a href="https://github.com/I7T5/Edmund/graphs/contributors">its contributors on GitHub</a>. Thank you.</p>
+HTML
+    for license in LICENSES/*.txt; do
+        echo "<h2>$(basename "$license" .txt)</h2>"
+        echo "<pre>"
+        sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$license"
+        echo "</pre>"
+    done
+    echo "</body></html>"
+} > "${BUNDLE}/Contents/Resources/Acknowledgments.html"
+
 # Compile the asset catalog so the app's AccentColor (our brown) is available.
 # macOS uses it only when the user's system accent is "Multicolor"; a specific
 # system accent still wins, which is the behavior we want.
