@@ -304,7 +304,7 @@ stale-build / screencapture mechanics: `edmund-build-and-env`.
 - **No server.** After a crash, MetricKit hands the next launch a payload;
   Edmund asks, and on **Report on GitHub…** opens a prefilled issue (label
   `bug`, versions, exception/signal, ≤12 frames) with the full payload JSON on
-  the user's clipboard to paste. Off switch: Settings ▸ Advanced ▸ "Offer to
+  the user's clipboard to paste. Off switch: Settings ▸ Advanced ▸ "Ask to
   report crashes on GitHub". Code: `Sources/EdmundCore/Diagnostics/CrashReporter.swift`.
 - **Triage**: frames read `binary +0xoffset (UUID)`. Download the release's
   `edmd-<version>.dSYM.zip`, check `dwarfdump --uuid edmd.dSYM` matches the

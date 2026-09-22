@@ -146,9 +146,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard AppSettings.offerCrashReports, let url = report.issueURL() else { return }
         let alert = NSAlert()
         alert.messageText = "Edmund quit unexpectedly."
-        alert.informativeText = "Report it on GitHub to help fix it. The report has version numbers and code addresses only — no documents or file names."
+        alert.informativeText = "Report it on GitHub to help fix it. The crash details, with no documents or file names, will be copied to your clipboard."
         alert.addButton(withTitle: "Report on GitHub…")
-        alert.addButton(withTitle: "Not Now")
+        alert.addButton(withTitle: "Ignore")
         alert.showsSuppressionButton = true
         let response = alert.runModal()
         if alert.suppressionButton?.state == .on { AppSettings.offerCrashReports = false }

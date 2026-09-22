@@ -100,15 +100,7 @@ struct AdvancedSettingsView: View {
             GridRow {
                 Text("Crash reports:")
                     .gridColumnAlignment(.trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Offer to report crashes on GitHub", isOn: $offerCrashReports)
-                    Text("Edmund asks after a crash. Nothing is sent unless you file the issue.")
-                        .foregroundStyle(.secondary)
-                        .controlSize(.small)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 380, alignment: .leading)
-                        .padding(.leading, 20)
-                }
+                Toggle("Ask to report crashes on GitHub", isOn: $offerCrashReports)
             }
         }
         .settingsPanePadding()

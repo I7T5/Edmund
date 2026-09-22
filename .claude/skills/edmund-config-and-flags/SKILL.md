@@ -47,7 +47,7 @@ Swift name) is what you pass as a launch arg.
 | `sourceMode` | `settings.view.sourceMode` | When on, **Source replaces Edit** in the ⌘E toggle; honored on open |
 | `showFormatBar` | `settings.edit.showFormatBar` | **Show the format bar** (View ▸ Show Format Bar, no shortcut; default on, off in Reading mode) |
 | `verboseEditorDiagnostics` | `settings.advanced.verboseEditorDiagnostics` | **Verbose editor trace** (see §4; pairs with diagnosticLogging) |
-| `offerCrashReports` | `settings.advanced.offerCrashReports` | **Offer to report crashes on GitHub** (default on; the alert's "Don't ask again" clears it) |
+| `offerCrashReports` | `settings.advanced.offerCrashReports` | **Ask to report crashes on GitHub** (default on; the alert's "Don't ask again" clears it) |
 | `lastWindowHeight` | `settings.window.lastHeight` | Persisted window sizing (see the frame-not-content trap) |
 | `automaticallyChecksForUpdates` | `SUAutomaticallyChecksForUpdates` | Sparkle's own key (not namespaced) |
 | `EditorTheme.Keys.fontCascade` | `EditorFontCascade` | Per-script font cascade: `[script: family]` dict (Settings ▸ Appearance ▸ Fonts by script). Scripts: han, kana, hangul, cyrillic, greek, arabic, hebrew, thai, emoji; absent/uninstalled ⇒ system fallback. Lives in `EditorTheme.swift`, **not** `AppSettings` |

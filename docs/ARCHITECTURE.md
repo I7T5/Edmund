@@ -533,7 +533,7 @@ Notable subsystems:
   next launch; `CrashReport.parse` turns the payload JSON into versions,
   exception/signal and the attributed thread's frames (`binary +0xoffset
   (UUID)`, innermost first). `AppDelegate.offerCrashReport` shows "Edmund
-  quit unexpectedly." with **Report on GitHub…** / **Not Now** / Don't ask
+  quit unexpectedly." with **Report on GitHub…** / **Ignore** / Don't ask
   again; Report opens a prefilled `issues/new` URL (label `bug`, ≤12 frames)
   and puts the full JSON on the clipboard. Gated by
   `AppSettings.offerCrashReports` (default on; Settings ▸ Advanced). Payloads
