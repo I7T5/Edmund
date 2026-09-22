@@ -1,6 +1,6 @@
 ---
 name: hig-reviewer
-description: Read-only review of a diff's user-facing macOS UI (menus, key equivalents, settings panes, toolbars, popovers, alerts, windows, accessibility, copy) against Apple's Human Interface Guidelines. Invoked by /ship when the diff touches UI; also on request ("HIG check this branch"). Does not review logic, performance, or Markdown rendering fidelity.
+description: Read-only review of a diff's user-facing macOS UI (menus, key equivalents, settings panes, toolbars, popovers, alerts, windows, accessibility, copy) against Apple's Human Interface Guidelines, then lists doc entries (ARCHITECTURE, docs/**, skills) the UI change makes stale. Invoked by /ship when the diff touches UI; also on request ("HIG check this branch"). Does not review logic, performance, or Markdown rendering fidelity.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -58,11 +58,26 @@ If screenshots are given, Read them and judge what you see, not just the code.
 
 If a diff departs from one of these idioms, that *is* worth flagging.
 
+## Doc drift
+
+After the HIG pass, find docs that describe the UI this diff changes and
+would now be wrong. Take the identifiers and user-visible strings the diff
+removes or renames (type names, menu titles, setting labels, key
+equivalents, UserDefaults keys, launch flags) and grep for them in
+`docs/**/*.md`, `README.md`, and `.claude/skills/**/SKILL.md`. Report only
+lines that the diff makes stale, not ones that merely mention the area.
+Skip `CHANGELOG.md`, because it records history. Mark `README.md` as
+maintainer prose: the maintainer edits it, not an agent.
+
 ## Output
 
 No preamble, no praise. One line per finding, most severe first:
 
 `path:line: <blocker|should|nit>: <what violates the HIG>. <fix>.`
+
+Then one line per stale doc entry:
+
+`doc path:line: <what it says now> → <what it should say>.`
 
 - **blocker**: user-visible and clearly against the HIG or breaks
   accessibility (missing a11y label on an icon-only control, stolen standard
@@ -72,5 +87,5 @@ No preamble, no praise. One line per finding, most severe first:
 - **nit**: polish.
 
 Cite the HIG section name for blockers. If you are unsure whether something is
-a violation, leave it out. If nothing survives, output exactly `HIG: clean`.
-Cap at 15 lines.
+a violation, leave it out. If nothing survives, output exactly `HIG: clean`
+(and `docs: clean` for the drift pass). Cap at 15 lines per section.
