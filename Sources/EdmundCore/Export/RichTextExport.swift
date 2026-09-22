@@ -2,7 +2,7 @@ import AppKit
 
 // MARK: - RichTextExport
 //
-// File ▸ Export To ▸ Rich Text…: Read mode's page through AppKit's own HTML
+// File ▸ Export To ▸ Rich Text Format…: Read mode's page through AppKit's own HTML
 // importer — the conversion TextEdit uses — so headings, emphasis, lists,
 // tables, quotes and colored code arrive as real word-processor formatting.
 // `DocumentHTML.full(forAttributedString:)` shapes the page first (stand-ins

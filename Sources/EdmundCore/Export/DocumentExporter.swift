@@ -3,16 +3,16 @@ import UniformTypeIdentifiers
 
 // MARK: - DocumentExporter
 //
-// File ▸ Export To ▸ … (PDF/Print live in `MarkdownPrinter`):
+// File ▸ Export To ▸ … (PDF, the first item, lives in `MarkdownPrinter`):
+//   - HTML — the same self-contained themed document Read mode renders.
+//   - Plain Text — the words without the Markdown syntax (`PlainTextExport`).
+//   - Rich Text Format — RTF, or RTFD when it has pictures (`RichTextExport`).
 //   - Markdown with Embedded Images — a share copy with local images inlined
 //     as base64 data URIs (see `SelfContainedMarkdown`), for handing someone a
 //     single .md file that still shows its pictures. GitHub strips `data:`
 //     image URIs, so this is for direct sharing, not for pushing to a repo —
 //     the working document's relative paths + assets folder are the right form
 //     there.
-//   - HTML — the same self-contained themed document Read mode renders.
-//   - Rich Text — RTF, or RTFD when it has pictures (see `RichTextExport`).
-//   - Plain Text — the words without the Markdown syntax (`PlainTextExport`).
 //
 // The output is built only after the save panel is confirmed, so a cancelled
 // export never pays the render cost — except Rich Text's page, which decides

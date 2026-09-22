@@ -341,15 +341,15 @@ Notable subsystems:
   private `_inspector`, and closes it when already up; entering Edit always
   hides it. The read view's context menu carries the same item as "Inspect
   Element", with WebKit's own duplicate removed.
-  **Export as PDF… / Print… (⌘P)** run the same HTML through
+  **Export To ▸ PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
   high-DPI PNG). The PDF is named after the document minus its extension —
   Print via `NSPrintOperation.jobTitle`, since the page has no `<title>`.
-  **File ▸ Export To ▸** holds the conversions, ordered by how much of the
-  document survives: Markdown with Embedded Images, HTML, Rich Text (RTF,
-  or RTFD with pictures), Plain Text. PDF stays beside Print. Rich Text is
-  the HTML through AppKit's importer; Plain Text is built from the source.
-  Full spec: `docs/architecture/reader-and-export.md`.
+  **File ▸ Export To ▸** follows Pages' Export To: PDF, HTML, Plain Text,
+  Rich Text Format (RTF, or RTFD with pictures), Markdown with Embedded
+  Images — shared formats in Pages' order, the app's own format last. Rich
+  Text is the HTML through AppKit's importer; Plain Text is built from the
+  source. Full spec: `docs/architecture/reader-and-export.md`.
 - **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
   `NSTextFinder` — it renders the system bar rather than the Notes look, and
   its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire

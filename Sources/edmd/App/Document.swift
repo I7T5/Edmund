@@ -911,7 +911,7 @@ class Document: NSDocument, HeadingNavigable {
                                                      window: windowControllers.first?.window)
     }
 
-    /// File ▸ Export To ▸ Rich Text…: RTF, or RTFD when the document has pictures.
+    /// File ▸ Export To ▸ Rich Text Format…: RTF, or RTFD when the document has pictures.
     @objc func exportToRichText(_ sender: Any?) {
         let name = (displayName as NSString).deletingPathExtension
         DocumentExporter.exportRichText(markdown: editor.rawSource,
