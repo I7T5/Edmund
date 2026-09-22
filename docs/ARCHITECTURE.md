@@ -349,7 +349,10 @@ Notable subsystems:
   Rich Text Format (RTF, or RTFD with pictures), Markdown with Embedded
   Images — shared formats in Pages' order, the app's own format last. Rich
   Text is the HTML through AppKit's importer; Plain Text is built from the
-  source. Full spec: `docs/architecture/reader-and-export.md`.
+  source. **Edit ▸ Copy As ▸ Plain Text / Rich Text** puts the same
+  conversions of the selection on the clipboard (Rich Text as one item with
+  RTF(D), HTML and plain-text forms); greyed out without a selection or
+  outside the editor. Full spec: `docs/architecture/reader-and-export.md`.
 - **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
   `NSTextFinder` — it renders the system bar rather than the Notes look, and
   its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire

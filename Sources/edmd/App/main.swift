@@ -276,6 +276,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// EPUB's slot (EPUB is packaged HTML, for reading elsewhere), and the
     /// app's own format comes last. The ids predate the submenu and are kept,
     /// so a rebound shortcut survives the move.
+    /// Edit ▸ Copy As, Plain Text first. "Rich Text", not Export To's "Rich
+    /// Text Format": the clipboard gets RTF *and* HTML, so it names the kind
+    /// of text rather than one format.
+    @MainActor private static let copyAsCommands: [MenuCommand] = [
+        MenuCommand(id: "edit.copyAsPlainText", group: "Edit", submenu: "Copy As", title: "Plain Text",
+                    action: #selector(Document.copyAsPlainText(_:))),
+        MenuCommand(id: "edit.copyAsRichText", group: "Edit", submenu: "Copy As", title: "Rich Text",
+                    action: #selector(Document.copyAsRichText(_:))),
+    ]
+
     @MainActor private static let exportCommands: [MenuCommand] = [
         MenuCommand(id: "file.exportPDF", group: "File", submenu: "Export To", title: "PDF\u{2026}",
                     action: #selector(Document.exportToPDF(_:))),
@@ -407,6 +417,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenu.addItem(withTitle: "Copy",
                          action: #selector(NSText.copy(_:)),
                          keyEquivalent: "c")
+
+        // Copy As ▸ — the selection converted, where Copy gives raw Markdown.
+        // No ellipsis: the items act at once. Greyed out with nothing selected
+        // (Document.validateMenuItem).
+        let copyAsMenu = NSMenu(title: "Copy As")
+        for command in Self.copyAsCommands { copyAsMenu.addItem(command.makeItem()) }
+        let copyAsItem = NSMenuItem(title: "Copy As", action: nil, keyEquivalent: "")
+        copyAsItem.submenu = copyAsMenu
+        editMenu.addItem(copyAsItem)
 
         editMenu.addItem(withTitle: "Paste",
                          action: #selector(NSText.paste(_:)),

@@ -89,6 +89,44 @@ public enum DocumentExporter {
         }
     }
 
+    // MARK: Copy As (Edit ▸ Copy As ▸)
+    //
+    // The same conversions as Plain Text / Rich Text Format export, applied to
+    // the editor's selection and put on the clipboard instead of in a file.
+    // ponytail: the selection is converted on its own, so a reference link
+    // whose `[label]: url` sits outside it stays unresolved; pass the
+    // document's link definitions through if that matters.
+
+    /// Puts `markdown` (the selection) on `pasteboard` as plain text.
+    public static func copyPlainText(markdown: String, features: MarkdownFeatures = .all,
+                                     to pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        pasteboard.setString(clipboardPlainText(markdown, features: features), forType: .string)
+    }
+
+    /// Puts `markdown` (the selection) on `pasteboard` as rich text, with HTML
+    /// and plain-text forms alongside (see `RichTextExport.pasteboardItem`).
+    public static func copyRichText(markdown: String,
+                                    theme: EditorTheme,
+                                    callouts: [String: CalloutStyle],
+                                    baseURL: URL? = nil,
+                                    options: ReadRenderOptions = .default,
+                                    to pasteboard: NSPasteboard = .general) throws {
+        let html = RichTextExport.html(markdown: markdown, theme: theme, callouts: callouts,
+                                       baseURL: baseURL, options: options)
+        let item = try RichTextExport.pasteboardItem(
+            html: html, plainText: clipboardPlainText(markdown, features: options.features))
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+    }
+
+    /// The plain-text export minus its final newline: a copied fragment is
+    /// usually pasted into the middle of other text.
+    private static func clipboardPlainText(_ markdown: String, features: MarkdownFeatures) -> String {
+        let text = PlainTextExport.text(markdown: markdown, features: features)
+        return text.hasSuffix("\n") ? String(text.dropLast()) : text
+    }
+
     /// Runs the save panel (as a sheet when `window` is given, matching the
     /// PDF export) and hands the chosen URL to `write`. A write failure is
     /// reported with a standard error alert.

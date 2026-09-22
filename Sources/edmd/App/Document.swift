@@ -932,6 +932,32 @@ class Document: NSDocument, HeadingNavigable {
                                          window: windowControllers.first?.window)
     }
 
+    // MARK: - Copy As
+
+    /// Edit ▸ Copy As ▸ Plain Text: the selection without its Markdown syntax.
+    @objc func copyAsPlainText(_ sender: Any?) {
+        DocumentExporter.copyPlainText(markdown: selectedMarkdown, features: AppSettings.markdownFeatures)
+    }
+
+    /// Edit ▸ Copy As ▸ Rich Text: the selection formatted, for pasting into
+    /// Mail, Pages, Word or a browser.
+    @objc func copyAsRichText(_ sender: Any?) {
+        do {
+            try DocumentExporter.copyRichText(markdown: selectedMarkdown, theme: editor.theme,
+                                              callouts: mergedCallouts, baseURL: documentDirectory,
+                                              options: renderOptions)
+        } catch {
+            Log.error("Copy as Rich Text failed: \(error.localizedDescription)", category: .io)
+            NSSound.beep()
+        }
+    }
+
+    /// The editor's selection as Markdown. Storage is the raw source, so the
+    /// selected range indexes `rawSource` directly.
+    private var selectedMarkdown: String {
+        (editor.rawSource as NSString).substring(with: editor.selectedRange())
+    }
+
     @objc override func printDocument(_ sender: Any?) {
         let name = (displayName as NSString).deletingPathExtension
         MarkdownPrinter.print(markdown: editor.rawSource,
@@ -1072,6 +1098,11 @@ class Document: NSDocument, HeadingNavigable {
             item.state = AppSettings.autoHideToolbar ? .on : .off
             // Nothing to auto-hide with the toolbar switched off entirely.
             return AppSettings.showToolbar
+        }
+        if item.action == #selector(copyAsPlainText(_:)) || item.action == #selector(copyAsRichText(_:)) {
+            // Greyed out with nothing selected — and outside the editor: in
+            // Read mode the web view has focus, and its own Copy is already rich.
+            return editor.window?.firstResponder === editor && editor.selectedRange().length > 0
         }
         return super.validateMenuItem(item)
     }
