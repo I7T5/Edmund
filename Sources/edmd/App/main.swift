@@ -246,6 +246,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     action: #selector(EditorTextView.findPrevious(_:)), shortcut: .cmdShift("g")),
     ]
 
+    /// File ▸ Export To, named by format and ordered as Pages' own Export To
+    /// (PDF, Word, EPUB, Plain Text, Rich Text Format, Images, Pages '09):
+    /// every format the two share keeps Pages' relative order, HTML takes
+    /// EPUB's slot (EPUB is packaged HTML, for reading elsewhere), and the
+    /// app's own format comes last. The ids predate the submenu and are kept,
+    /// so a rebound shortcut survives the move.
+    @MainActor private static let exportCommands: [MenuCommand] = [
+        MenuCommand(id: "file.exportPDF", group: "File", submenu: "Export To", title: "PDF\u{2026}",
+                    action: #selector(Document.exportToPDF(_:))),
+        MenuCommand(id: "file.exportHTML", group: "File", submenu: "Export To", title: "HTML\u{2026}",
+                    action: #selector(Document.exportToHTML(_:))),
+        MenuCommand(id: "file.exportPlainText", group: "File", submenu: "Export To", title: "Plain Text\u{2026}",
+                    action: #selector(Document.exportToPlainText(_:))),
+        MenuCommand(id: "file.exportRichText", group: "File", submenu: "Export To",
+                    title: "Rich Text Format\u{2026}",
+                    action: #selector(Document.exportToRichText(_:))),
+        MenuCommand(id: "file.exportSelfContainedMarkdown", group: "File", submenu: "Export To",
+                    title: "Markdown with Embedded Images\u{2026}",
+                    action: #selector(Document.exportSelfContainedMarkdown(_:))),
+    ]
+
     @MainActor private func setupMenuBar() {
         // Before any `makeItem()`, which resolves each command's override by id.
         KeyBindingStore.migrateRenamedIDs()
@@ -325,15 +346,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "Export as PDF\u{2026}",
-                                     action: #selector(Document.exportToPDF(_:))).makeItem())
-
-        fileMenu.addItem(MenuCommand(id: "file.exportHTML", group: "File", title: "Export as HTML\u{2026}",
-                                     action: #selector(Document.exportToHTML(_:))).makeItem())
-
-        fileMenu.addItem(MenuCommand(id: "file.exportSelfContainedMarkdown", group: "File",
-                                     title: "Export Self-contained Markdown\u{2026}",
-                                     action: #selector(Document.exportSelfContainedMarkdown(_:))).makeItem())
+        // Export To ▸ — every export, PDF included, as in Pages (order: see
+        // `exportCommands`).
+        let exportMenu = NSMenu(title: "Export To")
+        for command in Self.exportCommands { exportMenu.addItem(command.makeItem()) }
+        let exportItem = NSMenuItem(title: "Export To", action: nil, keyEquivalent: "")
+        exportItem.submenu = exportMenu
+        fileMenu.addItem(exportItem)
 
         fileMenu.addItem(withTitle: "Print\u{2026}",
                          action: #selector(Document.printDocument(_:)),
