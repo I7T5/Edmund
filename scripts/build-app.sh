@@ -51,12 +51,21 @@ prune_math_fonts() {
         ! -name 'latinmodern-math.*' -delete
 }
 
+# Drop local symbols from a bundled binary (~40% of its size) after saving a
+# dSYM next to the bundle, so crash reports (edmd-*.ips) stay symbolicatable
+# with `atos -o build/<name>.dSYM`. Must run before codesign.
+strip_binary() {
+    dsymutil "$1" -o "build/$(basename "$1").dSYM" 2>/dev/null || true
+    strip -x "$1"
+}
+
 echo "Creating ${APP_NAME}.app bundle..."
 rm -rf "$BUNDLE"
 mkdir -p "${BUNDLE}/Contents/MacOS"
 mkdir -p "${BUNDLE}/Contents/Resources"
 
 cp ".build/release/${EXECUTABLE}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
+strip_binary "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
 cp Info.plist "${BUNDLE}/Contents/"
 if [ "$VARIANT" = "mas" ]; then
     # No updater on the App Store: Sparkle's keys must not ship there.
@@ -185,6 +194,7 @@ QL_NAME="EdmundQuickLook"
 APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
 mkdir -p "${APPEX}/Contents/MacOS" "${APPEX}/Contents/Resources"
 cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
+strip_binary "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/Contents/Resources/"
