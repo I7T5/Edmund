@@ -54,6 +54,24 @@ enum RichTextExport {
             from: range, documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]))
     }
 
+    /// Edit ▸ Copy As ▸ Rich Text: one clipboard item carrying every form, so
+    /// each app takes the richest it reads — RTFD/RTF (Mail, Pages, Word),
+    /// HTML (browsers, Google Docs), and `plainText` for anything else.
+    static func pasteboardItem(html: String, plainText: String) throws -> NSPasteboardItem {
+        let text = try attributedString(fromHTML: html)
+        let range = NSRange(location: 0, length: text.length)
+        let item = NSPasteboardItem()
+        // RTFD only when there are pictures: plain RTF would drop them.
+        if needsAttachments(html), let rtfd = text.rtfd(from: range, documentAttributes: [:]) {
+            item.setData(rtfd, forType: .rtfd)
+        }
+        item.setData(try text.data(from: range, documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]),
+                     forType: .rtf)
+        item.setString(html, forType: .html)
+        item.setString(plainText, forType: .string)
+        return item
+    }
+
     /// The importer numbers `<ol>` items "1", "2" — list format `{decimal}`
     /// with no period — where TextEdit, Pages and Word all write "1.". The
     /// marker exists twice: as the list's format, which a word processor
