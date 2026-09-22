@@ -16,16 +16,21 @@ enum DocumentHTML {
 
     /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
     /// the document's directory, used to resolve relative image paths for inlining.
+    ///
+    /// `forAttributedString` shapes the page for AppKit's HTML importer (Rich
+    /// Text export) rather than a browser: see `preparedForAttributedString`.
     static func full(markdown: String,
                      theme: EditorTheme,
                      callouts: [String: CalloutStyle],
                      dark: Bool,
                      baseURL: URL? = nil,
-                     options: ReadRenderOptions = .default) -> String {
+                     options: ReadRenderOptions = .default,
+                     forAttributedString: Bool = false) -> String {
         var body = HTMLRenderer.render(markdown: markdown, options: options)
-        body = fillMermaid(body, dark: dark)
+        body = fillMermaid(body, dark: dark, rasterize: forAttributedString)
         body = fillMath(body, theme: theme, dark: dark)
         body = fillImages(body, baseURL: baseURL, options: options)
+        if forAttributedString { body = preparedForAttributedString(body) }
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
                                 maxContentWidthPoints: options.maxContentWidthPoints)
         return """
@@ -59,7 +64,7 @@ enum DocumentHTML {
     /// or the diagram doesn't parse.
     ///
     /// Runs before `fillMath` so a diagram is never scanned for `$…$` math.
-    private static func fillMermaid(_ html: String, dark: Bool) -> String {
+    private static func fillMermaid(_ html: String, dark: Bool, rasterize: Bool = false) -> String {
         // No early-out when the extension is off: the placeholder is markup
         // `HTMLRenderer` always emits, so this pass must run to unwrap it even
         // when nothing can render. Skipping it would leak `data-source="…"`
@@ -79,6 +84,14 @@ enum DocumentHTML {
                   let source = String(data: data, encoding: .utf8),
                   let svg = MermaidRenderer.shared.svg(source: source, style: style) else {
                 return fallback
+            }
+            if rasterize {
+                // AppKit's HTML importer silently drops inline SVG; hand it a
+                // picture instead — Edit mode's CoreSVG image of the diagram.
+                guard let image = MermaidRenderer.shared.image(source: source, style: style),
+                      let png = pngData(image, scale: 2) else { return fallback }
+                let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
+                return "<div\(id) class=\"mermaid-diagram\"><img style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(source))\"></div>"
             }
             // `role="img"` with the source as the label: a screen reader
             // otherwise walks the SVG's individual text nodes and reads the
@@ -215,6 +228,24 @@ enum DocumentHTML {
     private static func blockedImagePlaceholder(reason: ImageLoadFailure) -> String {
         let icon = LucideIcons.inlineSVG("image-off") ?? ""
         return "<span class=\"md-image-blocked\">\(icon)<span>\(reason.label)</span></span>"
+    }
+
+    // MARK: Rich-text import
+
+    /// The page as AppKit's HTML importer needs it. The importer drops inline
+    /// SVG without a trace, so SVG-drawn things need a stand-in — task
+    /// checkboxes become ☐/☑ (without one, the importer strands the task's
+    /// text on a line of its own under an empty bullet) — and the app's own
+    /// `x-edmund-*` links (task toggles, copy buttons, wiki links) would be
+    /// dead links in a word processor. Callout icons are left to vanish: the
+    /// title still says what the callout is.
+    private static func preparedForAttributedString(_ html: String) -> String {
+        var out = replaceMatches(html, pattern: #"<a\b[^>]*\btask-check--(checked|unchecked)\b[^>]*>.*?</a>"#) {
+            $0[1] == "checked" ? "☑ " : "☐ "
+        }
+        out = replaceMatches(out, pattern: #"<a\b[^>]*href="x-edmund-copy:[^"]*"[^>]*>.*?</a>"#) { _ in "" }
+        out = replaceMatches(out, pattern: #"<a\b[^>]*href="x-edmund-[^"]*"[^>]*>(.*?)</a>"#) { $0[1] }
+        return out
     }
 
     // MARK: Bitmap / escaping helpers
