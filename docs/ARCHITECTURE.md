@@ -215,7 +215,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | macOS integrations | Services menu (`edmd/App/ServicesProvider.swift` + `NSServices` in `Info.plist`), App Intents (`edmd/App/Intents.swift`), Quick Look preview (`EdmundQuickLook` target, hosts `ReadModeWebView`), AppleScript code-fence syntax (`EdmundCore/Resources/Syntaxes/applescript.json`). **Two shipped-but-not-live-verifiable limitations** (App Intents metadata needs an Xcode-project build; the Quick Look appex won't launch under ad-hoc signing): [`architecture/macos-integrations.md`](architecture/macos-integrations.md). |
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
 | Key bindings | `edmd/Settings/KeyBindingStore.swift` + `KeyBindingsSettingsView.swift`. Every rebindable command is a `MenuCommand` (`App/FormatMenu.swift`) with a stable `id`, a `group` (the menu it lives under) and a default `Shortcut`; `makeItem()` resolves the user's override from `KeyBindingStore` and registers the built `NSMenuItem` in `KeyBindingCatalog`, so the pane retunes shortcuts live without rebuilding the menu bar. Overrides live in one UserDefaults dict (`settings.keyBindings`, `id → "shift+cmd+e"`); an empty string means "user removed this shortcut", a missing key means "use the default". **Moving a command between menus means renaming its id, and a rename must come with a migration** — an override is filed under the id, so renaming it alone strands the user's shortcut under a key nothing reads. That doesn't fall back to the default, it silently stops firing. `KeyBindingStore.migrateRenamedIDs` (called first thing in `setupMenuBar()`) re-files them, leaving alone any binding already set under the new id; add a pair to its `renamedIDs` table whenever you move one. Conflicts are checked against the **live `NSApp.mainMenu`**, not the catalog, so system items (⌘S, ⌘C) count too; a chord without ⌘ or ⌃ is refused outright (it would fire while typing). Only Edmund's own commands are listed — the OS-standard items stay fixed. File ▸ Close (`main.swift`) makes AppKit inject an ⌥⌘W *Close All* alternate, so that one `addItem` call reserves both chords in this scan. |
-| Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
+| Crash reports | `EdmundCore/Diagnostics/CrashReporter.swift` + `AppDelegate.offerCrashReport` — MetricKit → prompt → prefilled GitHub issue, no server (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
 | Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
 | Format bar | `edmd/Views/FormatBarView.swift` (layout + state refresh) and `FormatBarControls.swift` (the controls), on `ChromeBarView.swift` (titlebar-material + hairline base shared with the find bar), `edmd/App/FormatMenu.swift` (the two pulldowns are the same `headingMenu()`/`calloutMenu()` factories as the Format menu — one menu definition, three homes), `Document.formatBar` (owned by the document; **off by default**, toggled by View ▸ Show/Hide Format Bar, `settings.edit.showFormatBar`, force-hidden in Reading mode). Stacks **above** the find bar, both through `layoutTopBars()` (§6 top-bar insets). Bar is horizontally centred by design (a narrow window clips the same reachable band on both sides) |
@@ -527,17 +527,22 @@ Notable subsystems:
   user only toggles on/off and picks retention (Settings ▸ General ▸
   Diagnostics). `AppSettings.applyLogging()` pushes toggle/retention into
   `Log.configure` at launch and on change; retention is pruned there.
-- **Crash-log uploading** (`EdmundCore/Diagnostics/CrashReporter.swift`):
-  opt-in (default off), fire-and-forget POST of `edmd-*.ips` files from
-  `~/Library/Logs/DiagnosticReports/` not yet in
-  `AppSettings.sentCrashReports` (dedup) to
-  `CrashReporter.reportingEndpoint`. `edmd` is the Mach-O executable name —
-  that's the crash-report filename prefix. **The Settings ▸ Advanced toggle
-  is currently commented out** (the `// Crash reports:` GridRow in
-  `AdvancedSettingsView.swift`); uncomment it and set a real
-  `reportingEndpoint` once the receiving server exists. Reading
-  DiagnosticReports directly only works un-sandboxed; under App Sandbox
-  switch to MetricKit's `MXCrashDiagnostic`.
+- **Crash reports** (`EdmundCore/Diagnostics/CrashReporter.swift`),
+  CotEditor-style — no server, nothing uploaded by Edmund. A MetricKit
+  subscriber (held by `AppDelegate`) receives last session's crash on the
+  next launch; `CrashReport.parse` turns the payload JSON into versions,
+  exception/signal and the attributed thread's frames (`binary +0xoffset
+  (UUID)`, innermost first). `AppDelegate.offerCrashReport` shows "Edmund
+  quit unexpectedly." with **Report on GitHub…** / **Ignore** / Don't ask
+  again; Report opens a prefilled `issues/new` URL (label `bug`, ≤12 frames)
+  and puts the full JSON on the clipboard. Gated by
+  `AppSettings.offerCrashReports` (default on; Settings ▸ Advanced). Payloads
+  carry no home path or file names, unlike the `.ips` files this replaced
+  (which the sandbox can't read anyway). Symbolicate with the release's
+  `edmd-<version>.dSYM.zip` (attached by `release.yml` / `release.sh`),
+  matched on binary UUID: `atos -o edmd.dSYM -arch arm64 -l 0x100000000
+  <0x100000000 + offset>`. macOS can't simulate a payload; DEBUG builds take
+  `-debug.fakeCrashReport <payload.json>` to drive the real prompt.
 
 ---
 

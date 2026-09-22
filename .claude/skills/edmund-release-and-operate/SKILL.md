@@ -8,7 +8,7 @@ description: >
   ("improperly signed", update never offered), sign_update / EdDSA keys /
   SPARKLE_ED_PRIVATE_KEY / RELEASE_TOKEN, create-dmg or DMG naming problems,
   Gatekeeper "damaged" reports, launching the built app, reading
-  ~/.edmund/logs, crash reports (edmd-*.ips), or roadmap/priority questions.
+  diagnostic logs, crash reports (MetricKit → GitHub issue, dSYM), or roadmap/priority questions.
 ---
 
 # Edmund — release & operate
@@ -299,26 +299,22 @@ stale-build / screencapture mechanics: `edmund-build-and-env`.
 - Release builds write `info` and up; DEBUG builds also write `debug`.
 - Logs may contain document text; they never leave the machine.
 
-### Crash reports — `~/Library/Logs/DiagnosticReports/edmd-*.ips`
+### Crash reports — GitHub issues titled `Crash: …`
 
-- macOS names crash reports after the **Mach-O executable**: look for
-  `edmd-<timestamp>.ips`, not "Edmund-…".
-- **Uploading is opt-in and currently INERT.** The Settings toggle is
-  commented out in `Sources/edmd/Settings/AdvancedSettingsView.swift` ("dormant
-  until the receiving server exists"), and
-  `CrashReporter.reportingEndpoint` is a placeholder
-  (`https://REPLACE-ME.invalid/crash`). Nothing is ever sent in shipped
-  builds. Don't tell users crash reporting exists; don't uncomment the toggle
-  without a real server. Code: `Sources/EdmundCore/Diagnostics/CrashReporter.swift`.
-- Reading works only because Edmund is **not sandboxed**; adopting App
-  Sandbox would force a MetricKit rewrite (noted in CrashReporter's header).
-- **Triage of a user's `.ips`**: it's JSON — a one-line metadata header, then
-  the report body. Look at `exception` (type/signal), `faultingThread`, and
-  walk that thread's frames for images named `edmd` or `Sparkle`. Ad-hoc
-  builds ship no dSYM, so expect addresses rather than symbol names for app
-  frames; correlate with `~/.edmund/logs` from the same timestamp instead.
-  `.ips` files embed the user's home path and device model — treat as
-  mildly personal data.
+- **No server.** After a crash, MetricKit hands the next launch a payload;
+  Edmund asks, and on **Report on GitHub…** opens a prefilled issue (label
+  `bug`, versions, exception/signal, ≤12 frames) with the full payload JSON on
+  the user's clipboard to paste. Off switch: Settings ▸ Advanced ▸ "Ask to
+  report crashes on GitHub". Code: `Sources/EdmundCore/Diagnostics/CrashReporter.swift`.
+- **Triage**: frames read `binary +0xoffset (UUID)`. Download the release's
+  `edmd-<version>.dSYM.zip`, check `dwarfdump --uuid edmd.dSYM` matches the
+  frame's UUID, then `atos -o edmd.dSYM -arch arm64 -l 0x100000000
+  <0x100000000 + offset>`. Frames in AppKit/libsystem need no symbolication
+  to read the shape of the crash.
+- A user may instead attach the `.ips` from macOS's own "quit unexpectedly"
+  dialog (`~/Library/Logs/DiagnosticReports/edmd-*.ips` — named after the
+  Mach-O executable, not "Edmund"). It embeds the home path and account name;
+  treat as mildly personal data.
 
 ### Update mechanics (user side)
 

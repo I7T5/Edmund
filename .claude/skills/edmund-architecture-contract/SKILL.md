@@ -269,12 +269,10 @@ State these plainly when designing near them; none is solved.
    create blank space below; math doesn't render in read mode (and has wrong
    padding in edit mode); delete caret drift and viewport-estimate glitches
    remain on the ongoing list.
-4. **Crash reporter endpoint is a placeholder**:
-   `CrashReporter.reportingEndpoint` is `https://REPLACE-ME.invalid/crash`
-   (`Sources/EdmundCore/Diagnostics/CrashReporter.swift:27`) and the
-   Settings ▸ Advanced toggle is commented out
-   (`Sources/edmd/Settings/AdvancedSettingsView.swift`). Do not treat crash
-   uploading as live.
+4. **No crash-upload server, by design**: crashes reach the maintainer only
+   when a user files the prefilled GitHub issue the post-crash prompt opens
+   (`Sources/EdmundCore/Diagnostics/CrashReporter.swift`, ARCHITECTURE §7).
+   Don't add an upload path without a server and a privacy policy.
 
 ---
 
@@ -358,8 +356,8 @@ grep -n "scheduleFullLayoutSettle\|repairContentAboveOrigin" Sources/EdmundCore/
 # Read-mode schemes + HTML whitelist
 grep -n "wikiScheme\|linkScheme" Sources/EdmundCore/Export/HTMLRenderer.swift
 grep -n "htmlFormatTags" Sources/EdmundCore/Parsing/SyntaxHighlighter.swift
-# Crash-reporter placeholder (delete §6.4 once this is a real URL)
-grep -n "REPLACE-ME.invalid" Sources/EdmundCore/Diagnostics/CrashReporter.swift
+# Crash reporter: MetricKit → GitHub issue, no upload (§6.4)
+grep -n "issues/new\|MXMetricManager" Sources/EdmundCore/Diagnostics/CrashReporter.swift
 # Open-bug list
 sed -n '/^Bugs/,/^UI\/UX/p' misc/backlog.md
 ```

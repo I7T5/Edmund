@@ -1,82 +1,123 @@
 import Foundation
+import MetricKit
 
-// MARK: - Crash report uploading
+// MARK: - Crash reporting (CotEditor-style: the user files it, no server)
 //
-// Opt-in (default off), best-effort uploading of the crash reports macOS writes
-// for Edmund. On launch — when the user has enabled it — we read the per-user
-// `.ips` reports the OS dropped in ~/Library/Logs/DiagnosticReports/ and POST any
-// we haven't sent before.
+// MetricKit hands the app a diagnostic payload on the launch after a crash.
+// Edmund never uploads it: the app layer asks the user and, on yes, opens a
+// prefilled GitHub issue (summary in the body, full JSON on the clipboard).
+// Sandbox-safe — the old `.ips` scan of ~/Library/Logs/DiagnosticReports
+// can't run in a container — and the payload holds no home path, account
+// name, file names or document text, only versions and stack addresses.
 //
-// Why read `.ips` files rather than MetricKit's `MXCrashDiagnostic`? It's the
-// simplest path that yields the *full* report (not just a call-stack payload),
-// is available immediately on the next launch, and needs no framework wiring.
-// The tradeoff: it relies on direct filesystem access, which only works because
-// Edmund is **not sandboxed** (no entitlements file). If App Sandbox is ever
-// adopted, this directory becomes unreadable and we'd switch to MetricKit.
-//
-// PII note: `.ips` reports embed the user's home path (and so their account
-// name), the device model, and the OS version. We send them as-is — acceptable
-// for crash-fix use, which the Settings note states plainly. Revisit if scope
-// changes.
+// Symbolicate a report's frames with the release's `edmd-<version>.dSYM.zip`
+// (attached to every GitHub release), matching on the binary UUID:
+//   atos -o edmd.dSYM -arch arm64 -l 0x100000000 <0x100000000 + offset>
 
-public enum CrashReporter {
+/// The human-readable part of one crash, parsed from a MetricKit payload's
+/// JSON. Pure, so it's testable without a real `MXCrashDiagnostic`.
+public struct CrashReport: Equatable, Sendable {
+    public var appVersion = "?"
+    public var appBuild = "?"
+    public var osVersion = "?"
+    public var architecture = "?"
+    public var exception = "?"
+    public var terminationReason: String?
+    /// Crashing thread, innermost first: "edmd +0x1a2b (UUID)".
+    public var frames: [String] = []
+    /// The whole payload, for the clipboard.
+    public var json = ""
 
-    /// Placeholder ingestion endpoint. Nothing is ever sent against this in the
-    /// shipped build (the feature toggle is off and its UI is commented out);
-    /// replace this with the real server before exposing the toggle.
-    static let reportingEndpoint = URL(string: "https://REPLACE-ME.invalid/crash")!  // TODO: real server
+    /// Frames kept in the issue body — enough to group by, short enough for a URL.
+    static let bodyFrameLimit = 12
 
-    /// macOS crash reports are named `<executable>-<timestamp>.ips`. Our Mach-O
-    /// executable is `edmd` (see `main.swift`), so that's the filename prefix.
-    public static let processPrefix = "edmd"
+    /// First crash in a `MXDiagnosticPayload.jsonRepresentation()` blob, or nil.
+    public static func parse(payloadJSON data: Data) -> CrashReport? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let crash = (root["crashDiagnostics"] as? [[String: Any]])?.first else { return nil }
+        var report = CrashReport(json: String(decoding: data, as: UTF8.self))
+        let meta = crash["diagnosticMetaData"] as? [String: Any] ?? [:]
+        report.appVersion = meta["appVersion"] as? String ?? "?"
+        report.appBuild = meta["appBuildVersion"] as? String ?? "?"
+        report.osVersion = meta["osVersion"] as? String ?? "?"
+        report.architecture = meta["platformArchitecture"] as? String ?? "?"
+        report.terminationReason = meta["terminationReason"] as? String
+        report.exception = [
+            (meta["exceptionType"] as? Int).map { exceptionNames[$0] ?? "exception \($0)" },
+            (meta["signal"] as? Int).map { signalNames[$0] ?? "signal \($0)" },
+        ].compactMap { $0 }.joined(separator: " / ")
+        if report.exception.isEmpty { report.exception = "?" }
 
-    /// Where macOS writes this user's crash reports.
-    public static var diagnosticReportsDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/DiagnosticReports", isDirectory: true)
-    }
-
-    /// Pure and testable: the `.ips` crash reports in `directory` that belong to
-    /// our process and haven't been sent yet, sorted by name (oldest-ish first)
-    /// for deterministic order.
-    public static func pendingReports(in directory: URL,
-                                      processPrefix: String = processPrefix,
-                                      alreadySent: Set<String>) -> [URL] {
-        let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil) else { return [] }
-        return urls.filter { url in
-            url.pathExtension == "ips"
-                && url.lastPathComponent.hasPrefix(processPrefix)
-                && !alreadySent.contains(url.lastPathComponent)
-        }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-    }
-
-    /// Scan the real DiagnosticReports directory and POST any crash reports not in
-    /// `alreadySent`. Fire-and-forget — returns immediately and never blocks the
-    /// caller. `onSent` is invoked on the main actor with each filename that
-    /// uploaded successfully, so the caller can record it and avoid resending.
-    public static func uploadPendingReports(alreadySent: Set<String>,
-                                            onSent: @escaping @MainActor (String) -> Void) {
-        let pending = pendingReports(in: diagnosticReportsDirectory, alreadySent: alreadySent)
-        guard !pending.isEmpty else { return }
-        for url in pending { upload(url, onSent: onSent) }
-    }
-
-    private static func upload(_ url: URL,
-                               onSent: @escaping @MainActor (String) -> Void) {
-        guard let data = try? Data(contentsOf: url) else { return }
-        let name = url.lastPathComponent
-        var request = URLRequest(url: reportingEndpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        request.setValue(name, forHTTPHeaderField: "X-Crash-Report-Name")
-        let task = URLSession.shared.uploadTask(with: request, from: data) { _, response, error in
-            guard error == nil,
-                  let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else { return }
-            Task { @MainActor in onSent(name) }
+        // Frames nest caller-inside-callee via `subFrames`; follow the first
+        // child from the root of the thread MetricKit attributes the crash to.
+        let stacks = (crash["callStackTree"] as? [String: Any])?["callStacks"] as? [[String: Any]] ?? []
+        let thread = stacks.first { $0["threadAttributed"] as? Bool == true } ?? stacks.first
+        var frame = (thread?["callStackRootFrames"] as? [[String: Any]])?.first
+        while let f = frame {
+            let offset = f["offsetIntoBinaryTextSegment"] as? Int ?? 0
+            report.frames.append("\(f["binaryName"] as? String ?? "?") +0x\(String(offset, radix: 16)) "
+                                 + "(\(f["binaryUUID"] as? String ?? "?"))")
+            frame = (f["subFrames"] as? [[String: Any]])?.first
         }
-        task.resume()
+        return report
+    }
+
+    public var issueTitle: String { "Crash: \(exception) in \(appVersion)" }
+
+    public var issueBody: String {
+        var lines = [
+            "**Description**",
+            "<!-- What were you doing just before Edmund quit? -->",
+            "",
+            "**Crash**",
+            "- Edmund \(appVersion) (\(appBuild))",
+            "- \(osVersion), \(architecture)",
+            "- \(exception)",
+        ]
+        if let terminationReason { lines.append("- \(terminationReason)") }
+        lines += ["", "**Crashing thread**", "```"]
+        lines += frames.prefix(Self.bodyFrameLimit).enumerated().map { "\($0.offset)  \($0.element)" }
+        lines += ["```", "",
+                  "<!-- The full crash report is on your clipboard. Paste it here if you're OK sharing it: "
+                  + "it holds versions and code addresses, no documents or file names. -->"]
+        return lines.joined(separator: "\n")
+    }
+
+    /// New-issue URL on `repo` with title, body and the bug label prefilled.
+    public func issueURL(repo: String = "I7T5/Edmund") -> URL? {
+        var c = URLComponents(string: "https://github.com/\(repo)/issues/new")
+        c?.queryItems = [URLQueryItem(name: "labels", value: "bug"),
+                         URLQueryItem(name: "title", value: issueTitle),
+                         URLQueryItem(name: "body", value: issueBody)]
+        return c?.url
+    }
+
+    static let exceptionNames = [1: "EXC_BAD_ACCESS", 2: "EXC_BAD_INSTRUCTION", 3: "EXC_ARITHMETIC",
+                                 5: "EXC_SOFTWARE", 6: "EXC_BREAKPOINT", 10: "EXC_CRASH",
+                                 11: "EXC_RESOURCE", 12: "EXC_GUARD"]
+    static let signalNames = [4: "SIGILL", 5: "SIGTRAP", 6: "SIGABRT", 8: "SIGFPE",
+                              9: "SIGKILL", 10: "SIGBUS", 11: "SIGSEGV"]
+}
+
+/// Subscribes to MetricKit and hands each crash to `onCrash` on the main
+/// actor. Hold it for the app's lifetime; MetricKit delivers every payload
+/// once, so there's nothing to de-duplicate.
+public final class CrashReporter: NSObject, MXMetricManagerSubscriber, @unchecked Sendable {
+    private let onCrash: @MainActor (CrashReport) -> Void
+
+    public init(onCrash: @escaping @MainActor (CrashReport) -> Void) {
+        self.onCrash = onCrash
+        super.init()
+        MXMetricManager.shared.add(self)
+    }
+
+    deinit { MXMetricManager.shared.remove(self) }
+
+    public func didReceive(_ payloads: [MXDiagnosticPayload]) {
+        // Only the newest crash: after several, one report is plenty.
+        guard let report = payloads.reversed().lazy
+            .compactMap({ CrashReport.parse(payloadJSON: $0.jsonRepresentation()) }).first else { return }
+        let onCrash = onCrash
+        Task { @MainActor in onCrash(report) }
     }
 }

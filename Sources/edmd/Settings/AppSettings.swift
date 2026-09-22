@@ -110,8 +110,7 @@ enum AppSettings {
         static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
         static let sourceMode = "settings.view.sourceMode"
         static let enabledExtensionIDs = "settings.extensions.enabledIDs"
-        static let sendCrashLogs = "settings.advanced.sendCrashLogs"
-        static let sentCrashReports = "settings.advanced.sentCrashReports"
+        static let offerCrashReports = "settings.advanced.offerCrashReports"
         static let lastWindowWidth  = "settings.window.lastWidth"
         static let lastWindowHeight = "settings.window.lastHeight"
         // Syntax feature toggles (all default on). Read into `markdownFeatures`.
@@ -407,24 +406,11 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.blockExternalImages) }
     }
 
-    /// Whether to auto-send crash reports on launch. Opt-in: defaults off, since
-    /// it sends data off-device. (UI currently commented out — see
-    /// AdvancedSettingsView — until the receiving server exists.)
-    static var sendCrashLogs: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.sendCrashLogs) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.sendCrashLogs) }
-    }
-
-    /// Filenames of crash reports already uploaded, so we don't resend them.
-    /// Bounded on write by dropping entries whose `.ips` file no longer exists.
-    static var sentCrashReports: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: Key.sentCrashReports) ?? []) }
-        set {
-            let onDisk = (try? FileManager.default.contentsOfDirectory(
-                atPath: CrashReporter.diagnosticReportsDirectory.path)).map(Set.init) ?? []
-            let pruned = onDisk.isEmpty ? newValue : newValue.intersection(onDisk)
-            UserDefaults.standard.set(Array(pruned), forKey: Key.sentCrashReports)
-        }
+    /// Whether to ask, on the launch after a crash, to report it on GitHub.
+    /// Defaults on: asking sends nothing — the user files the issue themselves.
+    static var offerCrashReports: Bool {
+        get { UserDefaults.standard.object(forKey: Key.offerCrashReports) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Key.offerCrashReports) }
     }
 
     static var logRetention: LogRetention {

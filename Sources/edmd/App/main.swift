@@ -18,6 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var aboutWindowController: AboutWindowController?
     var settingsWindowController: SettingsWindowController?
     let servicesProvider = ServicesProvider()
+    private var crashReporter: CrashReporter?
     // startingUpdater: true kicks off the scheduled background check immediately;
     // the "Check for Updates…" menu item targets this controller directly.
     // `-debug.disableUpdater YES` skips the start entirely: on dev builds the
@@ -67,13 +68,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // strongly — `NSApplication.servicesProvider` does not retain.
         NSApp.servicesProvider = servicesProvider
 
-        // Opt-in (default off): upload any crash reports macOS wrote for us since
-        // last launch. Fire-and-forget; never blocks startup.
-        if AppSettings.sendCrashLogs {
-            CrashReporter.uploadPendingReports(
-                alreadySent: AppSettings.sentCrashReports,
-                onSent: { AppSettings.sentCrashReports.insert($0) })
+        // MetricKit delivers last session's crash, if any, shortly after launch.
+        crashReporter = CrashReporter { report in AppDelegate.offerCrashReport(report) }
+        #if DEBUG
+        // `-debug.fakeCrashReport <payload.json>`: run a saved MetricKit payload
+        // through the real prompt — macOS has no way to simulate one.
+        if let path = UserDefaults.standard.string(forKey: "debug.fakeCrashReport"),
+           let data = FileManager.default.contents(atPath: path),
+           let report = CrashReport.parse(payloadJSON: data) {
+            DispatchQueue.main.async { AppDelegate.offerCrashReport(report) }
         }
+        #endif
 
         // Open file from command-line argument. When a file is given,
         // `applicationShouldOpenUntitledFile` suppresses the otherwise-automatic
@@ -132,6 +137,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // AppKit's default handling to do here.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         Self.shouldHandleReopen(hasVisibleWindows: flag)
+    }
+
+    /// "Edmund quit unexpectedly" → a prefilled GitHub issue, with the full
+    /// payload on the clipboard for the user to paste (or not). Nothing is
+    /// sent by Edmund itself.
+    static func offerCrashReport(_ report: CrashReport) {
+        guard AppSettings.offerCrashReports, let url = report.issueURL() else { return }
+        let alert = NSAlert()
+        alert.messageText = "Edmund quit unexpectedly."
+        alert.informativeText = "Report it on GitHub to help fix it. The crash details, with no documents or file names, will be copied to your clipboard."
+        alert.addButton(withTitle: "Report on GitHub…")
+        alert.addButton(withTitle: "Ignore")
+        alert.showsSuppressionButton = true
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on { AppSettings.offerCrashReports = false }
+        guard response == .alertFirstButtonReturn else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report.json, forType: .string)
+        NSWorkspace.shared.open(url)
     }
 
     /// The decision itself, as a type method so tests can exercise it without
