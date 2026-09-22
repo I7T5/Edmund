@@ -313,6 +313,33 @@ struct ImageAttachmentTests {
         #expect(e.rawSource == "one\n\ntwo")
     }
 
+    // MARK: - paste(_:) wiring
+
+    /// ⌘V itself (not the helper): an image on the general pasteboard
+    /// attaches; text falls through to the normal paste untouched.
+    @Test func pasteOverrideAttachesImageAndPassesTextThrough() throws {
+        let dir = try makeTempDir()
+        let src = try writeFile("cat.png", into: dir, data: tinyPNG())
+        let (e, _) = editorIn(dir: dir)
+        let general = NSPasteboard.general
+        let savedTypes = general.types ?? []
+        defer {
+            general.clearContents()
+            if !savedTypes.isEmpty { general.declareTypes(savedTypes, owner: nil) }
+        }
+
+        general.clearContents()
+        general.writeObjects([src as NSURL])
+        e.paste(nil)
+        #expect(e.rawSource == "![](notes.assets/cat.png)")
+
+        general.clearContents()
+        general.setString("plain text", forType: .string)
+        e.setSelectedRange(NSRange(location: e.rawSource.utf16.count, length: 0))
+        e.paste(nil)
+        #expect(e.rawSource == "![](notes.assets/cat.png)plain text")
+    }
+
     @Test func dataURIDecodesAndCaches() {
         let e = makeEditor()
         let uri = "data:image/png;base64,\(tinyPNG().base64EncodedString())"

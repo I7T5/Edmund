@@ -186,10 +186,6 @@ public class EditorTextView: NSTextView {
     /// Coalesces the didChangeText-bypass check scheduled from
     /// shouldChangeText (see EditorTextView+EditFlow).
     var bypassedEditCheckScheduled = false
-    /// Image files dropped on an untitled document, held while the Save sheet
-    /// runs (see EditorTextView+ImageDrop). Only one sheet can be up at a time,
-    /// so a single slot is enough.
-    var pendingDroppedImages: [URL] = []
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0

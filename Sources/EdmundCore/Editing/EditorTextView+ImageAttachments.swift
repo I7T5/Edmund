@@ -13,16 +13,23 @@ import UniformTypeIdentifiers
 // Sources handled, in priority order:
 //   1. Image *files* (Finder copy/drag): copied into the assets folder —
 //      except Option-drop, which inserts a path reference without copying.
-//   2. Raw image *data* (screenshots, copied bitmaps): written as PNG with a
+//      A pasteboard carrying files but no image among them is a file
+//      gesture, not an image gesture: nothing attaches (Finder puts the
+//      file's icon on the pasteboard; attaching that would be wrong).
+//   2. Remote image *URLs* (dragged/copied from a browser): inserted as-is,
+//      ahead of any bitmap the browser also offers — the documented behavior
+//      is the URL, not a clipboard-copy of the picture. Edmund is
+//      offline-by-default, so the image is never downloaded — Read
+//      mode/export decide whether to load it (`allowRemoteImages`).
+//   3. Raw image *data* (screenshots, copied bitmaps): written as PNG with a
 //      timestamped filename (`pasted-yyyyMMdd-HHmmss.png`, lowercase and
 //      space-free so the path is URL-safe on case-sensitive hosts like GitHub).
-//   3. Remote image *URLs* (dragged/copied from a browser): inserted as-is.
-//      Edmund is offline-by-default, so the image is never downloaded — Read
-//      mode/export decide whether to load it (`allowRemoteImages`).
 //
 // Unsaved documents have no directory to anchor a relative path to, so the
 // attach flow goes through `requestSaveForAttachment` (wired by Document to
-// the standard save panel) and continues once the document is saved.
+// the standard save panel) and continues once the document is saved. Under
+// the sandbox, writing the assets folder beside the document also needs a
+// folder grant (`FolderAccess`), requested up front — see `withSavedDocument`.
 //
 // All insertions funnel through `applyFormattingEdit` — a single undoable
 // text step. Undo removes the markdown; the copied file stays on disk (it may
@@ -57,18 +64,23 @@ extension EditorTextView {
     // MARK: Drag & drop
 
     public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        if Self.imageContentKind(of: sender.draggingPasteboard) != nil { return .copy }
+        if Self.pasteboardHasImageContent(sender.draggingPasteboard) { return .copy }
         return super.draggingEntered(sender)
     }
 
+    // Types-only here as well: draggingUpdated fires per pointer move against
+    // a 16.7 ms frame budget, and classifying would transcode the whole bitmap
+    // (~1s for a 4K TIFF). The single real classification happens in
+    // performDragOperation.
     public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        if Self.imageContentKind(of: sender.draggingPasteboard) != nil { return .copy }
+        if Self.pasteboardHasImageContent(sender.draggingPasteboard) { return .copy }
         return super.draggingUpdated(sender)
     }
 
     public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let pasteboard = sender.draggingPasteboard
-        guard Self.imageContentKind(of: pasteboard) != nil else {
+        guard isEditable,   // Read mode: never mutates
+              let kind = Self.imageContentKind(of: pasteboard) else {
             return super.performDragOperation(sender)
         }
         let point = convert(sender.draggingLocation, from: nil)
@@ -77,13 +89,14 @@ extension EditorTextView {
         // the assets folder. `NSEvent.modifierFlags` reads the live modifier
         // state (there is no key event in flight during a drag).
         let linkOnly = NSEvent.modifierFlags.contains(.option)
-        return handleImagePasteboard(pasteboard, at: index, linkOnly: linkOnly)
+        handleImageContent(kind, at: index, linkOnly: linkOnly)
+        return true
     }
 
     // MARK: Pasteboard handling
 
-    /// What kind of image content a pasteboard carries, if any. Drives both
-    /// the drag-acceptance checks and the actual insert.
+    /// What kind of image content a pasteboard carries, if any. Drives the
+    /// actual insert (the hover checks use the cheaper `pasteboardHasImageContent`).
     enum ImageContentKind {
         case files([URL])
         case data(Data)   // PNG-encoded
@@ -93,31 +106,47 @@ extension EditorTextView {
     /// Classifies the pasteboard's image content without mutating anything.
     /// Returns nil for non-image content (text, non-image files), which the
     /// caller then routes to the default paste/drop behavior.
+    ///
+    /// Order: image *files* first; then a web image's *URL* — a browser drag
+    /// carries both a URL and a TIFF of the picture, and the documented
+    /// behavior is to insert the URL as-is, not to copy the browser's bitmap
+    /// into assets; then raw *bitmap* data (screenshots, copied images).
+    /// A pasteboard carrying files but no image among them is a file gesture
+    /// (e.g. a Finder copy of a .zip), never a bitmap gesture — it returns
+    /// nil rather than falling through: Finder puts the file's *icon* on the
+    /// pasteboard, and attaching that would be wrong.
     static func imageContentKind(of pasteboard: NSPasteboard) -> ImageContentKind? {
         let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self],
                                               options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         let imageFiles = fileURLs.filter(isImageFile)
         if !imageFiles.isEmpty { return .files(imageFiles) }
-        if let png = pngData(from: pasteboard) { return .data(png) }
+        if !fileURLs.isEmpty { return nil }
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
            let remote = urls.first(where: {
                ($0.scheme == "https" || $0.scheme == "http") && isImagePath($0.path)
            }) {
             return .remoteURL(remote)
         }
+        if let png = pngData(from: pasteboard) { return .data(png) }
         return nil
     }
 
-    /// Consumes the pasteboard's image content, if any: attaches files/data to
-    /// the assets folder (or links with `linkOnly`) and inserts the markdown at
-    /// `index` (nil → the current selection, paste semantics). Returns false
-    /// when the pasteboard has no image content and the caller should fall
-    /// through to default handling.
+    /// Consumes the pasteboard's image content, if any. Returns false when the
+    /// pasteboard has no image content and the caller should fall through to
+    /// default handling.
     @discardableResult
     func handleImagePasteboard(_ pasteboard: NSPasteboard, at index: Int?,
                                linkOnly: Bool) -> Bool {
         guard isEditable else { return false }   // Read mode: never mutates
         guard let kind = Self.imageContentKind(of: pasteboard) else { return false }
+        handleImageContent(kind, at: index, linkOnly: linkOnly)
+        return true
+    }
+
+    /// Attaches `kind` (see `imageContentKind`) and inserts the markdown at
+    /// `index` (nil → the current selection, paste semantics).
+    private func handleImageContent(_ kind: ImageContentKind, at index: Int?,
+                                    linkOnly: Bool) {
         switch kind {
         case .files(let urls):
             withSavedDocument { self.attachImageFiles(urls, copy: !linkOnly, at: index) }
@@ -127,7 +156,6 @@ extension EditorTextView {
             // Nothing to write to disk — no save needed even for untitled docs.
             insertImageDestinations([url.absoluteString], at: index)
         }
-        return true
     }
 
     // MARK: Return inside an image token
@@ -166,12 +194,26 @@ extension EditorTextView {
     /// document or save hook (unit tests) an attach is refused outright —
     /// inserting a path that can't resolve would be worse than doing nothing.
     private func withSavedDocument(then work: @escaping () -> Void) {
-        if document?.fileURL != nil { work(); return }
+        if document?.fileURL != nil { withFolderGranted(work); return }
         guard let requestSaveForAttachment else {
             NSSound.beep()
             return
         }
-        requestSaveForAttachment { saved in if saved { work() } }
+        requestSaveForAttachment { saved in
+            if saved { self.withFolderGranted(work) }
+        }
+    }
+
+    /// Under the sandbox, writing `<doc>.assets/` beside the document needs a
+    /// grant for the document's folder (opening `notes.md` grants `notes.md`
+    /// only — see `FolderAccess`). Ask *before* attempting the write: without
+    /// this the copy fails and `attachImageFiles` falls back to linking the
+    /// source's absolute path, which no grant for *this* document can read —
+    /// a broken-image placeholder where a paste should have been. On Cancel
+    /// nothing happens (the user declined the grant).
+    private func withFolderGranted(_ work: @escaping () -> Void) {
+        guard ungrantedDocumentFolder != nil else { work(); return }
+        requestFolderAccess(then: work)
     }
 
     // MARK: Attach
