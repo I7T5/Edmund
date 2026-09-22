@@ -39,6 +39,18 @@ else
     swift build -c release 2>&1 | tail -3
 fi
 
+# SwiftMath ships 12 math fonts (~7 MB per bundle copy) but Edmund only ever
+# renders with its default, Latin Modern: MathRenderer builds MTMathImage without
+# setting a font, and MTMathImage.font defaults to MTFontManager.defaultFont.
+# Fonts load lazily by name, so the unused ones can go. Licenses stay.
+# If Edmund ever lets the user pick a math font, keep that font here.
+prune_math_fonts() {
+    local fonts="$1/SwiftMath_SwiftMath.bundle/mathFonts.bundle"
+    [ -d "$fonts" ] || return 0
+    find "$fonts" -maxdepth 1 \( -name '*.otf' -o -name '*.plist' -o -name '*.py' \) \
+        ! -name 'latinmodern-math.*' -delete
+}
+
 echo "Creating ${APP_NAME}.app bundle..."
 rm -rf "$BUNDLE"
 mkdir -p "${BUNDLE}/Contents/MacOS"
@@ -177,6 +189,7 @@ cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/Contents/Resources/"
 done
+prune_math_fonts "${APPEX}/Contents/Resources"
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
 #
@@ -228,6 +241,7 @@ echo "Copying SwiftPM resource bundles..."
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "${BUNDLE}/"
 done
+prune_math_fonts "$BUNDLE"
 
 echo ""
 echo "Done: ${BUNDLE} (variant: ${VARIANT})"
