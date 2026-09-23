@@ -155,7 +155,11 @@ rule (2026-09-23): **direct, systematic, concise.**
 - **Plain words, plain structure** (model: Orwell, "Politics and the English
   Language"). Don't reach for strong or dramatic words the facts don't
   need ("critical", "massive", "fundamentally", "must never" where "should
-  not" is true), and don't build elaborate sentences for effect.
+  not" is true), and don't build elaborate sentences for effect. Orwell's
+  rules, as a pass before posting: no stock figures of speech; short word
+  over long; cut every word that can go; active over passive; everyday word
+  over jargon (identifiers that name real code, like `rawSource`, are fine);
+  break a rule rather than write something awkward.
 - **End with the merge checklist** when the text asks someone to act: the
   binary, owner-tagged `[ ]` / `[x]` items of `edmund-pr-review` §4, so the
   reader can see at a glance what is left.
