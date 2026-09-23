@@ -115,6 +115,44 @@ extension EditorTextView {
         )
     }
 
+    /// Identity of everything `styleBlock` reads besides the markdown itself:
+    /// fonts (body, monospace, code-label), the colors spans resolve to, the
+    /// light/dark appearance, enabled markdown features, link definitions,
+    /// callout style overrides, and the available line width (images and math
+    /// clamp to it). Cached styling — table cells/column widths and callout
+    /// bodies — keys on this so any change to the styling environment
+    /// invalidates entries; content alone is never the whole key.
+    var stylingEnvironmentKey: String {
+        [
+            bodyFont.fontName, "\(bodyFont.pointSize)",
+            tableFont.fontName, "\(tableFont.pointSize)",
+            codeBlockLabelFont.fontName, "\(codeBlockLabelFont.pointSize)",
+            "\(theme.lineSpacing)", "\(theme.standardLigatures)",
+            isDarkAppearance ? "dark" : "light",
+            renderingCacheColorKey(foregroundColor),
+            renderingCacheColorKey(linkColor),
+            renderingCacheColorKey(highlightColor),
+            renderingCacheColorKey(syntaxDimColor),
+            renderingCacheColorKey(checkboxColor),
+            renderingCacheColorKey(accentColor),
+            renderingCacheColorKey(theme.mathOperatorColor),
+            renderingCacheColorKey(theme.mathNumberColor),
+            "\(markdownFeatures.rawValue)",
+            String(format: "%.2f", availableContentWidth),
+            linkDefState.defsText,
+            calloutStyleOverrides.map { "\($0.key)=\($0.value)" }
+                .sorted().joined(separator: ";"),
+        ].joined(separator: "|")
+    }
+
+    /// Images and links can change after styling (remote loads, folder grants,
+    /// or the same relative destination in another document). Keep those
+    /// blocks out of the process-wide styled-content caches. The broad syntax
+    /// check also covers wiki links, reference links, autolinks, and HTML.
+    func canCacheStyledContent(_ source: String) -> Bool {
+        !source.contains("[") && !source.contains("<") && !source.contains("://")
+    }
+
     /// Paragraph style for thematic breaks. The raw dashes are hidden with a
     /// near-zero font, which would collapse the line — so we force the line to a
     /// full body-line height and add symmetric breathing space above and below.

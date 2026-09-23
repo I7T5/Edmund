@@ -18,6 +18,21 @@ nonisolated(unsafe) private let reusableCalloutPathOverlayCache: NSCache<
     return cache
 }()
 
+/// Cached styled bodies for inactive callouts, keyed by the styling
+/// environment (see `stylingEnvironmentKey`) plus the stripped body source.
+/// A callout is a single block, so without this every caret move elsewhere
+/// re-parses (BlockParser) and re-styles (styleBlock per inner block) the
+/// whole body. The splicing of the styled body back onto the real characters
+/// still runs per restyle — only the pure styling is cached.
+nonisolated(unsafe) private let calloutBodyStyleCache: NSCache<
+    NSString,
+    NSAttributedString
+> = {
+    let cache = NSCache<NSString, NSAttributedString>()
+    cache.countLimit = 32
+    return cache
+}()
+
 // MARK: - Callout Rendering
 //
 // A callout is a block quote whose first line is `[!type]` (case-insensitive).
@@ -314,15 +329,28 @@ extension EditorTextView {
         // into an adjacent `> > ` callout/quote. The body is only rendered for an
         // inactive callout (the cursor is elsewhere), so inner blocks render
         // fully — no cursor reveal needed.
-        let sub = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
-        for b in BlockParser.parse(stripped) {
-            guard b.range.upperBound <= sub.length else { continue }
-            let styled = styleBlock(b.content, cursorPosition: nil)
-            styled.enumerateAttributes(in: NSRange(location: 0, length: styled.length),
-                                       options: []) { attrs, r, _ in
-                sub.setAttributes(attrs,
-                                  range: NSRange(location: r.location + b.range.location, length: r.length))
+        // Cache only bodies without images or links: their styled attributes
+        // depend on image load state and the current document's folder.
+        let sub: NSAttributedString
+        let bodyCacheKey: NSString? = canCacheStyledContent(stripped)
+            ? "\(stylingEnvironmentKey)|\(stripped)" as NSString : nil
+        if let bodyCacheKey, let cached = calloutBodyStyleCache.object(forKey: bodyCacheKey) {
+            sub = cached
+        } else {
+            let built = NSMutableAttributedString(string: stripped, attributes: baseAttributes)
+            for b in BlockParser.parse(stripped) {
+                guard b.range.upperBound <= built.length else { continue }
+                let styled = styleBlock(b.content, cursorPosition: nil)
+                styled.enumerateAttributes(in: NSRange(location: 0, length: styled.length),
+                                           options: []) { attrs, r, _ in
+                    built.setAttributes(attrs,
+                                        range: NSRange(location: r.location + b.range.location,
+                                                       length: r.length))
+                }
             }
+            let frozen = built.copy() as! NSAttributedString
+            if let bodyCacheKey { calloutBodyStyleCache.setObject(frozen, forKey: bodyCacheKey) }
+            sub = frozen
         }
 
         spliceStyledBody(sub, realIndex: realIndex, lineMap: lineMap, into: result)
