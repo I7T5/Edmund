@@ -134,36 +134,27 @@ plain imperative for chores. Never auto-push, PR, or merge — only when asked.
 
 ### PR descriptions and review comments
 
-The reader knows the text is AI-generated, so courtesy is noise. Maintainer
-rule (2026-09-23): **direct, systematic, concise.**
+The reader knows the text is AI-generated, so courtesy adds nothing. Write
+direct, systematic, concise text (maintainer rule, 2026-09-23).
 
-- **No courtesy.** No thanks, no "great work", no "happy to help", no
-  softeners ("could you perhaps", "might want to"), no sign-off. State the
-  finding and the required action.
-- **Logical order, each step earning the next** (model: Russell, *The
-  Problems of Philosophy*). Claim, then the evidence it rests on, then the
-  consequence. One idea per paragraph; no sentence that the next one doesn't
-  need.
-- **Plain, specific words** (model: Apple HIG writing guidance). Short
-  declarative sentences, active voice, concrete nouns (`file:line`, the
-  metric, the number). Cut any word that adds no information.
-- **Common PR-template structure.** PR body: `Summary` (what and why, 1–3
-  sentences) → `Changes` → `Testing` (what was run, with results; what was
-  *not* verified) → `Notes` (follow-ups, risks) when needed. Review comment:
-  verdict first, then numbered sections by disposition (merge / change /
-  drop), each item = problem, evidence, required fix.
-- **Plain words, plain structure** (model: Orwell, "Politics and the English
-  Language"). Don't reach for strong or dramatic words the facts don't
-  need ("critical", "massive", "fundamentally", "must never" where "should
-  not" is true), and don't build elaborate sentences for effect. Orwell's
-  rules, as a pass before posting: no stock figures of speech; short word
-  over long; cut every word that can go; active over passive; everyday word
-  over jargon (identifiers that name real code, like `rawSource`, are fine);
-  break a rule rather than write something awkward.
-- **End with the merge checklist** when the text asks someone to act: the
-  binary, owner-tagged `[ ]` / `[x]` items of `edmund-pr-review` §4, so the
-  reader can see at a glance what is left.
-- The honesty rules above still hold: say what was not verified.
+1. **No courtesy.** No thanks, praise, softeners ("could you perhaps") or
+   sign-off. State the finding and the action it needs.
+2. **Logical order** (Russell, *The Problems of Philosophy*): claim, then the
+   evidence for it, then the consequence. One idea per paragraph, and each
+   sentence should lead to the next.
+3. **Plain, specific words in plain sentences** (Apple HIG; Orwell, "Politics
+   and the English Language"). Prefer short words, the active voice and
+   concrete nouns: `file:line`, the metric, the number. Use no stronger word
+   than the facts support ("critical", "massive", "must never" where "should
+   not" is true), no stock phrases, and no sentence built for effect. Cut
+   any word that carries nothing; names of real code are not jargon.
+4. **Common PR-template structure.** PR body: `Summary` (what and why, 1–3
+   sentences) → `Changes` → `Testing` (what ran, with results, and what was
+   not verified) → `Notes` when needed. Review comment: verdict first, then
+   sections by disposition (merge / change / drop), each item as problem,
+   evidence, required fix.
+5. **End with the merge checklist** when the text asks someone to act: the
+   owner-tagged `[ ]` / `[x]` items of `edmund-pr-review` §4.
 
 ## 4. CHANGELOG format — machine-read, get it exact
 
