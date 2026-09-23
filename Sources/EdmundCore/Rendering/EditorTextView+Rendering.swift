@@ -798,10 +798,14 @@ extension EditorTextView {
                     } else {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
-                } else if case .heading = span.kind, cursorPosition != nil {
+                } else if case .heading = span.kind,
+                          cursorPosition != nil || isEmptyHeading(span, in: markdown) {
                     // A heading is one logical line. Keep its marker visible
                     // while the caret is anywhere on that line so moving between
                     // inline tokens does not make the leading `#` flicker.
+                    // An empty heading (`#`, `## `, `# #` — valid CommonMark)
+                    // keeps it everywhere: hidden, it would leave a blank line
+                    // with a heading's height and nothing to explain it.
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                 } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
@@ -818,6 +822,19 @@ extension EditorTextView {
         }
 
         return result
+    }
+
+    /// True when a heading span holds nothing but its `#` markers and spaces.
+    private func isEmptyHeading(_ span: SyntaxHighlighter.Span, in markdown: String) -> Bool {
+        let ns = markdown as NSString
+        guard span.fullRange.upperBound <= ns.length else { return false }
+        let text = NSMutableString(string: ns.substring(with: span.fullRange))
+        for dr in span.delimiterRanges.sorted(by: { $0.location > $1.location })
+            where dr.location >= span.fullRange.location && dr.upperBound <= span.fullRange.upperBound {
+            text.deleteCharacters(in: NSRange(location: dr.location - span.fullRange.location,
+                                              length: dr.length))
+        }
+        return (text as String).allSatisfy { $0 == " " || $0 == "\t" || $0 == "#" }
     }
 
     /// Applies a whitelisted HTML tag's rendered formatting to `range` (the inner
