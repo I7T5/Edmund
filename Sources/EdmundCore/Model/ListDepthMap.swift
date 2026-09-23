@@ -27,6 +27,15 @@ enum ListDepthMap {
     /// Depth stored for a block that has no list line of its own.
     static let notAList = -1
 
+    /// Entry for a paragraph continuing the list item at `depth` (a line
+    /// indented under the item with no marker of its own, as Shift-Return
+    /// writes). Kept in the same array, below `notAList`, so the depth diff
+    /// that re-styles re-parented items re-styles these too.
+    static func continuation(ofDepth depth: Int) -> Int { -2 - depth }
+
+    /// The item depth a `continuation(ofDepth:)` entry encodes, else nil.
+    static func continuedDepth(_ entry: Int) -> Int? { entry <= -2 ? -2 - entry : nil }
+
     /// Tab stop width for turning leading whitespace into columns, per
     /// CommonMark. Only matters for tab-indented documents.
     private static let tabWidth = 4
@@ -53,6 +62,9 @@ enum ListDepthMap {
                 // inside the innermost open item — a continuation paragraph,
                 // say — so it leaves the stack alone. One that popped
                 // everything has ended the list, which the popping already did.
+                if case .paragraph = block.kind, !stack.isEmpty {
+                    depths[i] = continuation(ofDepth: stack.count - 1)
+                }
                 continue
             }
             depths[i] = stack.count

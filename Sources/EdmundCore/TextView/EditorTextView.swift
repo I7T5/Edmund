@@ -144,10 +144,18 @@ public class EditorTextView: NSTextView {
     /// fallback.
     func listDepth(ofBlock index: Int) -> Int? {
         let depths = listDepths
-        guard index >= 0, index < depths.count, depths[index] != ListDepthMap.notAList else {
+        guard index >= 0, index < depths.count, depths[index] >= 0 else {
             return nil
         }
         return depths[index]
+    }
+
+    /// Depth of the list item that paragraph block `index` continues (its
+    /// lines sit indented under the item, markerless), or nil.
+    func listContinuationDepth(ofBlock index: Int) -> Int? {
+        let depths = listDepths
+        guard index >= 0, index < depths.count else { return nil }
+        return ListDepthMap.continuedDepth(depths[index])
     }
 
     /// List blocks whose depth differs from `old` — the depths captured before
@@ -167,8 +175,14 @@ public class EditorTextView: NSTextView {
         var suffix = 0
         while suffix < old.count - prefix, suffix < new.count - prefix,
               old[old.count - 1 - suffix] == new[new.count - 1 - suffix] { suffix += 1 }
+        // A paragraph that stopped continuing an item now reads `notAList`, but
+        // it still wears the continuation indent, so it needs the restyle too.
+        let lostContinuation = old[prefix..<(old.count - suffix)].contains {
+            ListDepthMap.continuedDepth($0) != nil
+        }
         var changed = IndexSet()
-        for i in prefix..<(new.count - suffix) where new[i] != ListDepthMap.notAList {
+        for i in prefix..<(new.count - suffix)
+            where new[i] != ListDepthMap.notAList || lostContinuation {
             changed.insert(i)
         }
         return changed

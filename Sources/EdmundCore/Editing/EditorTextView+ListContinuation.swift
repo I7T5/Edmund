@@ -77,11 +77,42 @@ extension EditorTextView {
         // Inside an image token, Return breaks after the token instead of
         // splitting its path. See EditorTextView+ImageAttachments.
         if handleImageNewline(sel) { return }
+        // Shift-Return in a list: a new line inside the same item, no marker.
+        if NSApp.currentEvent?.type == .keyDown,
+           NSApp.currentEvent?.modifierFlags.contains(.shift) == true,
+           insertListSoftBreak() { return }
         // Blockquote/callout continuation is deliberately not gated: the setting
         // is worded "Automatically continue lists".
         if listContinuationEnabled, handleListNewline(sel) { return }
         if handleBlockquoteNewline(at: sel.location) { return }
         super.insertNewline(sender)
+    }
+
+    /// Shift-Return inside a list item (or a paragraph already continuing
+    /// one): breaks the line and indents the new one to the item's text
+    /// column, so it stays in the item without a marker of its own —
+    /// CommonMark's paragraph continuation, drawn at the item's text column
+    /// (`styleListContinuation`). Not gated on the list-continuation setting:
+    /// Shift is an explicit request. Returns false outside a list.
+    @discardableResult
+    public func insertListSoftBreak() -> Bool {
+        let sel = selectedRange()
+        guard let blockIdx = blockIndexForRawOffset(sel.location),
+              blockIdx < blocks.count else { return false }
+        let block = blocks[blockIdx]
+        let prefix: String
+        if let (indent, marker, _) = parseListMarker(block.content) {
+            prefix = indent + String(repeating: " ", count: (marker as NSString).length)
+        } else if listContinuationDepth(ofBlock: blockIdx) != nil {
+            // Keep the indent of the line the caret is on.
+            let ns = rawSource as NSString
+            let line = ns.lineRange(for: NSRange(location: sel.location, length: 0))
+            prefix = String(ns.substring(with: line).prefix { $0 == " " || $0 == "\t" })
+        } else {
+            return false
+        }
+        insertText("\n" + prefix, replacementRange: sel)
+        return true
     }
 
     /// List continuation. Returns true if it handled the newline.
