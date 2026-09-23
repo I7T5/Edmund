@@ -296,7 +296,18 @@ Notable subsystems:
   a portrait display and the mm size doesn't — #324). Applied as a symmetric `textContainerInset.width`
   cap: wider windows center the column, narrower ones fill. Recomputed on
   resize and on moving to a differently-scaled display
-  (`NSWindow.didChangeScreenNotification`).
+  (`NSWindow.didChangeScreenNotification`). Tables and image overlays bake geometry into styled
+  attributes: a coalesced common-mode timer compares the usable container width
+  and restyles those blocks outside the resize pass,
+  including during live resizing, at most 30 times per second. The pending
+  one-shot timer applies the final width after the drag ends. A one-off
+  change outside a drag (zoom, the column-width setting) skips the timer and
+  takes the next run-loop hop, so it lands before the frame draws. Comparing the
+  inset alone misses narrower windows with fixed margins. The refresh
+  preserves the viewport, waits out
+  marked text/pending edits, and uses the existing lazy dirty-block path for
+  offscreen work. Image sizes are baked at render time (§4 `fragmentOverlay`),
+  so TextKit reflow alone cannot resize them.
 - **Format menu & shortcuts**: pure AppKit (no SwiftUI scene, so SwiftUI
   `Commands` isn't an option). `FormatMenu.swift` is a declarative command
   table (`MenuCommand` + `Shortcut`, each with a stable `id` so a later pass
@@ -865,8 +876,9 @@ Notable subsystems:
   hidden characters on the first), drawn over the first column's text.
   Reached by ⌘0 then ⌘− (`Document.setZoom` applies the theme before it
   shrinks `maxContentWidthPoints`) and by pulling a window in.
-  `updateContentInset` recomposes table blocks on a width change, as it
-  already did image blocks (`EditorTextView+ContentWidth.swift`).
+  `updateContentInset` restyles table and image blocks when the usable
+  width changes — not the inset, which a window already narrower than the
+  cap never changes (`EditorTextView+ContentWidth.swift`).
 - **Table chrome scales with the text.** The `</>` button follows the code
   size (as the line numbers it shares a margin with); the pills, their gap
   and band, and the cell-selection dots follow the body size

@@ -139,11 +139,11 @@ extension EditorTextView {
 
     /// Recomputes the horizontal text inset from the current bounds + max-column cap,
     /// preserving the vertical inset. Usually no recompose — only the inset
-    /// changes and TextKit 2 reflows wrapped text on its own. The exception is
-    /// image overlays: their scaled-to-fit size is baked into the styled
-    /// attribute at render time (§4 fragmentOverlay), not recomputed at draw
-    /// time, so a column narrower than an already-rendered image needs those
-    /// blocks restyled to shrink it.
+    /// changes and TextKit 2 reflows wrapped text on its own. The exceptions
+    /// are tables and image overlays: their scaled-to-fit geometry is baked
+    /// into styled attributes at render time (§4 fragmentOverlay), not
+    /// recomputed at draw time. Restyle them when the usable width changes,
+    /// coalescing updates outside the resize pass.
     public func updateContentInset() {
         let target = Self.horizontalInset(viewWidth: bounds.width,
                                           maxContentWidth: maxContentWidthPoints)
@@ -162,10 +162,9 @@ extension EditorTextView {
         // Scheduled rather than applied — this runs inside `setFrameSize`, and
         // re-tiling the scroll view from inside its own layout is a crash.
         scheduleLineNumberPlacementUpdate()
-        // Image overlays and table columns are sized against the column width
-        // only, so a vertical-only change needs no recompose.
-        guard widthChanged else { return }
-
+        // Fixed margins can stay unchanged while the container narrows. Check
+        // the usable width after layout, not whether the inset changed.
+        //
         // Tables too: a column's width is clamped to the line width when it
         // is styled (`distributeColumnWidths`), and the cell that overflows
         // it kerns out the whole column. Styled for a wider line and then
@@ -173,12 +172,61 @@ extension EditorTextView {
         // shrinks, or a window pulled in — the row's advance no longer fits
         // and TextKit 2 force-wraps it: the next column's cells land on a
         // second line of near-zero height, drawn over the first column's text.
-        let dependent = IndexSet(blocks.indices.filter {
+        scheduleContentWidthUpdate(coalesced: inLiveResize)
+    }
+
+    /// Restyles width-dependent blocks outside `setFrameSize`. A live drag
+    /// coalesces on a common-mode timer (it fires inside the resize loop too),
+    /// capped at 30 Hz to leave time for layout and drawing between restyles;
+    /// the pending timer also applies the latest width after the drag ends, so
+    /// later resizes must not cancel or postpone it. A one-off change (zoom,
+    /// the column-width setting) takes the next run-loop hop instead, which
+    /// still lands before the frame draws — the timer's 33ms showed the
+    /// force-wrapped row described above for a frame or two.
+    func scheduleContentWidthUpdate(coalesced: Bool = true) {
+        guard !contentWidthUpdateScheduled else { return }
+        contentWidthUpdateScheduled = true
+        let fire: @Sendable () -> Void = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.contentWidthUpdateScheduled = false
+                self.updateContentWidths()
+            }
+        }
+        guard coalesced else { RunLoop.main.perform(fire); return }
+        RunLoop.main.add(Timer(timeInterval: 1.0 / 30, repeats: false) { _ in fire() },
+                         forMode: .common)
+    }
+
+    func updateContentWidths() {
+        let width = availableContentWidth
+        guard width > 0 else { return }
+        if let previous = lastStyledContentWidth, abs(width - previous) <= 0.5 { return }
+        // Marked text can leave storage ahead of the block model. Keep the
+        // width pending until composition commits, without touching attributes.
+        guard !isUpdating, !hasMarkedText(),
+              (textStorage as? EditorTextStorage)?.pendingEdit == nil else {
+            scheduleContentWidthUpdate()
+            return
+        }
+        lastStyledContentWidth = width
+        let dirty = IndexSet(blocks.indices.filter {
             blocks[$0].kind == .table || blocks[$0].content.contains("![")
+                || blocks[$0].content.localizedCaseInsensitiveContains("<img")
         })
-        guard !dependent.isEmpty else { return }
-        for idx in dependent { blocks[idx].isStyled = false }
-        recomposeDirty(dependent, cursorInRaw: currentCursorInRaw(), settingSelection: true)
+        guard !dirty.isEmpty else { return }
+        preservingViewportAnchor {
+            recomposeDirty(dirty, cursorInRaw: currentCursorInRaw())
+        }
+        // `setFrameSize` already ran `updateWrappedCaret` against the old
+        // column geometry; the in-cell caret has to be re-read once the new
+        // geometry is laid out. Not right here — the grid is read off laid-out
+        // fragments, and the recompose only *scheduled* that layout — so wait
+        // for the settle it queued (measured: an immediate call still lands a
+        // row off).
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated { self?.updateWrappedCaret() }
+        }
     }
 
     /// Recompute the centered inset as the view width changes (window resize).

@@ -310,6 +310,8 @@ struct TableWidthFollowsColumnTests {
         #expect(wide > 0)
 
         editor.maxContentWidthPoints = editor.availableContentWidth * 0.6
+        // The restyle lands on the next run-loop hop, outside `setFrameSize`.
+        settleContentWidth()
         ensureFullLayout(editor); layOutViewport(editor)
         let narrow = rowWidth()
         #expect(narrow < wide, "the table kept its width for the wider column")
