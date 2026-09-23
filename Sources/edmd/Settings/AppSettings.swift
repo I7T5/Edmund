@@ -578,7 +578,7 @@ enum AppSettings {
             editor.applyChromeColors()
             editor.invisibles = invisiblesConfig
             editor.recomposeAllDirty()
-            document.refreshReadView()
+            document.refreshReadView(immediately: true)
         }
     }
 

@@ -325,7 +325,7 @@ struct AppearanceSettingsView: View {
             let screen = document.editor?.window?.screen ?? NSScreen.main
             guard let screen else { continue }
             document.editor?.maxContentWidthPoints = screen.cmToPoints(maxContentWidthCm)
-            document.refreshReadView()
+            document.refreshReadView(immediately: true)
         }
     }
 

@@ -200,7 +200,7 @@ struct SyntaxSettingsView: View {
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.markdownFeatures = features
             document.refreshFormatBar()
-            document.refreshReadView()
+            document.refreshReadView(immediately: true)
         }
     }
 
@@ -209,7 +209,7 @@ struct SyntaxSettingsView: View {
     private func refreshCodeBlocks() {
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.rerenderStyles()
-            document.refreshReadView()
+            document.refreshReadView(immediately: true)
         }
     }
 

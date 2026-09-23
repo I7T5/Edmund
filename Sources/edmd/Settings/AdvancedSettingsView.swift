@@ -120,7 +120,7 @@ struct AdvancedSettingsView: View {
     private func refreshOpenReadViews() {
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.allowRemoteImages = !blockExternalImages
-            document.refreshReadView()
+            document.refreshReadView(immediately: true)
         }
     }
 }
