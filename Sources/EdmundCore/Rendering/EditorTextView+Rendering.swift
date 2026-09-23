@@ -1,5 +1,8 @@
 import AppKit
 
+/// Memoized quote marker widths for each body font.
+nonisolated(unsafe) private let quoteMarkerWidthCache = NSCache<NSString, NSNumber>()
+
 extension NSAttributedString.Key {
     /// Stores a link's destination (URL string) on its visible text so a
     /// cmd+click can follow it. Kept separate from the system `.link` attribute
@@ -158,7 +161,13 @@ extension EditorTextView {
     /// rendered width-preserved (clear when inactive, dimmed when active) on
     /// each line's first visual line, so subsequent lines hang by this width.
     var quoteMarkerWidth: CGFloat {
-        ("> " as NSString).size(withAttributes: [.font: bodyFont]).width
+        let key = "\(bodyFont.fontName)|\(bodyFont.pointSize)" as NSString
+        if let cached = quoteMarkerWidthCache.object(forKey: key) {
+            return CGFloat(cached.doubleValue)
+        }
+        let width = ("> " as NSString).size(withAttributes: [.font: bodyFont]).width
+        quoteMarkerWidthCache.setObject(NSNumber(value: Double(width)), forKey: key)
+        return width
     }
 
     /// Paragraph style for blockquotes: a 2pt text inset matching the width of
@@ -940,12 +949,13 @@ extension EditorTextView {
         // block's centered paragraph style), which would otherwise stick
         // forever — a full recompose leaves separators at base attributes,
         // so the in-place path must too.
-        let nsStr = ts.string as NSString
-        if offset > 0, nsStr.character(at: offset - 1) == 0x0A {
+        if offset > 0,
+           ts.attributedSubstring(from: NSRange(location: offset - 1, length: 1)).string == "\n" {
             ts.setAttributes(baseAttributes, range: NSRange(location: offset - 1, length: 1))
         }
         let after = block.range.upperBound
-        if after < nsStr.length, nsStr.character(at: after) == 0x0A {
+        if after < ts.length,
+           ts.attributedSubstring(from: NSRange(location: after, length: 1)).string == "\n" {
             ts.setAttributes(baseAttributes, range: NSRange(location: after, length: 1))
         }
     }
