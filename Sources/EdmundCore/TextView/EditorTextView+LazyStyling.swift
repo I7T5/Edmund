@@ -11,18 +11,27 @@ import AppKit
 //   blocks until none remain, so document height settles and offscreen
 //   content is ready before the user gets there.
 // - Scroll promotion: when the clip view scrolls, unstyled blocks entering
-//   the viewport window are styled synchronously so the user never sees raw
-//   base-attributed text.
+//   the viewport window are styled so the user never sees raw
+//   base-attributed text. Both mechanisms are paused while the user is
+//   actively scrolling (their layout invalidations fight the scroll) and
+//   resume once the scroll goes quiescent.
 
 extension EditorTextView {
 
-    /// Schedules the idle drain (coalesced; safe to call repeatedly).
+    /// Schedules the idle drain (coalesced; safe to call repeatedly). Paused
+    /// while the user is actively scrolling — the drain reschedules every
+    /// run-loop pass and competes with the scroll for the main thread; the
+    /// scroll-quiescence flip resumes it. `drainStylingSlice()` itself is
+    /// never gated, so tests can still drive the drain synchronously.
     func scheduleProgressiveStyling() {
         guard !progressiveStylingScheduled else { return }
+        guard !isScrollingActive else { return }
         progressiveStylingScheduled = true
-        DispatchQueue.main.async { [weak self] in
-            self?.progressiveStylingScheduled = false
-            self?.drainStylingSlice()
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                self?.progressiveStylingScheduled = false
+                self?.drainStylingSlice()
+            }
         }
     }
 
@@ -109,12 +118,18 @@ extension EditorTextView {
     /// the process-killing path that motivated `scrollRangeToVisible`'s
     /// override.)
     ///
+    /// Also skipped while the user is actively scrolling: a full-document
+    /// layout mid-scroll is exactly the main-thread stall the scroll is
+    /// trying to avoid. The quiescence resume path (a final drain slice →
+    /// `scheduleFullLayoutSettle`) re-arms it once scrolling settles.
+    ///
     /// Runs on the next run-loop pass, wrapped in `preservingViewportAnchor`:
     /// correcting estimates *above* the viewport shifts every laid-out
     /// position below them, so doing it synchronously inside a caller's own
     /// anchored restyle would poison that caller's before/after measurement.
     func scheduleFullLayoutSettle() {
         guard !fullLayoutSettleScheduled else { return }
+        guard !isScrollingActive else { return }
         fullLayoutSettleScheduled = true
         // RunLoop.perform, not DispatchQueue.main.async, so tests can drain it
         // with `RunLoop.main.run(until:)`.
@@ -122,7 +137,7 @@ extension EditorTextView {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.fullLayoutSettleScheduled = false
-                guard !self.isUpdating, !self.hasMarkedText(),
+                guard !self.isUpdating, !self.hasMarkedText(), !self.isScrollingActive,
                       let tlm = self.textLayoutManager else { return }
                 self.repairContentAboveOrigin()
                 guard (self.textStorage?.length ?? 0) <= Self.fullLayoutMaxLength,
@@ -219,32 +234,89 @@ extension EditorTextView {
     /// Observes clip-view scrolling for promotion. Called from
     /// `viewDidMoveToWindow`.
     func installScrollPromotionObserver() {
-        guard let clipView = enclosingScrollView?.contentView else { return }
+        guard let scrollView = enclosingScrollView else { return }
+        let clipView = scrollView.contentView
         clipView.postsBoundsChangedNotifications = true
         // viewDidMoveToWindow can fire more than once; keep one observation.
-        NotificationCenter.default.removeObserver(
-            self, name: NSView.boundsDidChangeNotification, object: nil)
+        for name in [NSView.boundsDidChangeNotification,
+                     NSScrollView.willStartLiveScrollNotification,
+                     NSScrollView.didEndLiveScrollNotification] {
+            NotificationCenter.default.removeObserver(self, name: name, object: nil)
+        }
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(clipViewBoundsDidChange(_:)),
             name: NSView.boundsDidChangeNotification,
             object: clipView
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(userScrollDidStart(_:)),
+            name: NSScrollView.willStartLiveScrollNotification, object: scrollView)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(userScrollDidEnd(_:)),
+            name: NSScrollView.didEndLiveScrollNotification, object: scrollView)
     }
 
+    /// Keep the gate briefly after AppKit ends a live user scroll, so successive
+    /// wheel gestures do not interleave promotion with the next scroll.
+    private static let scrollQuiescenceDelay: TimeInterval = 0.25
+
     @objc private func clipViewBoundsDidChange(_ note: Notification) {
-        // Promotion forces a viewport layout and may restyle blocks (changing
-        // their heights). Running that synchronously inside the scroll
-        // notification fights the momentum scroll and makes the viewport
-        // bounce. Defer to the next run-loop turn (coalesced), so each scroll
-        // tick just scrolls and styling catches up between ticks.
-        guard !isUpdating, !pendingPromotion else { return }
-        pendingPromotion = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.pendingPromotion = false
-            guard !self.isUpdating else { return }
-            self.promoteVisibleUnstyledBlocks()
+        // Bounds also change for caret centering, outline jumps, and viewport
+        // compensation. Those must promote promptly without pausing styling.
+        guard !isScrollingActive, !isPromotingVisibleBlocks else { return }
+        scheduleScrollPromotion()
+    }
+
+    @objc private func userScrollDidStart(_ note: Notification) {
+        userScrollInProgress = true
+        isScrollingActive = true
+        scrollQuiescenceTimer?.invalidate()
+        scrollQuiescenceTimer = nil
+    }
+
+    @objc private func userScrollDidEnd(_ note: Notification) {
+        userScrollInProgress = false
+        armScrollQuiescence()
+    }
+
+    private func armScrollQuiescence() {
+        scrollQuiescenceTimer?.invalidate()
+        scrollQuiescenceTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.scrollQuiescenceDelay, repeats: false) { [weak self] _ in
+            RunLoop.main.perform { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.scrollQuiescenceTimer = nil
+                    guard !self.userScrollInProgress else { return }
+                    if self.isUpdating {
+                        self.armScrollQuiescence()
+                        return
+                    }
+                    self.isScrollingActive = false
+                    self.scheduleScrollPromotion()
+                    self.scheduleProgressiveStyling()
+                }
+            }
+        }
+    }
+
+    private func scheduleScrollPromotion() {
+        guard !scrollPromotionScheduled else { return }
+        scrollPromotionScheduled = true
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.scrollPromotionScheduled = false
+                guard !self.isScrollingActive else { return }
+                if self.isUpdating {
+                    self.scheduleScrollPromotion()
+                    return
+                }
+                self.isPromotingVisibleBlocks = true
+                defer { self.isPromotingVisibleBlocks = false }
+                self.promoteVisibleUnstyledBlocks()
+            }
         }
     }
 }
