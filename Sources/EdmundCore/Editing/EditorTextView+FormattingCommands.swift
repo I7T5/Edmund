@@ -180,6 +180,15 @@ extension EditorTextView {
         if let action = menuItem.action, Self.formattingActions.contains(action) {
             return isFormattingActionEnabled(action, representedObject: menuItem.representedObject)
         }
+        // Edit ▸ Paste with an image-bearing clipboard: stock validation
+        // disables it (importsGraphics is off, so images are "unreadable"),
+        // which would make paste(_:) unreachable. Enable it when there's
+        // image content to attach; paste(_:) itself handles the image
+        // (EditorTextView+ImageAttachments) or falls through to text.
+        if menuItem.action == #selector(paste(_:)),
+           isEditable, Self.pasteboardHasImageContent(.general) {
+            return true
+        }
         return super.validateMenuItem(menuItem)
     }
 
@@ -515,7 +524,8 @@ extension EditorTextView {
     /// directory when `url` sits at or below it (so the file stays portable
     /// alongside its assets), absolute otherwise. Percent-encoded, since a raw
     /// space or `)` in a filename would truncate the destination — which
-    /// `DocumentHTML.resolveLocalImage` decodes symmetrically on the way back.
+    /// `LocalImageInlining.resolve` (shared by `DocumentHTML` and
+    /// `SelfContainedMarkdown`) decodes symmetrically on the way back.
     func imageDestination(for url: URL) -> String {
         let file = url.standardizedFileURL
         var path = file.path

@@ -74,6 +74,9 @@ extension EditorTextView {
         // On the separator line of a header-only table, Return finishes the
         // table: pad the separator to the header and add a body row to type in.
         if handleTableSeparatorNewline() { return }
+        // Inside an image token, Return breaks after the token instead of
+        // splitting its path. See EditorTextView+ImageAttachments.
+        if handleImageNewline(sel) { return }
         // Blockquote/callout continuation is deliberately not gated: the setting
         // is worded "Automatically continue lists".
         if listContinuationEnabled, handleListNewline(sel) { return }

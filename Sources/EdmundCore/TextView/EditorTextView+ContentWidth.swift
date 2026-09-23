@@ -164,25 +164,38 @@ extension EditorTextView {
         scheduleLineNumberPlacementUpdate()
         // Fixed margins can stay unchanged while the container narrows. Check
         // the usable width after layout, not whether the inset changed.
-        scheduleContentWidthUpdate()
+        //
+        // Tables too: a column's width is clamped to the line width when it
+        // is styled (`distributeColumnWidths`), and the cell that overflows
+        // it kerns out the whole column. Styled for a wider line and then
+        // narrowed — ⌘0 then ⌘−, where the theme is applied before the width
+        // shrinks, or a window pulled in — the row's advance no longer fits
+        // and TextKit 2 force-wraps it: the next column's cells land on a
+        // second line of near-zero height, drawn over the first column's text.
+        scheduleContentWidthUpdate(coalesced: inLiveResize)
     }
 
-    /// A common-mode timer runs during live resizing as well as after it, and
-    /// coalesces resize bursts without restyling from inside `setFrameSize`.
-    /// Cap updates at 30 Hz to leave time for layout and drawing between
-    /// restyles. The pending timer also applies the latest width after a drag
-    /// ends; subsequent resizes must not cancel or postpone it.
-    func scheduleContentWidthUpdate() {
+    /// Restyles width-dependent blocks outside `setFrameSize`. A live drag
+    /// coalesces on a common-mode timer (it fires inside the resize loop too),
+    /// capped at 30 Hz to leave time for layout and drawing between restyles;
+    /// the pending timer also applies the latest width after the drag ends, so
+    /// later resizes must not cancel or postpone it. A one-off change (zoom,
+    /// the column-width setting) takes the next run-loop hop instead, which
+    /// still lands before the frame draws — the timer's 33ms showed the
+    /// force-wrapped row described above for a frame or two.
+    func scheduleContentWidthUpdate(coalesced: Bool = true) {
         guard !contentWidthUpdateScheduled else { return }
         contentWidthUpdateScheduled = true
-        let timer = Timer(timeInterval: 1.0 / 30, repeats: false) { [weak self] _ in
+        let fire: @Sendable () -> Void = { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.contentWidthUpdateScheduled = false
                 self.updateContentWidths()
             }
         }
-        RunLoop.main.add(timer, forMode: .common)
+        guard coalesced else { RunLoop.main.perform(fire); return }
+        RunLoop.main.add(Timer(timeInterval: 1.0 / 30, repeats: false) { _ in fire() },
+                         forMode: .common)
     }
 
     func updateContentWidths() {

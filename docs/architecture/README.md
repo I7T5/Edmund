@@ -61,7 +61,7 @@ The most important files:
 | `Sources/EdmundCore/Parsing/SyntaxHighlighter.swift` | Finds the styling spans inside a block (bold, links, callouts, math, …) |
 | `Sources/EdmundCore/Rendering/EditorTextView+Rendering.swift` | `styleBlock` — turns one block's spans into attributes |
 | `Sources/EdmundCore/TextView/EditorTextView+Composition.swift` | The recompose paths — the only place styled attributes are written to storage |
-| `Sources/EdmundCore/TextView/EditorTextView+TextKit2.swift` | Custom drawing: callout boxes, quote bars, icons, math overlays |
+| `Sources/EdmundCore/TextView/DecoratedTextLayoutFragment.swift` | Custom drawing: callout boxes, quote bars, icons, math overlays |
 | `Sources/EdmundCore/Export/HTMLRenderer.swift` | Read mode / PDF / Print HTML back-end |
 | `Sources/edmd/App/Document.swift` | App shell: document lifecycle, Edit ↔ Read switching |
 

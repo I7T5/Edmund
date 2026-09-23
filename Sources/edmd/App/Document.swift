@@ -169,8 +169,8 @@ class Document: NSDocument, HeadingNavigable {
                                            height: EditorTextView.contentBaseVerticalInset)
         // Centered reading column (see EditorTextView+ContentWidth). Convert the
         // persisted cm value to points using the main screen PPI at window-creation
-        // time; recomputed on resize (setFrameSize) and when the window moves to a
-        // different display (windowDidChangeScreen).
+        // time; recomputed on resize (setFrameSize), when the window first becomes
+        // key, and when it moves to a different display (windowDidChangeScreen).
         let initScreen = NSScreen.main
         editor.maxContentWidthPoints = initScreen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000
         editor.updateContentInset()
@@ -179,6 +179,13 @@ class Document: NSDocument, HeadingNavigable {
         editor.typewriterModeEnabled = AppDelegate.typewriterModeEnabled()
         AppSettings.applyEditSettings(to: editor)
         editor.document = self
+        // Pasting/dropping an image into an unsaved document triggers the save
+        // flow first — the assets folder is a sibling of the document file, so
+        // there is nowhere to put it until the document has a path.
+        editor.requestSaveForAttachment = { [weak self] completion in
+            guard let self else { completion(false); return }
+            self.saveForAttachment(then: completion)
+        }
         // Following an internal link while in Read mode scrolls the visible web
         // view (the editor is hidden), not the editor itself.
         editor.onReadScrollToLine = { [weak self] line in
@@ -281,6 +288,14 @@ class Document: NSDocument, HeadingNavigable {
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSWindow.didChangeScreenNotification, object: window
+        )
+        // The initial cap above was converted with NSScreen.main's PPI because
+        // the window isn't on any screen yet. A window that first appears on a
+        // secondary display doesn't reliably get didChangeScreen, so re-apply
+        // once it's key (cheap: the setter no-ops on an unchanged value).
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidChangeScreen(_:)),
+            name: NSWindow.didBecomeKeyNotification, object: window
         )
         // Auto-hide is a full-screen-only affair, and applyToolbarAutoHide may
         // have hidden the toolbar outright to honour it. Put it back on the way
@@ -439,6 +454,98 @@ class Document: NSDocument, HeadingNavigable {
             warnIfInconsistentLineEndings(in: content)
         }
         updateStatusBar()
+    }
+
+    /// Every reload of the file on disk lands here: AppKit's silent re-read when
+    /// another app changes a document that has no unsaved edits, the Revert
+    /// button on its "changed by another application" sheet, and File ▸ Revert
+    /// To. `read(from:ofType:)` only parks the text in `pendingContent` and
+    /// nothing after the window is up ever adopted it — so the revert cleared
+    /// the change count while the editor kept the old text, and the next save
+    /// wrote that stale buffer over the other app's changes (#293).
+    override func revert(toContentsOf url: URL, ofType typeName: String) throws {
+        let caret = editor?.selectedRange().location ?? 0
+        try super.revert(toContentsOf: url, ofType: typeName)
+        adoptPendingContent()
+        // The line-ending sheet is an open-time warning only.
+        contentPendingWarning = nil
+        guard let editor else { return }
+        // `loadContent` recomposes at offset 0; put the caret back where it was
+        // (clamped — the file may have shrunk) so a reload doesn't jump to the top.
+        let offset = min(caret, (editor.rawSource as NSString).length)
+        editor.setSelectedRange(NSRange(location: offset, length: 0))
+        editor.scrollRangeToVisible(editor.selectedRange())
+        refreshReadView()
+        Log.info("Reloaded from disk", category: .io)
+    }
+
+    // MARK: - Watching the file on disk
+
+    /// AppKit only hears about *coordinated* writes (other Cocoa apps going
+    /// through NSFileCoordinator). Command-line tools, git, vim, VS Code and
+    /// friends write without coordination, so a document kept showing stale
+    /// text however often the file changed underneath it (#293). kqueue sees
+    /// every write; what happens next is still AppKit's own policy — a clean
+    /// document reloads, a dirty one gets AppKit's "changed by another
+    /// application" sheet at its next (auto)save because the modification
+    /// date no longer matches.
+    private var fileWatcher: DispatchSourceFileSystemObject?
+
+    override nonisolated var fileURL: URL? {
+        // The setter is nonisolated (AppKit may set it off-main); the watch
+        // lives on main. Hop only when actually off-main: a queued hop runs
+        // after the caller's run-loop turn, which is too late for a
+        // synchronous test — and for a `Save As` that is about to write.
+        didSet {
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { watchFile() }
+            } else {
+                Task { @MainActor in self.watchFile() }
+            }
+        }
+    }
+
+    private func watchFile() {
+        fileWatcher?.cancel()
+        fileWatcher = nil
+        guard let url = fileURL else { return }
+        let fd = open(url.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        // Events land on a private queue and hop to main through the run loop
+        // rather than `DispatchQueue.main`: a run-loop block is drained by
+        // `RunLoop.main.run(until:)`, which is what a synchronous test spins.
+        nonisolated(unsafe) let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: [.write, .rename, .delete],
+            queue: DispatchQueue(label: "edmund.file-watch"))
+        // The handler holds `source` (it needs `.data`); `close()` cancels
+        // the source, which drops the handler and breaks that cycle.
+        source.setEventHandler { @Sendable [weak self] in
+            let replaced = !source.data.isDisjoint(with: [.rename, .delete])
+            RunLoop.main.perform {
+                MainActor.assumeIsolated { self?.fileDidChangeOnDisk(replaced: replaced) }
+            }
+        }
+        source.setCancelHandler { @Sendable in Darwin.close(fd) }
+        source.resume()
+        fileWatcher = source
+    }
+
+    override func close() {
+        fileWatcher?.cancel()
+        fileWatcher = nil
+        super.close()
+    }
+
+    private func fileDidChangeOnDisk(replaced: Bool) {
+        // An atomic save (most editors) replaces the file, so the watched
+        // inode is gone: re-arm on the path, which now names the new file.
+        // ponytail: a delete-then-recreate loses the watch; reopening the
+        // document restores it.
+        if replaced { watchFile() }
+        guard let url = fileURL, !isDocumentEdited,
+              let onDisk = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+              onDisk != fileModificationDate else { return }
+        try? revert(toContentsOf: url, ofType: fileType ?? "net.daringfireball.markdown")
     }
 
     /// Warn (once, suppressibly) when an opened file mixed line-ending styles.
@@ -747,6 +854,28 @@ class Document: NSDocument, HeadingNavigable {
 
     // MARK: - Export / Print
 
+    /// Runs the standard save flow (save panel for an untitled document) so an
+    /// image attachment has a document directory to land in, then reports
+    /// whether the document ended up saved. Called via the editor's
+    /// `requestSaveForAttachment` hook.
+    func saveForAttachment(then completion: @escaping (Bool) -> Void) {
+        guard let window = windowControllers.first?.window else { completion(false); return }
+        let panel = NSSavePanel()
+        _ = prepareSavePanel(panel)   // seeds the "Untitled.md" name like a real save
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { completion(false); return }
+            self.save(to: url, ofType: "net.daringfireball.markdown",
+                      for: .saveOperation) { error in
+                if let error {
+                    NSAlert(error: error).runModal()
+                    completion(false)
+                } else {
+                    completion(true)
+                }
+            }
+        }
+    }
+
     @objc func exportToPDF(_ sender: Any?) {
         let name = (displayName as NSString).deletingPathExtension
         MarkdownPrinter.exportPDF(markdown: editor.rawSource,
@@ -756,6 +885,77 @@ class Document: NSDocument, HeadingNavigable {
                                   options: renderOptions,
                                   suggestedName: name.isEmpty ? "Untitled" : name,
                                   window: windowControllers.first?.window)
+    }
+
+    /// File ▸ Export To ▸ HTML…: the self-contained themed page Read mode shows
+    /// (images and math inlined), written to a single .html file.
+    @objc func exportToHTML(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        DocumentExporter.exportHTML(markdown: editor.rawSource,
+                                    theme: editor.theme,
+                                    callouts: mergedCallouts,
+                                    baseURL: documentDirectory,
+                                    options: renderOptions,
+                                    suggestedName: name.isEmpty ? "Untitled" : name,
+                                    window: windowControllers.first?.window)
+    }
+
+    /// File ▸ Export To ▸ Markdown with Embedded Images…: a share copy with
+    /// local images inlined as data URIs, for handing someone a single .md file.
+    @objc func exportSelfContainedMarkdown(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        DocumentExporter.exportSelfContainedMarkdown(markdown: editor.rawSource,
+                                                     baseURL: documentDirectory,
+                                                     features: AppSettings.markdownFeatures,
+                                                     suggestedName: name.isEmpty ? "Untitled" : name,
+                                                     window: windowControllers.first?.window)
+    }
+
+    /// File ▸ Export To ▸ Rich Text Format…: RTF, or RTFD when the document has pictures.
+    @objc func exportToRichText(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        DocumentExporter.exportRichText(markdown: editor.rawSource,
+                                        theme: editor.theme,
+                                        callouts: mergedCallouts,
+                                        baseURL: documentDirectory,
+                                        options: renderOptions,
+                                        suggestedName: name.isEmpty ? "Untitled" : name,
+                                        window: windowControllers.first?.window)
+    }
+
+    /// File ▸ Export To ▸ Plain Text…: the words without the Markdown syntax.
+    @objc func exportToPlainText(_ sender: Any?) {
+        let name = (displayName as NSString).deletingPathExtension
+        DocumentExporter.exportPlainText(markdown: editor.rawSource,
+                                         features: AppSettings.markdownFeatures,
+                                         suggestedName: name.isEmpty ? "Untitled" : name,
+                                         window: windowControllers.first?.window)
+    }
+
+    // MARK: - Copy As
+
+    /// Edit ▸ Copy As ▸ Plain Text: the selection without its Markdown syntax.
+    @objc func copyAsPlainText(_ sender: Any?) {
+        DocumentExporter.copyPlainText(markdown: selectedMarkdown, features: AppSettings.markdownFeatures)
+    }
+
+    /// Edit ▸ Copy As ▸ Rich Text: the selection formatted, for pasting into
+    /// Mail, Pages, Word or a browser.
+    @objc func copyAsRichText(_ sender: Any?) {
+        do {
+            try DocumentExporter.copyRichText(markdown: selectedMarkdown, theme: editor.theme,
+                                              callouts: mergedCallouts, baseURL: documentDirectory,
+                                              options: renderOptions)
+        } catch {
+            Log.error("Copy as Rich Text failed: \(error.localizedDescription)", category: .io)
+            NSSound.beep()
+        }
+    }
+
+    /// The editor's selection as Markdown. Storage is the raw source, so the
+    /// selected range indexes `rawSource` directly.
+    private var selectedMarkdown: String {
+        (editor.rawSource as NSString).substring(with: editor.selectedRange())
     }
 
     @objc override func printDocument(_ sender: Any?) {
@@ -898,6 +1098,11 @@ class Document: NSDocument, HeadingNavigable {
             item.state = AppSettings.autoHideToolbar ? .on : .off
             // Nothing to auto-hide with the toolbar switched off entirely.
             return AppSettings.showToolbar
+        }
+        if item.action == #selector(copyAsPlainText(_:)) || item.action == #selector(copyAsRichText(_:)) {
+            // Greyed out with nothing selected — and outside the editor: in
+            // Read mode the web view has focus, and its own Copy is already rich.
+            return editor.window?.firstResponder === editor && editor.selectedRange().length > 0
         }
         return super.validateMenuItem(item)
     }

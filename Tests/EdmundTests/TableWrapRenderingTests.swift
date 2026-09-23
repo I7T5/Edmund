@@ -282,3 +282,40 @@ struct TableWrapRenderingTests {
         #expect(result == [20, 30])
     }
 }
+
+@Suite("Table width follows the column")
+@MainActor
+struct TableWidthFollowsColumnTests {
+    /// A table's column widths are clamped to the line width when it is
+    /// styled. Narrowing the column afterwards (⌘0 then ⌘−, where the theme is
+    /// applied before the width shrinks; a window pulled in) must restyle the
+    /// table, or its row is wider than the line and TextKit 2 force-wraps it —
+    /// the second column's cells landing on a near-zero-height second line
+    /// drawn over the first column's text.
+    @Test("Narrowing the content column re-fits a wrapped table's row")
+    func narrowingRefitsTable() {
+        let editor = makeEditor()
+        editor.updateContentInset()
+        let longText = Array(repeating: "overflow", count: 30).joined(separator: " ")
+        editor.loadContent("Intro.\n\n| \(longText) | b |\n|---|---|\n| x | y |\n")
+        ensureFullLayout(editor); layOutViewport(editor)
+        let table = editor.blocks.firstIndex { $0.kind == .table }!
+        func rowWidth() -> CGFloat {
+            guard case .tableRow(_, let width, _, _, _, _)? = blockDecoration(
+                at: editor.blocks[table].range.location, in: editor)?.kind
+            else { return -1 }
+            return width
+        }
+        let wide = rowWidth()
+        #expect(wide > 0)
+
+        editor.maxContentWidthPoints = editor.availableContentWidth * 0.6
+        // The restyle lands on the next run-loop hop, outside `setFrameSize`.
+        settleContentWidth()
+        ensureFullLayout(editor); layOutViewport(editor)
+        let narrow = rowWidth()
+        #expect(narrow < wide, "the table kept its width for the wider column")
+        #expect(narrow <= editor.availableContentWidth + 0.5,
+                "the table is wider than the line it sits on")
+    }
+}

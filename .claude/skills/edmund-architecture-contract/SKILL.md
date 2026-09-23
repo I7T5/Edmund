@@ -199,9 +199,9 @@ does not reproduce headless; see the routing in §8.
 
 All custom visuals are drawn by `DecoratedTextLayoutFragment` (custom
 `NSTextLayoutFragment`,
-`Sources/EdmundCore/TextView/EditorTextView+TextKit2.swift:160`), vended via
-the layout-manager delegate. Two custom attribute keys (same file, lines
-28/32):
+`Sources/EdmundCore/TextView/DecoratedTextLayoutFragment.swift`), vended via
+the layout-manager delegate (`EditorTextView+TextKit2.swift`). Two custom
+attribute keys (`TextKit2Attributes.swift`):
 
 | Attribute | Level | Draws | Rules |
 | --- | --- | --- | --- |
@@ -269,12 +269,10 @@ State these plainly when designing near them; none is solved.
    create blank space below; math doesn't render in read mode (and has wrong
    padding in edit mode); delete caret drift and viewport-estimate glitches
    remain on the ongoing list.
-4. **Crash reporter endpoint is a placeholder**:
-   `CrashReporter.reportingEndpoint` is `https://REPLACE-ME.invalid/crash`
-   (`Sources/EdmundCore/Diagnostics/CrashReporter.swift:27`) and the
-   Settings ▸ Advanced toggle is commented out
-   (`Sources/edmd/Settings/AdvancedSettingsView.swift`). Do not treat crash
-   uploading as live.
+4. **No crash-upload server, by design**: crashes reach the maintainer only
+   when a user files the prefilled GitHub issue the post-crash prompt opens
+   (`Sources/EdmundCore/Diagnostics/CrashReporter.swift`, ARCHITECTURE §7).
+   Don't add an upload path without a server and a privacy policy.
 
 ---
 
@@ -349,7 +347,7 @@ grep -n "func recompose" Sources/EdmundCore/TextView/EditorTextView+Composition.
 # Bypass heal
 grep -n "scheduleBypassedEditSyncCheck" Sources/EdmundCore/TextView/EditorTextView+EditFlow.swift
 # Custom draw attributes + fragment class
-grep -n "blockDecoration\|fragmentOverlay\|class DecoratedTextLayoutFragment" Sources/EdmundCore/TextView/EditorTextView+TextKit2.swift
+grep -rn "blockDecoration\|fragmentOverlay\|class DecoratedTextLayoutFragment" Sources/EdmundCore/TextView/
 # hiddenFont hiding trick
 grep -n "hiddenFont" Sources/EdmundCore/Rendering/EditorTextView+Rendering.swift
 # Viewport mitigations
@@ -358,8 +356,8 @@ grep -n "scheduleFullLayoutSettle\|repairContentAboveOrigin" Sources/EdmundCore/
 # Read-mode schemes + HTML whitelist
 grep -n "wikiScheme\|linkScheme" Sources/EdmundCore/Export/HTMLRenderer.swift
 grep -n "htmlFormatTags" Sources/EdmundCore/Parsing/SyntaxHighlighter.swift
-# Crash-reporter placeholder (delete §6.4 once this is a real URL)
-grep -n "REPLACE-ME.invalid" Sources/EdmundCore/Diagnostics/CrashReporter.swift
+# Crash reporter: MetricKit → GitHub issue, no upload (§6.4)
+grep -n "issues/new\|MXMetricManager" Sources/EdmundCore/Diagnostics/CrashReporter.swift
 # Open-bug list
 sed -n '/^Bugs/,/^UI\/UX/p' misc/backlog.md
 ```

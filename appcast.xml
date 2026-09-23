@@ -379,5 +379,88 @@
                        length="14368050"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.7.0</title>
+            <pubDate>Tue, 15 Sep 2026 15:38:24 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Editor, code syntax, and better organized font theme. More table editing fixes. Various refinements.</p>
+<h3>Added</h3>
+<ul>
+<li>Settings &gt; Appearance &gt; Font theme</li>
+<li>Settings &gt; Themes (#292)</li>
+<li>Tables: Divider between add and delete operations in row/column menu</li>
+<li>App Menu &gt; Format &gt; Headings &gt; Increment/Decrement heading level</li>
+<li>Editor: Quick-wrap selection with <code>~$%*=</code> and the backtick</li>
+<li>Editor: Detect and remove list markers <code>-/- [ ]/1.</code> from pasteboard content if pasting into list</li>
+<li>Editor: Copy button for code blocks</li>
+<li>Reader: Click to toggle checkbox</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Tables: Delete on cell selection clears cell content; Delete on empty complete row or column removes it</li>
+<li>Tables: Return on a header&#x27;s separator row auto-fills in and prettifies the table</li>
+<li>Tables: Disabled delete pipes between cells in formatted state</li>
+<li>Tables: Controls (<code>&lt;/&gt;</code> button, pills) scale with zoom <code>CMD+=/-/0</code></li>
+<li>Tables: <code>&lt;/&gt;</code> button makes way only when pills are actually in the way</li>
+<li>Settings &gt; Autopair parentheses and quotes doesn&#x27;t pair backticks anymore</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Nested emphasis (italic inside bold, or bold inside italic)</li>
+<li>Tables: a single-dash delimiter row (<code>- | -</code>) now renders as a table</li>
+<li>Tables: Selection, caret movement, row/column pills, and zoom behavior with wrapped cells and/or header row containing wrapped cells</li>
+<li>Tables: <code>&lt;/&gt;</code> button makes way for row pills with &quot;Show line numbers&quot; off</li>
+<li>Reader: Nested checkboxes aren&#x27;t dimmed or strikethrough when checked</li>
+<li>Settings &gt; Key Bindings: &quot;Format&quot; app menu is in order with the rest</li>
+<li>Print &gt; PDF no longer keep the <code>.md</code> extension in filename</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.7.0/Edmund-0.7.0.dmg"
+                       sparkle:version="16"
+                       sparkle:shortVersionString="0.7.0"
+                       sparkle:edSignature="M2dt7hTDQa8XDgQZt4I5VnZFICZM2v0IJW0ubf3HR/3X4CagZWlR+tLFsPoHJikLFbdXNGqM3EiRG+MGwRwPBw=="
+                       length="14859914"
+                       type="application/x-apple-diskimage"/>
+        </item>
+        <item>
+            <title>Edmund 0.8.0</title>
+            <pubDate>Wed, 23 Sep 2026 04:05:31 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Mermaid support. Image gets copied to folder. Sandboxing. Various bug-fixes. Thanks to @lluminate for their first contribution!</p>
+<h3>Added</h3>
+<ul>
+<li>Mermaid support ([beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid)) via Extensions (#279 @CaliLuke @i7t5)</li>
+<li>App Menu &gt; File &gt; Export To &gt; HTML / Markdown with Embedded Images (#330 @arthurlee116)</li>
+<li>App Menu &gt; File &gt; Export To &gt; Plain Text / Rich Text Format</li>
+<li>App Menu &gt; Edit &gt; Copy As &gt; Plain Text / Rich Text</li>
+<li>App Menu &gt; Help</li>
+<li>Settings &gt; Advanced &gt; Crash reports: Quick-send bug report to GitHub on crash</li>
+<li>Record AX chrome-driving traps in the live-repro skill (#283 @arthurlee116)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Images: Paste/drop copies image into <code>&lt;docname&gt;.assets</code> folder (#330 @arthurlee116)</li>
+<li>Export: Export as PDF moved to Export To menu</li>
+<li>Sandboxing: Folder grants for images and wikilinks</li>
+<li>Sandboxing: Logs are now located in <code>Application Support/</code></li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Broken link for screenshot-studio and shields.io in README.md (#276 @lluminate)</li>
+<li>Reload when file changes on disk (#293)</li>
+<li>Content width does not work with portrait display (#324)</li>
+<li><code>$$ … $$</code> block indented under a list item does not render in both Edit and Read mode (#325)</li>
+<li>Settings &gt; Extensions: Now only installed rows dim, and &quot;last updated&quot; describes the extension</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.8.0/Edmund-0.8.0.dmg"
+                       sparkle:version="17"
+                       sparkle:shortVersionString="0.8.0"
+                       sparkle:edSignature="Lwp8koEO8BeBTXziC7NPGJ7m/2JDuyfBOx644lpwQEw28qKrpIaNgtuLA4AwSn/dG1ZPMC7/0oLwoz1xdno2Bg=="
+                       length="15097818"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>

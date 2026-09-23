@@ -1,0 +1,16 @@
+# fixture: blocks.md
+# Edit → Read → Edit with an edit on either side: the switch must not touch
+# the source, and editing must work again afterwards.
+caret Last paragraph
+type before-
+viewmode
+sleep 800
+viewmode
+sleep 500
+assertinvariants
+assertsource before-Last paragraph
+caret Last paragraph
+type after-
+assertsource before-after-Last paragraph
+assertinvariants
+done

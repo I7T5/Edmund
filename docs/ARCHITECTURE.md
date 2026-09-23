@@ -18,13 +18,20 @@ rule applies to both.
 swift build                 # debug build of both targets
 swift test                  # full suite (≈1200 tests, ~10s)
 swift test --filter Callout # one suite
-./scripts/build-app.sh      # builds build/Edmund.app (release + bundles + icon + codesign)
+./scripts/repro.sh [pattern]  # live-app scenarios (Tests/Repro/*.repro) in a debug bundle; local only, not CI
+./scripts/build-app.sh      # builds build/Edmund.app — SANDBOXED (release + bundles + icon + codesign)
+./scripts/build-app.sh --variant adhoc   # unsandboxed dev build (ReproScript / CGEvent driver)
+./scripts/build-app.sh --variant mas     # Mac App Store: sandboxed, no Sparkle, no SU* keys (still ad-hoc signed)
 ```
 
 Run the app for visual checks (gotchas in §8):
 ```bash
-pkill -x edmd; build/Edmund.app/Contents/MacOS/edmd /path/to/file.md &
+pkill -x edmd; build/Edmund.app/Contents/MacOS/edmd /path/to/file.md &   # adhoc variant only
+open -n -a "$PWD/build/Edmund.app" /path/to/file.md                      # sandboxed variant
 ```
+A sandboxed build launched by binary path **cannot open the file argument**
+("You don't have permission") — a command-line path is not a powerbox grant.
+`open`/Finder go through LaunchServices, which grants it.
 
 Two SPM targets (`Package.swift`):
 - **`EdmundCore`** — library: all editor logic, parsing, rendering,
@@ -124,7 +131,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 ## 5. TextKit 2 specifics (how visuals are drawn)
 
 - **`DecoratedTextLayoutFragment`** (custom `NSTextLayoutFragment`,
-  `+TextKit2.swift`) draws two custom attributes behind/over the text:
+  `DecoratedTextLayoutFragment.swift`) draws two custom attributes behind/over the text:
   - **`.blockDecoration`** (paragraph-level): callout boxes, quote bars,
     table borders, thematic-break rules, code-block backgrounds. Fragments
     tile vertically, so a multi-line run renders as one continuous box/bar.
@@ -189,7 +196,8 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Text storage | `TextView/EditorTextStorage.swift` — `NSTextStorage` subclass whose `fixAttributes` does **font substitution only**. The editor manages every attribute on every character (incl. custom keys like `.blockDecoration`/`.fragmentOverlay`), so AppKit's usual attribute fixing would fight it. Substitution is **cascade-aware**: when `EditorTheme.fontCascade` assigns a font to a script (`Model/FontCascade.swift` — `FontCascadeScript` classifier + `FontCascadeResolver` cache), graphemes of that script get the user's font (at the run's size × the script's `fontCascadeSizeRatios` entry) *before* coverage is even checked, and the generic CoreText fallback pass skips those sequences (applied later in the same fix list, it would silently overwrite the cascade). The UTF-16 pre-scan bound is U+00A9, not U+0300: ©/® are `isEmoji` and lead the emoji CSS range, so a higher bound would let a "© 2026" line keep the body font in Edit while Read paints the emoji face. Empty cascade ⇒ byte-identical pre-cascade behavior. Also carries the `pendingEdit` that drives incremental reparse (§4) and the bypassed-edit heal (§8). |
 | Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout gated at render via `calloutInfo`), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Syntax pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
 | Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
-| Table editing (interactive) | `TextView/EditorTextView+TableHandles.swift` (row/column ⋯ pills and their menus, the cell-selection box and its corner dots, and every rule about where a caret may rest in a table), `TextView/EditorTextView+TableRawButton.swift` (the `</>` toggle: revealed by hover *or* the caret being in the table, sharing the line-number margin with the row pill), `Rendering/EditorTextView+TableGeometry.swift` (`TableGrid` — row rects and column edges read back off the `.tableRow` decoration), `Editing/EditorTextView+TableStructure.swift` (add/delete row and column), `Editing/EditorTextView+TableCopy.swift` (⌘C: a cell's own text, or a selected block as tab-separated rows for a spreadsheet). The gestures and their traps: §8. |
+| Table editing (interactive) | `TextView/EditorTextView+TableHandles.swift` (row/column ⋯ pills and their menus, the cell-selection box and its corner dots, and every rule about where a caret may rest in a table), `TextView/EditorTextView+TableRawButton.swift` (the `</>` toggle: revealed by hover *or* the caret being in the table, sharing the line-number margin with the row pill), `Rendering/EditorTextView+TableGeometry.swift` (`TableGrid` — row rects and column edges read back off the `.tableRow` decoration), `Editing/EditorTextView+TableStructure.swift` (add/delete row and column; Delete on a cell selection clears it, a second Delete on an empty complete row/column removes it; Return on the separator autocompletes the table in canonical aligned form via `prettyAlignedTableLines`), `Editing/EditorTextView+TableInlineEditing.swift` (Tab/Return between cells, and the deletions that must not eat table structure), `Rendering/EditorTextView+TableCellCaret.swift` (a *wrapped* cell — one drawn from the scratch layout — hides its real characters, so its caret, selection highlight, drag-select and Up/Down are drawn and resolved by hand there, AppKit's caret view hidden meanwhile; a drag that leaves the cell becomes a cell block), `Editing/EditorTextView+TableCopy.swift` (⌘C: a cell's own text, or a selected block as tab-separated rows for a spreadsheet). All the chrome scales with zoom (`tableChromeScale`). The gestures and their traps: §8. |
+| Code block copy button | `TextView/EditorTextView+CodeCopyButton.swift` — Edit mode's counterpart to Read mode's copy button: the `</>` mechanism (same margin slot, size, ink, hover band) keyed on `.fence` blocks, level with the opening fence. Copies the lines between the fences; the glyph flashes filled in the accent colour for 1.2s (`copiedCodeBlock`, a timed swap — `drawBackground` has no layer to animate). Hover is the only reveal; Source mode gets none. |
 | Images | Edit mode renders `![alt](path)` **inline**: outside the token an overlay draws the picture (raw, editable markdown shows when the caret is inside it); an image that can't load draws a small icon + the reason instead. Resolution: absolute/`~`/`file:` load directly, relative resolves against the document's directory, `https` only when `allowRemoteImages` (`AppSettings.blockExternalImages`) and always async, `http` never (ATS). Loaded images are cached in a plain dict, **not** `NSCache` — eviction re-fetched remote badges and tripped host rate limits. Failure reasons are one shared `ImageLoadFailure` enum so Edit and Read report the same words. `Rendering/EditorTextView+ImageRendering.swift`. |
 | Inserting images | Format ▸ Image ▸ Attach File… and **drag & drop from Finder** both land on `insertImages(at:)` (`Editing/EditorTextView+FormattingCommands.swift`), inserting `![alt text](dest)` with the placeholder selected. `imageDestination(for:)` writes a path relative to the document's folder when the file sits under it, absolute otherwise, percent-encoded (a raw space or `)` would truncate the destination; `DocumentHTML.resolveLocalImage` decodes symmetrically). Files are referenced where they lie — Edmund never copies them, so moving an image later breaks the link. Drop mechanics: `Editing/EditorTextView+ImageDrop.swift`. |
 | Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: no characters inserted, TextKit 2 only. `EditorTextView.invisibles` ← `AppSettings.invisiblesConfig`; Settings ▸ Edit. Mechanism: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
@@ -198,6 +206,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Line numbers | `TextView/EditorTextView+LineNumbers.swift` — source line numbers (Settings ▸ Edit ▸ Lines, off by default), `EditorTextView.showLineNumbers`. **Two placements over one walk**, and the placement is **not** a setting: it follows whether the margin can hold them (beside the content by default, a `LineNumberRulerView` at the window edge otherwise). Also home to `line(forOffset:)`/`offset(forLine:)`, binary-searching the cached `lineStarts`. Editor-only; never printed. Placement rules, the macOS 14 SIGSEGV, draw rules and the tabular-figure face: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Focus mode | `TextView/EditorTextView+FocusMode.swift` — dims all but the lines the selection touches (Settings ▸ Edit ▸ Editor, Edit ▸ Focus Mode; off by default), `EditorTextView.focusMode`. **One transparency layer around `DecoratedTextLayoutFragment.draw`**, so text and its decorations fade as one composite; it cannot be a scrim (NSTextView composites fragments *after* `draw(_:)` returns). Editor-only. Why, and the measurements: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Read mode / Export | `Export/` — `HTMLRenderer` (MarkupVisitor → HTML; callout/checkbox icons are inline Lucide SVGs from `LucideIcons`), `HTMLTheme` (EditorTheme → CSS; the font cascade becomes one `@font-face { src: local("Family"); unicode-range: … }` block per configured script — plus `size-adjust` when the script has a size ratio — with the cascade families leading `--body-font`), `DocumentHTML` (assembly + asset inlining: math + local images → data URIs), `ReadModeWebView`, `MarkdownPrinter` (PDF/Print). `Document.refreshReadView()` keeps an open Read view in sync with edits and theme changes. |
+| Extensions | `Extensions/` — `EdmundExtension` (protocol + metadata), `ExtensionRegistry.all` (a static array; there is no backend), `ExtensionPayloadInstaller` (download → SHA-256 verify → unpack → stamp → atomic move, shared by every payload). Two entries: **Advanced Math** (RaTeX WASM, `Math/RaTeX/`) and **Mermaid** (`beautiful-mermaid` JS, `Diagrams/`). Neither is bundled — each is a pinned, hash-verified payload fetched at runtime and hosted in JavaScriptCore, so the shipped binary stays 100% Swift and the default app size is unchanged. Enable state persists in `settings.extensions.enabledIDs`; `AppSettings.applyExtensionStates()` wires it to the live renderers and posts `.renderEngineChanged`. Settings ▸ Extensions. **Not** a third-party code-loading mechanism — see the header of `EdmundExtension.swift`. |
 | Icons | `Model/LucideIcons.swift` — vendored [Lucide](https://lucide.dev) SVGs (ISC, `LICENSES/lucide.txt`). Callout headers use them in **both** modes: Read inlines the SVG (CSS-tinted via `currentColor`); Edit rasterizes to a tinted `NSImage` overlay. SF Symbols can't ship in exported PDFs (license); app-chrome SF Symbols are fine (in-app UI). Edit-mode task checkboxes still use SF Symbols (on-screen only); Read-mode checkboxes are a composed Lucide SVG. |
 | Edit behaviors | `Editing/EditorTextView+{List,Blockquote}Continuation.swift`, `+Indentation.swift`, `+AutoPairs.swift`, `+ListRenumbering.swift` |
 | Hard wrap | `Editing/HardWrap.swift` (pure `wrap`/`unwrap`) + `Editing/EditorTextView+HardWrap.swift` (Edit ▸ Hard Wrap Paragraphs). Settings ▸ Edit ▸ Document, off by default; read at **load/save time in `Document`**, not pushed onto the editor. Treated as a property of the *file*: opening a wrapped file joins its paragraphs, save re-wraps, and **only files that arrived wrapped are wrapped** (`wasHardWrapped`). The column is **derived from the file's own existing breaks**, not guessed. Requires strict line breaks. Full rules, GFM constraints and perf numbers: [`architecture/hard-wrap.md`](architecture/hard-wrap.md). |
@@ -207,14 +216,15 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | macOS integrations | Services menu (`edmd/App/ServicesProvider.swift` + `NSServices` in `Info.plist`), App Intents (`edmd/App/Intents.swift`), Quick Look preview (`EdmundQuickLook` target, hosts `ReadModeWebView`), AppleScript code-fence syntax (`EdmundCore/Resources/Syntaxes/applescript.json`). **Two shipped-but-not-live-verifiable limitations** (App Intents metadata needs an Xcode-project build; the Quick Look appex won't launch under ad-hoc signing): [`architecture/macos-integrations.md`](architecture/macos-integrations.md). |
 | Settings (SwiftUI) | `edmd/Settings/*` (AppSettings = UserDefaults keys; FontSettings; Appearance/General/Advanced views) |
 | Key bindings | `edmd/Settings/KeyBindingStore.swift` + `KeyBindingsSettingsView.swift`. Every rebindable command is a `MenuCommand` (`App/FormatMenu.swift`) with a stable `id`, a `group` (the menu it lives under) and a default `Shortcut`; `makeItem()` resolves the user's override from `KeyBindingStore` and registers the built `NSMenuItem` in `KeyBindingCatalog`, so the pane retunes shortcuts live without rebuilding the menu bar. Overrides live in one UserDefaults dict (`settings.keyBindings`, `id → "shift+cmd+e"`); an empty string means "user removed this shortcut", a missing key means "use the default". **Moving a command between menus means renaming its id, and a rename must come with a migration** — an override is filed under the id, so renaming it alone strands the user's shortcut under a key nothing reads. That doesn't fall back to the default, it silently stops firing. `KeyBindingStore.migrateRenamedIDs` (called first thing in `setupMenuBar()`) re-files them, leaving alone any binding already set under the new id; add a pair to its `renamedIDs` table whenever you move one. Conflicts are checked against the **live `NSApp.mainMenu`**, not the catalog, so system items (⌘S, ⌘C) count too; a chord without ⌘ or ⌃ is refused outright (it would fire while typing). Only Edmund's own commands are listed — the OS-standard items stay fixed. File ▸ Close (`main.swift`) makes AppKit inject an ⌥⌘W *Close All* alternate, so that one `addItem` call reserves both chords in this scan. |
-| Crash-log uploading | `EdmundCore/Diagnostics/CrashReporter.swift` (§7) |
+| Crash reports | `EdmundCore/Diagnostics/CrashReporter.swift` + `AppDelegate.offerCrashReport` — MetricKit → prompt → prefilled GitHub issue, no server (§7) |
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
 | Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
 | Format bar | `edmd/Views/FormatBarView.swift` (layout + state refresh) and `FormatBarControls.swift` (the controls), on `ChromeBarView.swift` (titlebar-material + hairline base shared with the find bar), `edmd/App/FormatMenu.swift` (the two pulldowns are the same `headingMenu()`/`calloutMenu()` factories as the Format menu — one menu definition, three homes), `Document.formatBar` (owned by the document; **off by default**, toggled by View ▸ Show/Hide Format Bar, `settings.edit.showFormatBar`, force-hidden in Reading mode). Stacks **above** the find bar, both through `layoutTopBars()` (§6 top-bar insets). Bar is horizontally centred by design (a narrow window clips the same reachable band on both sides) |
 | Format-bar on-state | `EdmundCore/Editing/EditorTextView+FormattingState.swift` — the read-only counterpart to the toggles: `activeFormattingActions()`, `activeHeadingLevel()`, `activeCalloutType()`, refreshed from `editorDidChange` / `editorSelectionDidChange`. It scans **source delimiters, not rendered attributes**, because the attributes are lossy for this: a heading is also bold, and `==mark==` and a code span are both a background fill. Star *run length* is what separates `*x*` / `**x**` / `***x***`. A callout deliberately does not also light Block Quote (it is one underneath, but the callout pulldown gives the more specific answer). Hover/on chips live on `BarControlChip`; a chip is a fixed-height box centred on the bar's `interior`, **not** on the control's own bounds — sizing it per control made every symbol a different chip height. |
 | Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
 | Status bar | `edmd/Views/StatusBarView.swift` |
-| Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing), `Package.swift`, `Info.plist`, `Resources/` |
+| Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing, `--variant sparkle\|adhoc\|mas`), `Package.swift`, `Info.plist`, `Resources/` |
+| App Sandbox | The shipping build is sandboxed (`Resources/Edmund-Sparkle.entitlements`: sandbox, user-selected r/w, app-scope bookmarks, print, network client, Sparkle's `-spks`/`-spki` mach-lookup exceptions; `Info.plist` `SUEnableInstallerLauncherService`). Container: `~/Library/Containers/com.i7t5.edmund/` — the sparkle variant signs **with the bundle id** (no `--identifier` override) because the container name and macOS's automatic preferences migration key off the signing id. `Resources/container-migration.plist` moves `Application Support/Edmund` (themes, syntaxes, RaTeX payload) into the container on the first sandboxed launch; verified live 2026-09-15, prefs migrate automatically. Logs: `Log.defaultDirectory` = Application Support/Edmund/Logs (container-native, Settings ▸ Advanced ▸ Show in Finder). Files *beside* a document: Documents/Desktop/Downloads are entitled (home-relative temporary exceptions on the GitHub build; only Apple's Downloads entitlement on MAS — App Review scrutinizes exceptions); anything else needs a grant. `Model/FolderAccess.swift` (app-scoped bookmarks in `folderGrants`, lazily resolved, scope started once per process; entitled folders read from the running signature via `SecTask`, real home via `getpwuid`) + `Rendering/EditorTextView+FolderAccess.swift` (the `NSOpenPanel`: raised automatically once per folder per launch when a render meets an unreadable sibling image, from a wiki link that can't be read, and on ⌘-click of the "Folder access needed" placeholder as the retry after Cancel; a parent folder covers everything below it). Gotcha: under the sandbox `fileExists` answers **true** for an ungranted file while the read is denied — gate on `FolderAccess.covers`, never on stat. `-debug.reproScript` / CGEvents need the adhoc variant. **MAS variant** (`--variant mas`): `EDMUND_MAS=1` makes `Package.swift` drop the Sparkle product from the `edmd` target (package dependency stays, so `Package.resolved` never churns); `main.swift` gates the updater + "Check for Updates…" behind `#if canImport(Sparkle)`; the script skips embedding, strips the `SU*` keys with `plutil -remove`, signs with `Resources/Edmund.entitlements` (no mach-lookup exceptions). Still ad-hoc signed — App Store Connect certs/provisioning are outside the repo. Deferred: MetricKit crash reporter (dormant feature, no ingestion server; `.ips` scan just finds nothing under the sandbox). |
 
 Notable subsystems:
 
@@ -282,14 +292,17 @@ Notable subsystems:
 - **Content width** (`+ContentWidth.swift`): an **absolute physical**
   max-column width — set in cm/in in Settings, stored as cm, converted to
   points via the display's real PPI (`NSScreen.physicalPPI`, from
-  `CGDisplayScreenSize`). Applied as a symmetric `textContainerInset.width`
+  `CGDisplayScreenSize`; long edge ÷ long edge, because `frame` rotates with
+  a portrait display and the mm size doesn't — #324). Applied as a symmetric `textContainerInset.width`
   cap: wider windows center the column, narrower ones fill. Recomputed on
   resize and on moving to a differently-scaled display
   (`NSWindow.didChangeScreenNotification`). Tables and image overlays bake geometry into styled
   attributes: a coalesced common-mode timer compares the usable container width
   and restyles those blocks outside the resize pass,
   including during live resizing, at most 30 times per second. The pending
-  one-shot timer applies the final width after the drag ends. Comparing the
+  one-shot timer applies the final width after the drag ends. A one-off
+  change outside a drag (zoom, the column-width setting) skips the timer and
+  takes the next run-loop hop, so it lands before the frame draws. Comparing the
   inset alone misses narrower windows with fixed margins. The refresh
   preserves the viewport, waits out
   marked text/pending edits, and uses the existing lazy dirty-block path for
@@ -340,11 +353,18 @@ Notable subsystems:
   private `_inspector`, and closes it when already up; entering Edit always
   hides it. The read view's context menu carries the same item as "Inspect
   Element", with WebKit's own duplicate removed.
-  **Export as PDF… / Print… (⌘P)** run the same HTML through
+  **Export To ▸ PDF… / Print… (⌘P)** run the same HTML through
   `WKWebView.printOperation` (`MarkdownPrinter`; vector text, math is
   high-DPI PNG). The PDF is named after the document minus its extension —
   Print via `NSPrintOperation.jobTitle`, since the page has no `<title>`.
-  Full spec: `docs/architecture/reader-and-export.md`.
+  **File ▸ Export To ▸** follows Pages' Export To: PDF, HTML, Plain Text,
+  Rich Text Format (RTF, or RTFD with pictures), Markdown with Embedded
+  Images — shared formats in Pages' order, the app's own format last. Rich
+  Text is the HTML through AppKit's importer; Plain Text is built from the
+  source. **Edit ▸ Copy As ▸ Plain Text / Rich Text** puts the same
+  conversions of the selection on the clipboard (Rich Text as one item with
+  RTF(D), HTML and plain-text forms); greyed out without a selection or
+  outside the editor. Full spec: `docs/architecture/reader-and-export.md`.
 - **Find & Replace** (in-document, ⌘F / ⌥⌘F / ⌘G / ⇧⌘G): **not**
   `NSTextFinder` — it renders the system bar rather than the Notes look, and
   its highlighting drives `NSLayoutManager`, which the TextKit 2 tripwire
@@ -499,6 +519,21 @@ Notable subsystems:
   the delegate returns `false` once it has handled the no-window case.
   Miniaturized windows count as visible, so that branch only runs when there is
   genuinely nothing to bring back.
+- **The file changing on disk** is AppKit's policy, with two Edmund pieces
+  (`Document.swift`, "Watching the file on disk"; #293). A clean document
+  reloads; a dirty one gets AppKit's own "changed by another application"
+  sheet (Save Anyway / Revert / Save As) at its next (auto)save — no custom
+  alert, the wording is Apple's. Piece 1: every reload lands in
+  `revert(toContentsOf:ofType:)`, and `read(from:ofType:)` only parks the
+  text in `pendingContent`, so the override adopts it into the editor (caret
+  clamped, Read view refreshed) — without it the revert cleared the change
+  count while the editor kept the old text, and the next save wrote that back
+  over the other app's changes. Piece 2: AppKit's file presenter only hears
+  *coordinated* writes (other Cocoa apps); CLI tools, git, vim, VS Code write
+  without coordination, so a kqueue `DispatchSource` on `fileURL` re-arms
+  across atomic replaces and calls `revert` when the modification date no
+  longer matches and the document is clean. Our own save also fires it, but
+  the dates match by then, so it is a no-op.
 - **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to
@@ -507,17 +542,22 @@ Notable subsystems:
   user only toggles on/off and picks retention (Settings ▸ General ▸
   Diagnostics). `AppSettings.applyLogging()` pushes toggle/retention into
   `Log.configure` at launch and on change; retention is pruned there.
-- **Crash-log uploading** (`EdmundCore/Diagnostics/CrashReporter.swift`):
-  opt-in (default off), fire-and-forget POST of `edmd-*.ips` files from
-  `~/Library/Logs/DiagnosticReports/` not yet in
-  `AppSettings.sentCrashReports` (dedup) to
-  `CrashReporter.reportingEndpoint`. `edmd` is the Mach-O executable name —
-  that's the crash-report filename prefix. **The Settings ▸ Advanced toggle
-  is currently commented out** (the `// Crash reports:` GridRow in
-  `AdvancedSettingsView.swift`); uncomment it and set a real
-  `reportingEndpoint` once the receiving server exists. Reading
-  DiagnosticReports directly only works un-sandboxed; under App Sandbox
-  switch to MetricKit's `MXCrashDiagnostic`.
+- **Crash reports** (`EdmundCore/Diagnostics/CrashReporter.swift`),
+  CotEditor-style — no server, nothing uploaded by Edmund. A MetricKit
+  subscriber (held by `AppDelegate`) receives last session's crash on the
+  next launch; `CrashReport.parse` turns the payload JSON into versions,
+  exception/signal and the attributed thread's frames (`binary +0xoffset
+  (UUID)`, innermost first). `AppDelegate.offerCrashReport` shows "Edmund
+  quit unexpectedly." with **Report on GitHub…** / **Ignore** / Don't ask
+  again; Report opens a prefilled `issues/new` URL (label `bug`, ≤12 frames)
+  and puts the full JSON on the clipboard. Gated by
+  `AppSettings.offerCrashReports` (default on; Settings ▸ Advanced). Payloads
+  carry no home path or file names, unlike the `.ips` files this replaced
+  (which the sandbox can't read anyway). Symbolicate with the release's
+  `edmd-<version>.dSYM.zip` (attached by `release.yml` / `release.sh`),
+  matched on binary UUID: `atos -o edmd.dSYM -arch arm64 -l 0x100000000
+  <0x100000000 + offset>`. macOS can't simulate a payload; DEBUG builds take
+  `-debug.fakeCrashReport <payload.json>` to drive the real prompt.
 
 ---
 
@@ -726,6 +766,15 @@ Notable subsystems:
   pixels at the same total ink, with solid-coverage pixels collapsing
   (173 → 31). Read mode pins its `<img>` to the PNG's exact pixel count for
   the same reason (`DocumentHTML.fillMath`).
+- **CoreSVG (`NSImage(data:)` on an SVG) ignores CSS custom properties,
+  `color-mix()` and `<marker>`** — and fails *quietly*: unresolved colours
+  draw black, markers draw nothing, so a beautiful-mermaid diagram comes out
+  as black boxes with no labels or arrowheads. It does honour `<style>` class
+  rules, `<text>`, `text-anchor`, `opacity`, `stroke-dasharray`, `transform`.
+  `Diagrams/MermaidSVGFlattener.swift` rewrites exactly those three and
+  nothing else; the result is a vector-backed rep, so Mermaid's Edit-mode
+  overlay needs none of the device-grid snapping above. Read mode hands
+  WebKit the original — never the flattened form.
 
 ### Edit, selection & storage integrity
 
@@ -818,6 +867,28 @@ Notable subsystems:
   `documentRange.location` it is exact and ~15µs when nothing is pending
   (`wrappedCellRects`). Found by logging what `setNeedsDisplay` was
   actually called with (`-debug.caretTrace`).
+- **A table is styled for the line width it had at the time; the width
+  changing later must restyle it.** Column widths are clamped to the
+  available line width (`distributeColumnWidths`) and an overflowing cell
+  kerns out its whole column, so a row styled for a wider column and then
+  narrowed is wider than the line and TextKit 2 force-wraps it — the next
+  column's cells land on a second line of near-zero height (only 0.01pt
+  hidden characters on the first), drawn over the first column's text.
+  Reached by ⌘0 then ⌘− (`Document.setZoom` applies the theme before it
+  shrinks `maxContentWidthPoints`) and by pulling a window in.
+  `updateContentInset` restyles table and image blocks when the usable
+  width changes — not the inset, which a window already narrower than the
+  cap never changes (`EditorTextView+ContentWidth.swift`).
+- **Table chrome scales with the text.** The `</>` button follows the code
+  size (as the line numbers it shares a margin with); the pills, their gap
+  and band, and the cell-selection dots follow the body size
+  (`tableChromeScale`). The base constants are the sizes at the defaults.
+- **`burst` (ReproScript) frames can be stale for a *static* window**: a
+  ScreenCaptureKit stream delivers frames on change, and a fresh stream's
+  first frames can be the compositor's last-cached surface — a zoom that had
+  clearly applied showed as unzoomed. For a static state use a
+  `screencapture -l` still (`capture-window.sh`); the stream is for
+  transients (a caret paint, a click sequence).
 - **The `viewMode` setter recomposes every block, collapsing far geometry
   to estimates** (~17pt/line base vs ~27pt styled) — `recomposeDirty` on a
   large dirty set defers non-viewport styling to the idle drain. Two
@@ -1042,7 +1113,7 @@ Notable subsystems:
   paragraph spacing: it is reserved as *text* space by raising the header
   line's `minimumLineHeight` in `calloutParagraphStyle`
   (`+CalloutRendering.swift`), then painted by `decorationDrawHeight` /
-  `layoutFragmentFrame` (`+TextKit2.swift`). Check first whether the
+  `layoutFragmentFrame` (`DecoratedTextLayoutFragment.swift`). Check first whether the
   *mid-document* callout is absorbing the blank line above it into its
   fragment — `layoutFragmentFrame` already special-cases the trailing-empty-line
   mirror of that — in which case 18.0pt is the inflated figure and the fix
@@ -1074,7 +1145,7 @@ Notable subsystems:
   `EditorTextView+TableSupport.swift`) so one very wide cell can't stretch
   the table off screen; a cell whose styled width still exceeds its clamped
   column hides its real characters and is redrawn wrapped via a
-  `.tableCellWraps` attribute (`EditorTextView+TextKit2.swift`), resolved
+  `.tableCellWraps` attribute (`TextKit2Attributes.swift`), resolved
   through a detached scratch `NSTextContentStorage`/`NSTextLayoutManager`
   sized to the column's content width — the same "hide the real chars, draw
   the visual yourself" pattern as `.fragmentOverlay`, needed because TK2
@@ -1193,6 +1264,14 @@ Sparkle's update dialog shows the changelog.
 in `Info.plist`, add a `## [x.y.z]` section to `CHANGELOG.md`, merge to
 `main`, then `git tag vx.y.z && git push origin vx.y.z`.
 
+A `PreToolUse` hook (`.claude/hooks/guard-release-gate.sh`) gates that last
+step for agents: it **denies** a tag push / `gh release create` /
+`release.sh` whose version disagrees with `Info.plist` or has no non-empty
+`## [x.y.z]` CHANGELOG section, denies bulk `--tags` pushes, and otherwise
+**asks** — showing the version and the notes — so a release is never
+automatic. The version number and the release-note wording are the
+maintainer's call, not something to infer from "cut a release".
+
 **EdDSA keypair — set up, not a placeholder.** Public key in `Info.plist`
 `SUPublicEDKey` (`0XdLbbuO…`); the private key lives in two places that
 must stay the *same* keypair: the maintainer's **login keychain** (used by
@@ -1224,11 +1303,20 @@ Gatekeeper on first launch; the README documents the
 ID + notarization (§8) would remove the prompt entirely.
 
 **Never release anything through this pipeline except the main app.** The
-tag flow builds and ships `Edmund.app` only. Extension payloads (e.g. the
-RaTeX WASM) have their own hosting/release path — never bundled into or
+tag flow builds and ships `Edmund.app` only. Extension payloads (the RaTeX
+WASM, the `beautiful-mermaid` JS bundle) have their own hosting/release path
+in `I7T5/edmund-extensions`, on non-`v*` tags — never bundled into or
 triggered by an Edmund version tag. (The RaTeX WASM asset was pulled from
 release pending `erweixin/RaTeX` inline-mode support and the Advanced Math
 extension's repo migration — see `misc/backlog.md`.)
+
+A payload's pinned SHA-256 is taken from the **hosted** asset, never the local
+build: the build scripts are byte-stable on one machine but not across
+`tar`/`gzip` implementations, so a local artifact is evidence about that
+machine, not about what users will fetch. Until an asset is published its hash
+stays empty, `isConfigured` is false, and Settings says the extension "isn't
+available in this build yet" rather than offering a download that cannot be
+verified.
 
 ---
 
@@ -1244,6 +1332,23 @@ Dependencies and prior art worth consulting before designing something new:
   signing/appcast quirks).
 - [Lucide](https://lucide.dev) — vendored icon SVGs (ISC),
   `Model/LucideIcons.swift`.
+- [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) — the
+  Mermaid extension's engine (MIT, by Craft Docs). Runtime-downloaded, not
+  bundled. Its `renderMermaidSVG` is synchronous, which is what lets it run
+  inside the synchronous `DocumentHTML.full` assembly instead of forcing the
+  whole export path async. The payload also carries
+  [elkjs](https://github.com/kieler/elkjs) (**EPL-2.0** — its license text
+  travels inside the payload archive, which is the distribution vehicle; no
+  elkjs code enters this repo or the app binary) and
+  [entities](https://github.com/fb55/entities) (BSD-2-Clause). All three texts
+  are mirrored in `LICENSES/` — the code isn't vendored here, but the app does
+  hand it to users at runtime, so the terms should be findable without
+  unpacking a tarball.
+  Read mode's Mermaid support adapts the render-pipeline shape from
+  [#235](https://github.com/I7T5/Edmund/pull/235) by
+  [@CaliLuke](https://github.com/CaliLuke) — fence recognition, the
+  placeholder/fill split, the SVG safety filter and the diagram CSS — with a
+  JavaScriptCore backend in place of that PR's Swift + ELK one.
 - [nodes-app/swift-markdown-engine](https://github.com/nodes-app/swift-markdown-engine)
   — an independent AppKit + TextKit 2 live-preview markdown engine (Apache
   2.0, macOS 14+). Solves the same problems with different trade-offs —

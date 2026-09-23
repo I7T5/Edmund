@@ -59,7 +59,28 @@ public class EditorTextStorage: NSTextStorage {
         pendingEdit = p
     }
 
-    override public var string: String { backing.string }
+    // `string` must not copy the document per call. Bridging the backing's
+    // *mutable* string to a Swift String is an eager full copy (UTF-16 → UTF-8),
+    // and NSAttributedString's default `length` and `attributedSubstring(from:)`
+    // both go through `-string` — TextKit 2 calls the latter for every paragraph
+    // it vends, so laying out N paragraphs copied the whole document ~2N times
+    // (a caret move on a 150 KB doc allocated gigabytes). So: an immutable
+    // snapshot, dropped on every character edit (attribute edits can't change
+    // it), and O(1)/O(k) overrides that never touch `string` at all. Bridging
+    // the snapshot back to ObjC returns the same NSString, no re-copy.
+    private var stringSnapshot: String?
+    override public var string: String {
+        if let s = stringSnapshot { return s }
+        let s = backing.mutableString.copy() as! NSString as String
+        stringSnapshot = s
+        return s
+    }
+
+    override public var length: Int { backing.length }
+
+    override public func attributedSubstring(from range: NSRange) -> NSAttributedString {
+        backing.attributedSubstring(from: range)
+    }
 
     override public func attributes(
         at location: Int, effectiveRange range: NSRangePointer?
@@ -70,6 +91,7 @@ public class EditorTextStorage: NSTextStorage {
     override public func replaceCharacters(in range: NSRange, with str: String) {
         let delta = (str as NSString).length - range.length
         accumulateEdit(currentRange: range, delta: delta)
+        stringSnapshot = nil
         backing.replaceCharacters(in: range, with: str)
         edited(.editedCharacters, range: range, changeInLength: delta)
     }
@@ -77,6 +99,7 @@ public class EditorTextStorage: NSTextStorage {
     override public func replaceCharacters(in range: NSRange, with attrString: NSAttributedString) {
         let delta = attrString.length - range.length
         accumulateEdit(currentRange: range, delta: delta)
+        stringSnapshot = nil
         backing.replaceCharacters(in: range, with: attrString)
         edited([.editedCharacters, .editedAttributes], range: range,
                changeInLength: delta)
@@ -108,7 +131,9 @@ public class EditorTextStorage: NSTextStorage {
     /// the attribute we're enumerating mid-pass.
     private func fixFontSubstitution(in range: NSRange) {
         guard range.length > 0, range.upperBound <= backing.length else { return }
-        let ns = backing.string as NSString
+        // Read the backing's string in place: `backing.string` would bridge (copy)
+        // the whole document on every fix pass. Only attributes change below.
+        let ns: NSString = backing.mutableString
         // (range, attribute key, value) — most fixes are `.font`; synthesized
         // bold adds a `.strokeWidth` on the same range for families with no
         // bold member (see the resolver).

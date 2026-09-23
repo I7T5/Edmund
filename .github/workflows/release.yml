@@ -84,7 +84,9 @@ jobs:
           if [ ! -s release-notes.txt ]; then
             echo "See CHANGELOG for details." > release-notes.txt
           fi
-          gh release create "v${VERSION}" "build/Edmund-${VERSION}.dmg" \
+          # The dSYM symbolicates crash reports users file (CrashReporter).
+          ditto -c -k --keepParent .build/release/edmd.dSYM "build/edmd-${VERSION}.dSYM.zip"
+          gh release create "v${VERSION}" "build/Edmund-${VERSION}.dmg" "build/edmd-${VERSION}.dSYM.zip" \
             --title "Edmund ${VERSION}" \
             --notes-file release-notes.txt \
             --latest

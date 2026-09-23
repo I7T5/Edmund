@@ -124,7 +124,10 @@ if [ ! -s "$NOTES_FILE" ]; then
     echo "See [CHANGELOG](https://github.com/${REPO}/blob/main/docs/CHANGELOG.md) for details." > "$NOTES_FILE"
 fi
 
-gh release create "v${VERSION}" "$DMG" \
+# The dSYM symbolicates crash reports users file (CrashReporter).
+DSYM_ZIP="build/edmd-${VERSION}.dSYM.zip"
+ditto -c -k --keepParent .build/release/edmd.dSYM "$DSYM_ZIP"
+gh release create "v${VERSION}" "$DMG" "$DSYM_ZIP" \
     --title "Edmund ${VERSION}" \
     --notes-file "$NOTES_FILE" \
     --latest

@@ -200,6 +200,15 @@ final class RaTeXDisplayListRenderer {
             }
         }
 
+        // Items that should have drawn but left no ink at all is a failed
+        // render, not a result — seen live as every dark-mode equation turning
+        // into a correctly sized blank that stuck for the rest of the session,
+        // because the host caches by color and every later restyle hit the
+        // blank. Returning nil keeps it out of that cache (the coordinator
+        // falls back to SwiftMath) so the next restyle tries RaTeX again.
+        let drawsSomething = dl.items.contains { if case .unknown = $0 { false } else { true } }
+        guard !drawsSomething || hasInk(ctx) else { return nil }
+
         guard let cgImage = ctx.makeImage() else { return nil }
         // NSImage sized in points, backed by a 2x/3x rep so it stays crisp; the
         // inset is included in the point size on both axes.
@@ -214,6 +223,17 @@ final class RaTeXDisplayListRenderer {
         return RenderedMath(image: image,
                             ascent: CGFloat(dl.height) * fs + insetPad,
                             descent: CGFloat(dl.depth) * fs + insetPad)
+    }
+
+    /// Whether any pixel in `ctx` (8-bit RGBA, alpha last) is non-transparent.
+    private func hasInk(_ ctx: CGContext) -> Bool {
+        guard let data = ctx.data else { return false }
+        let bytes = data.assumingMemoryBound(to: UInt8.self)
+        for row in 0..<ctx.height {
+            let base = row * ctx.bytesPerRow
+            for col in 0..<ctx.width where bytes[base + col * 4 + 3] != 0 { return true }
+        }
+        return false
     }
 
     /// Draws a `Path` item — the vector half of the display list, and the only

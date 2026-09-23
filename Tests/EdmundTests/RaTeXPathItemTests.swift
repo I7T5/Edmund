@@ -156,4 +156,24 @@ struct RaTeXPathItemTests {
             .render(json: json, pointSize: fs, color: .black, scale: 1))
         #expect(try inkBox(m.image).count > 0)
     }
+
+    @Test("A render that draws nothing is refused, so a blank never gets cached")
+    @MainActor func blankRenderIsRefused() throws {
+        // Repro of the stuck-blank dark-mode math: rasterized at a degenerate
+        // scale, the bitmap collapses but the image keeps its point size — a
+        // correctly sized blank the host would cache for the whole session.
+        let json = """
+            {"width":1.0,"height":0.7,"depth":0.2,"items":[
+              {"type":"Rect","x":0.1,"y":0.1,"width":0.5,"height":0.3,
+               "color":{"r":0,"g":0,"b":0,"a":1}}
+            ]}
+            """
+        let renderer = RaTeXDisplayListRenderer(fontLoader: noFonts)
+        #expect(renderer.render(json: json, pointSize: fs, color: .white, scale: 0) == nil)
+        #expect(renderer.render(json: json, pointSize: fs, color: .white, scale: 2) != nil)
+
+        // Nothing to draw (e.g. `\phantom`) is a legitimate empty result.
+        let empty = #"{"width":1.0,"height":0.7,"depth":0.2,"items":[]}"#
+        #expect(renderer.render(json: empty, pointSize: fs, color: .white, scale: 2) != nil)
+    }
 }

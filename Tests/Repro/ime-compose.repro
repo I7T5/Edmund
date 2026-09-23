@@ -1,0 +1,23 @@
+# fixture: blocks.md
+# IME composition through NSTextInputClient (marked text, then commit), as a
+# Japanese input method sends it. Storage and rawSource legitimately differ
+# while text is marked; they must agree again after commit, and undo must
+# remove exactly the committed text.
+caret Last paragraph
+ime n
+ime に
+ime にほ
+ime 日本
+imecommit 日本
+assertsource 日本Last paragraph
+assertinvariants
+type 語
+assertsource 日本語Last paragraph
+assertinvariants
+undo
+undo
+undo
+undo
+assertsourceorig
+assertinvariants
+done

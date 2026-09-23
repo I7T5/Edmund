@@ -1,6 +1,8 @@
 import AppKit
 import EdmundCore
+#if canImport(Sparkle)
 import Sparkle
+#endif
 
 // Entry point for the app the user knows as "Edmund" (CFBundleName). The
 // executable target — and so this binary at Edmund.app/Contents/MacOS/edmd — is
@@ -16,15 +18,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var aboutWindowController: AboutWindowController?
     var settingsWindowController: SettingsWindowController?
     let servicesProvider = ServicesProvider()
+    private var crashReporter: CrashReporter?
     // startingUpdater: true kicks off the scheduled background check immediately;
     // the "Check for Updates…" menu item targets this controller directly.
     // `-debug.disableUpdater YES` skips the start entirely: on dev builds the
     // failed check throws a *modal* "updater failed" alert at launch that
     // blocks the whole app (no document window until dismissed), which breaks
     // scripted/automated runs.
+    // Absent from the Mac App Store variant (build-app.sh --variant mas builds
+    // without the Sparkle product; see Package.swift).
+    #if canImport(Sparkle)
     let updaterController = SPUStandardUpdaterController(
         startingUpdater: !UserDefaults.standard.bool(forKey: "debug.disableUpdater"),
         updaterDelegate: nil, userDriverDelegate: nil)
+    #endif
 
     // MARK: - Typewriter Mode (persisted)
 
@@ -61,13 +68,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // strongly — `NSApplication.servicesProvider` does not retain.
         NSApp.servicesProvider = servicesProvider
 
-        // Opt-in (default off): upload any crash reports macOS wrote for us since
-        // last launch. Fire-and-forget; never blocks startup.
-        if AppSettings.sendCrashLogs {
-            CrashReporter.uploadPendingReports(
-                alreadySent: AppSettings.sentCrashReports,
-                onSent: { AppSettings.sentCrashReports.insert($0) })
+        // MetricKit delivers last session's crash, if any, shortly after launch.
+        crashReporter = CrashReporter { report in AppDelegate.offerCrashReport(report) }
+        #if DEBUG
+        // `-debug.fakeCrashReport <payload.json>`: run a saved MetricKit payload
+        // through the real prompt — macOS has no way to simulate one.
+        if let path = UserDefaults.standard.string(forKey: "debug.fakeCrashReport"),
+           let data = FileManager.default.contents(atPath: path),
+           let report = CrashReport.parse(payloadJSON: data) {
+            DispatchQueue.main.async { AppDelegate.offerCrashReport(report) }
         }
+        #endif
 
         // Open file from command-line argument. When a file is given,
         // `applicationShouldOpenUntitledFile` suppresses the otherwise-automatic
@@ -128,6 +139,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Self.shouldHandleReopen(hasVisibleWindows: flag)
     }
 
+    /// "Edmund quit unexpectedly" → a prefilled GitHub issue, with the full
+    /// payload on the clipboard for the user to paste (or not). Nothing is
+    /// sent by Edmund itself.
+    static func offerCrashReport(_ report: CrashReport) {
+        guard AppSettings.offerCrashReports, let url = report.issueURL() else { return }
+        let alert = NSAlert()
+        alert.messageText = "Edmund quit unexpectedly."
+        alert.informativeText = "Report it on GitHub to help fix it. The crash details, with no documents or file names, will be copied to your clipboard."
+        alert.addButton(withTitle: "Report on GitHub…")
+        alert.addButton(withTitle: "Ignore")
+        alert.showsSuppressionButton = true
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on { AppSettings.offerCrashReports = false }
+        guard response == .alertFirstButtonReturn else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report.json, forType: .string)
+        NSWorkspace.shared.open(url)
+    }
+
     /// The decision itself, as a type method so tests can exercise it without
     /// building an `AppDelegate`: the stored `updaterController` starts Sparkle
     /// on init, and a failed check puts up a *modal* alert that would sit on the
@@ -156,6 +186,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         settingsWindowController?.showWindow(nil)
         settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Help ▸ Keyboard Shortcuts: Settings, opened on the Key Bindings pane.
+    @MainActor @objc func showKeyBindings(_ sender: Any?) {
+        showSettings(sender)
+        settingsWindowController?.selectPane(label: "Key Bindings")
     }
 
     // MARK: - View
@@ -234,6 +270,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     action: #selector(EditorTextView.findPrevious(_:)), shortcut: .cmdShift("g")),
     ]
 
+    /// File ▸ Export To, named by format and ordered as Pages' own Export To
+    /// (PDF, Word, EPUB, Plain Text, Rich Text Format, Images, Pages '09):
+    /// every format the two share keeps Pages' relative order, HTML takes
+    /// EPUB's slot (EPUB is packaged HTML, for reading elsewhere), and the
+    /// app's own format comes last. The ids predate the submenu and are kept,
+    /// so a rebound shortcut survives the move.
+    /// Edit ▸ Copy As, Plain Text first. "Rich Text", not Export To's "Rich
+    /// Text Format": the clipboard gets RTF *and* HTML, so it names the kind
+    /// of text rather than one format.
+    @MainActor private static let copyAsCommands: [MenuCommand] = [
+        MenuCommand(id: "edit.copyAsPlainText", group: "Edit", submenu: "Copy As", title: "Plain Text",
+                    action: #selector(Document.copyAsPlainText(_:))),
+        MenuCommand(id: "edit.copyAsRichText", group: "Edit", submenu: "Copy As", title: "Rich Text",
+                    action: #selector(Document.copyAsRichText(_:))),
+    ]
+
+    @MainActor private static let exportCommands: [MenuCommand] = [
+        MenuCommand(id: "file.exportPDF", group: "File", submenu: "Export To", title: "PDF\u{2026}",
+                    action: #selector(Document.exportToPDF(_:))),
+        MenuCommand(id: "file.exportHTML", group: "File", submenu: "Export To", title: "HTML\u{2026}",
+                    action: #selector(Document.exportToHTML(_:))),
+        MenuCommand(id: "file.exportPlainText", group: "File", submenu: "Export To", title: "Plain Text\u{2026}",
+                    action: #selector(Document.exportToPlainText(_:))),
+        MenuCommand(id: "file.exportRichText", group: "File", submenu: "Export To",
+                    title: "Rich Text Format\u{2026}",
+                    action: #selector(Document.exportToRichText(_:))),
+        MenuCommand(id: "file.exportSelfContainedMarkdown", group: "File", submenu: "Export To",
+                    title: "Markdown with Embedded Images\u{2026}",
+                    action: #selector(Document.exportSelfContainedMarkdown(_:))),
+    ]
+
     @MainActor private func setupMenuBar() {
         // Before any `makeItem()`, which resolves each command's override by id.
         KeyBindingStore.migrateRenamedIDs()
@@ -251,11 +318,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                         action: #selector(AppDelegate.showSettings(_:)),
                         keyEquivalent: ",")
 
+        #if canImport(Sparkle)
         let updatesItem = appMenu.addItem(
             withTitle: "Check for Updates\u{2026}",
             action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
             keyEquivalent: "")
         updatesItem.target = updaterController
+        #endif
 
         appMenu.addItem(NSMenuItem.separator())
 
@@ -311,8 +380,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        fileMenu.addItem(MenuCommand(id: "file.exportPDF", group: "File", title: "Export as PDF\u{2026}",
-                                     action: #selector(Document.exportToPDF(_:))).makeItem())
+        // Export To ▸ — every export, PDF included, as in Pages (order: see
+        // `exportCommands`).
+        let exportMenu = NSMenu(title: "Export To")
+        for command in Self.exportCommands { exportMenu.addItem(command.makeItem()) }
+        let exportItem = NSMenuItem(title: "Export To", action: nil, keyEquivalent: "")
+        exportItem.submenu = exportMenu
+        fileMenu.addItem(exportItem)
 
         fileMenu.addItem(withTitle: "Print\u{2026}",
                          action: #selector(Document.printDocument(_:)),
@@ -343,6 +417,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenu.addItem(withTitle: "Copy",
                          action: #selector(NSText.copy(_:)),
                          keyEquivalent: "c")
+
+        // Copy As ▸ — the selection converted, where Copy gives raw Markdown.
+        // No ellipsis: the items act at once. Greyed out with nothing selected
+        // (Document.validateMenuItem).
+        let copyAsMenu = NSMenu(title: "Copy As")
+        for command in Self.copyAsCommands { copyAsMenu.addItem(command.makeItem()) }
+        let copyAsItem = NSMenuItem(title: "Copy As", action: nil, keyEquivalent: "")
+        copyAsItem.submenu = copyAsMenu
+        editMenu.addItem(copyAsItem)
 
         editMenu.addItem(withTitle: "Paste",
                          action: #selector(NSText.paste(_:)),
@@ -470,6 +553,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let windowMenuItem = WindowMenu.build()
         mainMenu.addItem(windowMenuItem)
         NSApplication.shared.windowsMenu = windowMenuItem.submenu
+
+        // Help menu — built in its own file (HelpMenu.swift). Assigning
+        // `helpMenu` gets AppKit's menu-search field at the top.
+        let helpMenuItem = HelpMenu.build()
+        mainMenu.addItem(helpMenuItem)
+        NSApplication.shared.helpMenu = helpMenuItem.submenu
 
         NSApplication.shared.mainMenu = mainMenu
     }

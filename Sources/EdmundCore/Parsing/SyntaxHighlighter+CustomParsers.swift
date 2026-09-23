@@ -278,13 +278,15 @@ extension SyntaxHighlighter {
         }
     }
 
+    private static let highlightRegex =
+        try! NSRegularExpression(pattern: "==(?!\\s)(.+?)(?<!\\s)==")
+
     /// Parses ==highlight== spans using regex (not supported by swift-markdown).
     /// GFM-style flanking: the content must not begin or end with whitespace
     /// (`== spaced ==` stays literal), matching how cmark treats `**`/`~~`.
     static func parseHighlight(_ text: String, into spans: inout [Span]) {
         let nsText = text as NSString
-        guard let regex = try? NSRegularExpression(pattern: "==(?!\\s)(.+?)(?<!\\s)==", options: []) else { return }
-        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
+        let matches = highlightRegex.matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
         for match in matches {
             let full = match.range(at: 0)
             let content = match.range(at: 1)
@@ -313,15 +315,24 @@ extension SyntaxHighlighter {
     /// Tightness (space/tab, NOT newline) guards against prose false positives
     /// like "pay $$5 and $$6": a `$$` delimiter must abut non-space on the inner
     /// side — mirrors the Pandoc rule in `parseMath`. Newlines are allowed so a
-    /// block-merged `$$\n … \n$$` still matches. Runs before `parseMath`, which
-    /// skips ranges inside a `.math(display: true)` span.
+    /// block-merged `$$\n … \n$$` still matches, and so does a closing `$$`
+    /// preceded only by indentation (a block indented under a list item, #325).
+    /// Runs before `parseMath`, which skips ranges inside a `.math(display: true)`
+    /// span.
     static func parseDisplayMath(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
         let n = ns.length
-        let dollar: unichar = 0x24, backslash: unichar = 0x5C
+        let dollar: unichar = 0x24, backslash: unichar = 0x5C, newline: unichar = 0x0A
 
         // Same-line whitespace only; newlines are legal inside a display block.
         func isSpace(_ c: unichar) -> Bool { c == 0x20 || c == 0x09 }
+        // Only indentation between the line start and `k`: a `$$` there is a
+        // fence at the line's edge, not a loose delimiter amid prose.
+        func onlyIndentBefore(_ k: Int) -> Bool {
+            var p = k - 1
+            while p >= 0, isSpace(ns.character(at: p)) { p -= 1 }
+            return p < 0 || ns.character(at: p) == newline
+        }
 
         var i = 0
         while i < n {
@@ -339,7 +350,7 @@ extension SyntaxHighlighter {
                 let cj = ns.character(at: j)
                 if cj == backslash { j += 2; continue }
                 if cj == dollar && ns.character(at: j + 1) == dollar {
-                    if !isSpace(ns.character(at: j - 1)) { closeLoc = j; break }
+                    if !isSpace(ns.character(at: j - 1)) || onlyIndentBefore(j) { closeLoc = j; break }
                     j += 2; continue      // `$$` preceded by space isn't a valid close
                 }
                 j += 1

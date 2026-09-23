@@ -49,6 +49,18 @@ struct ImageRenderingTests {
         #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) == nil)
     }
 
+    @Test("A data: URI image renders even with the caret inside — its base64 is never shown raw")
+    func dataURIAlwaysRenders() {
+        let editor = makeEditor()
+        let png = try! Data(contentsOf: URL(fileURLWithPath: tempPNGPath()))
+        let uri = "data:image/png;base64,\(png.base64EncodedString())"
+        let styled = editor.styleBlock("![alt](\(uri))", cursorPosition: 3)
+        #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) != nil)
+        // Payload hidden even with the caret inside the token.
+        let f = styled.attribute(.font, at: 20, effectiveRange: nil) as? NSFont
+        #expect((f?.pointSize ?? 99) < 1.0)
+    }
+
     @Test("HTML <img> renders an overlay and hides the raw tag")
     func htmlImgRendersOverlay() {
         let editor = makeEditor()
@@ -91,6 +103,32 @@ struct ImageRenderingTests {
         #expect(styled.attribute(.fragmentOverlay, at: 0, effectiveRange: nil) != nil)
         guard case .blocked(.notFound) = editor.imageDisplay(destination: "/no/such/file.png") else {
             Issue.record("expected .blocked(.notFound)"); return
+        }
+    }
+
+    @Test("Percent-encoded relative destination (non-ASCII assets folder) resolves and renders")
+    func percentEncodedRelativeResolves() throws {
+        // Mirror a real paste into a document with a non-ASCII name: the
+        // inserted destination is percent-encoded by `imageDestination(for:)`,
+        // and Edit-mode resolution must decode it back — the round trip
+        // LocalImageInlining.resolve already guarantees for Read mode/export.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EdmundTests.\(UUID().uuidString)", isDirectory: true)
+        let docURL = dir.appendingPathComponent("现西1-7翻译练习20题.md")
+        let assets = dir.appendingPathComponent("现西1-7翻译练习20题.assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        let imageURL = assets.appendingPathComponent("pasted.png")
+        try Data(contentsOf: URL(fileURLWithPath: tempPNGPath())).write(to: imageURL)
+
+        let editor = makeEditor()
+        let doc = NSDocument()
+        doc.fileURL = docURL
+        editor.document = doc
+
+        let dest = editor.imageDestination(for: imageURL)
+        #expect(dest.contains("%"))   // indeed encoded — this is the paste case
+        guard case .image = editor.imageDisplay(destination: dest) else {
+            Issue.record("expected .image for a percent-encoded relative destination"); return
         }
     }
 

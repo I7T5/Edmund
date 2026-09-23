@@ -1,0 +1,29 @@
+# fixture: blocks.md
+# Composition inside rendered constructs (callout, table cell, list item, code
+# block), each committed with an accent — the delete-drift class started with
+# a restyle landing mid-composition.
+caret Callout body line two
+ime e
+ime é
+imecommit é
+assertinvariants
+caret three
+ime ü
+imecommit ü
+assertinvariants
+caret second item
+ime ñ
+imecommit ñ
+assertinvariants
+caret answer
+ime ç
+imecommit ç
+assertinvariants
+assertsource éCallout body line two
+assertsource üthree
+assertsource ñsecond item
+assertsource çanswer
+ime abc
+imecommit
+assertinvariants
+done

@@ -1,0 +1,17 @@
+# fixture: list.md
+# Return at the end of a list item continues the list; Tab indents the new
+# item; undo returns to the original. Exact results pinned by goldens.
+caretend
+enter
+type gamma
+assertsourcefile fixtures/list-continued.md
+tab
+assertsourcefile fixtures/list-indented.md
+assertinvariants
+undo
+undo
+undo
+undo
+undo
+assertsourceorig
+done

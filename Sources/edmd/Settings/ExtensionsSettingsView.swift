@@ -180,7 +180,9 @@ struct ExtensionsSettingsView: View {
         return SettingsSidebarRow(
             name: ext.name,
             dotFilled: isEnabled,
-            isDimmed: !isEnabled,
+            // An extension that is not installed reads at full weight even
+            // while disabled — dimming is for "installed but switched off".
+            isDimmed: !isEnabled && ext.isInstalled,
             isEmphasized: isEmphasized,
             dotAccessibilityLabel: isEnabled ? "Enabled" : "Disabled",
             onDotTap: { setEnabled(!isEnabled, for: ext.id) }
@@ -274,7 +276,7 @@ private struct ExtensionDetailView: View {
         // in the background outside this view (AppSettings.applyExtensionStates
         // re-installing a previously-enabled extension at launch) — catch that
         // by refreshing on the same notification that signals a real change.
-        .onReceive(NotificationCenter.default.publisher(for: .mathEngineChanged)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .renderEngineChanged)) { _ in
             isInstalled = ext.isInstalled
         }
     }
@@ -358,11 +360,12 @@ private struct ExtensionDetailView: View {
             if ext.isInstalled {
                 isInstalled = true
             } else {
-                // Only real extension today; a generic "download failed"
-                // would be technically true but less useful here — say why.
-                downloadError = RaTeXRelease.isConfigured
+                // A generic "download failed" would be technically true but
+                // less useful when the payload was never published for this
+                // build — that download can never succeed, so say so.
+                downloadError = ext.payloadIsConfigured
                     ? "Download failed. Try again."
-                    : "RaTeX isn't available in this build yet."
+                    : "\(ext.name) isn't available in this build yet."
             }
         }
     }

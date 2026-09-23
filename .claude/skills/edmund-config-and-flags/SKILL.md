@@ -47,8 +47,7 @@ Swift name) is what you pass as a launch arg.
 | `sourceMode` | `settings.view.sourceMode` | When on, **Source replaces Edit** in the ⌘E toggle; honored on open |
 | `showFormatBar` | `settings.edit.showFormatBar` | **Show the format bar** (View ▸ Show Format Bar, no shortcut; default on, off in Reading mode) |
 | `verboseEditorDiagnostics` | `settings.advanced.verboseEditorDiagnostics` | **Verbose editor trace** (see §4; pairs with diagnosticLogging) |
-| `sendCrashLogs` | `settings.advanced.sendCrashLogs` | Opt-in crash upload — **currently INERT** (see note) |
-| `sentCrashReports` | `settings.advanced.sentCrashReports` | Dedup set of already-uploaded `.ips` filenames |
+| `offerCrashReports` | `settings.advanced.offerCrashReports` | **Ask to report crashes on GitHub** (default on; the alert's "Don't ask again" clears it) |
 | `lastWindowHeight` | `settings.window.lastHeight` | Persisted window sizing (see the frame-not-content trap) |
 | `automaticallyChecksForUpdates` | `SUAutomaticallyChecksForUpdates` | Sparkle's own key (not namespaced) |
 | `EditorTheme.Keys.fontCascade` | `EditorFontCascade` | Per-script font cascade: `[script: family]` dict (Settings ▸ Appearance ▸ Fonts by script). Scripts: han, kana, hangul, cyrillic, greek, arabic, hebrew, thai, emoji; absent/uninstalled ⇒ system fallback. Lives in `EditorTheme.swift`, **not** `AppSettings` |
@@ -70,11 +69,10 @@ silently rejected. Save `window.frame.size`, reapply with `window.setFrame(_:)`
 **after the toolbar is installed**. (Note: the key on disk is
 `settings.window.lastHeight` — code, not the `lastWindowSize` some docs say.)
 
-**Crash uploading is inert:** `sendCrashLogs` defaults off AND the Settings ▸
-Advanced toggle is **commented out** in `AdvancedSettingsView.swift`, and
-`CrashReporter.reportingEndpoint` is a `REPLACE-ME.invalid` placeholder
-(`CrashReporter.swift:27`, `// TODO: real server`). Nothing uploads today.
-Un-inert it only when a receiving server exists (see edmund-release-and-operate).
+**No crash upload:** `offerCrashReports` only gates a prompt that opens a
+prefilled GitHub issue; Edmund sends nothing itself. DEBUG flag
+`-debug.fakeCrashReport <payload.json>` drives the prompt with a saved
+MetricKit payload (see edmund-release-and-operate).
 
 ---
 
@@ -206,9 +204,9 @@ table before relying on it:
 ```bash
 # §1 all keys + strings:
 grep -nE 'static let [a-zA-Z]+ = "[a-zA-Z0-9._]+"' Sources/edmd/Settings/AppSettings.swift
-# §1 crash toggle still commented out / endpoint still placeholder:
-grep -n 'Crash reports:' Sources/edmd/Settings/AdvancedSettingsView.swift
-grep -n 'reportingEndpoint' Sources/EdmundCore/Diagnostics/CrashReporter.swift
+# §1 crash-report prompt toggle + DEBUG flag:
+grep -n 'offerCrashReports' Sources/edmd/Settings/AdvancedSettingsView.swift
+grep -n 'debug.fakeCrashReport' Sources/edmd/App/main.swift
 # §1 cascade key (lives in EditorTheme, not AppSettings):
 grep -n 'EditorFontCascade' Sources/EdmundCore/Model/EditorTheme.swift
 # §2 repro flag key:

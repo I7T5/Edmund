@@ -12,6 +12,9 @@ import ScreenCaptureKit
 /// Accessibility permission. Commands, one per line:
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
+///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
+///   copycode <n>      press the copy button of the code block at offset n
+///   snapshot <path>   render the window content to a PNG in-process
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
@@ -37,7 +40,22 @@ import ScreenCaptureKit
 ///   handlemenu row|column  open a table handle's menu via its real hit test
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
 ///   selectcells r0,c0,r1,c1  select that block of table cells
-///   assertsource <s>  PASS iff <s> appears in the document
+///   ime <text>        compose <text> as marked text (NSTextInputClient)
+///   imecommit [text]  commit the composition as <text> (empty: as marked)
+///   undo / redo       the editor's own undo stack
+///   dumpsource        write the document (newlines as \\n) and selection to the log
+///   done              write `repro DONE pass=N fail=M` and exit (1 on any FAIL);
+///                     a failing run dumps the source first
+/// Assertions (each writes PASS/FAIL to `<script>.log`, counted by `done`):
+///   assertsource <s>  <s> appears in the document
+///   assertnot <s>     <s> does not appear
+///   assertcaret <s>   caret sits right before the first <s>
+///   assertsel N M     selection is exactly {N, M}
+///   assertinvariants  storage == rawSource, blocks rebuild it, no open marked text
+///   assertsourceorig  document equals what it opened with
+///   assertsourcefile <f>  document equals file <f> (relative to the script)
+/// An unknown command, or a caret/bypassdelete needle that isn't found, FAILs.
+/// Run whole suites with `scripts/repro.sh` (Tests/Repro/).
 @MainActor
 enum ReproScript {
 
@@ -48,6 +66,8 @@ enum ReproScript {
         reportPath = path + ".log"
         try? "".write(toFile: path + ".log", atomically: true, encoding: .utf8)
         var delay: TimeInterval = 1.5   // let the document finish opening
+        schedule(after: delay) { editor in originalSource = editor.rawSource }
+        let scriptDir = (path as NSString).deletingLastPathComponent
         for line in script.split(separator: "\n") {
             let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
             guard let cmd = parts.first, !cmd.hasPrefix("#") else { continue }
@@ -59,7 +79,7 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     let r = (editor.rawSource as NSString).range(of: arg)
                     guard r.location != NSNotFound else {
-                        Log.info("repro caret: needle not found: \(arg)", category: .app)
+                        verdict("caret", false, "needle not found: \(arg)")
                         return
                     }
                     editor.setSelectedRange(NSRange(location: r.location, length: 0))
@@ -111,6 +131,33 @@ enum ReproScript {
                                 mouseButton: .left)?.post(tap: .cghidEventTap)
                     }
                     post(.mouseMoved); post(.leftMouseDown); post(.leftMouseUp)
+                }
+            case "hoveroff":
+                // Hover pass at an absolute offset's glyph, without moving the
+                // real pointer: reveals the margin chrome (a table's `</>`, a
+                // code block's copy button) for a capture.
+                schedule(after: delay) { editor in
+                    editor.reproHover(atOffset: Int(arg) ?? 0)
+                }
+            case "snapshot":
+                // Renders the window's content view to a PNG at <path>
+                // in-process (`cacheDisplay`), so a capture is exact and never
+                // a stale compositor frame — `screencapture -l` of a window that
+                // is behind another returns whatever it last showed on screen.
+                schedule(after: delay) { editor in
+                    guard let view = editor.window?.contentView,
+                          let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                        report("repro snapshot: no content view"); return
+                    }
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    guard let png = rep.representation(using: .png, properties: [:]) else { return }
+                    try? png.write(to: URL(fileURLWithPath: arg))
+                    report("repro snapshot \(arg)")
+                }
+            case "copycode":
+                // Press the copy button of the code block at an absolute offset.
+                schedule(after: delay) { editor in
+                    editor.reproCopyCode(atOffset: Int(arg) ?? 0)
                 }
             case "selrange":
                 // "selrange N M" — select M chars at offset N.
@@ -166,7 +213,7 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     let r = (editor.rawSource as NSString).range(of: arg)
                     guard r.location != NSNotFound else {
-                        Log.info("repro bypassdelete: needle not found: \(arg)", category: .app)
+                        verdict("bypassdelete", false, "needle not found: \(arg)")
                         return
                     }
                     editor.setSelectedRange(r)
@@ -190,9 +237,8 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     let want = (editor.rawSource as NSString).range(of: arg).location
                     let sel = editor.selectedRange()
-                    let ok = sel.location == want && sel.length == 0
-                    Log.info("repro assertcaret \(ok ? "PASS" : "FAIL") " +
-                             "sel=\(sel) want=\(want) needle=\(arg)", category: .app)
+                    verdict("assertcaret", sel.location == want && sel.length == 0,
+                            "sel=\(sel) want=\(want) needle=\(arg)")
                 }
             case "logsel":
                 schedule(after: delay) { editor in
@@ -426,11 +472,22 @@ enum ReproScript {
                 // in an inactive window and ignores `selectedTextAttributes`
                 // there, so anything about the selection's appearance has to be
                 // checked with the window actually focused.
+                //
+                // Only works for an instance LaunchServices launched (`open -n
+                // <bundle> --args …`, launch-debug.sh --front). macOS 14
+                // activation is cooperative: a process the user did not launch
+                // — a harness exec'ing the binary — is refused by
+                // `NSApp.activate`, and neither `NSWorkspace.openApplication`
+                // on its own bundle nor `open -a` will raise it afterwards
+                // (both tried; `key=false` every time). The report line says
+                // which case this run is in.
                 schedule(after: delay) { editor in
                     NSApp.activate(ignoringOtherApps: true)
                     editor.window?.makeKeyAndOrderFront(nil)
                     editor.window?.makeFirstResponder(editor)
-                    report("repro activate key=\(editor.window?.isKeyWindow == true)")
+                    let key = editor.window?.isKeyWindow == true
+                    report("repro activate key=\(key)"
+                           + (key ? "" : " (exec'd binary cannot self-activate; launch with open -n / --front)"))
                 }
             case "caretpositions":
                 schedule(after: delay) { editor in
@@ -637,6 +694,17 @@ enum ReproScript {
                     }
                     report("repro hideviews \(arg) touched=\(n)")
                 }
+            case "zoom":
+                // "zoom in|out|actual" — View ▸ Zoom, through the document's
+                // own actions (what ⌘= / ⌘- / ⌘0 run).
+                scheduleDoc(after: delay) { doc in
+                    switch arg {
+                    case "in": doc.zoomIn(nil)
+                    case "out": doc.zoomOut(nil)
+                    default: doc.actualSize(nil)
+                    }
+                    report("repro zoom \(arg)")
+                }
             case "appearance":
                 // "appearance light|dark|system" — force the app's appearance.
                 schedule(after: delay) { _ in
@@ -658,6 +726,56 @@ enum ReproScript {
                     CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p,
                             mouseButton: .left)?.post(tap: .cghidEventTap)
                     report("repro realmove view=(\(Int(n[0])),\(Int(n[1]))) cg=(\(Int(p.x)),\(Int(p.y)))")
+                }
+            case "fontprobe":
+                // "fontprobe off1,off2,…" — the font in storage at each offset,
+                // plus the theme's sizes, to check a live restyle landed.
+                schedule(after: delay) { editor in
+                    let offs = arg.split(separator: ",").compactMap { Int($0) }
+                    let out = offs.map { off -> String in
+                        guard let ts = editor.textStorage, off < ts.length,
+                              let f = ts.attribute(.font, at: off, effectiveRange: nil) as? NSFont
+                        else { return "\(off):nil" }
+                        return "\(off):\(f.fontName)@\(f.pointSize)"
+                    }
+                    report("repro fontprobe theme=\(editor.theme.fontSize)/\(editor.theme.monospaceFontSize)"
+                           + " body=\(editor.bodyFont.pointSize) " + out.joined(separator: " "))
+                }
+            case "relayout":
+                // Invalidate TextKit 2 layout for the whole document and repaint,
+                // without touching attributes — separates a stale layout from a
+                // wrong one.
+                schedule(after: delay) { editor in
+                    if let tlm = editor.textLayoutManager { tlm.invalidateLayout(for: tlm.documentRange) }
+                    editor.needsDisplay = true
+                    report("repro relayout")
+                }
+            case "kernprobe":
+                // "kernprobe from,to" — every kern attribute in the range, with
+                // the font size under it, and whether the paragraph carries
+                // table cell wraps. Checks a table row's pad kerns survived.
+                schedule(after: delay) { editor in
+                    let n = arg.split(separator: ",").compactMap { Int($0) }
+                    guard n.count == 2, let ts = editor.textStorage else { report("repro kernprobe: want from,to"); return }
+                    var out: [String] = []
+                    let range = NSRange(location: n[0], length: min(ts.length, n[1]) - n[0])
+                    ts.enumerateAttribute(.kern, in: range) { value, r, _ in
+                        guard let k = value as? CGFloat, k != 0 else { return }
+                        let f = ts.attribute(.font, at: r.location, effectiveRange: nil) as? NSFont
+                        out.append("\(r.location):k=\(Int(k))@\(f?.pointSize ?? -1)")
+                    }
+                    let wraps = ts.attribute(.tableCellWraps, at: n[0], effectiveRange: nil) as? TableCellWrapList
+                    var lines = "?"
+                    if let tlm = editor.textLayoutManager,
+                       let loc = tlm.location(tlm.documentRange.location, offsetBy: n[0]),
+                       let frag = tlm.textLayoutFragment(for: loc) {
+                        lines = "\(frag.textLineFragments.count) frame=\(frag.layoutFragmentFrame)"
+                            + " lineWidths=\(frag.textLineFragments.map { Int($0.typographicBounds.width) })"
+                    }
+                    let cw = editor.textContainer?.size.width ?? -1
+                    report("repro kernprobe container=\(Int(cw)) lines=\(lines) wraps=\(wraps?.wraps.count ?? 0) "
+                           + (wraps?.wraps.map { "x=\(Int($0.x)) w=\(Int($0.contentWidth))" }.joined(separator: ";") ?? "")
+                           + " kerns=" + out.joined(separator: " "))
                 }
             case "rectsprobe":
                 // "rectsprobe off1,off2,…" — the caret rects the editor would
@@ -779,11 +897,81 @@ enum ReproScript {
                 }
             case "assertsource":
                 schedule(after: delay) { editor in
-                    let ok = (editor.rawSource as NSString).range(of: arg).location != NSNotFound
-                    report("repro assertsource \(ok ? "PASS" : "FAIL") needle=\(arg)")
+                    verdict("assertsource", editor.rawSource.contains(arg), "needle=\(arg)")
+                }
+            case "assertnot":
+                schedule(after: delay) { editor in
+                    verdict("assertnot", !editor.rawSource.contains(arg), "needle=\(arg)")
+                }
+            case "assertsel":
+                // "assertsel N M": the selection is exactly {N, M}.
+                schedule(after: delay) { editor in
+                    let f = arg.split(separator: " ").compactMap { Int($0) }
+                    let sel = editor.selectedRange()
+                    verdict("assertsel", f.count == 2 && sel == NSRange(location: f[0], length: f[1]),
+                            "sel=\(sel) want=\(arg)")
+                }
+            case "assertinvariants":
+                // storage == rawSource, blocks rebuild rawSource, ranges in
+                // bounds, no marked text left open.
+                schedule(after: delay) { editor in
+                    let bad = editor.debugInvariantViolations()
+                    verdict("assertinvariants", bad.isEmpty, bad.joined(separator: "; "))
+                }
+            case "assertsourceorig":
+                // The document is byte-identical to how it opened (undo round-trips).
+                schedule(after: delay) { editor in
+                    verdict("assertsourceorig", editor.rawSource == originalSource,
+                            "len=\((editor.rawSource as NSString).length) " +
+                            "orig=\(((originalSource ?? "") as NSString).length)")
+                }
+            case "assertsourcefile":
+                // The document equals a golden file (path relative to the script).
+                let golden = try? String(contentsOfFile: (scriptDir as NSString)
+                    .appendingPathComponent(arg), encoding: .utf8)
+                schedule(after: delay) { editor in
+                    verdict("assertsourcefile", golden != nil && editor.rawSource == golden,
+                            golden == nil ? "missing \(arg)" : "file=\(arg)")
+                }
+            case "ime":
+                // Compose <text> as marked text through NSTextInputClient, as an
+                // input method does; repeat to replace the composition.
+                schedule(after: delay) { editor in
+                    editor.setMarkedText(arg, selectedRange: NSRange(location: (arg as NSString).length, length: 0),
+                                         replacementRange: NSRange(location: NSNotFound, length: 0))
+                }
+            case "imecommit":
+                // Commit the composition as <text> (empty: keep the marked text as typed).
+                schedule(after: delay) { editor in
+                    if arg.isEmpty { editor.unmarkText() }
+                    else { editor.insertText(arg, replacementRange: NSRange(location: NSNotFound, length: 0)) }
+                }
+            case "undo":
+                schedule(after: delay) { editor in editor.undo(nil) }
+            case "redo":
+                schedule(after: delay) { editor in editor.redo(nil) }
+            case "dumpsource":
+                schedule(after: delay) { editor in
+                    report("repro source sel=\(editor.selectedRange()) " + editor.rawSource
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "\n", with: "\\n"))
+                }
+            case "done":
+                // Summary, then exit with the verdict (no save prompt: the runner
+                // works on a temp copy of the fixture). A failing run also dumps
+                // the final source, so the log shows what the assertions saw.
+                schedule(after: delay) { editor in
+                    if failures > 0 {
+                        report("repro source sel=\(editor.selectedRange()) " + editor.rawSource
+                            .replacingOccurrences(of: "\\", with: "\\\\")
+                            .replacingOccurrences(of: "\n", with: "\\n"))
+                    }
+                    report("repro DONE pass=\(passes) fail=\(failures)")
+                    exit(failures == 0 ? 0 : 1)
                 }
             default:
-                break
+                // A typo would otherwise pass silently by doing nothing.
+                schedule(after: delay) { _ in verdict("command", false, "unknown: \(cmd)") }
             }
             delay += 0.02
         }
@@ -843,6 +1031,18 @@ enum ReproScript {
 
     /// Where a run's results are written: `<script>.log`, next to the script.
     private static var reportPath: String?
+
+    /// Assertion tallies for the `done` summary and exit status.
+    private static var passes = 0
+    private static var failures = 0
+    /// The document as it was before the first command, for `assertsourceorig`.
+    private static var originalSource: String?
+
+    /// One assertion result: `repro <name> PASS|FAIL <detail>`, counted.
+    private static func verdict(_ name: String, _ ok: Bool, _ detail: String) {
+        if ok { passes += 1 } else { failures += 1 }
+        report("repro \(name) \(ok ? "PASS" : "FAIL") \(detail)")
+    }
 
     /// Results go to a file of their own. The daily log is shared with every
     /// other running instance, and NSLog does not reach the redirected stderr of
@@ -913,7 +1113,6 @@ enum ReproScript {
         window.sendEvent(event)
     }
 }
-#endif
 
 /// Writes every frame a burst stream delivers as a PNG named by its index and
 /// the process-uptime ms at delivery — the clock the caret trace uses.
@@ -940,3 +1139,4 @@ private final class BurstOutput: NSObject, SCStreamOutput, @unchecked Sendable {
         if CGImageDestinationFinalize(dest) { lock.lock(); written += 1; lock.unlock() }
     }
 }
+#endif

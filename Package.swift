@@ -1,5 +1,13 @@
 // swift-tools-version: 6.0
 import PackageDescription
+import Foundation
+
+// The Mac App Store variant must not link Sparkle (App Review rejects a
+// second updater). build-app.sh --variant mas sets EDMUND_MAS=1; the package
+// dependency stays declared either way so Package.resolved never churns —
+// only the edmd target stops linking the product, and the updater code in
+// main.swift compiles out via `#if canImport(Sparkle)`.
+let linksSparkle = ProcessInfo.processInfo.environment["EDMUND_MAS"] == nil
 
 let package = Package(
     name: "Edmund",
@@ -23,7 +31,8 @@ let package = Package(
         // peeks inside the bundle or runs `swift run edmd`.
         .executableTarget(
             name: "edmd",
-            dependencies: ["EdmundCore", .product(name: "Sparkle", package: "Sparkle")]),
+            dependencies: ["EdmundCore"]
+                + (linksSparkle ? [.product(name: "Sparkle", package: "Sparkle")] : [])),
         // The Quick Look preview extension. Built as an executable target but
         // packaged as an `.appex` by build-app.sh; its entry point is
         // Foundation's NSExtensionMain, redirected via the linker `-e` flag

@@ -110,8 +110,7 @@ enum AppSettings {
         static let renderBlankLinesAsBreaks = "settings.reading.renderBlankLinesAsBreaks"
         static let sourceMode = "settings.view.sourceMode"
         static let enabledExtensionIDs = "settings.extensions.enabledIDs"
-        static let sendCrashLogs = "settings.advanced.sendCrashLogs"
-        static let sentCrashReports = "settings.advanced.sentCrashReports"
+        static let offerCrashReports = "settings.advanced.offerCrashReports"
         static let lastWindowWidth  = "settings.window.lastWidth"
         static let lastWindowHeight = "settings.window.lastHeight"
         // Syntax feature toggles (all default on). Read into `markdownFeatures`.
@@ -337,11 +336,12 @@ enum AppSettings {
         applyExtensionStates()
     }
 
-    /// Wires enabled extensions into the app's live state: today, whether
-    /// "Advanced Math" is enabled decides `MathRendering.shared.alternate`
-    /// (RaTeX vs. falling back to SwiftMath), and on-screen equations
-    /// restyle via `engineDidChange()`. Called at launch and whenever an
-    /// extension is enabled/disabled in Settings.
+    /// Wires enabled extensions into the app's live state: whether "Advanced
+    /// Math" is enabled decides `MathRendering.shared.alternate` (RaTeX vs.
+    /// falling back to SwiftMath), and whether "Mermaid" is enabled decides
+    /// whether `MermaidRenderer.shared` will render diagrams at all. On-screen
+    /// content restyles via `.renderEngineChanged`. Called at launch and
+    /// whenever an extension is enabled/disabled in Settings.
     @MainActor static func applyExtensionStates() {
         let mathExt = AdvancedMathExtension.shared
         if isExtensionEnabled(mathExt.id) {
@@ -358,6 +358,19 @@ enum AppSettings {
         } else {
             MathRendering.shared.alternate = nil
         }
+
+        // Same shape for Mermaid, minus the fallback: there is no built-in
+        // diagram engine to degrade to, so "disabled" simply means the fenced
+        // block stays a code block.
+        let mermaidExt = MermaidExtension.shared
+        MermaidRenderer.shared.isEnabled = isExtensionEnabled(mermaidExt.id)
+        if MermaidRenderer.shared.isEnabled {
+            Task {
+                await mermaidExt.download()
+                NotificationCenter.default.post(name: .renderEngineChanged, object: nil)
+            }
+        }
+
         MathRendering.shared.engineDidChange()
     }
 
@@ -393,24 +406,11 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.blockExternalImages) }
     }
 
-    /// Whether to auto-send crash reports on launch. Opt-in: defaults off, since
-    /// it sends data off-device. (UI currently commented out — see
-    /// AdvancedSettingsView — until the receiving server exists.)
-    static var sendCrashLogs: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.sendCrashLogs) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.sendCrashLogs) }
-    }
-
-    /// Filenames of crash reports already uploaded, so we don't resend them.
-    /// Bounded on write by dropping entries whose `.ips` file no longer exists.
-    static var sentCrashReports: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: Key.sentCrashReports) ?? []) }
-        set {
-            let onDisk = (try? FileManager.default.contentsOfDirectory(
-                atPath: CrashReporter.diagnosticReportsDirectory.path)).map(Set.init) ?? []
-            let pruned = onDisk.isEmpty ? newValue : newValue.intersection(onDisk)
-            UserDefaults.standard.set(Array(pruned), forKey: Key.sentCrashReports)
-        }
+    /// Whether to ask, on the launch after a crash, to report it on GitHub.
+    /// Defaults on: asking sends nothing — the user files the issue themselves.
+    static var offerCrashReports: Bool {
+        get { UserDefaults.standard.object(forKey: Key.offerCrashReports) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Key.offerCrashReports) }
     }
 
     static var logRetention: LogRetention {
@@ -424,11 +424,8 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.logRetention) }
     }
 
-    /// Where diagnostic logs live: `~/.edmund/logs`.
-    static var logDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".edmund/logs", isDirectory: true)
-    }
+    /// Where diagnostic logs live (see `Log.defaultDirectory`).
+    static var logDirectory: URL { Log.defaultDirectory }
 
     /// Pushes the current logging settings into the `Log` facility. Called at
     /// launch and whenever the toggle or retention changes.
@@ -440,7 +437,7 @@ enum AppSettings {
     }
 
     /// Pushes the default code-block language into the shared definition store and
-    /// reloads bundled + user (~/.edmund/syntaxes) definitions. Called at launch,
+    /// reloads bundled + user (Application Support/Edmund/Syntaxes) definitions. Called at launch,
     /// and after the popup changes or a def is imported/removed.
     static func applyCodeSyntax() {
         SyntaxDefinitionStore.shared.defaultLanguage = defaultCodeSyntax
@@ -796,8 +793,16 @@ extension NSScreen {
         }
         let mm = CGDisplayScreenSize(CGDirectDisplayID(n.uint32Value))
         guard mm.width > 0 else { return 109 }
-        // frame.width is in points (not pixels); mm.width is physical mm.
-        return frame.width / (mm.width / 25.4)
+        return Self.physicalPPI(points: frame.size, millimetres: mm)
+    }
+
+    /// PPI from a display's size in points and in physical mm. Compares long
+    /// edge to long edge: `NSScreen.frame` rotates with the display but
+    /// `CGDisplayScreenSize` reports the unrotated panel, so a portrait monitor
+    /// would otherwise pair the short point edge with the long mm edge and
+    /// under-report PPI by the aspect ratio (#324).
+    static func physicalPPI(points: CGSize, millimetres mm: CGSize) -> CGFloat {
+        max(points.width, points.height) / (max(mm.width, mm.height) / 25.4)
     }
 
     /// Convert a physical centimetre value to AppKit points on this display.

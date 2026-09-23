@@ -68,7 +68,7 @@ Map of `Tests/EdmundTests/` (what the files actually cover):
 - **Edit-pipeline integrity (the costly class):** `BypassedEditSyncTests`, `MarkedTextDesyncTests`, `WrappedParagraphCaretTests`, `EditorDiagnosticsTests`, `UnmatchedDebugTests`, `InternationalInputTests`.
 - **Viewport / layout / undo:** `LazyRenderingTests`, `ScrollStabilityTests`, `HeightStabilityTests`, `TypewriterCenteringTests`, `UndoRedoViewportTests`, `EditorUndoTests`, `RecomposeTests`, `RecomposeEquivalenceTests`.
 - **Export / read mode:** `HTMLRendererTests`, `DocumentHTMLTests`, `ReadModeWebViewTests`, `HTMLThemeTests`, `EditorThemeTests`, `ViewModeTests`, `ContentWidthTests`.
-- **Infra / harness:** `LogTests`, `CrashReporterTests`, `PerfHarnessTests`, `StatusBarPrefsTests`, `FileIntegrationTests`, `EditorDocumentTests`, `TestHelpers.swift`. `_RenderDump.swift` / `_RenderEdit.swift` are **local dev tools (gitignored intent)** that dump Read-mode HTML / edit output for `tmp/sample.md` — not part of the assertion suite.
+- **Infra / harness:** `LogTests`, `CrashReportTests`, `PerfHarnessTests`, `StatusBarPrefsTests`, `FileIntegrationTests`, `EditorDocumentTests`, `TestHelpers.swift`. `_RenderDump.swift` / `_RenderEdit.swift` are **local dev tools (gitignored intent)** that dump Read-mode HTML / edit output for `tmp/sample.md` — not part of the assertion suite.
 
 **Two invariant-guarding patterns worth copying:**
 - **Recompose equivalence** (`RecomposeEquivalenceTests`, helper

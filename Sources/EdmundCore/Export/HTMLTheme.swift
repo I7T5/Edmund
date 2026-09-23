@@ -67,6 +67,15 @@ enum HTMLTheme {
         let naturalLineHeight = NSLayoutManager().defaultLineHeight(for: theme.bodyFont)
         let lineHeight = (naturalLineHeight + theme.lineSpacing) / theme.fontSize
 
+        // Air above and below a Mermaid diagram. One line of the code face —
+        // the line its fence occupies in Edit mode, which reserves exactly this
+        // (`EditorTextView.mermaidDiagramMargin`), so a diagram sits in the same
+        // space in both modes. An em of the body font would drift from it with
+        // any font-size or face change; this tracks it by construction. The
+        // library's own canvas padding is cropped before either mode sees the
+        // SVG (`MermaidRenderer.tighteningCanvas`), so this is the whole margin.
+        let diagramMargin = NSLayoutManager().defaultLineHeight(for: theme.monospaceFont())
+
         // CSS px and AppKit points are both device-independent, so the editor's
         // physical cap (EditorTextView.maxContentWidthPoints) carries over as-is.
         // A huge/infinite value means "uncapped" in the editor too; `none` skips
@@ -81,6 +90,7 @@ enum HTMLTheme {
           --body-size: \(trim(theme.fontSize))px;
           --mono-font: \(cssFontStack(theme.monospaceFontName.isEmpty ? "ui-monospace" : theme.monospaceFontName, generic: "monospace"));
           --mono-size: \(trim(theme.monospaceFontSize))px;
+          --diagram-margin: \(trim(diagramMargin))px;
           --accent: \(general.link ?? "#3366E6");
           --highlight: \(general.highlight ?? "rgba(255, 200, 0, 0.3)");
           --code: \(theme.codeHex);
@@ -204,6 +214,23 @@ enum HTMLTheme {
           /* tab-size: browsers default to 8; match the common editor convention of 4. */
           tab-size: 4; -moz-tab-size: 4; }
     pre code { color: var(--fg); background: none; padding: 0; font-size: var(--mono-size); }
+    /* A rendered diagram centres in the column and never overflows it. The SVG
+       carries intrinsic width/height, so capping width alone would squash it —
+       `height: auto` keeps the aspect ratio. A diagram wider than the column
+       (a long sequence chart) scrolls horizontally rather than forcing the
+       page to. */
+    .mermaid-diagram { margin: var(--diagram-margin) 0; overflow-x: auto; }
+    .mermaid-diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto;
+      /* The diagram reads --line/--accent/--muted/--surface/--border and falls
+         back to shades derived from its own --bg/--fg when they are unset. The
+         page happens to define --accent (the link colour), which inherits into
+         the SVG and was painting arrowheads link-blue — arrows aren't links,
+         and they'd drift again with any new page variable. `initial` makes a
+         custom property guaranteed-invalid, so each var() takes its fallback:
+         the diagram derives entirely from the two colours we pass it. --bg/--fg
+         are set inline on the <svg> and are unaffected. */
+      --line: initial; --accent: initial; --muted: initial;
+      --surface: initial; --border: initial; }
     /* Copy button: a bare hover-revealed icon, matching Obsidian's read-mode
        treatment. `.code-block-wrap` takes over `pre`'s outer margin so the
        button can be positioned absolutely inside it without moving `pre`. */
@@ -418,7 +445,7 @@ enum HTMLTheme {
          so callout backgrounds, code blocks, and highlights survive printing. */
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .callout, pre, blockquote, .table-wrap, .math-display,
-      .math-display-block { break-inside: avoid; }
+      .math-display-block, .mermaid-diagram { break-inside: avoid; }
       h1, h2, h3, h4, h5, h6 { break-after: avoid; }
       thead { display: table-header-group; }
     }

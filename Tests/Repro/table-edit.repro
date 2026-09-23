@@ -1,0 +1,19 @@
+# fixture: blocks.md
+# Typing inside table cells (the styled table re-lays out its columns on every
+# keystroke), then undo back to the original.
+caret two |
+type wide cell content
+assertsource | one | wide cell contenttwo |
+assertinvariants
+caret four
+type x
+assertinvariants
+backspace 1
+assertinvariants
+undo
+undo
+undo
+undo
+undo
+assertsourceorig
+done

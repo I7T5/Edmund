@@ -1,10 +1,29 @@
 #!/bin/bash
 # Build Edmund.app — a standalone macOS application bundle.
-# Usage: ./scripts/build-app.sh
+# Usage: ./scripts/build-app.sh [--variant sparkle|adhoc|mas]
+#   sparkle (default): App Sandbox on (Resources/Edmund-Sparkle.entitlements),
+#                      signed with the bundle id. What GitHub releases ship.
+#   adhoc:             no entitlements, today's dev build. The sandbox blocks
+#                      posting CGEvents, which the ReproScript live-repro driver
+#                      needs, so local debugging stays on this variant.
+#   mas:               Mac App Store: no Sparkle linked or embedded, no SU*
+#                      Info.plist keys, Resources/Edmund.entitlements. Still
+#                      ad-hoc signed here — App Store Connect signing
+#                      (3rd Party Mac Developer certs + provisioning profile)
+#                      is a separate, certificate-holding step.
 # Output: build/Edmund.app (ready to drag into /Applications)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+VARIANT="sparkle"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --variant) VARIANT="$2"; shift 2 ;;
+        *) echo "Unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+case "$VARIANT" in sparkle|adhoc|mas) ;; *) echo "Unknown variant: $VARIANT" >&2; exit 2 ;; esac
 
 APP_NAME="Edmund"
 BUNDLE="build/${APP_NAME}.app"
@@ -12,8 +31,33 @@ BUNDLE="build/${APP_NAME}.app"
 # inside the bundle even though the app presents as "Edmund".
 EXECUTABLE="edmd"
 
-echo "Building release binary..."
-swift build -c release 2>&1 | tail -3
+echo "Building release binary (${VARIANT})..."
+if [ "$VARIANT" = "mas" ]; then
+    # EDMUND_MAS drops the Sparkle product from the edmd target (Package.swift).
+    EDMUND_MAS=1 swift build -c release 2>&1 | tail -3
+else
+    swift build -c release 2>&1 | tail -3
+fi
+
+# SwiftMath ships 12 math fonts (~7 MB per bundle copy) but Edmund only ever
+# renders with its default, Latin Modern: MathRenderer builds MTMathImage without
+# setting a font, and MTMathImage.font defaults to MTFontManager.defaultFont.
+# Fonts load lazily by name, so the unused ones can go. Licenses stay.
+# If Edmund ever lets the user pick a math font, keep that font here.
+prune_math_fonts() {
+    local fonts="$1/SwiftMath_SwiftMath.bundle/mathFonts.bundle"
+    [ -d "$fonts" ] || return 0
+    find "$fonts" -maxdepth 1 \( -name '*.otf' -o -name '*.plist' -o -name '*.py' \) \
+        ! -name 'latinmodern-math.*' -delete
+}
+
+# Drop local symbols from a bundled binary (~40% of its size) after saving a
+# dSYM next to the bundle, so crash reports (edmd-*.ips) stay symbolicatable
+# with `atos -o build/<name>.dSYM`. Must run before codesign.
+strip_binary() {
+    dsymutil "$1" -o "build/$(basename "$1").dSYM" 2>/dev/null || true
+    strip -x "$1"
+}
 
 echo "Creating ${APP_NAME}.app bundle..."
 rm -rf "$BUNDLE"
@@ -21,8 +65,42 @@ mkdir -p "${BUNDLE}/Contents/MacOS"
 mkdir -p "${BUNDLE}/Contents/Resources"
 
 cp ".build/release/${EXECUTABLE}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
+strip_binary "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
 cp Info.plist "${BUNDLE}/Contents/"
+if [ "$VARIANT" = "mas" ]; then
+    # No updater on the App Store: Sparkle's keys must not ship there.
+    for key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUEnableInstallerLauncherService; do
+        plutil -remove "$key" "${BUNDLE}/Contents/Info.plist"
+    done
+fi
 cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
+# First-sandboxed-launch migration of Application Support/Edmund into the
+# container (see the plist). Copied for every variant; inert unsandboxed.
+cp Resources/container-migration.plist "${BUNDLE}/Contents/Resources/"
+
+# Help ▸ Acknowledgments opens this page, the way Safari does its own:
+# contributors, then every third-party license in LICENSES/.
+{
+    cat <<'HTML'
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Edmund Acknowledgments</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 13px -apple-system, sans-serif; max-width: 46em; margin: 2em auto; padding: 0 1em; }
+pre { white-space: pre-wrap; font-size: 11px; }
+</style></head><body>
+<h1>Acknowledgments</h1>
+<h2>Contributors</h2>
+<p>Edmund is made by <a href="https://github.com/I7T5/Edmund/graphs/contributors">its contributors on GitHub</a>. Thank you.</p>
+HTML
+    for license in LICENSES/*.txt; do
+        echo "<h2>$(basename "$license" .txt)</h2>"
+        echo "<pre>"
+        sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$license"
+        echo "</pre>"
+    done
+    echo "</body></html>"
+} > "${BUNDLE}/Contents/Resources/Acknowledgments.html"
 
 # Compile the asset catalog so the app's AccentColor (our brown) is available.
 # macOS uses it only when the user's system accent is "Multicolor"; a specific
@@ -87,6 +165,7 @@ fi
 # SwiftPM links Sparkle but doesn't copy the framework (which carries the XPC
 # helpers and Autoupdate.app) into the bundle; without this the updater crashes
 # on the first check because it can't locate its helper processes.
+if [ "$VARIANT" != "mas" ]; then
 echo "Embedding Sparkle.framework..."
 mkdir -p "${BUNDLE}/Contents/Frameworks"
 SPARKLE_FW="$(find .build -type d -name 'Sparkle.framework' | grep -v '\.dSYM' | head -1)"
@@ -101,6 +180,7 @@ cp -R "$SPARKLE_FW" "${BUNDLE}/Contents/Frameworks/"
 # the app is installed.
 install_name_tool -add_rpath "@executable_path/../Frameworks" \
     "${BUNDLE}/Contents/MacOS/${EXECUTABLE}" 2>/dev/null || true
+fi
 
 # Assemble the Quick Look preview extension as an .appex in Contents/PlugIns.
 # It's an executable target (SwiftPM has no app-extension product); its entry
@@ -114,10 +194,12 @@ QL_NAME="EdmundQuickLook"
 APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
 mkdir -p "${APPEX}/Contents/MacOS" "${APPEX}/Contents/Resources"
 cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
+strip_binary "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/Contents/Resources/"
 done
+prune_math_fonts "${APPEX}/Contents/Resources"
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
 #
@@ -145,10 +227,18 @@ echo "Code signing..."
 # sign each nested item explicitly (Sparkle deep so its own XPC helpers are
 # covered; the appex with its entitlements) and let the non-deep app sign just
 # seal the container over the already-signed contents.
-codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
+[ "$VARIANT" != "mas" ] && codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
     --identifier "com.i7t5.edmund.quicklook" "$APPEX"
-codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE"
+# The sandboxed variants sign with no --identifier override: the signing id
+# names the container (~/Library/Containers/<id>) and keys the automatic
+# preferences migration, so it must equal the Info.plist bundle id. The ad-hoc
+# variant keeps its historical "com.i7t5.edmd" id.
+case "$VARIANT" in
+    sparkle) codesign --force --sign - --entitlements Resources/Edmund-Sparkle.entitlements "$BUNDLE" ;;
+    mas)     codesign --force --sign - --entitlements Resources/Edmund.entitlements "$BUNDLE" ;;
+    adhoc)   codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE" ;;
+esac
 
 # SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
 # per-target bundle next to the binary. SwiftMath's generated Bundle.module
@@ -161,7 +251,8 @@ echo "Copying SwiftPM resource bundles..."
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "${BUNDLE}/"
 done
+prune_math_fonts "$BUNDLE"
 
 echo ""
-echo "Done: ${BUNDLE}"
+echo "Done: ${BUNDLE} (variant: ${VARIANT})"
 echo "To install: cp -R ${BUNDLE} /Applications/"

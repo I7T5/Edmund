@@ -306,7 +306,79 @@ struct HTMLRenderer: MarkupVisitor {
             footnotes.append((id: id, bodyHTML: bodyHTML))
             return ""
         }
+        if options.features.contains(.math),
+           let split = splitAtOwnLineDisplayMath(paragraph, raw: raw, spans: dm) {
+            return split
+        }
         return "<p>\(renderChildren(of: paragraph))</p>"
+    }
+
+    /// A paragraph that *contains* own-line `$$…$$` runs: cmark lazy-continues
+    /// fence lines into the preceding text (`item\n$$\n…\n$$`, #325), while the
+    /// editor's BlockParser starts a fresh block at the `$$` line. Split here so
+    /// the two views agree — the prose around each run renders as usual, the run
+    /// becomes a math-display div. Children are partitioned by source *line*: a
+    /// Text node never crosses one, and an own-line run's lines are wholly inside
+    /// it. Not by column — cmark reports a lazy-continuation line inside a list
+    /// item at the item's content column, not the column it really starts at.
+    /// Returns nil when the paragraph has no such run.
+    private mutating func splitAtOwnLineDisplayMath(_ paragraph: Paragraph, raw: String,
+                                                    spans: [SyntaxHighlighter.Span]) -> String? {
+        guard let pRange = paragraph.range else { return nil }
+        let ns = raw as NSString
+        func isSpace(_ c: unichar) -> Bool { c == 0x20 || c == 0x09 }
+        // Own-line: only indentation between the line start and the opener, only
+        // whitespace between the closer and the line end.
+        let runs = spans.filter { s in
+            guard case .math(true) = s.kind else { return false }
+            var p = s.fullRange.location - 1
+            while p >= 0, isSpace(ns.character(at: p)) { p -= 1 }
+            guard p < 0 || ns.character(at: p) == 0x0A else { return false }
+            var q = s.fullRange.upperBound
+            while q < ns.length, isSpace(ns.character(at: q)) { q += 1 }
+            return q == ns.length || ns.character(at: q) == 0x0A
+        }
+        guard !runs.isEmpty else { return nil }
+
+        let firstLine = pRange.lowerBound.line
+        func line(at offset: Int) -> Int {
+            firstLine + ns.substring(to: offset).components(separatedBy: "\n").count - 1
+        }
+        let runLines = runs.map { line(at: $0.fullRange.location)...line(at: $0.fullRange.upperBound) }
+        func run(containing child: Markup) -> SyntaxHighlighter.Span? {
+            guard let l = child.range?.lowerBound.line else { return nil }
+            return zip(runs, runLines).first { $0.1.contains(l) }?.0
+        }
+
+        var out = ""
+        var prose: [Markup] = []
+        var lastRun: Int?
+        for child in paragraph.children {
+            if let r = run(containing: child) {
+                guard lastRun != r.fullRange.location else { continue }
+                // Drop the break that separated the prose from the fence line.
+                if prose.last is SoftBreak || prose.last is LineBreak { prose.removeLast() }
+                if !prose.isEmpty {
+                    var html = ""
+                    for c in prose { html += visit(c) }
+                    out += "<p>\(html)</p>"
+                    prose = []
+                }
+                let tex = ns.substring(with: r.contentRange)
+                out += "<div class=\"math-display\" data-tex=\"\(Self.attr(tex))\"></div>"
+                lastRun = r.fullRange.location
+                continue
+            }
+            // Drop the break that follows a fence's closing line.
+            if lastRun != nil, prose.isEmpty, child is SoftBreak || child is LineBreak { continue }
+            prose.append(child)
+        }
+        if !prose.isEmpty {
+            var html = ""
+            for c in prose { html += visit(c) }
+            out += "<p>\(html)</p>"
+        }
+        return out
     }
 
     mutating func visitHeading(_ heading: Heading) -> String {
@@ -330,7 +402,20 @@ struct HTMLRenderer: MarkupVisitor {
         // swift-markdown includes a trailing newline on the block's code.
         let code = raw.hasSuffix("\n") ? String(raw.dropLast()) : raw
         let pre = "<pre><code\(lang)>\(Self.highlightCode(code, language: codeBlock.language))</code></pre>"
-        return "<div class=\"code-block-wrap\">\(Self.copyButtonHTML(code: code))\(pre)</div>"
+        let block = "<div class=\"code-block-wrap\">\(Self.copyButtonHTML(code: code))\(pre)</div>"
+        guard MermaidSyntax.matches(language: codeBlock.language) else { return block }
+        // This visitor is pure and non-isolated, so it can't reach the
+        // @MainActor renderer; it emits a placeholder that `DocumentHTML`
+        // fills in a later pass. The diagram source rides along base64-encoded
+        // so no amount of markdown punctuation can break out of the attribute.
+        //
+        // The code block is WRAPPED rather than replaced: when the extension
+        // is off, not installed, or the diagram doesn't parse, the fill pass
+        // unwraps to exactly this markup — a normal code block, copy button
+        // and syntax coloring included — so the fallback needs no separate
+        // implementation and can't drift from the real thing.
+        let source = Data(code.utf8).base64EncodedString()
+        return "<div class=\"mermaid-diagram\" data-source=\"\(source)\">\(block)</div>"
     }
 
     /// A code block's copy button: a bare icon, hidden until the block is
@@ -479,7 +564,11 @@ struct HTMLRenderer: MarkupVisitor {
         var out = ""
         for child in item.children {
             var html = visit(child)
-            if child is Paragraph, html.hasPrefix("<p>"), html.hasSuffix("</p>") {
+            // A paragraph split around a display-math run (`<p>a</p><div…>
+            // <p>b</p>`) is several elements; stripping its outer tags would
+            // leave broken markup, so only a single <p>…</p> is unwrapped.
+            if child is Paragraph, html.hasPrefix("<p>"), html.hasSuffix("</p>"),
+               !html.dropLast(4).contains("</p>") {
                 html = String(html.dropFirst(3).dropLast(4))
                 if let tightTextClass { html = "<span class=\"\(tightTextClass)\">\(html)</span>" }
             }
@@ -783,148 +872,6 @@ struct HTMLRenderer: MarkupVisitor {
     /// the same predicate the editor's BlockParser uses for quote membership.
     private static func isQuotedLine(_ line: String) -> Bool {
         line.drop(while: { $0 == " " }).first == ">"
-    }
-
-    // MARK: - Inline non-GFM (highlight / math / wikilink / comment)
-
-    /// Renders a leaf text run, recognizing the non-GFM inline constructs the
-    /// editor supports by reusing the same custom-parser regexes. Everything not
-    /// matched is HTML-escaped.
-    ///
-    /// `rawSource`, when given, is this run's *unescaped-by-swift-markdown* source
-    /// (`Text.string`) counterpart's raw markdown. Only inline math needs it: a
-    /// Text node's `.string` has already had Markdown backslash-escapes collapsed
-    /// (`\\`→`\`, `\$`→`$`), which mangles LaTeX (a `\begin{cases} … \\ … \end`
-    /// loses its row separators). The tex is therefore recovered from the raw
-    /// source instead. Everything else stays on the (correctly unescaped) `s`.
-    private static func renderInline(_ s: String, rawSource: String? = nil,
-                                     features: MarkdownFeatures = .all) -> String {
-        guard !s.isEmpty else { return "" }
-        var spans: [SyntaxHighlighter.Span] = []
-        // Each custom pass is gated by its feature flag, matching the editor's
-        // `SyntaxHighlighter.parse`: a cleared flag drops the syntax to plain text.
-        if features.contains(.highlight) { SyntaxHighlighter.parseHighlight(s, into: &spans) }
-        if features.contains(.math) {
-            SyntaxHighlighter.parseDisplayMath(s, into: &spans) // $$…$$ embedded in a prose line
-            SyntaxHighlighter.parseMath(s, into: &spans)        // inline $…$ only
-        }
-        if features.contains(.wikilink) || features.contains(.wikilinkEmbed) {
-            SyntaxHighlighter.parseWikiLinks(s, into: &spans, features: features)
-        }
-        if features.contains(.inlineComment) { SyntaxHighlighter.parseComments(s, into: &spans) }
-        if features.contains(.tag) { SyntaxHighlighter.parseTag(s, into: &spans) }
-        if features.contains(.blockRef) { SyntaxHighlighter.parseBlockRef(s, into: &spans) }
-        if features.contains(.footnote) { SyntaxHighlighter.parseFootnotes(s, into: &spans) }  // references only; a
-        // `.footnoteDefinition` match here is a false positive (mid-run text that
-        // happens to start with `[^id]:`) since real definitions are handled at
-        // the paragraph level in `visitParagraph` — ignored by the switch below.
-
-        // Bare autolinks last, so the guards above are in place. Real `[x](url)`
-        // links never appear here (they're Link nodes, not leaf text).
-        SyntaxHighlighter.parseAutolinks(s, into: &spans)
-
-        // Keep only the kinds we emit, ordered, non-overlapping (earliest wins).
-        let relevant = spans.filter {
-            switch $0.kind {
-            case .highlight, .math, .wikilink, .comment, .footnoteReference,
-                 .link, .image, .embed, .tag, .blockRef: return true
-            default: return false
-            }
-        }.sorted { $0.fullRange.location < $1.fullRange.location }
-
-        // Recover each inline equation's tex from the raw source. The raw parse
-        // finds the same `$…$` runs in the same order; pair the k-th emitted math
-        // span with the k-th raw one. Only when the counts agree (a `\$` escape
-        // can make the unescaped `s` see a spurious `$…$` the raw source doesn't),
-        // else fall back to the unescaped tex — no worse than before.
-        var rawTexByLoc: [Int: String] = [:]
-        if let rawSource {
-            let rns = rawSource as NSString
-            // Recover both inline `$…$` and display `$$…$$` tex, each paired k-th
-            // to k-th with the emitted spans of the same kind.
-            func recover(display: Bool) {
-                var rawSpans: [SyntaxHighlighter.Span] = []
-                if display { SyntaxHighlighter.parseDisplayMath(rawSource, into: &rawSpans) }
-                else { SyntaxHighlighter.parseMath(rawSource, into: &rawSpans) }
-                let rawTex = rawSpans
-                    .filter { if case .math(display) = $0.kind { return true }; return false }
-                    .sorted { $0.fullRange.location < $1.fullRange.location }
-                    .map { rns.substring(with: $0.contentRange) }
-                let emitted = relevant
-                    .filter { if case .math(display) = $0.kind { return true }; return false }
-                if emitted.count == rawTex.count {
-                    for (i, sp) in emitted.enumerated() { rawTexByLoc[sp.fullRange.location] = rawTex[i] }
-                }
-            }
-            recover(display: false)
-            recover(display: true)
-        }
-
-        let ns = s as NSString
-        var out = ""
-        var cursor = 0
-        for span in relevant {
-            let r = span.fullRange
-            if r.location < cursor { continue }   // overlaps a prior span
-            if r.location > cursor {
-                out += escape(ns.substring(with: NSRange(location: cursor, length: r.location - cursor)))
-            }
-            switch span.kind {
-            case .highlight:
-                out += "<mark>\(escape(ns.substring(with: span.contentRange)))</mark>"
-            case .math(let display):
-                let tex = rawTexByLoc[r.location] ?? ns.substring(with: span.contentRange)
-                // A `$$…$$` embedded in a prose line renders as display-mode math
-                // but flows inline, matching the editor (a wholly-`$$` paragraph is
-                // the block case, handled in visitParagraph).
-                let cls = display ? "math-display-inline" : "math-inline"
-                out += "<span class=\"\(cls)\" data-tex=\"\(attr(tex))\"></span>"
-            case .wikilink(let target):
-                // Emit a link in a private scheme so the read view's nav policy
-                // can intercept it and route through the app's document graph
-                // (rather than navigating the webview). The target is fully
-                // percent-encoded so a `#heading` isn't parsed as a URL fragment.
-                let encoded = target.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? target
-                let display = escape(ns.substring(with: span.contentRange))
-                out += "<a class=\"wikilink\" href=\"\(wikiScheme):\(encoded)\">\(display)</a>"
-            case .footnoteReference(let id):
-                let safeID = attr(id)
-                out += "<sup id=\"fnref-\(safeID)\" class=\"footnote-ref\">" +
-                       "<a href=\"#fn-\(safeID)\">\(escape(id))</a></sup>"
-            case .image(let destination, let width, let height):
-                // A `![[file]]` wikilink embed: emit the same md-image
-                // placeholder as a markdown image (DocumentHTML's asset pass
-                // resolves `data-src` relative to the document directory).
-                var dims = ""
-                if let width { dims += " width=\"\(width)\"" }
-                if let height { dims += " height=\"\(height)\"" }
-                out += "<img class=\"md-image\" data-src=\"\(attr(destination))\" alt=\"\"\(dims)>"
-            case .embed(let destination):
-                // A non-image `![[file]]` embed: emit the same blocked-placeholder
-                // markup as a blocked image, labelled by the file's type. A
-                // non-image embed never resolves to an asset, so no DocumentHTML
-                // pass is needed (unlike `.image`).
-                let icon = LucideIcons.inlineSVG("file-x") ?? ""
-                let label = escape(ImageLoadFailure.forEmbed(destination: destination).label)
-                out += "<span class=\"md-image-blocked\">\(icon)<span>\(label)</span></span>"
-            case .tag(let name):
-                out += "<span class=\"tag\">#\(escape(name))</span>"
-            case .blockRef:
-                break   // hidden in reading, like a comment
-            case .comment:
-                break   // hidden in reading, like the editor
-            case .link(let destination):
-                // A bare autolink: a real external href (http/mailto).
-                out += "<a href=\"\(attr(destination))\">\(escape(ns.substring(with: span.contentRange)))</a>"
-            default:
-                break
-            }
-            cursor = r.upperBound
-        }
-        if cursor < ns.length {
-            out += escape(ns.substring(with: NSRange(location: cursor, length: ns.length - cursor)))
-        }
-        return out
     }
 
     // MARK: - Source-offset helpers (UTF-8 SourceLocation → UTF-16 NSRange)

@@ -32,6 +32,13 @@ public class EditorTextView: NSTextView {
     /// Set by Document.makeWindowControllers(). Not available in unit tests.
     public weak var document: NSDocument?
 
+    /// Save-before-attach hook: pasting/dropping an image into an *unsaved*
+    /// document has no directory to anchor the assets folder to, so the attach
+    /// flow calls this (wired by Document to the standard save panel) and
+    /// proceeds only when the completion reports the document was saved.
+    /// See EditorTextView+ImageAttachments.
+    public var requestSaveForAttachment: ((@escaping (Bool) -> Void) -> Void)?
+
     // MARK: - Find
 
     /// Character ranges of the current search's matches, in raw/display index
@@ -179,10 +186,6 @@ public class EditorTextView: NSTextView {
     /// Coalesces the didChangeText-bypass check scheduled from
     /// shouldChangeText (see EditorTextView+EditFlow).
     var bypassedEditCheckScheduled = false
-    /// Image files dropped on an untitled document, held while the Save sheet
-    /// runs (see EditorTextView+ImageDrop). Only one sheet can be up at a time,
-    /// so a single slot is enough.
-    var pendingDroppedImages: [URL] = []
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0
@@ -504,6 +507,20 @@ public class EditorTextView: NSTextView {
     /// its hover highlight.
     var tableRawButtonHovered = false
 
+    /// Block index of the fenced code block the pointer is over, or nil — the
+    /// only thing that reveals its copy button. See EditorTextView+CodeCopyButton.
+    var hoveredCodeBlock: Int?
+
+    /// Whether the pointer is on the revealed copy button itself.
+    var codeCopyButtonHovered = false
+
+    /// Block index of the code block whose content was just copied — its
+    /// button is running the "copied" flash — and how far along it is (0…1),
+    /// stepped by `copiedCodeLink`. See EditorTextView+CodeCopyButton.
+    var copiedCodeBlock: Int?
+    var copiedCodeProgress: CGFloat = 0
+    var copiedCodeLink: CADisplayLink?
+
     /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
     /// repaint where they were as well as where they now are.
@@ -801,6 +818,11 @@ public class EditorTextView: NSTextView {
         blocks = BlockParser.parse(rawSource, features: markdownFeatures)
         recompose(cursorInRaw: 0)
 
+        // Image files, raw bitmaps (screenshots) and web-image URLs attach as
+        // markdown images on drop (see EditorTextView+ImageAttachments).
+        // Additive to the types NSTextView registers for plain text drags.
+        registerForDraggedTypes([.fileURL, .png, .tiff, .URL])
+
         // Vend decoration-drawing layout fragments (TextKit 2).
         textLayoutManager?.delegate = self
 
@@ -841,8 +863,8 @@ public class EditorTextView: NSTextView {
         // (which would reset every fragment to a height estimate).
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(mathEngineDidChange(_:)),
-            name: .mathEngineChanged,
+            selector: #selector(renderEngineDidChange(_:)),
+            name: .renderEngineChanged,
             object: nil
         )
     }
@@ -860,7 +882,7 @@ public class EditorTextView: NSTextView {
     }
     #endif
 
-    @objc private func mathEngineDidChange(_ note: Notification) {
+    @objc private func renderEngineDidChange(_ note: Notification) {
         guard !blocks.isEmpty else { return }
         recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
                       cursorInRaw: selectedRange().location)
@@ -911,6 +933,26 @@ public class EditorTextView: NSTextView {
         setSelectedRange(NSRange(location: min(offset, (rawSource as NSString).length), length: 0))
         suppressTypewriterCentering = false
     }
+
+    /// Repro hook (ReproScript `hoveroff`): run the pointer-hover pass as if
+    /// the mouse sat on the glyph at `offset` — what reveals a table's `</>`
+    /// and a code block's copy button — without moving the real pointer.
+    public func reproHover(atOffset offset: Int) {
+        guard let rect = lineRect(forCharacterAt: min(offset, (rawSource as NSString).length)) else { return }
+        // `lineRect` is in container coordinates; the hover passes take view points.
+        let point = NSPoint(x: rect.midX + textContainerOrigin.x, y: rect.midY + textContainerOrigin.y)
+        updateTableHover(at: point)
+        updateTableHandleHover(at: point)
+        updateCodeCopyHover(at: point)
+    }
+
+    /// Repro hook (ReproScript `copycode`): press the copy button of the code
+    /// block holding `offset`, as `mouseDown` would.
+    public func reproCopyCode(atOffset offset: Int) {
+        guard let block = blockIndexForRawOffset(offset), block < blocks.count,
+              blocks[block].kind == .fence else { return }
+        copyCodeBlock(blockIndex: block)
+    }
     #endif
 
     /// Cmd+click on a link's text follows it: a `[[wikilink]]` resolves to a
@@ -942,12 +984,22 @@ public class EditorTextView: NSTextView {
                 followLinkDestination(dest)
                 return
             }
+            if needsFolderAccessHit(at: event) {
+                requestFolderAccess()
+                return
+            }
         }
         // A table's `</>` button hangs in the margin outside the text column,
         // where AppKit has nothing to select — so this takes the click whole and
         // never reaches `super`. See EditorTextView+TableRawButton.
         if let tableBlock = tableRawButtonHit(at: event) {
             activateRawTableEditing(blockIndex: tableBlock)
+            return
+        }
+        // A code block's copy button hangs in the same slot. See
+        // EditorTextView+CodeCopyButton.
+        if let codeBlock = codeCopyButtonHit(at: event) {
+            copyCodeBlock(blockIndex: codeBlock)
             return
         }
         // A row/column handle hangs in the same margin, and in the band above

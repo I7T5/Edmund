@@ -25,8 +25,18 @@ import AppKit
 
 extension EditorTextView {
 
-    /// Side of the button's square draw/hit box.
-    static let tableRawButtonSize: CGFloat = 13
+    /// Side of the button's square draw/hit box at the default code size.
+    static let tableRawButtonBaseSize: CGFloat = 13
+    /// The code size the base is drawn for — `EditorTheme.init`'s default.
+    static let tableRawButtonBaseCodeSize: CGFloat = 14
+
+    /// Side of the button's square draw/hit box: the base size scaled with the
+    /// theme's monospace size, which is what View ▸ Zoom scales — so the
+    /// button grows and shrinks with ⌘+ / ⌘− / ⌘0 like the line numbers do,
+    /// instead of staying a 13pt speck beside 30pt text.
+    var tableRawButtonSize: CGFloat {
+        Self.tableRawButtonBaseSize * theme.monospaceFontSize / Self.tableRawButtonBaseCodeSize
+    }
 
     // MARK: - Geometry
 
@@ -58,7 +68,7 @@ extension EditorTextView {
         let origin = textContainerOrigin
         let padding = textContainer?.lineFragmentPadding ?? 0
         let rightEdge = origin.x + padding - Self.lineNumberPadding
-        let size = Self.tableRawButtonSize
+        let size = tableRawButtonSize
         var result: [(rect: NSRect, blockIndex: Int)] = []
         // A line number is drawn with one character of air between it and the
         // text, so a number's right edge is a digit-width in from `rightEdge`.
@@ -87,7 +97,7 @@ extension EditorTextView {
             // so the two clear each other and the button keeps its slot.
             if let pill = self.tableRawButtonBlockingPill(blockIndex: blockIndex),
                pill.rect.minY < slot.maxY, pill.rect.maxY > slot.minY {
-                let x = max(0, pill.rect.minX - Self.tableHandleGap - size)
+                let x = max(0, pill.rect.minX - tableHandleGap - size)
                 result.append((NSRect(x: x, y: slot.minY, width: size, height: size), blockIndex))
             } else {
                 result.append((slot, blockIndex))
@@ -142,10 +152,11 @@ extension EditorTextView {
 
     /// Line numbers something else in the margin is standing in for, so the
     /// numbers' own draw can leave those rows to it: a revealed `</>` button,
-    /// or the active row's handle. Both sit within `lineNumberPadding` of where
-    /// a number ends, so without this they overlap it.
+    /// a code block's revealed copy button, or the active row's handle. All
+    /// sit within `lineNumberPadding` of where a number ends, so without this
+    /// they overlap it.
     func linesCoveredByTableRawButtons() -> Set<Int> {
-        var covered = Set(revealedTableRawButtons()
+        var covered = Set((revealedTableRawButtons() + revealedCodeCopyButtons())
             .map { line(forOffset: blocks[$0.blockIndex].range.location) })
         if let cell = activeTableCell, cell.blockIndex < blocks.count {
             covered.insert(line(forOffset: cell.contentRange.location))
@@ -182,7 +193,7 @@ extension EditorTextView {
         guard let symbol = NSImage(systemSymbolName: "chevron.left.forwardslash.chevron.right",
                                    accessibilityDescription: "Edit table as Markdown"),
               let configured = symbol.withSymbolConfiguration(
-                NSImage.SymbolConfiguration(pointSize: Self.tableRawButtonSize, weight: .regular)
+                NSImage.SymbolConfiguration(pointSize: tableRawButtonSize, weight: .regular)
                     .applying(NSImage.SymbolConfiguration(paletteColors: [tableRawButtonColor])))
         else { return }
 
@@ -200,8 +211,12 @@ extension EditorTextView {
                 let fill = dark ? base : base.usingColorSpace(.deviceRGB)
                     .map { $0.withAlphaComponent($0.alphaComponent * 0.5) } ?? base
                 fill.setFill()
-                NSBezierPath(roundedRect: box.insetBy(dx: -3, dy: -3),
-                             xRadius: 4, yRadius: 4).fill()
+                // Inset and radius in proportion to the box, so the fill
+                // keeps its shape at every zoom.
+                let pad = box.width * 3 / Self.tableRawButtonBaseSize
+                let radius = box.width * 4 / Self.tableRawButtonBaseSize
+                NSBezierPath(roundedRect: box.insetBy(dx: -pad, dy: -pad),
+                             xRadius: radius, yRadius: radius).fill()
             }
             // The symbol is wider than it is tall; fit it in the box by its own
             // aspect so the glyph isn't squashed into the square hit target.
@@ -231,7 +246,7 @@ extension EditorTextView {
         var block: Int?
         var onButton = false
         for (rect, blockIndex) in visibleTableRawButtons() {
-            guard let range = tableRowsRect(blockIndex: blockIndex) else { continue }
+            guard let range = blockRowsRect(blockIndex: blockIndex) else { continue }
             let band = NSRect(x: rect.minX, y: range.minY,
                               width: max(0, bounds.maxX - rect.minX), height: range.height)
             // The button sits above the header row's own band when the row is
@@ -249,8 +264,9 @@ extension EditorTextView {
         needsDisplay = true
     }
 
-    /// The on-screen band a table's rows occupy (view coordinates).
-    private func tableRowsRect(blockIndex: Int) -> NSRect? {
+    /// The on-screen band a block's laid-out lines occupy (view coordinates).
+    /// Shared with the code blocks' copy button, which hovers the same way.
+    func blockRowsRect(blockIndex: Int) -> NSRect? {
         guard blockIndex < blocks.count,
               let tlm = textLayoutManager,
               let range = blockTextRange(blocks[blockIndex].range, tlm) else { return nil }
@@ -283,15 +299,19 @@ extension EditorTextView {
         let point = convert(event.locationInWindow, from: nil)
         updateTableHover(at: point)
         updateTableHandleHover(at: point)
+        updateCodeCopyHover(at: point)
     }
 
     public override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         guard hoveredTableBlock != nil || tableRawButtonHovered
-                || hoveredTableHandle != nil else { return }
+                || hoveredTableHandle != nil
+                || hoveredCodeBlock != nil || codeCopyButtonHovered else { return }
         hoveredTableBlock = nil
         tableRawButtonHovered = false
         hoveredTableHandle = nil
+        hoveredCodeBlock = nil
+        codeCopyButtonHovered = false
         needsDisplay = true
     }
 

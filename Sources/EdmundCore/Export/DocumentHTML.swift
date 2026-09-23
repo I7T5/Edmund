@@ -16,15 +16,21 @@ enum DocumentHTML {
 
     /// Builds a complete `<!DOCTYPE html>…` document for `markdown`. `baseURL` is
     /// the document's directory, used to resolve relative image paths for inlining.
+    ///
+    /// `forAttributedString` shapes the page for AppKit's HTML importer (Rich
+    /// Text export) rather than a browser: see `preparedForAttributedString`.
     static func full(markdown: String,
                      theme: EditorTheme,
                      callouts: [String: CalloutStyle],
                      dark: Bool,
                      baseURL: URL? = nil,
-                     options: ReadRenderOptions = .default) -> String {
+                     options: ReadRenderOptions = .default,
+                     forAttributedString: Bool = false) -> String {
         var body = HTMLRenderer.render(markdown: markdown, options: options)
+        body = fillMermaid(body, dark: dark, rasterize: forAttributedString)
         body = fillMath(body, theme: theme, dark: dark)
         body = fillImages(body, baseURL: baseURL, options: options)
+        if forAttributedString { body = preparedForAttributedString(body) }
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
                                 maxContentWidthPoints: options.maxContentWidthPoints)
         return """
@@ -37,6 +43,61 @@ enum DocumentHTML {
         </style></head>
         <body><div class="page">\(body)</div></body></html>
         """
+    }
+
+    // MARK: Mermaid (diagram source → inline SVG)
+
+    // Group 1 is the block's `edmund-l<N>` source-line anchor (see
+    // `HTMLRenderer.addingAnchorID`), carried through into the replacement so
+    // the anchor survives this pass. Group 2 is the base64 diagram source,
+    // group 3 the wrapped code block used as the fallback.
+    //
+    // The `</div></div>` tail is what ends the match: the wrapped
+    // `code-block-wrap` div contains only an `<a>` and a `<pre>`, never
+    // another div, so the first adjacent pair of closing tags is this
+    // placeholder's own.
+    private static let mermaidPattern =
+        "<div( id=\"[^\"]*\")? class=\"mermaid-diagram\" data-source=\"([^\"]*)\">(.*?)</div></div>"
+
+    /// Replaces each mermaid placeholder with an inline SVG, or unwraps it back
+    /// to the plain code block when the extension is disabled, not installed,
+    /// or the diagram doesn't parse.
+    ///
+    /// Runs before `fillMath` so a diagram is never scanned for `$…$` math.
+    private static func fillMermaid(_ html: String, dark: Bool, rasterize: Bool = false) -> String {
+        // No early-out when the extension is off: the placeholder is markup
+        // `HTMLRenderer` always emits, so this pass must run to unwrap it even
+        // when nothing can render. Skipping it would leak `data-source="…"`
+        // into the finished document.
+        let style = MermaidStyle.readMode(dark: dark)
+        return replaceMatches(html, pattern: mermaidPattern) { groups in
+            let id = groups[1]
+            // Unwrapping drops the outer div, so the source-line anchor has to
+            // move onto the code block it wrapped — otherwise a fenced diagram
+            // that failed to render becomes a hole in Read mode's scroll-sync
+            // anchor list.
+            let wrapOpen = "<div class=\"code-block-wrap\""
+            let fallback = (groups[3].hasPrefix(wrapOpen)
+                ? "<div\(id) class=\"code-block-wrap\"" + groups[3].dropFirst(wrapOpen.count)
+                : groups[3]) + "</div>"
+            guard let data = Data(base64Encoded: groups[2]),
+                  let source = String(data: data, encoding: .utf8),
+                  let svg = MermaidRenderer.shared.svg(source: source, style: style) else {
+                return fallback
+            }
+            if rasterize {
+                // AppKit's HTML importer silently drops inline SVG; hand it a
+                // picture instead — Edit mode's CoreSVG image of the diagram.
+                guard let image = MermaidRenderer.shared.image(source: source, style: style),
+                      let png = pngData(image, scale: 2) else { return fallback }
+                let uri = "data:image/png;base64,\(png.data.base64EncodedString())"
+                return "<div\(id) class=\"mermaid-diagram\"><img style=\"width:\(fmt(png.cssWidth))px; height:\(fmt(png.cssHeight))px\" src=\"\(uri)\" alt=\"\(HTMLRenderer.attr(source))\"></div>"
+            }
+            // `role="img"` with the source as the label: a screen reader
+            // otherwise walks the SVG's individual text nodes and reads the
+            // diagram's labels in layout order, which is meaningless.
+            return "<div\(id) class=\"mermaid-diagram\" role=\"img\" aria-label=\"\(HTMLRenderer.attr(source))\">\(svg)</div>"
+        }
     }
 
     // MARK: Math (active engine → PNG data URI)
@@ -142,20 +203,19 @@ enum DocumentHTML {
                 return "<img class=\"md-image\" src=\"\(HTMLRenderer.attr(src))\" alt=\"\(alt)\"\(dims)>"
             }
             // Local: resolve against the document directory, read, inline.
-            guard let fileURL = resolveLocalImage(src, baseURL: baseURL) else {
+            // `LocalImageInlining.resolve`'s absolute/`~` branches don't check
+            // existence (only the relative-path branch does), so a missing file
+            // and an undecodable one would otherwise fail `dataURI` identically
+            // — check existence first so the two get distinct, accurate
+            // messages.
+            guard let fileURL = LocalImageInlining.resolve(src, baseURL: baseURL),
+                  FileManager.default.fileExists(atPath: fileURL.path) else {
                 return blockedImagePlaceholder(reason:.notFound)
             }
             if let cached = cache[fileURL.path] {
                 return "<img class=\"md-image\" src=\"\(cached)\" alt=\"\(alt)\"\(dims)>"
             }
-            // `resolveLocalImage`'s absolute/`~` branches don't check existence
-            // (only the relative-path branch does), so a missing file and an
-            // undecodable one would otherwise fail `imageDataURI` identically —
-            // check existence first so the two get distinct, accurate messages.
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                return blockedImagePlaceholder(reason:.notFound)
-            }
-            guard let uri = imageDataURI(fileURL) else {
+            guard let uri = LocalImageInlining.dataURI(fileURL) else {
                 return blockedImagePlaceholder(reason:.notAnImage)
             }
             cache[fileURL.path] = uri
@@ -170,39 +230,22 @@ enum DocumentHTML {
         return "<span class=\"md-image-blocked\">\(icon)<span>\(reason.label)</span></span>"
     }
 
-    /// Resolves a local image `path` to a file URL: absolute / `~` / `file:`
-    /// load directly; a relative path resolves against the document's directory.
-    private static func resolveLocalImage(_ path: String, baseURL: URL?) -> URL? {
-        if let url = URL(string: path), url.scheme == "file" { return url }
-        // A markdown image destination may be percent-encoded (e.g. `%20`).
-        let decoded = path.removingPercentEncoding ?? path
-        if decoded.hasPrefix("/") { return URL(fileURLWithPath: decoded) }
-        if decoded.hasPrefix("~") { return URL(fileURLWithPath: (decoded as NSString).expandingTildeInPath) }
-        guard let baseURL else { return nil }
-        let resolved = baseURL.appendingPathComponent(decoded)
-        return FileManager.default.fileExists(atPath: resolved.path) ? resolved : nil
-    }
+    // MARK: Rich-text import
 
-    /// Reads an image file and returns a `data:` URI, with the MIME type guessed
-    /// from the file extension (covers the common web image formats). Decodes
-    /// the bytes first (discarding the result) so a file that merely has an
-    /// image extension but isn't actually image data is caught here — as
-    /// "Not an image" — rather than silently inlining garbage the browser
-    /// then fails to render with no explanation.
-    private static func imageDataURI(_ url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url), NSImage(data: data) != nil else { return nil }
-        let mime: String
-        switch url.pathExtension.lowercased() {
-        case "png":          mime = "image/png"
-        case "jpg", "jpeg":  mime = "image/jpeg"
-        case "gif":          mime = "image/gif"
-        case "svg":          mime = "image/svg+xml"
-        case "webp":         mime = "image/webp"
-        case "bmp":          mime = "image/bmp"
-        case "tiff", "tif":  mime = "image/tiff"
-        default:             mime = "application/octet-stream"
+    /// The page as AppKit's HTML importer needs it. The importer drops inline
+    /// SVG without a trace, so SVG-drawn things need a stand-in — task
+    /// checkboxes become ☐/☑ (without one, the importer strands the task's
+    /// text on a line of its own under an empty bullet) — and the app's own
+    /// `x-edmund-*` links (task toggles, copy buttons, wiki links) would be
+    /// dead links in a word processor. Callout icons are left to vanish: the
+    /// title still says what the callout is.
+    private static func preparedForAttributedString(_ html: String) -> String {
+        var out = replaceMatches(html, pattern: #"<a\b[^>]*\btask-check--(checked|unchecked)\b[^>]*>.*?</a>"#) {
+            $0[1] == "checked" ? "☑ " : "☐ "
         }
-        return "data:\(mime);base64,\(data.base64EncodedString())"
+        out = replaceMatches(out, pattern: #"<a\b[^>]*href="x-edmund-copy:[^"]*"[^>]*>.*?</a>"#) { _ in "" }
+        out = replaceMatches(out, pattern: #"<a\b[^>]*href="x-edmund-[^"]*"[^>]*>(.*?)</a>"#) { $0[1] }
+        return out
     }
 
     // MARK: Bitmap / escaping helpers

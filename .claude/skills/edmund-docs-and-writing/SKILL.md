@@ -132,6 +132,39 @@ README"). Branches: `fix/<slug>`, `docs/<slug>`, `chore/<slug>`. When in
 doubt: `fix(scope):` for behavior changes, `docs:` for doc-only commits,
 plain imperative for chores. Never auto-push, PR, or merge — only when asked.
 
+### PR descriptions and review comments
+
+The reader knows the text is AI-generated, so courtesy adds nothing. Write
+direct, systematic, concise text (maintainer rule, 2026-09-23).
+
+1. **No courtesy.** No thanks, praise, softeners ("could you perhaps") or
+   sign-off. State the finding and the action it needs.
+2. **Logical order** (Russell, *The Problems of Philosophy*): claim, then the
+   evidence for it, then the consequence. One idea per paragraph, and each
+   sentence should lead to the next.
+3. **Plain, specific words in plain sentences** (Apple HIG; Orwell, "Politics
+   and the English Language"). Prefer short words, the active voice and
+   concrete nouns: `file:line`, the metric, the number. Use no stronger word
+   than the facts support ("critical", "massive", "must never" where "should
+   not" is true), no stock phrases, and no sentence built for effect.
+   Before posting, check the text against Orwell's six rules:
+   1. Never use a metaphor, simile, or other figure of speech which you are
+      used to seeing in print.
+   2. Never use a long word where a short one will do.
+   3. If it is possible to cut a word out, always cut it out.
+   4. Never use the passive where you can use the active.
+   5. Never use a foreign phrase, a scientific word, or a jargon word if you
+      can think of an everyday English equivalent. (Names of real code, like
+      `rawSource`, have no equivalent and stay.)
+   6. Break any of these rules sooner than say anything outright barbarous.
+4. **Common PR-template structure.** PR body: `Summary` (what and why, 1–3
+   sentences) → `Changes` → `Testing` (what ran, with results, and what was
+   not verified) → `Notes` when needed. Review comment: verdict first, then
+   sections by disposition (merge / change / drop), each item as problem,
+   evidence, required fix.
+5. **End with the merge checklist** when the text asks someone to act: the
+   owner-tagged `[ ]` / `[x]` items of `edmund-pr-review` §4.
+
 ## 4. CHANGELOG format — machine-read, get it exact
 
 `.github/workflows/release.yml` extracts release notes with:
@@ -255,7 +288,8 @@ first without being asked for that specific edit.
 | --- | --- | --- |
 | **Maintainer's voice — don't edit unasked** | `README.md`, `misc/backlog.md`, and any other user-facing or personal prose (blog drafts, marketing copy, `test-files/todo.md`) | Nothing. Report what you'd change and let the maintainer decide. |
 | **Engineering record — edit freely** | `docs/ARCHITECTURE.md`, `docs/architecture/**`, `docs/investigations/**`, `docs/dev-guides/**`, `.claude/skills/**`, code comments | Write, restructure, correct. The same-PR rule (§2) *requires* it. |
-| **Mixed** | `CHANGELOG.md`, `docs/ROADMAP.md` | Add the mechanical entry — a new bullet, a ticked `- [x]` box, a `Last updated:` bump. Leave the surrounding wording and the maintainer's priority ordering alone. |
+| **Release notes — only with approval** | `docs/CHANGELOG.md` | Only through `/release`: ask for the maintainer's wording, ask before each change you'd make and say why, then write exactly what they approved. The changelog guard hook denies any edit unless the maintainer's latest message is a `/release` invocation, and even then asks them to confirm; shell writes are always blocked. |
+| **Mixed** | `docs/ROADMAP.md` | Add the mechanical entry — a ticked `- [x]` box, a `Last updated:` bump. Leave the surrounding wording and the maintainer's priority ordering alone. |
 
 `misc/` is the exception in the other direction: **creating** a new file
 there is always fine, no permission needed, and it's the default home for any

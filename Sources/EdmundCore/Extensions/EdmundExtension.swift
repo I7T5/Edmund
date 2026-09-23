@@ -87,8 +87,12 @@ public protocol EdmundExtension: AnyObject {
     var repositoryURL: URL? { get }
     /// Human-readable installed footprint, e.g. "3.2 MB". `nil` if unknown.
     var installedSizeDescription: String? { get }
-    /// When this extension's payload was last published, for a relative
-    /// "X days/months/years ago" display. `nil` hides the row.
+    /// When this **extension** last shipped a new `version` — not when its
+    /// upstream payload was published. The pane shows it beside the
+    /// extension's own version, so a date from the payload's release schedule
+    /// would describe a different thing than the number above it. Bump it
+    /// whenever `version` changes. Relative display ("X months ago"); `nil`
+    /// hides the row.
     var lastUpdated: Date? { get }
     /// Download count, if there's a real source for it. `nil` hides the row
     /// — no extension here has a live analytics backend yet, so this should
@@ -103,11 +107,21 @@ public protocol EdmundExtension: AnyObject {
     /// `false` when there's no update-checking source — the "Update" button
     /// stays hidden rather than lying about freshness.
     var hasUpdate: Bool { get }
+    /// Whether this build has a verifiable payload pinned for the extension.
+    /// `false` means "not available in this build yet" — Settings says so
+    /// instead of offering a download that can never succeed. Defaults to
+    /// `true` for an extension with nothing to download.
+    var payloadIsConfigured: Bool { get }
+}
+
+public extension EdmundExtension {
+    var payloadIsConfigured: Bool { true }
 }
 
 /// Catalog of the app's built-in extensions. SwiftMath itself is not an
-/// extension — it's the always-on default — so today's only entry is the
-/// RaTeX-powered "Advanced Math" option layered over it.
+/// extension — it's the always-on default — so the RaTeX-powered "Advanced
+/// Math" option is layered over it, while "Mermaid" adds a capability the app
+/// has none of by default.
 ///
 /// This is a static array, not a fetched registry — there's no backend here.
 /// A real registry, if one gets built later, should follow the shape
@@ -116,12 +130,12 @@ public protocol EdmundExtension: AnyObject {
 /// noted for later, not built now.
 @MainActor
 public enum ExtensionRegistry {
-    public static let all: [EdmundExtension] = [AdvancedMathExtension.shared]
+    public static let all: [EdmundExtension] = [AdvancedMathExtension.shared, MermaidExtension.shared]
 }
 
 /// "Advanced Math" — an opt-in, KaTeX-compatible math engine (RaTeX), run as
 /// sandboxed WebAssembly in JavaScriptCore rather than shipped in the binary.
-/// See `RaTeXRelease`/`RaTeXInstaller`/`WasmMathHost` for the download,
+/// See `RaTeXRelease`/`ExtensionPayloadInstaller`/`WasmMathHost` for the download,
 /// verify, and load machinery this wraps.
 @MainActor
 public final class AdvancedMathExtension: EdmundExtension {
@@ -134,7 +148,7 @@ public final class AdvancedMathExtension: EdmundExtension {
     /// version themselves separately from any library they wrap).
     public let summary = AttributedString(
         inlineMarkdown:
-            ">99.5% KaTeX syntax coverage via [RaTeX](https://ratex.lites.dev) (Rust).")
+            ">99.5% KaTeX syntax coverage via [RaTeX](https://ratex.lites.dev).")
     public let version = "1.0.0"
     public var isInstalled: Bool { renderer.isReady }
     public var mathRenderer: MathRenderer? { renderer }
@@ -148,11 +162,12 @@ public final class AdvancedMathExtension: EdmundExtension {
     public let repositoryURL: URL? = nil
     // Measured from the built payload: 2.6 MB wasm + 540 KB fonts + 8 KB glue.
     public let installedSizeDescription: String? = "3.2 MB"
-    // ratex-wasm@0.1.12's actual npm publish date (verified against the
-    // registry, not a guess) — not Edmund's own commit date.
+    // When v1.0.0 of *this extension* shipped (`fe4cf3b`), not when the RaTeX
+    // wasm it downloads was published — the row sits under the version above
+    // and has to describe the same thing.
     public let lastUpdated: Date? = {
         var c = DateComponents()
-        c.year = 2026; c.month = 6; c.day = 25
+        c.year = 2026; c.month = 7; c.day = 28
         return Calendar(identifier: .gregorian).date(from: c)
     }()
     // No real download-analytics source exists for this extension.
@@ -163,6 +178,7 @@ public final class AdvancedMathExtension: EdmundExtension {
     // No update-checking source exists yet — same "scaffold now, wire later"
     // shape as the install flow itself.
     public let hasUpdate = false
+    public var payloadIsConfigured: Bool { RaTeXRelease.isConfigured }
 
     public let renderer: RaTeXRenderer
 
@@ -172,7 +188,7 @@ public final class AdvancedMathExtension: EdmundExtension {
 
     /// The installer's current state, for Settings to surface a specific
     /// reason on failure (e.g. RaTeX not configured in this build yet).
-    public var installState: MathExtensionState {
+    public var installState: ExtensionInstallState {
         get async { await renderer.installState }
     }
 

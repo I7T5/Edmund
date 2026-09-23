@@ -1,7 +1,7 @@
 ---
 description: Branch, test, commit, push, open a PR, and enable auto-merge for the current working-tree changes
 argument-hint: [short description of the change]
-allowed-tools: Bash, Read, Edit
+allowed-tools: Bash, Read, Edit, Agent
 ---
 
 Ship the current uncommitted changes in this repo as a self-merging PR. The
@@ -14,8 +14,33 @@ stopping and reporting if any step fails:
    changes to ship. If `$ARGUMENTS` is empty, infer a concise description from
    the diff.
 
-2. **Test first (project rule).** Run `swift test`. If anything fails, stop and
-   show the failure — do not commit.
+2. **Test first (project rule), scoped to the change.**
+   - No `.swift`, `Package.swift` or `Package.resolved` in the change (docs,
+     skills, scripts, fixtures): skip the Swift build and tests entirely.
+   - Otherwise run the suites that exercise the changed code:
+     `swift test --filter '<SuiteA>|<SuiteB>'`. Pick them by grepping
+     `Tests/` for the changed types and files. Run the full `swift test`
+     only when the change touches a shared path (`TextView/`, `Parsing/`,
+     `Model/`, the storage or render pipeline) or no suite clearly covers it.
+   - CI runs the full suite before auto-merge, so this step is a fast
+     pre-check, not the gate. If anything fails, stop and show the failure —
+     do not commit.
+
+2b. **HIG check (UI changes only).** Run this gate; it prints `ui` only when
+   the change touches app chrome:
+
+   ```sh
+   { git diff main --name-only -- Sources/edmd Sources/EdmundQuickLook; git diff main -U0 -- Sources | grep -E '^\+.*(NSMenu|keyEquivalent|NSButton|NSAlert|NSPopover|NSToolbar|NSWindow|NSColor|accessibility|toolTip|SwiftUI)'; } | grep -q . && echo ui
+   ```
+
+   If it prints `ui`, spawn the `hig-reviewer` subagent on `git diff main`.
+   Any `blocker` line: stop, show the findings, and ask before continuing —
+   this PR auto-merges, so there is no later review. `should`/`nit` lines:
+   include them in the step 8 report and carry on. `doc` lines: list them
+   and ask whether to apply; on yes, edit them into this change before
+   committing. `README.md` lines are report-only (the maintainer's prose).
+   No output from the gate
+   (or no subagent support): skip this step silently.
 
 3. **Branch.** If currently on `main`, create a topic branch named
    `fix/…`, `feature/…`, `ci/…`, or `chore/…` as fits the change (kebab-case,
@@ -29,7 +54,10 @@ stopping and reporting if any step fails:
 5. **Push.** `git push -u origin <branch>`.
 
 6. **Open the PR.** `gh pr create` with a title matching the subject and a body
-   that explains what and why. No generated-by / attribution footer.
+   that explains what and why. No attribution header or footer (the
+   attribution header belongs on PR review comments only). Register
+   and structure: `edmund-docs-and-writing` §3 "PR descriptions and review
+   comments" (Summary → Changes → Testing → Notes; direct, no courtesy).
 
 7. **Auto-merge.** `gh pr merge <#> --auto --merge --delete-branch`. Branch
    protection requires the `test` check, so this queues the PR to merge itself

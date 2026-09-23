@@ -3,24 +3,62 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-09-22
+
+Mermaid support. Image gets copied to folder. Sandboxing. Various bug-fixes. Thanks to @lluminate for their first contribution! 
 
 ### Added
-- Tables: Return on a header's separator row fills in the table in canonical aligned form — columns padded to their widest cell, the separator's dashes filling each column — and adds a body row to type in
-- Tables: Delete on a cell selection clears the cells; a second Delete on an empty complete row or column removes it
-- Tables: a divider now sets Delete apart from the add operations in the row/column menu
-
-### Fixed
-- Print and Export as PDF no longer keep the `.md` extension in the PDF filename
-- Tables: the `</>` button no longer leaves a ghost when it steps aside for the row pill
-- Tables: clicking the blank end of a wrapped cell no longer flashes the caret to the start of the cell
-- Tables: the row/column pills no longer linger after clicking in a table with wrapped cells
-- Tables: text can now be drag-selected inside a wrapped cell
-- Tables: a single-dash delimiter row (`- | -`) now renders as a table instead of a bullet list
-- Nested emphasis (italic inside bold, or bold inside italic) now renders
+- Mermaid support ([beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid)) via Extensions (#279 @CaliLuke @i7t5)
+- App Menu > File > Export To > HTML / Markdown with Embedded Images (#330 @arthurlee116)
+- App Menu > File > Export To > Plain Text / Rich Text Format
+- App Menu > Edit > Copy As > Plain Text / Rich Text
+- App Menu > Help
+- Settings > Advanced > Crash reports: Quick-send bug report to GitHub on crash
+- Record AX chrome-driving traps in the live-repro skill (#283 @arthurlee116)
 
 ### Changed
-- A setext heading underline now needs three or more `---`/`===`, not one
+- Images: Paste/drop copies image into `<docname>.assets` folder (#330 @arthurlee116)
+- Export: Export as PDF moved to Export To menu
+- Sandboxing: Folder grants for images and wikilinks
+- Sandboxing: Logs are now located in `Application Support/`
+
+### Fixed
+- Broken link for screenshot-studio and shields.io in README.md (#276 @lluminate)
+- Reload when file changes on disk (#293)
+- Content width does not work with portrait display (#324)
+- `$$ … $$` block indented under a list item does not render in both Edit and Read mode (#325)
+- Settings > Extensions: Now only installed rows dim, and "last updated" describes the extension
+
+## [0.7.0] - 2026-09-15
+
+Editor, code syntax, and better organized font theme. More table editing fixes. Various refinements. 
+
+### Added
+- Settings > Appearance > Font theme
+- Settings > Themes (#292)
+- Tables: Divider between add and delete operations in row/column menu
+- App Menu > Format > Headings > Increment/Decrement heading level
+- Editor: Quick-wrap selection with `~$%*=` and the backtick
+- Editor: Detect and remove list markers `-/- [ ]/1.` from pasteboard content if pasting into list
+- Editor: Copy button for code blocks
+- Reader: Click to toggle checkbox
+
+### Changed
+- Tables: Delete on cell selection clears cell content; Delete on empty complete row or column removes it
+- Tables: Return on a header's separator row auto-fills in and prettifies the table
+- Tables: Disabled delete pipes between cells in formatted state
+- Tables: Controls (`</>` button, pills) scale with zoom `CMD+=/-/0`
+- Tables: `</>` button makes way only when pills are actually in the way
+- Settings > Autopair parentheses and quotes doesn't pair backticks anymore
+
+### Fixed
+- Nested emphasis (italic inside bold, or bold inside italic)
+- Tables: a single-dash delimiter row (`- | -`) now renders as a table
+- Tables: Selection, caret movement, row/column pills, and zoom behavior with wrapped cells and/or header row containing wrapped cells
+- Tables: `</>` button makes way for row pills with "Show line numbers" off
+- Reader: Nested checkboxes aren't dimmed or strikethrough when checked
+- Settings > Key Bindings: "Format" app menu is in order with the rest
+- Print > PDF no longer keep the `.md` extension in filename
 
 ## [0.6.1] - 2026-09-12
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import EdmundCore
 
 struct AdvancedSettingsView: View {
     @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
@@ -8,10 +9,7 @@ struct AdvancedSettingsView: View {
     @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = false
     @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = false
     @AppStorage(AppSettings.Key.logRetention) private var logRetention = AppSettings.LogRetention.twoWeeks
-    // Crash-log sending is dormant until the receiving server exists — the toggle
-    // is hidden (commented out below) so it isn't offered with nowhere to send to.
-    // Uncomment this and the "Crash reports:" GridRow once the server is live.
-    // @AppStorage(AppSettings.Key.sendCrashLogs) private var sendCrashLogs = false
+    @AppStorage(AppSettings.Key.offerCrashReports) private var offerCrashReports = true
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
@@ -73,11 +71,14 @@ struct AdvancedSettingsView: View {
                     }
                     .disabled(!diagnosticLogging)
                     .padding(.leading, 20)
-                    Text("Logs are kept locally at ~/.edmund/logs and will never leave that folder unless you move them. They are only useful if you want to improve your bug reports / GitHub issues.")
+                    Text("Logs are kept locally in Edmund's Application Support folder and will never leave that folder unless you move them. They are only useful if you want to improve your bug reports / GitHub issues.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 380, alignment: .leading)
+                        .padding(.leading, 20)
+                    Button("Show in Finder", action: revealLogs)
+                        .controlSize(.small)
                         .padding(.leading, 20)
                     Toggle("Verbose editor tracing", isOn: $verboseEditorDiagnostics)
                         .onChange(of: verboseEditorDiagnostics) { AppSettings.applyLogging() }
@@ -92,28 +93,30 @@ struct AdvancedSettingsView: View {
 }
             }
 
-            // Dormant until the crash-report server exists (see note above and
-            // CrashReporter). The launch-time upload path and the `sendCrashLogs`
-            // setting stay in place but inert (default off); only this UI is hidden.
-            // GridRow {
-            //     Text("Crash reports:")
-            //         .gridColumnAlignment(.trailing)
-            //     VStack(alignment: .leading, spacing: 6) {
-            //         Toggle("Automatically send crash logs", isOn: $sendCrashLogs)
-            //         Text("Crash logs are sent only to us and will be used and stored for crash fix purposes only.")
-            //             .foregroundStyle(.secondary)
-            //             .controlSize(.small)
-            //             .fixedSize(horizontal: false, vertical: true)
-            //             .frame(width: 380, alignment: .leading)
-            //             .padding(.leading, 20)
-            //     }
-            // }
+            GridRow {
+                Divider().gridCellColumns(2)
+            }
+
+            GridRow {
+                Text("Crash reports:")
+                    .gridColumnAlignment(.trailing)
+                Toggle("Ask to report crashes on GitHub", isOn: $offerCrashReports)
+            }
         }
         .settingsPanePadding()
     }
 
     /// Pushes the toggle to every open document's editor (Edit mode's inline
     /// image overlay) and Read view, so the change takes effect immediately.
+    /// Reveals the log folder. Created first so Finder has something to
+    /// select — under the sandbox the folder is deep inside the container and
+    /// nobody finds it by hand.
+    private func revealLogs() {
+        let dir = Log.defaultDirectory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
+    }
+
     private func refreshOpenReadViews() {
         for case let document as Document in NSDocumentController.shared.documents {
             document.editor?.allowRemoteImages = !blockExternalImages

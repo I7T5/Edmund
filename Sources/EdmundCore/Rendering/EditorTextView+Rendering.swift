@@ -280,7 +280,17 @@ extension EditorTextView {
                 result.addAttribute(.font, value: codeBlockFont, range: span.fullRange)
                 highlightCodeBlock(result, contentRange: span.contentRange, language: language)
                 if !cursorInToken {
-                    styleCodeBlockBox(result, span: span, language: language)
+                    // A mermaid fence becomes its diagram when the extension can
+                    // draw one; every other outcome is the ordinary code box.
+                    if MermaidSyntax.matches(language: language),
+                       span.contentRange.upperBound <= result.length,
+                       let overlay = mermaidOverlay(
+                        source: (markdown as NSString).substring(with: span.contentRange)
+                            .trimmingCharacters(in: .whitespacesAndNewlines)) {
+                        styleMermaidDiagram(result, span: span, overlay: overlay)
+                    } else {
+                        styleCodeBlockBox(result, span: span, language: language)
+                    }
                 }
 
             case .strikethrough:
@@ -320,8 +330,14 @@ extension EditorTextView {
 
             case .image(let destination, let width, let height):
                 guard span.fullRange.upperBound <= result.length else { continue }
-                if !cursorInToken, let overlay = imageOverlay(destination: destination,
-                                                              width: width, height: height) {
+                // A `data:` URI is machine-generated (the self-contained
+                // markdown export) — never hand-edited, and its base64 payload
+                // would fill the screen if shown raw. Always render it (or its
+                // failure placeholder), even with the caret inside the token.
+                let showRaw = cursorInToken
+                    && !destination.lowercased().hasPrefix("data:")
+                if !showRaw, let overlay = imageOverlay(destination: destination,
+                                                        width: width, height: height) {
                     // Rendered: draw the image at the leading character (`!` of
                     // `![alt](path)`, `<` of `<img …>`) and hide the rest of the
                     // source, reserving the line height so the picture has room.
@@ -338,6 +354,10 @@ extension EditorTextView {
                     reserveLineHeight(ascent: overlay.bounds.height + overlay.bounds.minY,
                                       descent: -overlay.bounds.minY,
                                       forOverlayAt: span.fullRange.location, in: result)
+                    if imageNeedsFolderAccess(destination: destination) {
+                        result.addAttribute(.editorNeedsFolderAccess, value: true, range: span.fullRange)
+                        promptForFolderAccessOnce()
+                    }
                 } else if (markdown as NSString).character(at: span.fullRange.location) == 0x3C {
                     // Active (or pending) `<img …>`: show the raw tag as colored
                     // HTML source, like any other tag.
@@ -592,13 +612,21 @@ extension EditorTextView {
                                 ps.minimumLineHeight = imageAscent
                                 result.addAttribute(.paragraphStyle, value: ps, range: firstLine)
                             } else {
+                                // Style from the block start, not the span: leading
+                                // indentation (a block indented under a list item,
+                                // #325) sits before the `$$`, and TextKit takes the
+                                // paragraph's style from char 0. Hide that indentation
+                                // too so the equation centers like an unindented block.
+                                if span.fullRange.location > 0 {
+                                    let indent = NSRange(location: 0, length: span.fullRange.location)
+                                    result.addAttribute(.font, value: hiddenFont, range: indent)
+                                    result.addAttribute(.foregroundColor, value: NSColor.clear, range: indent)
+                                }
                                 result.addAttribute(.paragraphStyle,
                                                     value: displayMathParagraphStyle(padded: false),
-                                                    range: span.fullRange)
-                                let firstLine = nl.location == NSNotFound
-                                    ? span.fullRange
-                                    : NSRange(location: span.fullRange.location,
-                                              length: nl.location - span.fullRange.location + 1)
+                                                    range: NSRange(location: 0, length: span.fullRange.upperBound))
+                                let firstLine = NSRange(location: 0, length: nl.location == NSNotFound
+                                                        ? span.fullRange.upperBound : nl.location + 1)
                                 result.addAttribute(.paragraphStyle,
                                                     value: displayMathParagraphStyle(padded: true,
                                                                                      imageAscent: imageAscent,

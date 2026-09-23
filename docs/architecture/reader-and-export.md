@@ -34,8 +34,11 @@ flowchart LR
 | --- | --- |
 | `HTMLRenderer.swift` | `MarkupVisitor` → HTML; raw-HTML filtering; line anchors |
 | `HTMLTheme.swift` | `EditorTheme` → CSS |
-| `DocumentHTML.swift` | Page assembly, CSP meta, asset inlining (math + local images → data URIs), the image-policy chokepoint |
+| `DocumentHTML.swift` | Page assembly, CSP meta, asset inlining (math + local images → data URIs, Mermaid → inline SVG), the image-policy chokepoint |
 | `ReadModeWebView.swift` | The sandboxed webview + scroll-position mapping |
+| `DocumentExporter.swift` | File ▸ Export To ▸ entry points after PDF (HTML, Plain Text, Rich Text Format, Markdown with Embedded Images): save panel, then write |
+| `RichTextExport.swift` | Rich Text Format: `DocumentHTML.full(forAttributedString:)` through AppKit's HTML importer. The importer drops inline SVG, so that flavor rasterizes Mermaid, turns task checkboxes into ☐/☑ and unwraps `x-edmund-*` links; ordered lists get the period the importer leaves off. RTFD when the page has an `<img>`, else RTF (TextEdit's rule) |
+| `PlainTextExport.swift` | Plain Text, from the **source**, not the HTML (the importer flattens tables, list nesting and task state): removes each span's `delimiterRanges` — what Edit mode hides — keeping list markers, `> `, and tables re-aligned by `prettyAlignedTableLines` |
 | `MarkdownPrinter.swift` | Same HTML through `WKWebView.printOperation` — real vector (selectable) text. Both entry points take the document name and strip its extension: Export seeds the save panel with `<name>.pdf`; Print sets `NSPrintOperation.jobTitle`, which is what the print dialog's "Save as PDF" sheet uses for its default filename (the page has no `<title>`, so without it AppKit falls back to the window name, `notes.md`) |
 
 `Document.refreshReadView()` keeps an open Read view in sync with edits and
@@ -54,6 +57,58 @@ sits inside the paragraph's `<p>`. **This is a deliberate divergence**: Edit
 mode still flows that case inline, because breaking the line around the run
 needs a line break where the source has no break character, which
 storage==rawSource forbids. A `$$` inside code stays literal.
+
+### Mermaid diagrams (the "Mermaid" extension)
+
+A ` ```mermaid ` fence renders as an **inline SVG**, in Read mode, HTML export
+and PDF (vector — strictly better than math's PNGs). Rich Text Format export
+is the exception: AppKit's HTML importer drops inline SVG, so that flavor
+(`forAttributedString`) embeds Edit mode's raster as a PNG. Off unless the Mermaid
+extension is enabled and its payload installed; see ARCHITECTURE §Extensions.
+
+Two passes, because `HTMLRenderer` is pure and non-isolated and so cannot reach
+the `@MainActor` renderer:
+
+1. `HTMLRenderer.visitCodeBlock` **wraps** its ordinary code block in
+   `<div class="mermaid-diagram" data-source="<base64>">…</div>`. Base64 so no
+   markdown punctuation can break out of the attribute.
+2. `DocumentHTML.fillMermaid` (before `fillMath`, so a diagram is never scanned
+   for `$…$`) replaces the placeholder with the SVG — or unwraps it.
+
+**Wrapping rather than replacing is the point.** Every fallback — extension
+disabled, payload absent, diagram doesn't parse — unwraps to exactly the markup
+a normal fence produces, copy button and syntax colouring included, so the
+fallback cannot drift from the real thing. The pass must run **even when the
+extension is off**, or raw `data-source="…"` placeholders leak into the
+finished document. Unwrapping moves the block's `edmund-l<N>` anchor onto the
+code block, or a fenced diagram becomes a hole in Read mode's scroll-sync
+anchors.
+
+The SVG is spliced in as live markup, not an opaque image, so
+`MermaidRenderer.isSafeSVG` is a trust boundary: it rejects script,
+`foreignObject`, `use`, event-handler attributes, `@import`, and any `url()`
+that is not a same-document fragment reference. **`url(#…)` must stay
+allowed** — that is how every arrowhead is drawn (nine in a five-node
+flowchart); rejecting `url(` outright silently strips them all.
+
+Colours: only `--bg`/`--fg` are passed, and the library derives the rest by
+mixing them at fixed percentages. The CSS rule resets `--line`/`--accent`/
+`--muted`/`--surface`/`--border` to `initial` on the SVG, because the page
+defines `--accent` (the link colour) on `:root` and it inherits in — arrowheads
+were being painted link-blue. No font is passed either: the library's box sizes
+come from an Inter-calibrated character-width heuristic, so the editor's serif
+body face would risk labels overflowing their boxes.
+
+Edit mode renders the same diagram (`Rendering/EditorTextView+MermaidRendering.swift`),
+so both back-ends draw it as ARCHITECTURE §5 asks. Same SVG, different
+consumer: CoreSVG (`NSImage(data:)`) ignores CSS custom properties,
+`color-mix()` and `<marker>` — and draws black boxes with no labels or
+arrowheads when it meets them — so `MermaidSVGFlattener` rewrites those three
+and nothing else before the raster. Read mode never sees the flattened form.
+The result is vector-backed and synchronous, which is why the Edit-mode path is
+the display-math path (overlay on the first character, source hidden, height
+reserved) and not an async `WKWebView` snapshot with the §6.1 estimate churn
+that would bring.
 
 ## 3. Specs
 
