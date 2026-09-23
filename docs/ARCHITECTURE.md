@@ -130,7 +130,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 ## 5. TextKit 2 specifics (how visuals are drawn)
 
 - **`DecoratedTextLayoutFragment`** (custom `NSTextLayoutFragment`,
-  `+TextKit2.swift`) draws two custom attributes behind/over the text:
+  `DecoratedTextLayoutFragment.swift`) draws two custom attributes behind/over the text:
   - **`.blockDecoration`** (paragraph-level): callout boxes, quote bars,
     table borders, thematic-break rules, code-block backgrounds. Fragments
     tile vertically, so a multi-line run renders as one continuous box/bar.
@@ -1100,7 +1100,7 @@ Notable subsystems:
   paragraph spacing: it is reserved as *text* space by raising the header
   line's `minimumLineHeight` in `calloutParagraphStyle`
   (`+CalloutRendering.swift`), then painted by `decorationDrawHeight` /
-  `layoutFragmentFrame` (`+TextKit2.swift`). Check first whether the
+  `layoutFragmentFrame` (`DecoratedTextLayoutFragment.swift`). Check first whether the
   *mid-document* callout is absorbing the blank line above it into its
   fragment — `layoutFragmentFrame` already special-cases the trailing-empty-line
   mirror of that — in which case 18.0pt is the inflated figure and the fix
@@ -1132,7 +1132,7 @@ Notable subsystems:
   `EditorTextView+TableSupport.swift`) so one very wide cell can't stretch
   the table off screen; a cell whose styled width still exceeds its clamped
   column hides its real characters and is redrawn wrapped via a
-  `.tableCellWraps` attribute (`EditorTextView+TextKit2.swift`), resolved
+  `.tableCellWraps` attribute (`TextKit2Attributes.swift`), resolved
   through a detached scratch `NSTextContentStorage`/`NSTextLayoutManager`
   sized to the column's content width — the same "hide the real chars, draw
   the visual yourself" pattern as `.fragmentOverlay`, needed because TK2
