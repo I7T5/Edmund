@@ -217,11 +217,21 @@ extension EditorTextView {
     func styleBlock(_ markdown: String, cursorPosition: Int? = nil,
                     hideComments: Bool = false,
                     listDepth: Int? = nil) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
-        guard !markdown.isEmpty else { return result }
-
         let spans = SyntaxHighlighter.parse(markdown, linkDefinitions: linkDefState.defsText,
                                             features: markdownFeatures)
+        return styleParsedBlock(markdown, spans: spans, cursorPosition: cursorPosition,
+                                hideComments: hideComments, listDepth: listDepth)
+    }
+
+    /// `styleBlock` for callers that already hold the block's spans (the
+    /// active-block restyle caches them — see `activeSpanCache`), skipping the
+    /// parse when only the caret moved within an unchanged block.
+    func styleParsedBlock(_ markdown: String, spans: [SyntaxHighlighter.Span],
+                          cursorPosition: Int? = nil,
+                          hideComments: Bool = false,
+                          listDepth: Int? = nil) -> NSAttributedString {
+        let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
+        guard !markdown.isEmpty else { return result }
 
         // The font already applied at `loc` — the enclosing heading's when
         // inside one, else the base body font. Inline spans derive their font
@@ -903,10 +913,16 @@ extension EditorTextView {
 
     /// Re-styles a single block in the text storage in place (no string mutation).
     /// `cursorInBlock` is the cursor offset within the block, or nil to hide
-    /// all inline delimiters (non-active block).
-    func restyleBlock(_ blockIndex: Int, cursorInBlock: Int? = nil) {
+    /// all inline delimiters (non-active block). `spans` lets a caller that
+    /// cached the block's parse skip re-parsing (see `activeSpanCache`).
+    func restyleBlock(_ blockIndex: Int, cursorInBlock: Int? = nil,
+                      spans cachedSpans: [SyntaxHighlighter.Span]? = nil) {
         guard let ts = textStorage,
               blockIndex < blocks.count else { return }
+
+        // Any restyle changes what a cursor-signature comparison would mean —
+        // force the next applyBlockStyle to actually re-style.
+        appliedCursorSpans = nil
 
         let block = blocks[blockIndex]
         guard block.range.upperBound <= ts.length else { return }
@@ -920,8 +936,15 @@ extension EditorTextView {
         } else {
             let depth = listDepth(ofBlock: blockIndex)
             switch viewMode {
-            case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock,
-                                               listDepth: depth)
+            case .edit:
+                if let cachedSpans {
+                    styled = styleParsedBlock(block.content, spans: cachedSpans,
+                                              cursorPosition: cursorInBlock,
+                                              listDepth: depth)
+                } else {
+                    styled = styleBlock(block.content, cursorPosition: cursorInBlock,
+                                        listDepth: depth)
+                }
             case .reading: styled = styleBlock(block.content, cursorPosition: nil,
                                                hideComments: true, listDepth: depth)
             case .source:  styled = sourceStyled(block.content)
@@ -950,20 +973,61 @@ extension EditorTextView {
         }
     }
 
-    /// Re-applies styling to the active block. Called after each keystroke.
+    /// Re-applies styling to the active block. Called after each caret move
+    /// within the block. The block's spans are cached (keyed by content and
+    /// the parse inputs), so a caret move that doesn't cross a token boundary
+    /// — the common arrow-key/click case — only re-scans the cached spans
+    /// instead of re-parsing and re-styling the whole block (a 5000-line code
+    /// block is ONE block; restyling it per arrow key cost 50–200ms).
     func applyBlockStyle() {
         guard let ts = textStorage,
               let activeIdx = activeBlockIndex,
               activeIdx < blocks.count else { return }
 
-        let cursorInBlock = max(0, selectedRange().location - blocks[activeIdx].range.location)
+        let block = blocks[activeIdx]
+        let cursorInBlock = max(0, selectedRange().location - block.range.location)
+
+        let spans: [SyntaxHighlighter.Span]
+        if let cached = activeSpanCache,
+           cached.content == block.content,
+           cached.defsText == linkDefState.defsText,
+           cached.features == markdownFeatures {
+            spans = cached.spans
+        } else {
+            spans = SyntaxHighlighter.parse(block.content,
+                                            linkDefinitions: linkDefState.defsText,
+                                            features: markdownFeatures)
+            activeSpanCache = (content: block.content,
+                               defsText: linkDefState.defsText,
+                               features: markdownFeatures,
+                               spans: spans)
+        }
+
+        // The restyled output depends on the cursor only through each span's
+        // cursorInToken test — the set of spans containing the caret. Same
+        // set, same output: nothing to do.
+        // Some markers are revealed for the caret's whole line. Moving
+        // between lines can change their styling even when the set of spans
+        // containing the caret stays the same.
+        let lineStart = (block.content as NSString).lineRange(
+            for: NSRange(location: min(cursorInBlock, (block.content as NSString).length),
+                         length: 0)).location
+        let cursorSig: [Int] = [lineStart] + spans.indices.filter {
+            cursorInBlock >= spans[$0].fullRange.location
+                && cursorInBlock <= spans[$0].fullRange.upperBound
+        }
+        guard cursorSig != appliedCursorSpans else {
+            typingAttributes = baseAttributes
+            return
+        }
 
         isUpdating = true
         ts.beginEditing()
-        restyleBlock(activeIdx, cursorInBlock: cursorInBlock)
+        restyleBlock(activeIdx, cursorInBlock: cursorInBlock, spans: spans)
         ts.endEditing()
         isUpdating = false
 
+        appliedCursorSpans = cursorSig
         typingAttributes = baseAttributes
     }
 }
