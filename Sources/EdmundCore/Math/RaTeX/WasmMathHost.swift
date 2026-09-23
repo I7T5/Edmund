@@ -112,7 +112,11 @@ public final class WasmMathHost {
               !result.isUndefined, !result.isNull,
               let json = result.toString() else { return nil }
 
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        // A screen mid-reconfiguration (display asleep, appearance flipping
+        // under Auto) can report a degenerate scale; rasterizing at 0 collapses
+        // the bitmap to nothing while the image keeps its point size.
+        let screenScale = NSScreen.main?.backingScaleFactor ?? 0
+        let scale = screenScale >= 1 ? screenScale : 2
         guard let rendered = renderer.render(json: json, pointSize: pointSize, color: color, scale: scale) else {
             return nil   // decode failure = RaTeX couldn't parse it → per-equation fallback
         }
