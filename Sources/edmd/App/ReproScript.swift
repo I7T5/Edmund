@@ -40,7 +40,22 @@ import ScreenCaptureKit
 ///   handlemenu row|column  open a table handle's menu via its real hit test
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
 ///   selectcells r0,c0,r1,c1  select that block of table cells
-///   assertsource <s>  PASS iff <s> appears in the document
+///   ime <text>        compose <text> as marked text (NSTextInputClient)
+///   imecommit [text]  commit the composition as <text> (empty: as marked)
+///   undo / redo       the editor's own undo stack
+///   dumpsource        write the document (newlines as \\n) and selection to the log
+///   done              write `repro DONE pass=N fail=M` and exit (1 on any FAIL);
+///                     a failing run dumps the source first
+/// Assertions (each writes PASS/FAIL to `<script>.log`, counted by `done`):
+///   assertsource <s>  <s> appears in the document
+///   assertnot <s>     <s> does not appear
+///   assertcaret <s>   caret sits right before the first <s>
+///   assertsel N M     selection is exactly {N, M}
+///   assertinvariants  storage == rawSource, blocks rebuild it, no open marked text
+///   assertsourceorig  document equals what it opened with
+///   assertsourcefile <f>  document equals file <f> (relative to the script)
+/// An unknown command, or a caret/bypassdelete needle that isn't found, FAILs.
+/// Run whole suites with `scripts/repro.sh` (Tests/Repro/).
 @MainActor
 enum ReproScript {
 
@@ -51,6 +66,8 @@ enum ReproScript {
         reportPath = path + ".log"
         try? "".write(toFile: path + ".log", atomically: true, encoding: .utf8)
         var delay: TimeInterval = 1.5   // let the document finish opening
+        schedule(after: delay) { editor in originalSource = editor.rawSource }
+        let scriptDir = (path as NSString).deletingLastPathComponent
         for line in script.split(separator: "\n") {
             let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
             guard let cmd = parts.first, !cmd.hasPrefix("#") else { continue }
@@ -62,7 +79,7 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     let r = (editor.rawSource as NSString).range(of: arg)
                     guard r.location != NSNotFound else {
-                        Log.info("repro caret: needle not found: \(arg)", category: .app)
+                        verdict("caret", false, "needle not found: \(arg)")
                         return
                     }
                     editor.setSelectedRange(NSRange(location: r.location, length: 0))
@@ -196,7 +213,7 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     let r = (editor.rawSource as NSString).range(of: arg)
                     guard r.location != NSNotFound else {
-                        Log.info("repro bypassdelete: needle not found: \(arg)", category: .app)
+                        verdict("bypassdelete", false, "needle not found: \(arg)")
                         return
                     }
                     editor.setSelectedRange(r)
@@ -220,9 +237,8 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     let want = (editor.rawSource as NSString).range(of: arg).location
                     let sel = editor.selectedRange()
-                    let ok = sel.location == want && sel.length == 0
-                    Log.info("repro assertcaret \(ok ? "PASS" : "FAIL") " +
-                             "sel=\(sel) want=\(want) needle=\(arg)", category: .app)
+                    verdict("assertcaret", sel.location == want && sel.length == 0,
+                            "sel=\(sel) want=\(want) needle=\(arg)")
                 }
             case "logsel":
                 schedule(after: delay) { editor in
@@ -881,11 +897,81 @@ enum ReproScript {
                 }
             case "assertsource":
                 schedule(after: delay) { editor in
-                    let ok = (editor.rawSource as NSString).range(of: arg).location != NSNotFound
-                    report("repro assertsource \(ok ? "PASS" : "FAIL") needle=\(arg)")
+                    verdict("assertsource", editor.rawSource.contains(arg), "needle=\(arg)")
+                }
+            case "assertnot":
+                schedule(after: delay) { editor in
+                    verdict("assertnot", !editor.rawSource.contains(arg), "needle=\(arg)")
+                }
+            case "assertsel":
+                // "assertsel N M": the selection is exactly {N, M}.
+                schedule(after: delay) { editor in
+                    let f = arg.split(separator: " ").compactMap { Int($0) }
+                    let sel = editor.selectedRange()
+                    verdict("assertsel", f.count == 2 && sel == NSRange(location: f[0], length: f[1]),
+                            "sel=\(sel) want=\(arg)")
+                }
+            case "assertinvariants":
+                // storage == rawSource, blocks rebuild rawSource, ranges in
+                // bounds, no marked text left open.
+                schedule(after: delay) { editor in
+                    let bad = editor.debugInvariantViolations()
+                    verdict("assertinvariants", bad.isEmpty, bad.joined(separator: "; "))
+                }
+            case "assertsourceorig":
+                // The document is byte-identical to how it opened (undo round-trips).
+                schedule(after: delay) { editor in
+                    verdict("assertsourceorig", editor.rawSource == originalSource,
+                            "len=\((editor.rawSource as NSString).length) " +
+                            "orig=\(((originalSource ?? "") as NSString).length)")
+                }
+            case "assertsourcefile":
+                // The document equals a golden file (path relative to the script).
+                let golden = try? String(contentsOfFile: (scriptDir as NSString)
+                    .appendingPathComponent(arg), encoding: .utf8)
+                schedule(after: delay) { editor in
+                    verdict("assertsourcefile", golden != nil && editor.rawSource == golden,
+                            golden == nil ? "missing \(arg)" : "file=\(arg)")
+                }
+            case "ime":
+                // Compose <text> as marked text through NSTextInputClient, as an
+                // input method does; repeat to replace the composition.
+                schedule(after: delay) { editor in
+                    editor.setMarkedText(arg, selectedRange: NSRange(location: (arg as NSString).length, length: 0),
+                                         replacementRange: NSRange(location: NSNotFound, length: 0))
+                }
+            case "imecommit":
+                // Commit the composition as <text> (empty: keep the marked text as typed).
+                schedule(after: delay) { editor in
+                    if arg.isEmpty { editor.unmarkText() }
+                    else { editor.insertText(arg, replacementRange: NSRange(location: NSNotFound, length: 0)) }
+                }
+            case "undo":
+                schedule(after: delay) { editor in editor.undo(nil) }
+            case "redo":
+                schedule(after: delay) { editor in editor.redo(nil) }
+            case "dumpsource":
+                schedule(after: delay) { editor in
+                    report("repro source sel=\(editor.selectedRange()) " + editor.rawSource
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "\n", with: "\\n"))
+                }
+            case "done":
+                // Summary, then exit with the verdict (no save prompt: the runner
+                // works on a temp copy of the fixture). A failing run also dumps
+                // the final source, so the log shows what the assertions saw.
+                schedule(after: delay) { editor in
+                    if failures > 0 {
+                        report("repro source sel=\(editor.selectedRange()) " + editor.rawSource
+                            .replacingOccurrences(of: "\\", with: "\\\\")
+                            .replacingOccurrences(of: "\n", with: "\\n"))
+                    }
+                    report("repro DONE pass=\(passes) fail=\(failures)")
+                    exit(failures == 0 ? 0 : 1)
                 }
             default:
-                break
+                // A typo would otherwise pass silently by doing nothing.
+                schedule(after: delay) { _ in verdict("command", false, "unknown: \(cmd)") }
             }
             delay += 0.02
         }
@@ -945,6 +1031,18 @@ enum ReproScript {
 
     /// Where a run's results are written: `<script>.log`, next to the script.
     private static var reportPath: String?
+
+    /// Assertion tallies for the `done` summary and exit status.
+    private static var passes = 0
+    private static var failures = 0
+    /// The document as it was before the first command, for `assertsourceorig`.
+    private static var originalSource: String?
+
+    /// One assertion result: `repro <name> PASS|FAIL <detail>`, counted.
+    private static func verdict(_ name: String, _ ok: Bool, _ detail: String) {
+        if ok { passes += 1 } else { failures += 1 }
+        report("repro \(name) \(ok ? "PASS" : "FAIL") \(detail)")
+    }
 
     /// Results go to a file of their own. The daily log is shared with every
     /// other running instance, and NSLog does not reach the redirected stderr of

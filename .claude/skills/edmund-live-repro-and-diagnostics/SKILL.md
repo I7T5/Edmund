@@ -113,11 +113,24 @@ block kinds all matter; repro against a lookalike, never `"hello world"`.
 
 ## 3. The in-process ReproScript driver (default for live bugs)
 
-`Sources/edmd/App/ReproScript.swift`, **DEBUG builds only**. Replays a keystroke
-script against the front document by synthesizing `NSEvent`s and pushing them
-through `window.sendEvent(_:)` — the full authentic key route (keyDown →
-`interpretKeyEvents` → `insertText:` / `deleteBackward:`). No Accessibility, no
+`Sources/edmd/App/ReproScript.swift`, **DEBUG builds only**. Replays a script
+against the front document by calling the text view's own action methods
+(`insertText`, `deleteBackward:`, `insertNewline:`, `setMarkedText` for IME) —
+the same storage mutation and queued-fixup path as real keys, without the
+input-context fragility of synthesized `NSEvent`s. No Accessibility, no
 visible window required (works on an inactive Space), real run-loop pacing.
+The command reference is the header comment of that file.
+
+**Regression suite:** `scripts/repro.sh [pattern]` runs every
+`Tests/Repro/*.repro` scenario (header `# fixture: <file>.md` from
+`Tests/Repro/fixtures/`) in a fresh debug bundle, each on a temp copy, pins
+the editing settings, and exits non-zero on any failure. Scenarios end with
+`done` (summary + exit status) and assert with `assertinvariants`,
+`assertsource[orig|file]`, `assertnot`, `assertcaret`, `assertsel`; a failing
+run dumps the final source to its log. `harness-selfcheck` proves assertions
+can fail (`# expect-failures: 4`). Add a scenario for every live-only bug
+you fix. Local only — CI has no window server. Verified 2026-09-23: disabling
+undo recording fails exactly the 4 undo scenarios.
 
 Launch: `scripts/launch-debug.sh FILE.md SCRIPT.repro` (assembles EdmundDbg.app,
 guards the user's instance, direct-execs with all flags). Or by hand:

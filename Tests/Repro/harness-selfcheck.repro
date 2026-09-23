@@ -1,0 +1,11 @@
+# fixture: blocks.md
+# expect-failures: 4
+# The kit's own assertions must be able to fail: exactly these 4 lines FAIL
+# (the runner counts that as a pass). Never "fix" them to pass.
+assertsource this text is not in the document
+assertnot Plain paragraph
+caret no such needle
+nosuchcommand
+assertsource Plain paragraph
+assertinvariants
+done

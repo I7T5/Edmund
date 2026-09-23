@@ -18,6 +18,7 @@ rule applies to both.
 swift build                 # debug build of both targets
 swift test                  # full suite (≈1200 tests, ~10s)
 swift test --filter Callout # one suite
+./scripts/repro.sh [pattern]  # live-app scenarios (Tests/Repro/*.repro) in a debug bundle; local only, not CI
 ./scripts/build-app.sh      # builds build/Edmund.app — SANDBOXED (release + bundles + icon + codesign)
 ./scripts/build-app.sh --variant adhoc   # unsandboxed dev build (ReproScript / CGEvent driver)
 ./scripts/build-app.sh --variant mas     # Mac App Store: sandboxed, no Sparkle, no SU* keys (still ad-hoc signed)
