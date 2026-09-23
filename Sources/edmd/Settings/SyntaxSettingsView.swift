@@ -266,15 +266,17 @@ struct SyntaxSettingsView: View {
 }
 
 /// Gives the enclosing `NSScrollView` overlay scrollers, which fade out when
-/// idle, like the editor's. SwiftUI has no API for the scroller style: with a
-/// mouse attached the system default is the legacy style, a permanent track
-/// that eats the 5-row box's width. Hosted in a row's background because only a
-/// view *inside* the List's scroll view can reach it; recycled rows just
-/// re-apply the same value.
+/// idle. SwiftUI has no API for the scroller style: with a mouse attached,
+/// "Automatically" resolves to the legacy style, a permanent track that eats
+/// the 5-row box's width. A user who picked "Always" in System Settings ▸
+/// Appearance asked for that track, so they keep it. Hosted in a row's
+/// background because only a view *inside* the List's scroll view can reach
+/// it; recycled rows just re-apply the same value.
 private struct OverlayScrollerProbe: NSViewRepresentable {
     final class Probe: NSView {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            guard UserDefaults.standard.string(forKey: "AppleShowScrollBars") != "Always" else { return }
             enclosingScrollView?.scrollerStyle = .overlay
         }
     }

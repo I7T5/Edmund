@@ -79,14 +79,18 @@ struct AdvancedSettingsView: View {
                         .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
                     // Regular size, like every other control in the pane; the
-                    // small captions around it are text, not controls.
+                    // small captions around it are text, not controls. No
+                    // ellipsis: it acts at once, asking nothing more (HIG).
                     Button("Show in Finder", action: revealLogs)
                         .padding(.leading, 20)
+                        // Sets the tracing toggle apart from the button, which
+                        // belongs to the logs note above it.
+                        .padding(.bottom, 6)
                     Toggle("Verbose editor tracing", isOn: $verboseEditorDiagnostics)
                         .onChange(of: verboseEditorDiagnostics) { AppSettings.applyLogging() }
                         .disabled(!diagnosticLogging)
                         .padding(.leading, 20)
-                    Text("Also records every keystroke, caret move, and text sync. Use only while reproducing an editor bug.")
+                    Text("Records every keystroke, caret move, and text sync. Use only while reproducing an editor bug.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)

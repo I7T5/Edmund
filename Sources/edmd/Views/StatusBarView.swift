@@ -115,11 +115,9 @@ final class StatusBarView: NSView {
 
     private func buildMenu() -> NSMenu {
         // Showing and auto-hiding the bar live in the View menu, beside the
-        // toolbar's equivalents; only the field choice is here.
+        // toolbar's equivalents; only the field choice is here, so the items
+        // need no heading.
         let menu = NSMenu()
-        let header = NSMenuItem(title: "Show Fields", action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
 
         let fields: [(title: String, key: String, on: Bool)] = [
             ("Words", "words", prefs.showWords),
@@ -134,7 +132,6 @@ final class StatusBarView: NSView {
             item.target = self
             item.representedObject = field.key
             item.state = field.on ? .on : .off
-            item.indentationLevel = 1
             menu.addItem(item)
         }
         return menu

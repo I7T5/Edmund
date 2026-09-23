@@ -68,9 +68,12 @@ struct ViewMenuTitleTests {
         #expect(shipped?.title == item.title)
     }
 
-    /// Customize Toolbar… lives on the toolbar's own context menu only.
-    @Test func noCustomizeToolbarItem() {
-        let items = ViewMenu.build().submenu?.items ?? []
-        #expect(!items.contains { $0.action == #selector(NSWindow.runToolbarCustomizationPalette(_:)) })
+    /// The status bar pair reads like Safari's "Always Show Toolbar in Full
+    /// Screen": a Show/Hide item and an "Always Show" checkbox, no "Auto-Hide".
+    @Test func statusBarItemsUseAppleWording() {
+        let titles = ViewMenu.build().submenu?.items.map(\.title) ?? []
+        #expect(titles.contains("Hide Status Bar"))
+        #expect(titles.contains("Always Show Status Bar"))
+        #expect(!titles.contains { $0.contains("Auto-Hide Status") })
     }
 }

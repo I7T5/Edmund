@@ -1050,7 +1050,7 @@ class Document: NSDocument, HeadingNavigable {
         AppSettings.applyEditSettingsToOpenDocuments()
     }
 
-    /// View ▸ Show/Hide Status Bar and Auto-Hide Status Bar. App-wide, like the
+    /// View ▸ Show/Hide Status Bar and Always Show Status Bar. App-wide, like the
     /// toolbar pair: saving posts `StatusBarPrefs.didChangeNotification`, which
     /// every window's bar observes.
     @objc func toggleStatusBarShown(_ sender: Any?) {
@@ -1059,7 +1059,7 @@ class Document: NSDocument, HeadingNavigable {
         prefs.save()
     }
 
-    @objc func toggleAutoHideStatusBar(_ sender: Any?) {
+    @objc func toggleAlwaysShowStatusBar(_ sender: Any?) {
         var prefs = StatusBarPrefs.load()
         prefs.autoHide.toggle()
         prefs.save()
@@ -1122,10 +1122,10 @@ class Document: NSDocument, HeadingNavigable {
         if item.action == #selector(toggleStatusBarShown(_:)) {
             item.title = StatusBarPrefs.load().isShown ? "Hide Status Bar" : "Show Status Bar"
         }
-        if item.action == #selector(toggleAutoHideStatusBar(_:)) {
+        if item.action == #selector(toggleAlwaysShowStatusBar(_:)) {
             let prefs = StatusBarPrefs.load()
-            item.state = prefs.autoHide ? .on : .off
-            // Nothing to auto-hide with the bar switched off entirely.
+            item.state = prefs.autoHide ? .off : .on
+            // Nothing to pin with the bar switched off entirely.
             return prefs.isShown
         }
         if item.action == #selector(toggleAutoHideToolbar(_:)) {
