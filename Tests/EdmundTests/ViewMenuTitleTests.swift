@@ -54,4 +54,23 @@ struct ViewMenuTitleTests {
         UserDefaults.standard.removeObject(forKey: AppSettings.Key.showFormatBar)
         #expect(AppSettings.showFormatBar == false)
     }
+
+    /// ⌘E names where it goes, like Safari's Show Reader, rather than
+    /// "Toggle View Mode"; a document starts in the editor.
+    @Test func viewModeItemNamesTheDestination() {
+        let item = NSMenuItem(title: "", action: #selector(Document.toggleViewMode(_:)),
+                              keyEquivalent: "")
+        _ = Document().validateMenuItem(item)
+        #expect(item.title == "Show Reader")
+        let shipped = ViewMenu.build().submenu?.items.first {
+            $0.action == #selector(Document.toggleViewMode(_:))
+        }
+        #expect(shipped?.title == item.title)
+    }
+
+    /// Customize Toolbar… lives on the toolbar's own context menu only.
+    @Test func noCustomizeToolbarItem() {
+        let items = ViewMenu.build().submenu?.items ?? []
+        #expect(!items.contains { $0.action == #selector(NSWindow.runToolbarCustomizationPalette(_:)) })
+    }
 }

@@ -12,6 +12,8 @@ class Document: NSDocument, HeadingNavigable {
     var editor: EditorTextView!
     private var statusBar: StatusBarView!
     private var viewModeButton: NSButton?
+    /// The toolbar item hosting `viewModeButton`, whose label names the mode.
+    private weak var viewModeItem: NSToolbarItem?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
     /// Builds and owns the formatting toolbar items (see `FormatToolbar`).
@@ -656,6 +658,9 @@ class Document: NSDocument, HeadingNavigable {
         // lands in `.source`.
         viewModeButton?.toolTip = editor.viewMode == .reading
             ? "Switch to Edit View" : "Switch to Read View"
+        // The label (shown under Icon and Text) states the current mode, the
+        // way the button's icon does; the palette keeps the item's generic name.
+        viewModeItem?.label = editor.viewMode == .reading ? "Read" : "Edit"
     }
 
     private func setViewMode(_ mode: EditorTextView.ViewMode) {
@@ -1045,6 +1050,21 @@ class Document: NSDocument, HeadingNavigable {
         AppSettings.applyEditSettingsToOpenDocuments()
     }
 
+    /// View ▸ Show/Hide Status Bar and Auto-Hide Status Bar. App-wide, like the
+    /// toolbar pair: saving posts `StatusBarPrefs.didChangeNotification`, which
+    /// every window's bar observes.
+    @objc func toggleStatusBarShown(_ sender: Any?) {
+        var prefs = StatusBarPrefs.load()
+        prefs.isShown.toggle()
+        prefs.save()
+    }
+
+    @objc func toggleAutoHideStatusBar(_ sender: Any?) {
+        var prefs = StatusBarPrefs.load()
+        prefs.autoHide.toggle()
+        prefs.save()
+    }
+
     /// Applies the format bar's visibility rule (hidden in Reading mode or when
     /// the Show Format Bar setting is off — the latter also removes any chance
     /// of a click reaching a read-only editor), refreshes its controls' enabled
@@ -1090,9 +1110,23 @@ class Document: NSDocument, HeadingNavigable {
         if item.action == #selector(toggleToolbarShown(_:)) {
             item.title = AppSettings.showToolbar ? "Hide Toolbar" : "Show Toolbar"
         }
+        if item.action == #selector(toggleViewMode(_:)) {
+            // Names the destination, like Safari's Show Reader. Source is a
+            // display option of the editor, so it is still "Show Editor".
+            item.title = editor?.viewMode == .reading ? "Show Editor" : "Show Reader"
+        }
         if item.action == #selector(toggleFormatBar(_:)) {
             // Title, not a checkmark — the same idiom as Hide Toolbar above.
             item.title = AppSettings.showFormatBar ? "Hide Format Bar" : "Show Format Bar"
+        }
+        if item.action == #selector(toggleStatusBarShown(_:)) {
+            item.title = StatusBarPrefs.load().isShown ? "Hide Status Bar" : "Show Status Bar"
+        }
+        if item.action == #selector(toggleAutoHideStatusBar(_:)) {
+            let prefs = StatusBarPrefs.load()
+            item.state = prefs.autoHide ? .on : .off
+            // Nothing to auto-hide with the bar switched off entirely.
+            return prefs.isShown
         }
         if item.action == #selector(toggleAutoHideToolbar(_:)) {
             item.state = AppSettings.autoHideToolbar ? .on : .off
@@ -1211,8 +1245,9 @@ extension Document: NSToolbarDelegate {
             return formatToolbar.makeItem(itemIdentifier)
         }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        item.label = "View Mode"
+        item.paletteLabel = "View Mode"
         item.visibilityPriority = .high
+        viewModeItem = item
 
         // Left-click toggles the editing view ↔ Read. The right-click mode menu
         // is handled upstream in DocumentWindow.sendEvent — every view-level

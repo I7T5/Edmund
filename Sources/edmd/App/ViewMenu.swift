@@ -26,13 +26,10 @@ enum ViewMenu {
                                      title: autoHideToolbarTitle,
                                      action: #selector(Document.toggleAutoHideToolbar(_:))).makeItem())
 
-        // Routes through the responder chain to the key window's toolbar.
-        // AppKit auto-inserts "Show Tab Bar"/"Show All Tabs" above this at
-        // runtime (window tabbing is on by default) — that position isn't
-        // ours to control short of disabling tabbing outright.
-        viewMenu.addItem(withTitle: "Customize Toolbar…",
-                         action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
-                         keyEquivalent: "")
+        // No "Customize Toolbar…" here: the toolbar's own context menu carries
+        // it. AppKit auto-inserts "Show Tab Bar"/"Show All Tabs" into this
+        // section at runtime (window tabbing is on by default) — that position
+        // isn't ours to control short of disabling tabbing outright.
 
         // The format bar across the top of the editor, kept below the toolbar
         // section with a divider on each side. Titled for the default state
@@ -57,6 +54,17 @@ enum ViewMenu {
         viewMenu.addItem(MenuCommand(id: "view.inspectReader", group: "View", title: "Inspect Reader",
                                      action: #selector(Document.toggleReaderInspector(_:)),
                                      shortcut: .cmdOpt("i")).makeItem())
+        viewMenu.addItem(.separator())
+
+        // The status bar, as a pair like the toolbar's above: Show/Hide
+        // (retitled by Document.validateMenuItem) and the auto-hide checkbox,
+        // which greys out while the bar is hidden. No default shortcuts.
+        viewMenu.addItem(MenuCommand(id: "view.toggleStatusBar", group: "View",
+                                     title: "Hide Status Bar",
+                                     action: #selector(Document.toggleStatusBarShown(_:))).makeItem())
+        viewMenu.addItem(MenuCommand(id: "view.autoHideStatusBar", group: "View",
+                                     title: "Auto-Hide Status Bar",
+                                     action: #selector(Document.toggleAutoHideStatusBar(_:))).makeItem())
         viewMenu.addItem(.separator())
 
         // Zoom (font size + max content width, scaled together). Target nil

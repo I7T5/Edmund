@@ -54,4 +54,12 @@ struct StatusBarPrefsTests {
         #expect(loaded == prefs)
         #expect(loaded.showWords == false)
     }
+
+    @Test("A config saved before isShown existed still shows the bar")
+    func missingIsShownMeansShown() {
+        let defaults = freshDefaults()
+        StatusBarPrefs(autoHide: false).save(to: defaults)
+        defaults.removeObject(forKey: "statusBar.isShown")
+        #expect(StatusBarPrefs.load(from: defaults).isShown)
+    }
 }
