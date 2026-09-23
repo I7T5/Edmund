@@ -1011,8 +1011,9 @@ class Document: NSDocument, HeadingNavigable {
         window?.toolbar?.isVisible = AppSettings.showToolbar
     }
 
-    /// View ▸ Auto-Hide Toolbar: in full screen, slide the toolbar away with the
-    /// menu bar until the pointer reaches the top of the screen.
+    /// View ▸ Always Show Toolbar in Full Screen, unchecked: in full screen,
+    /// slide the toolbar away with the menu bar until the pointer reaches the
+    /// top of the screen. The menu item is the inverse of `autoHideToolbar`.
     @objc func toggleAutoHideToolbar(_ sender: Any?) {
         AppSettings.autoHideToolbar.toggle()
         for case let document as Document in NSDocumentController.shared.documents {
@@ -1129,8 +1130,8 @@ class Document: NSDocument, HeadingNavigable {
             return prefs.isShown
         }
         if item.action == #selector(toggleAutoHideToolbar(_:)) {
-            item.state = AppSettings.autoHideToolbar ? .on : .off
-            // Nothing to auto-hide with the toolbar switched off entirely.
+            item.state = AppSettings.autoHideToolbar ? .off : .on
+            // Nothing to pin with the toolbar switched off entirely.
             return AppSettings.showToolbar
         }
         if item.action == #selector(copyAsPlainText(_:)) || item.action == #selector(copyAsRichText(_:)) {

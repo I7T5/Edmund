@@ -68,12 +68,13 @@ struct ViewMenuTitleTests {
         #expect(shipped?.title == item.title)
     }
 
-    /// The status bar pair reads like Safari's "Always Show Toolbar in Full
-    /// Screen": a Show/Hide item and an "Always Show" checkbox, no "Auto-Hide".
+    /// Toolbar and status bar read like Safari: a Show/Hide item plus an
+    /// "Always Show" checkbox, never "Auto-Hide".
     @Test func statusBarItemsUseAppleWording() {
         let titles = ViewMenu.build().submenu?.items.map(\.title) ?? []
         #expect(titles.contains("Hide Status Bar"))
         #expect(titles.contains("Always Show Status Bar"))
-        #expect(!titles.contains { $0.contains("Auto-Hide Status") })
+        #expect(titles.contains("Always Show Toolbar in Full Screen"))
+        #expect(!titles.contains { $0.hasPrefix("Auto-Hide") })
     }
 }

@@ -20,10 +20,11 @@ enum ViewMenu {
         viewMenu.addItem(MenuCommand(id: "view.toggleToolbar", group: "View", title: "Hide Toolbar",
                                      action: #selector(Document.toggleToolbarShown(_:))).makeItem())
 
-        // Full-screen auto-hide. Lives here rather than in Settings, next to
-        // the switch it qualifies.
+        // Full-screen auto-hide, shown as its inverse: checked = the toolbar
+        // stays put. Lives here rather than in Settings, next to the switch it
+        // qualifies. The id keeps its shipped name so bound shortcuts survive.
         viewMenu.addItem(MenuCommand(id: "view.autoHideToolbar", group: "View",
-                                     title: autoHideToolbarTitle,
+                                     title: alwaysShowToolbarTitle,
                                      action: #selector(Document.toggleAutoHideToolbar(_:))).makeItem())
 
         // Routes through the responder chain to the key window's toolbar.
@@ -83,11 +84,10 @@ enum ViewMenu {
         return viewMenuItem
     }
 
-    /// Title case, like every other menu item. Only in the View menu — the
+    /// Safari's own wording for this setting. Only in the View menu — the
     /// toolbar's own context menu is AppKit's (Icon and Text / … / Customize
-    /// Toolbar…) and Apple's apps put this setting in View, the way Safari
-    /// carries "Always Show Toolbar in Full Screen".
-    static let autoHideToolbarTitle = "Auto-Hide Toolbar"
+    /// Toolbar…) and Apple's apps put this setting in View.
+    static let alwaysShowToolbarTitle = "Always Show Toolbar in Full Screen"
 
     private static let zoomCommands: [MenuCommand] = [
         MenuCommand(id: "view.actualSize", group: "View", title: "Actual Size",
