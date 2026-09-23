@@ -3,6 +3,32 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-22
+
+Mermaid support. Image gets copied to folder. Sandboxing. Various bug-fixes. Thanks to @lluminate for their first contribution! 
+
+### Added
+- Mermaid support ([beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid)) via Extensions (#279 @CaliLuke @i7t5)
+- App Menu > File > Export To > HTML / Markdown with Embedded Images (#330 @arthurlee116)
+- App Menu > File > Export To > Plain Text / Rich Text Format
+- App Menu > Edit > Copy As > Plain Text / Rich Text
+- App Menu > Help
+- Settings > Advanced > Crash reports: Quick-send bug report to GitHub on crash
+- Record AX chrome-driving traps in the live-repro skill (#283 @arthurlee116)
+
+### Changed
+- Images: Paste/drop copies image into `<docname>.assets` folder (#330 @arthurlee116)
+- Export: Export as PDF moved to Export To menu
+- Sandboxing: Folder grants for images and wikilinks
+- Sandboxing: Logs are now located in `Application Support/`
+
+### Fixed
+- Broken link for screenshot-studio and shields.io in README.md (#276 @lluminate)
+- Reload when file changes on disk (#293)
+- Content width does not work with portrait display (#324)
+- `$$ … $$` block indented under a list item does not render in both Edit and Read mode (#325)
+- Settings > Extensions: Now only installed rows dim, and "last updated" describes the extension
+
 ## [0.7.0] - 2026-09-15
 
 Editor, code syntax, and better organized font theme. More table editing fixes. Various refinements. 
