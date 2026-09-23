@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "swift test 2>&1 | tail -5",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-swift-test.sh\"",
             "timeout": 120,
             "statusMessage": "Running swift test\u2026"
           }
