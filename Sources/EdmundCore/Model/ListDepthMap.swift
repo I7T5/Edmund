@@ -49,7 +49,16 @@ enum ListDepthMap {
         for (i, block) in blocks.enumerated() {
             // A blank line leaves a list open (a loose list is still one list),
             // so it neither closes ancestors nor takes a depth.
-            if case .blank = block.kind { continue }
+            // One carrying an indent past an open item, though — the line a
+            // Shift-Return has just opened, before anything is typed on it —
+            // is drawn as that item's continuation, so the caret already sits
+            // at the item's text column.
+            if case .blank = block.kind {
+                let indent = columns(of: Substring(block.content))
+                let inside = stack.filter { $0 < indent }.count
+                if indent > 0, inside > 0 { depths[i] = continuation(ofDepth: inside - 1) }
+                continue
+            }
 
             let indent = columns(of: block.content.prefix(while: { $0 != "\n" }))
 

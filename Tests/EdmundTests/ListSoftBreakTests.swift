@@ -33,6 +33,48 @@ struct ListSoftBreakTests {
         #expect(editor.rawSource == "- a\n  b\n  ")
     }
 
+    // Before anything is typed the new line is only its indent. It must already
+    // sit at the item's text column (spaces hidden), or the caret starts left
+    // of where the text will go and jumps on the first keystroke.
+    @Test("The caret lands at the item's text column before typing",
+          arguments: ["- a", "    - a", "1. a", "- [ ] a"])
+    func caretAtTextColumn(source: String) {
+        let editor = softBreak(source)
+        let caret = editor.selectedRange().location
+        let lineStart = editor.blocks[1].range.location
+        #expect(editor.listContinuationDepth(ofBlock: 1) != nil)
+        let item = editor.textStorage!.attribute(.paragraphStyle, at: 0,
+                                                 effectiveRange: nil) as! NSParagraphStyle
+        let cont = editor.textStorage!.attribute(.paragraphStyle, at: lineStart,
+                                                 effectiveRange: nil) as! NSParagraphStyle
+        #expect(cont.firstLineHeadIndent == item.headIndent)
+        for i in lineStart..<caret { #expect(isHidden(at: i, in: editor.textStorage!)) }
+        assertMatchesFullRecomposeOracle(editor)
+    }
+
+    /// Laid-out x of the insertion point at `offset`.
+    private func caretX(_ editor: EditorTextView, at offset: Int) -> CGFloat? {
+        ensureFullLayout(editor)
+        guard let tlm = editor.textLayoutManager,
+              let tcm = tlm.textContentManager,
+              let loc = tcm.location(tcm.documentRange.location, offsetBy: offset),
+              let range = NSTextRange(location: loc) as NSTextRange? else { return nil }
+        var x: CGFloat?
+        tlm.enumerateTextSegments(in: range, type: .selection, options: []) { _, frame, _, _ in
+            x = frame.minX; return false
+        }
+        return x
+    }
+
+    @Test("Typing the first character doesn't move the caret sideways")
+    func caretDoesNotJump() throws {
+        let editor = softBreak("- a")
+        let before = try #require(caretX(editor, at: editor.selectedRange().location))
+        type("b", into: editor)
+        let after = try #require(caretX(editor, at: editor.selectedRange().location - 1))
+        #expect(abs(before - after) < 0.5)
+    }
+
     @Test("Outside a list it does nothing")
     func outsideList() {
         let editor = makeEditor()
