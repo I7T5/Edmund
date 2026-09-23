@@ -26,27 +26,27 @@ jobs:
       - uses: actions/checkout@v5
 
       # `test` is a REQUIRED status check, so this job must always run and report
-      # — a paths-ignore trigger would leave the check pending forever on
-      # docs/site PRs and block the merge. Instead detect whether any *code*
-      # changed and skip only the expensive swift steps when it didn't. Docs/site
-      # PRs still get a green `test` in seconds.
+      # — a paths-ignore trigger would leave the check pending forever and block
+      # the merge. Instead detect whether anything the Swift suite can check
+      # changed, and skip only the expensive swift steps when it didn't. Docs,
+      # skills, hooks, scripts and ReproScript scenarios still get a green `test`
+      # in seconds.
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          # `code` = anything that isn't docs/site/markdown. `**` matches all,
-          # then the `!` lines subtract the doc-only paths (picomatch idiom).
+          # `code` = what `swift test` builds or reads, plus this workflow.
           filters: |
             code:
-              - '**'
-              - '!docs/**'
-              - '!site/**'
-              - '!misc/**'
-              - '!**/*.md'
-              - '!.github/ISSUE_TEMPLATE/**'
+              - 'Sources/**'
+              - 'Tests/EdmundTests/**'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'Resources/**'
+              - '.github/workflows/ci.yml'
 
       - name: Skip note
         if: steps.filter.outputs.code != 'true'
-        run: echo "Only docs/site/markdown changed — skipping swift tests."
+        run: echo "No Swift, package or resource changes — skipping swift tests."
 
       # Package.swift declares swift-tools-version 6.0, which needs Xcode 16+.
       - uses: maxim-lobanov/setup-xcode@v1
