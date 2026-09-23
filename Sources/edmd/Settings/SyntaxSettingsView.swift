@@ -125,6 +125,7 @@ struct SyntaxSettingsView: View {
                             .opacity(SyntaxDefinitionStore.shared.isUserDefinition(lang.id) ? 1 : 0)
                         Text(lang.label)
                     }
+                    .background(OverlayScrollerProbe())
                     .listRowSeparator(.hidden)
                     // Tighten each row's vertical padding (default plain-list
                     // rows centre the text in a taller cell).
@@ -262,4 +263,21 @@ struct SyntaxSettingsView: View {
               let url = SyntaxDefinitionStore.shared.fileURL(forName: id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
+}
+
+/// Gives the enclosing `NSScrollView` overlay scrollers, which fade out when
+/// idle, like the editor's. SwiftUI has no API for the scroller style: with a
+/// mouse attached the system default is the legacy style, a permanent track
+/// that eats the 5-row box's width. Hosted in a row's background because only a
+/// view *inside* the List's scroll view can reach it; recycled rows just
+/// re-apply the same value.
+private struct OverlayScrollerProbe: NSViewRepresentable {
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            enclosingScrollView?.scrollerStyle = .overlay
+        }
+    }
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ nsView: Probe, context: Context) {}
 }
