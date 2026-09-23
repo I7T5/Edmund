@@ -146,8 +146,17 @@ direct, systematic, concise text (maintainer rule, 2026-09-23).
    and the English Language"). Prefer short words, the active voice and
    concrete nouns: `file:line`, the metric, the number. Use no stronger word
    than the facts support ("critical", "massive", "must never" where "should
-   not" is true), no stock phrases, and no sentence built for effect. Cut
-   any word that carries nothing; names of real code are not jargon.
+   not" is true), no stock phrases, and no sentence built for effect.
+   Before posting, check the text against Orwell's six rules:
+   1. Never use a metaphor, simile, or other figure of speech which you are
+      used to seeing in print.
+   2. Never use a long word where a short one will do.
+   3. If it is possible to cut a word out, always cut it out.
+   4. Never use the passive where you can use the active.
+   5. Never use a foreign phrase, a scientific word, or a jargon word if you
+      can think of an everyday English equivalent. (Names of real code, like
+      `rawSource`, have no equivalent and stay.)
+   6. Break any of these rules sooner than say anything outright barbarous.
 4. **Common PR-template structure.** PR body: `Summary` (what and why, 1–3
    sentences) → `Changes` → `Testing` (what ran, with results, and what was
    not verified) → `Notes` when needed. Review comment: verdict first, then
