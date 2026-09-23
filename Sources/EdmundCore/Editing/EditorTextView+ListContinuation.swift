@@ -62,6 +62,20 @@ extension EditorTextView {
 
     // MARK: - Override
 
+    /// Shift-Return in a list: a new line inside the same item, no marker.
+    /// Caught at the key rather than in `insertNewline`, because which action
+    /// AppKit's key bindings map Shift-Return to isn't ours to rely on.
+    public override func keyDown(with event: NSEvent) {
+        let returnKeys: Set<UInt16> = [36, 76]   // Return, keypad Enter
+        if returnKeys.contains(event.keyCode),
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .shift,
+           !hasMarkedText(), selectedRange().length == 0,
+           insertListSoftBreak() {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
     public override func insertNewline(_ sender: Any?) {
         let sel = selectedRange()
         guard sel.length == 0 else {
@@ -77,10 +91,6 @@ extension EditorTextView {
         // Inside an image token, Return breaks after the token instead of
         // splitting its path. See EditorTextView+ImageAttachments.
         if handleImageNewline(sel) { return }
-        // Shift-Return in a list: a new line inside the same item, no marker.
-        if NSApp.currentEvent?.type == .keyDown,
-           NSApp.currentEvent?.modifierFlags.contains(.shift) == true,
-           insertListSoftBreak() { return }
         // Blockquote/callout continuation is deliberately not gated: the setting
         // is worded "Automatically continue lists".
         if listContinuationEnabled, handleListNewline(sel) { return }

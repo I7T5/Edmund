@@ -20,6 +20,7 @@ import ScreenCaptureKit
 ///   type <text>       type text, one key event per character
 ///   backspace <n>     press delete n times (300ms apart)
 ///   enter             press Return (insertNewline: list continuation, table rows)
+///   shiftenter        press Shift-Return as a real key event (list soft break)
 ///   tab / backtab     indent / dedent the selected list line(s)
 ///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
 ///                     recentering, so a block can be driven off-screen)
@@ -198,6 +199,11 @@ enum ReproScript {
                 // different path from `return` above, and the only one that
                 // reaches list continuation and table row stepping.
                 schedule(after: delay) { $0.insertNewline(nil) }
+                delay += 0.05
+            case "shiftenter":
+                // Shift-Return as a real key event through the window, so it
+                // takes the editor's keyDown route.
+                schedule(after: delay) { press("\r", keyCode: 36, modifiers: .shift, in: $0) }
                 delay += 0.05
             case "tab":
                 schedule(after: delay) { $0.insertTab(nil) }
@@ -1102,9 +1108,10 @@ enum ReproScript {
 
     /// Sends a key event through the window so it takes the full AppKit
     /// keyDown route, exactly like a physical keystroke.
-    private static func press(_ chars: String, keyCode: UInt16, in editor: EditorTextView) {
+    private static func press(_ chars: String, keyCode: UInt16,
+                              modifiers: NSEvent.ModifierFlags = [], in editor: EditorTextView) {
         guard let window = editor.window,
-              let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+              let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
                                            timestamp: ProcessInfo.processInfo.systemUptime,
                                            windowNumber: window.windowNumber, context: nil,
                                            characters: chars, charactersIgnoringModifiers: chars,

@@ -1,0 +1,12 @@
+# fixture: list.md
+# Shift-Return at the end of a list item breaks the line inside the item: the
+# new line is indented to the item's text, with no marker. Driven as a real
+# key event, since the editor catches it in keyDown.
+caretend
+shiftenter
+type more
+assertsource beta
+assertsource   more
+assertnot - more
+assertinvariants
+done
