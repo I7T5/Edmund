@@ -180,9 +180,12 @@ public class EditorTextView: NSTextView {
     var pendingRecompose = false
     /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
     var progressiveStylingScheduled = false
-    /// Coalesces scroll-driven promotion onto the next run-loop turn, off the
-    /// scroll notification (see EditorTextView+LazyStyling).
-    var pendingPromotion = false
+    /// True during a user scroll and for a short settling period afterward.
+    var isScrollingActive = false
+    var userScrollInProgress = false
+    var scrollQuiescenceTimer: Timer?
+    var scrollPromotionScheduled = false
+    var isPromotingVisibleBlocks = false
     /// Coalesces the didChangeText-bypass check scheduled from
     /// shouldChangeText (see EditorTextView+EditFlow).
     var bypassedEditCheckScheduled = false
