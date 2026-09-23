@@ -155,17 +155,10 @@ rule (2026-09-23): **direct, systematic, concise.**
 - **Plain words, plain structure** (model: Orwell, "Politics and the English
   Language"). Don't reach for strong or dramatic words the facts don't
   need ("critical", "massive", "fundamentally", "must never" where "should
-  not" is true), and don't build elaborate sentences for effect. Orwell's
-  checklist:
-  1. Never use a metaphor, simile or other figure of speech you are used to
-     seeing in print.
-  2. Never use a long word where a short one will do.
-  3. If it is possible to cut a word out, always cut it out.
-  4. Never use the passive where you can use the active.
-  5. Never use a foreign phrase, a scientific word or a jargon word if you
-     can think of an everyday English equivalent (technical terms that name
-     real code — `rawSource`, `NSTextStorage` — are the exception).
-  6. Break any of these rules sooner than say anything outright barbarous.
+  not" is true), and don't build elaborate sentences for effect.
+- **End with the merge checklist** when the text asks someone to act: the
+  binary, owner-tagged `[ ]` / `[x]` items of `edmund-pr-review` §4, so the
+  reader can see at a glance what is left.
 - The honesty rules above still hold: say what was not verified.
 
 ## 4. CHANGELOG format — machine-read, get it exact
