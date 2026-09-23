@@ -281,16 +281,28 @@ extension EditorTextView {
     /// One keystroke's worth of write-back, folded into this session's single
     /// undo step, returning the cell renamed by position — the write shifts
     /// every range after it, so the old `contentRange` is stale immediately.
+    ///
+    /// The whole session undoes in one step: the first write-back keeps its
+    /// stack entry, and every later one is folded INTO that entry (the diff is
+    /// composed in, then the write's own entry is dropped) — with the old
+    /// full-snapshot stack, keeping the first snapshot covered the later
+    /// writes automatically; diff entries must be widened explicitly.
     @discardableResult
     func commitTableCellLive(_ cell: TableCellRef, text: String) -> TableCellRef {
         let depth = undoStack.count
+        let preEditText = rawSource
         commitTableCell(cell, text: text)
         guard undoStack.count > depth else { return cell }
         if cellEditorDidSnapshot {
-            // Keep the *first* snapshot of the session and drop this one, so
-            // undo lands on the text the cell had when the card opened rather
-            // than on the previous keystroke.
-            undoStack.removeLast()
+            _ = undoStack.removeLast()
+            if undoStack.count > 0,
+               let edit = Self.textDiff(old: preEditText, new: rawSource) {
+                var kept = undoStack[undoStack.count - 1]
+                compose(entry: &kept, editRange: edit.oldRange,
+                        replacement: edit.replacement,
+                        in: preEditText as NSString)
+                undoStack[undoStack.count - 1] = kept
+            }
         } else {
             cellEditorDidSnapshot = true
         }
