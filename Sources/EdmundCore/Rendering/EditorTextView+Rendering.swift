@@ -882,6 +882,19 @@ extension EditorTextView {
                 result.addAttribute(.font, value: hiddenFont, range: lead)
                 result.addAttribute(.foregroundColor, value: NSColor.clear, range: lead)
             }
+            // A line that is only its indent (Shift-Return, nothing typed yet)
+            // would be all hidden-font glyphs and collapse to zero height,
+            // taking the caret with it. Its last space keeps the body font, so
+            // the line keeps a body line's height, and a negative kern of its
+            // own advance keeps it zero-width, so the caret stays on the text
+            // column. ponytail: a tab-final indent still collapses; Shift-Return
+            // always ends the indent with spaces.
+            let atLineEnd = lineStart + ws == ns.length || ns.character(at: lineStart + ws) == 0x0A
+            if ws > 0, atLineEnd, ns.character(at: lineStart + ws - 1) == 0x20 {
+                let last = NSRange(location: lineStart + ws - 1, length: 1)
+                result.addAttribute(.font, value: bodyFont, range: last)
+                result.addAttribute(.kern, value: -spaceWidth, range: last)
+            }
             let lineEnd = ns.range(of: "\n", range: NSRange(location: lineStart,
                                                             length: ns.length - lineStart))
             lineStart = lineEnd.location == NSNotFound ? ns.length : lineEnd.upperBound

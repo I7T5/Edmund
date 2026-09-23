@@ -125,6 +125,24 @@ extension EditorTextView {
         return true
     }
 
+    /// Return on a continuation line (Shift-Return's markerless line) starts
+    /// the item's next sibling, as Return on the item itself would — rather
+    /// than an unindented line that ends the list. On a line that is still
+    /// only its indent, the line itself becomes that sibling.
+    private func handleContinuationNewline(_ sel: NSRange, blockIdx: Int) -> Bool {
+        guard let depth = listContinuationDepth(ofBlock: blockIdx),
+              let itemIdx = (0..<blockIdx).last(where: { listDepth(ofBlock: $0) == depth }),
+              let (indent, marker, _) = parseListMarker(blocks[itemIdx].content) else { return false }
+        let block = blocks[blockIdx]
+        let next = indent + nextMarker(for: marker)
+        if block.content.allSatisfy({ $0 == " " || $0 == "\t" }) {
+            insertText(next, replacementRange: block.range)
+        } else {
+            insertText("\n" + next, replacementRange: sel)
+        }
+        return true
+    }
+
     /// List continuation. Returns true if it handled the newline.
     private func handleListNewline(_ sel: NSRange) -> Bool {
         guard let blockIdx = blockIndexForRawOffset(sel.location),
@@ -132,7 +150,7 @@ extension EditorTextView {
 
         let block = blocks[blockIdx]
         guard let (indent, marker, hasContent) = parseListMarker(block.content) else {
-            return false
+            return handleContinuationNewline(sel, blockIdx: blockIdx)
         }
 
         if hasContent {

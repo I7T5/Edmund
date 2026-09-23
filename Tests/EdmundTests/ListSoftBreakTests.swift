@@ -48,7 +48,10 @@ struct ListSoftBreakTests {
         let cont = editor.textStorage!.attribute(.paragraphStyle, at: lineStart,
                                                  effectiveRange: nil) as! NSParagraphStyle
         #expect(cont.firstLineHeadIndent == item.headIndent)
-        for i in lineStart..<caret { #expect(isHidden(at: i, in: editor.textStorage!)) }
+        // All but the last space are hidden; that one stays body-sized (so the
+        // line keeps its height) but clear and kerned back to zero width.
+        for i in lineStart..<(caret - 1) { #expect(isHidden(at: i, in: editor.textStorage!)) }
+        #expect(fgColor(at: caret - 1, in: editor) == NSColor.clear)
         assertMatchesFullRecomposeOracle(editor)
     }
 
@@ -73,6 +76,41 @@ struct ListSoftBreakTests {
         type("b", into: editor)
         let after = try #require(caretX(editor, at: editor.selectedRange().location - 1))
         #expect(abs(before - after) < 0.5)
+    }
+
+    /// Laid-out height of the line holding `offset`.
+    private func lineHeight(_ editor: EditorTextView, at offset: Int) -> CGFloat? {
+        ensureFullLayout(editor)
+        guard let tlm = editor.textLayoutManager,
+              let tcm = tlm.textContentManager,
+              let loc = tcm.location(tcm.documentRange.location, offsetBy: offset),
+              let fragment = tlm.textLayoutFragment(for: loc) else { return nil }
+        return fragment.textLineFragments.first?.typographicBounds.height
+    }
+
+    @Test("The fresh line keeps a body line's height before typing")
+    func freshLineKeepsHeight() throws {
+        let editor = softBreak("- a")
+        let fresh = try #require(lineHeight(editor, at: editor.selectedRange().location - 1))
+        type("b", into: editor)
+        let typed = try #require(lineHeight(editor, at: editor.selectedRange().location - 1))
+        #expect(abs(fresh - typed) < 0.5)
+    }
+
+    @Test("Return on a continuation line starts the next item")
+    func returnOnContinuation() {
+        let e = makeEditor()
+        e.loadContent("1. a\n   more")
+        e.setSelectedRange(NSRange(location: 12, length: 0))
+        e.insertNewline(nil)
+        #expect(e.rawSource == "1. a\n   more\n2. ")
+    }
+
+    @Test("Return on a still-empty continuation line turns it into the next item")
+    func returnOnEmptyContinuation() {
+        let editor = softBreak("- a")
+        editor.insertNewline(nil)
+        #expect(editor.rawSource == "- a\n- ")
     }
 
     @Test("Outside a list it does nothing")

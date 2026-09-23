@@ -8,5 +8,9 @@ type more
 assertsource beta
 assertsource   more
 assertnot - more
+# Return on the continuation line starts the next item, not a bare line.
+enter
+type next
+assertsource - next
 assertinvariants
 done
