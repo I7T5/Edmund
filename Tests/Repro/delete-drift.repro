@@ -1,0 +1,20 @@
+# fixture: blocks.md
+# The issue-#156 trigger: a storage deletion that bypasses didChangeText (as
+# AppKit's drag-move does), followed by typing. The heal must resync, and the
+# caret must land where the typing went — not drift.
+bypassdelete **bold**,
+sleep 300
+assertinvariants
+caret *italic*
+type Z
+assertcaret *italic*
+assertsource Z*italic*
+assertnot **bold**
+assertinvariants
+bypassdelete one
+sleep 300
+caret two
+type Q
+assertcaret two
+assertinvariants
+done

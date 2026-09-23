@@ -1,0 +1,44 @@
+# fixture: blocks.md
+# Typing, newlines and deletes across blocks, then undo everything: the
+# document must return byte-identical, and redo must restore the edits.
+caret Plain paragraph
+type Edited-
+caret Last paragraph
+type More text here
+return
+type second line
+backspace 3
+caret Callout body line one
+type X
+assertinvariants
+undo
+undo
+undo
+undo
+undo
+undo
+undo
+undo
+undo
+undo
+undo
+undo
+assertsourceorig
+assertinvariants
+redo
+redo
+redo
+redo
+redo
+redo
+redo
+redo
+redo
+redo
+redo
+redo
+assertsource Edited-Plain paragraph
+assertsource XCallout body line one
+assertsource second lLast paragraph
+assertinvariants
+done
