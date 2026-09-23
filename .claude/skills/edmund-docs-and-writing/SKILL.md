@@ -132,6 +132,28 @@ README"). Branches: `fix/<slug>`, `docs/<slug>`, `chore/<slug>`. When in
 doubt: `fix(scope):` for behavior changes, `docs:` for doc-only commits,
 plain imperative for chores. Never auto-push, PR, or merge — only when asked.
 
+### PR descriptions and review comments
+
+The reader knows the text is AI-generated, so courtesy is noise. Maintainer
+rule (2026-09-23): **direct, systematic, concise.**
+
+- **No courtesy.** No thanks, no "great work", no "happy to help", no
+  softeners ("could you perhaps", "might want to"), no sign-off. State the
+  finding and the required action.
+- **Logical order, each step earning the next** (model: Russell, *The
+  Problems of Philosophy*). Claim, then the evidence it rests on, then the
+  consequence. One idea per paragraph; no sentence that the next one doesn't
+  need.
+- **Plain, specific words** (model: Apple HIG writing guidance). Short
+  declarative sentences, active voice, concrete nouns (`file:line`, the
+  metric, the number). Cut any word that adds no information.
+- **Common PR-template structure.** PR body: `Summary` (what and why, 1–3
+  sentences) → `Changes` → `Testing` (what was run, with results; what was
+  *not* verified) → `Notes` (follow-ups, risks) when needed. Review comment:
+  verdict first, then numbered sections by disposition (merge / change /
+  drop), each item = problem, evidence, required fix.
+- The honesty rules above still hold: say what was not verified.
+
 ## 4. CHANGELOG format — machine-read, get it exact
 
 `.github/workflows/release.yml` extracts release notes with:
