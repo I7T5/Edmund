@@ -39,12 +39,33 @@ else
     swift build -c release 2>&1 | tail -3
 fi
 
+# SwiftMath ships 12 math fonts (~7 MB per bundle copy) but Edmund only ever
+# renders with its default, Latin Modern: MathRenderer builds MTMathImage without
+# setting a font, and MTMathImage.font defaults to MTFontManager.defaultFont.
+# Fonts load lazily by name, so the unused ones can go. Licenses stay.
+# If Edmund ever lets the user pick a math font, keep that font here.
+prune_math_fonts() {
+    local fonts="$1/SwiftMath_SwiftMath.bundle/mathFonts.bundle"
+    [ -d "$fonts" ] || return 0
+    find "$fonts" -maxdepth 1 \( -name '*.otf' -o -name '*.plist' -o -name '*.py' \) \
+        ! -name 'latinmodern-math.*' -delete
+}
+
+# Drop local symbols from a bundled binary (~40% of its size) after saving a
+# dSYM next to the bundle, so crash reports (edmd-*.ips) stay symbolicatable
+# with `atos -o build/<name>.dSYM`. Must run before codesign.
+strip_binary() {
+    dsymutil "$1" -o "build/$(basename "$1").dSYM" 2>/dev/null || true
+    strip -x "$1"
+}
+
 echo "Creating ${APP_NAME}.app bundle..."
 rm -rf "$BUNDLE"
 mkdir -p "${BUNDLE}/Contents/MacOS"
 mkdir -p "${BUNDLE}/Contents/Resources"
 
 cp ".build/release/${EXECUTABLE}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
+strip_binary "${BUNDLE}/Contents/MacOS/${EXECUTABLE}"
 cp Info.plist "${BUNDLE}/Contents/"
 if [ "$VARIANT" = "mas" ]; then
     # No updater on the App Store: Sparkle's keys must not ship there.
@@ -173,10 +194,12 @@ QL_NAME="EdmundQuickLook"
 APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
 mkdir -p "${APPEX}/Contents/MacOS" "${APPEX}/Contents/Resources"
 cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
+strip_binary "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/Contents/Resources/"
 done
+prune_math_fonts "${APPEX}/Contents/Resources"
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
 #
@@ -228,6 +251,7 @@ echo "Copying SwiftPM resource bundles..."
 for bundle in .build/release/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "${BUNDLE}/"
 done
+prune_math_fonts "$BUNDLE"
 
 echo ""
 echo "Done: ${BUNDLE} (variant: ${VARIANT})"
