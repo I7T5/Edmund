@@ -54,7 +54,10 @@ stopping and reporting if any step fails:
 5. **Push.** `git push -u origin <branch>`.
 
 6. **Open the PR.** `gh pr create` with a title matching the subject and a body
-   that explains what and why. No generated-by / attribution footer.
+   that explains what and why. No attribution header or footer (the
+   attribution header belongs on PR review comments only). Register
+   and structure: `edmund-docs-and-writing` §3 "PR descriptions and review
+   comments" (Summary → Changes → Testing → Notes; direct, no courtesy).
 
 7. **Auto-merge.** `gh pr merge <#> --auto --merge --delete-branch`. Branch
    protection requires the `test` check, so this queues the PR to merge itself
