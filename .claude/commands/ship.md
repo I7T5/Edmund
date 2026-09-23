@@ -14,8 +14,17 @@ stopping and reporting if any step fails:
    changes to ship. If `$ARGUMENTS` is empty, infer a concise description from
    the diff.
 
-2. **Test first (project rule).** Run `swift test`. If anything fails, stop and
-   show the failure — do not commit.
+2. **Test first (project rule), scoped to the change.**
+   - No `.swift`, `Package.swift` or `Package.resolved` in the change (docs,
+     skills, scripts, fixtures): skip the Swift build and tests entirely.
+   - Otherwise run the suites that exercise the changed code:
+     `swift test --filter '<SuiteA>|<SuiteB>'`. Pick them by grepping
+     `Tests/` for the changed types and files. Run the full `swift test`
+     only when the change touches a shared path (`TextView/`, `Parsing/`,
+     `Model/`, the storage or render pipeline) or no suite clearly covers it.
+   - CI runs the full suite before auto-merge, so this step is a fast
+     pre-check, not the gate. If anything fails, stop and show the failure —
+     do not commit.
 
 2b. **HIG check (UI changes only).** Run this gate; it prints `ui` only when
    the change touches app chrome:
