@@ -121,10 +121,12 @@ extension EditorTextView {
     // MARK: - Drawing
 
     /// Draws the handles and the box around a multi-cell selection. Called from
-    /// `drawBackground(in:)`.
-    func drawTableHandles(in dirty: NSRect) {
+    /// `drawBackground(in:)`. The handles ride the pass's shared geometry (they
+    /// were already computed for the `</>` button's pill dodge); nil builds a
+    /// fresh set.
+    func drawTableHandles(in dirty: NSRect, chrome: MarginChromeGeometry? = nil) {
         drawTableCellSelection(in: dirty)
-        let handles = tableHandles()
+        let handles = chrome?.handles ?? tableHandles()
         // Where the pills are *on screen*, which is the only thing the next
         // caret move can repaint away. `invalidateTableHandles` cannot be
         // trusted to record it: it runs before the restyle a click triggers,
@@ -692,9 +694,11 @@ extension EditorTextView {
     }
 
     /// Recomputes which handle the pointer is over. Called from `mouseMoved`
-    /// beside the `</>` button's own hover tracking.
-    func updateTableHandleHover(at point: NSPoint) {
-        let hit = tableHandles().first { handleHitBox($0).contains(point) }
+    /// beside the `</>` button's own hover tracking, riding the same shared
+    /// geometry; nil builds a fresh set.
+    func updateTableHandleHover(at point: NSPoint,
+                                chrome: MarginChromeGeometry? = nil) {
+        let hit = (chrome?.handles ?? tableHandles()).first { handleHitBox($0).contains(point) }
         guard hit != hoveredTableHandle else { return }
         if let old = hoveredTableHandle { setNeedsDisplay(handleHitBox(old)) }
         if let hit { setNeedsDisplay(handleHitBox(hit)) }

@@ -70,16 +70,21 @@ extension EditorTextView {
     /// force whole-document layout on every frame.
     public override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
+        // One geometry pass shared by every piece of margin chrome below: the
+        // visible lines, the viewport's tables and code blocks, and the active
+        // cell's handles. Each used to recompute this itself — several viewport
+        // fragment walks and full block-list scans per redraw.
+        let chrome = marginChromeGeometry()
         // Line numbers in the column's margin ride this same pass (they are
         // beside the text, never under it). See EditorTextView+LineNumbers.
         // Whether they actually fit — and so whether the gutter has them
         // instead — is decided inside.
-        if showLineNumbers { drawLineNumbersBesideContent(in: rect) }
+        if showLineNumbers { drawLineNumbersBesideContent(in: rect, chrome: chrome) }
         // The tables' `</>` raw-editing buttons ride the same margin pass, and
         // step left of the numbers when both are in it. See
         // EditorTextView+TableRawButton.
-        drawTableRawButtons(in: rect)
-        drawCodeCopyButtons(in: rect)
+        drawTableRawButtons(in: rect, chrome: chrome)
+        drawCodeCopyButtons(in: rect, chrome: chrome)
         // A wrapped table cell's real characters are hidden at ~zero width, so
         // AppKit's caret and highlight land nowhere near the text the user sees
         // — the cell draws its own. Same pass, same reason: behind the glyphs.
@@ -88,7 +93,7 @@ extension EditorTextView {
         // The active cell's row and column handles, and the outline around
         // whichever cell a table context menu is acting on.
         // See EditorTextView+TableHandles.
-        drawTableHandles(in: rect)
+        drawTableHandles(in: rect, chrome: chrome)
         guard findActive, !findMatches.isEmpty, let tlm = textLayoutManager else { return }
 
         let visible = viewportCharRange(tlm)

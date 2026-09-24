@@ -54,16 +54,14 @@ extension EditorTextView {
     /// It also walks the viewport the text view has *already* laid out, for the
     /// reason it documents: forcing layout from inside a draw re-enters the
     /// viewport layout controller and blanks the view.
-    func visibleTableRawButtons() -> [(rect: NSRect, blockIndex: Int)] {
-        // ponytail: rebuilt per draw rather than cached against `blocks` — one
-        // pass over the block list, and `line(forOffset:)` is a binary search
-        // over the cached line starts. Cache it if a huge document ever shows
-        // up in a scroll profile.
-        var headerLines: [Int: Int] = [:]
-        for (i, block) in blocks.enumerated() where block.kind == .table {
-            headerLines[line(forOffset: block.range.location)] = i
-        }
-        guard !headerLines.isEmpty else { return [] }
+    ///
+    /// Rides the pass's shared `MarginChromeGeometry` (one viewport walk, one
+    /// viewport-bounded block scan) rather than recomputing it — nil builds a
+    /// fresh one for the click/test paths.
+    func visibleTableRawButtons(using geometry: MarginChromeGeometry? = nil)
+        -> [(rect: NSRect, blockIndex: Int)] {
+        let geometry = geometry ?? marginChromeGeometry()
+        guard !geometry.tableHeaders.isEmpty else { return [] }
 
         let origin = textContainerOrigin
         let padding = textContainer?.lineFragmentPadding ?? 0
@@ -75,8 +73,8 @@ extension EditorTextView {
         // The button shares that edge rather than the container's, or it hangs
         // a character closer to the text than every number above it.
         let trailing = lineNumberStyle.digitWidth
-        enumerateVisibleLineNumbers { line, capCenterY in
-            guard let blockIndex = headerLines[line] else { return }
+        for (line, capCenterY) in geometry.visibleLines {
+            guard let blockIndex = geometry.tableHeaders[line] else { continue }
             let slot = NSRect(x: rightEdge - trailing - size,
                               y: origin.y + capCenterY - size / 2,
                               width: size, height: size)
@@ -95,7 +93,8 @@ extension EditorTextView {
             // centred on the row. A tall header — a wrapped header cell three or
             // more lines high — pushes the pill's centre well below the button,
             // so the two clear each other and the button keeps its slot.
-            if let pill = self.tableRawButtonBlockingPill(blockIndex: blockIndex),
+            if let pill = self.tableRawButtonBlockingPill(blockIndex: blockIndex,
+                                                          handles: geometry.handles),
                pill.rect.minY < slot.maxY, pill.rect.maxY > slot.minY {
                 let x = max(0, pill.rect.minX - tableHandleGap - size)
                 result.append((NSRect(x: x, y: slot.minY, width: size, height: size), blockIndex))
@@ -112,9 +111,10 @@ extension EditorTextView {
     /// free. Keyed on the row, not on geometric overlap, so the button steps
     /// aside whatever the reading column's margin (which shrinks with the line
     /// numbers off, and would otherwise leave the two too close to tell apart).
-    func tableRawButtonBlockingPill(blockIndex: Int) -> TableHandle? {
+    func tableRawButtonBlockingPill(blockIndex: Int,
+                                    handles: [TableHandle]? = nil) -> TableHandle? {
         guard !rawTableEditing else { return nil }
-        return tableHandles().first {
+        return (handles ?? tableHandles()).first {
             $0.axis == .row && $0.blockIndex == blockIndex && $0.row == 0
         }
     }
@@ -135,8 +135,9 @@ extension EditorTextView {
 
     /// The buttons actually on screen — the only ones that draw, and the only
     /// ones that can be clicked.
-    func revealedTableRawButtons() -> [(rect: NSRect, blockIndex: Int)] {
-        visibleTableRawButtons().filter { tableRawButtonIsRevealed(blockIndex: $0.blockIndex) }
+    func revealedTableRawButtons(using geometry: MarginChromeGeometry? = nil)
+        -> [(rect: NSRect, blockIndex: Int)] {
+        visibleTableRawButtons(using: geometry).filter { tableRawButtonIsRevealed(blockIndex: $0.blockIndex) }
     }
 
     /// Repaints where the `</>` buttons are and where they were, so the button
@@ -155,8 +156,9 @@ extension EditorTextView {
     /// a code block's revealed copy button, or the active row's handle. All
     /// sit within `lineNumberPadding` of where a number ends, so without this
     /// they overlap it.
-    func linesCoveredByTableRawButtons() -> Set<Int> {
-        var covered = Set((revealedTableRawButtons() + revealedCodeCopyButtons())
+    func linesCoveredByTableRawButtons(using geometry: MarginChromeGeometry? = nil) -> Set<Int> {
+        var covered = Set((revealedTableRawButtons(using: geometry)
+                           + revealedCodeCopyButtons(using: geometry))
             .map { line(forOffset: blocks[$0.blockIndex].range.location) })
         if let cell = activeTableCell, cell.blockIndex < blocks.count {
             covered.insert(line(forOffset: cell.contentRange.location))
@@ -177,9 +179,11 @@ extension EditorTextView {
     }
 
     /// Draws the `</>` buttons. Called from `drawBackground(in:)` — they occupy
-    /// margin the text never uses, so nothing has to move to make room.
-    func drawTableRawButtons(in rect: NSRect) {
-        let revealed = revealedTableRawButtons()
+    /// margin the text never uses, so nothing has to move to make room. Rides
+    /// the pass's shared geometry; nil builds a fresh one.
+    func drawTableRawButtons(in rect: NSRect,
+                             chrome: MarginChromeGeometry? = nil) {
+        let revealed = revealedTableRawButtons(using: chrome)
         // Where the buttons are on screen now, so the next caret move (which can
         // relocate one past the row pill) knows what to repaint. Recorded from
         // the draw, like the handles' bands, since only a draw knows what
@@ -241,11 +245,13 @@ extension EditorTextView {
     ///
     /// A table counts as hovered anywhere from its button's slot across to the
     /// right edge of the text column, so the pointer can travel from the table
-    /// out to the button without the button vanishing on the way.
-    func updateTableHover(at point: NSPoint) {
+    /// out to the button without the button vanishing on the way. Rides the
+    /// `mouseMoved` pass's shared geometry; nil builds a fresh one.
+    func updateTableHover(at point: NSPoint,
+                          chrome: MarginChromeGeometry? = nil) {
         var block: Int?
         var onButton = false
-        for (rect, blockIndex) in visibleTableRawButtons() {
+        for (rect, blockIndex) in visibleTableRawButtons(using: chrome) {
             guard let range = blockRowsRect(blockIndex: blockIndex) else { continue }
             let band = NSRect(x: rect.minX, y: range.minY,
                               width: max(0, bounds.maxX - rect.minX), height: range.height)
@@ -297,9 +303,12 @@ extension EditorTextView {
     public override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         let point = convert(event.locationInWindow, from: nil)
-        updateTableHover(at: point)
-        updateTableHandleHover(at: point)
-        updateCodeCopyHover(at: point)
+        // One geometry pass shared by all three hover updates: each used to
+        // rescan the block list and walk the viewport itself, at event rate.
+        let chrome = marginChromeGeometry()
+        updateTableHover(at: point, chrome: chrome)
+        updateTableHandleHover(at: point, chrome: chrome)
+        updateCodeCopyHover(at: point, chrome: chrome)
     }
 
     public override func mouseExited(with event: NSEvent) {

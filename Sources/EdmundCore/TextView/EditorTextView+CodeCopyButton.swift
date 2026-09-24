@@ -17,14 +17,12 @@ extension EditorTextView {
     // MARK: - Geometry
 
     /// The button box (view coordinates) and its block index, for every fenced
-    /// code block whose opening fence is in the laid-out viewport.
-    func visibleCodeCopyButtons() -> [(rect: NSRect, blockIndex: Int)] {
-        guard viewMode == .edit else { return [] }
-        var fenceLines: [Int: Int] = [:]
-        for (i, block) in blocks.enumerated() where block.kind == .fence {
-            fenceLines[line(forOffset: block.range.location)] = i
-        }
-        guard !fenceLines.isEmpty else { return [] }
+    /// code block whose opening fence is in the laid-out viewport. Rides the
+    /// pass's shared `MarginChromeGeometry`; nil builds a fresh one.
+    func visibleCodeCopyButtons(using geometry: MarginChromeGeometry? = nil)
+        -> [(rect: NSRect, blockIndex: Int)] {
+        let geometry = geometry ?? marginChromeGeometry()
+        guard viewMode == .edit, !geometry.fenceLines.isEmpty else { return [] }
 
         let origin = textContainerOrigin
         let padding = textContainer?.lineFragmentPadding ?? 0
@@ -32,8 +30,8 @@ extension EditorTextView {
         let size = codeCopyButtonSize
         let trailing = lineNumberStyle.digitWidth
         var result: [(rect: NSRect, blockIndex: Int)] = []
-        enumerateVisibleLineNumbers { line, capCenterY in
-            guard let blockIndex = fenceLines[line] else { return }
+        for (line, capCenterY) in geometry.visibleLines {
+            guard let blockIndex = geometry.fenceLines[line] else { continue }
             result.append((NSRect(x: rightEdge - trailing - size,
                                   y: origin.y + capCenterY - size / 2,
                                   width: size, height: size), blockIndex))
@@ -43,8 +41,9 @@ extension EditorTextView {
 
     /// The buttons actually on screen: hover reveals one, and one that was
     /// just clicked stays up for its "copied" flash even if the pointer left.
-    func revealedCodeCopyButtons() -> [(rect: NSRect, blockIndex: Int)] {
-        visibleCodeCopyButtons().filter {
+    func revealedCodeCopyButtons(using geometry: MarginChromeGeometry? = nil)
+        -> [(rect: NSRect, blockIndex: Int)] {
+        visibleCodeCopyButtons(using: geometry).filter {
             $0.blockIndex == hoveredCodeBlock || $0.blockIndex == copiedCodeBlock
         }
     }
@@ -103,9 +102,10 @@ extension EditorTextView {
     }
 
     /// Draws the copy buttons, from the same `drawBackground(in:)` pass as the
-    /// `</>` buttons and with their ink.
-    func drawCodeCopyButtons(in rect: NSRect) {
-        let boxes = revealedCodeCopyButtons().filter { $0.rect.intersects(rect) }
+    /// `</>` buttons and with their ink. Rides the pass's shared geometry.
+    func drawCodeCopyButtons(in rect: NSRect,
+                             chrome: MarginChromeGeometry? = nil) {
+        let boxes = revealedCodeCopyButtons(using: chrome).filter { $0.rect.intersects(rect) }
         guard !boxes.isEmpty else { return }
         let dim: NSColor = isDarkAppearance ? syntaxDimColor : .secondaryLabelColor
         let config = NSImage.SymbolConfiguration(pointSize: codeCopyButtonSize, weight: .regular)
@@ -181,11 +181,13 @@ extension EditorTextView {
 
     /// Recomputes which code block the pointer is over — the button's slot
     /// across to the right edge of the text column, spanning the block — and
-    /// redraws if it changed. Called from `mouseMoved` beside the table hover.
-    func updateCodeCopyHover(at point: NSPoint) {
+    /// redraws if it changed. Called from `mouseMoved` beside the table hover,
+    /// riding the same shared geometry.
+    func updateCodeCopyHover(at point: NSPoint,
+                             chrome: MarginChromeGeometry? = nil) {
         var block: Int?
         var onButton = false
-        for (rect, blockIndex) in visibleCodeCopyButtons() {
+        for (rect, blockIndex) in visibleCodeCopyButtons(using: chrome) {
             guard let range = blockRowsRect(blockIndex: blockIndex) else { continue }
             let band = NSRect(x: rect.minX, y: range.minY,
                               width: max(0, bounds.maxX - rect.minX), height: range.height)
