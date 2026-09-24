@@ -59,13 +59,6 @@ extension EditorTextView {
             width = (width * backingScale).rounded() / backingScale
             height = snapped
         }
-        // The rendered image's baseline sits exactly one device pixel below the
-        // surrounding text baseline (measured constant across font sizes — it's a
-        // fixed rasterization offset, not a size-dependent rounding). Lift the
-        // image by one device pixel so the math rests on the text baseline. Done
-        // here, not in the cached descent, so it tracks the window's scale if it
-        // moves between a Retina and a non-Retina display.
-        descent -= 1 / backingScale
         // Drop the image so its baseline (descent above the image bottom) lands
         // on the text baseline.
         // The engine id is part of the key so enabling/disabling a math
