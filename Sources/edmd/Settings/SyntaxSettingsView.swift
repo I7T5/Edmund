@@ -157,6 +157,12 @@ struct SyntaxSettingsView: View {
                     Image(systemName: "ellipsis.circle")
                 }
                 .menuIndicator(.hidden)
+                // `tint`, not `foregroundStyle`: a borderless menu button draws
+                // its label in the control tint, so this is what greys it to
+                // match + and −.
+                .tint(.secondary)
+                // Its only item needs a user definition; dim it with −.
+                .disabled(!selectionIsUser)
                 .fixedSize()
                 Spacer()
             }
