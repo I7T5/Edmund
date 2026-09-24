@@ -7,8 +7,10 @@ import AppKit
 // its results (`filteredCheckingResults`) before they become marks, and the
 // same filter steers the Spelling and Grammar panel (`checkSpelling`) so the
 // panel never stops on something the text doesn't underline:
-//   - Math: `\mathrm` in `$…$` / `$$…$$` gets flagged, and under a rendered
-//     formula the mark draws beneath the hidden source. Math spans are skipped.
+//   - Markup that isn't prose: `\mathrm` in `$…$`, a link's URL and text,
+//     an image path, code, tags. Under rendered markup a mark draws beneath
+//     hidden source as a stray dot. All of it is skipped (`skippedRanges`,
+//     plus anything in the hidden font).
 //   - Inline enumerations: NSSpellChecker reads `a,b,c` / `x;y` / `i,ii,iii`
 //     as ONE word and flags it. A token of short (≤ 3-letter) parts is
 //     re-checked part by part; longer parts (`Hello,world`) are a missing
@@ -40,11 +42,12 @@ extension EditorTextView {
     func filteredCheckingResults(_ results: [NSTextCheckingResult], orthography: NSOrthography?,
                                  sparing caret: Int?) -> [NSTextCheckingResult] {
         let language = enumerationLanguage(orthography)
-        var mathByBlock: [Int: [NSRange]] = [:]
-        func inMath(_ range: NSRange) -> Bool {
+        var skippedByBlock: [Int: [NSRange]] = [:]
+        func skipped(_ range: NSRange) -> Bool {
+            if rangeIsHidden(range) { return true }
             guard let idx = blockIndexForRawOffset(range.location) else { return false }
-            if mathByBlock[idx] == nil { mathByBlock[idx] = mathRanges(inBlock: idx) }
-            return mathByBlock[idx]!.contains { NSIntersectionRange($0, range).length > 0 }
+            if skippedByBlock[idx] == nil { skippedByBlock[idx] = skippedRanges(inBlock: idx) }
+            return skippedByBlock[idx]!.contains { NSIntersectionRange($0, range).length > 0 }
         }
         func touchesCaret(_ range: NSRange) -> Bool {
             guard let caret else { return false }
@@ -54,18 +57,17 @@ extension EditorTextView {
         for result in results {
             switch result.resultType {
             case .spelling:
-                guard !touchesCaret(result.range), !inMath(result.range),
-                      !rangeIsHidden(result.range) else { continue }
+                guard !touchesCaret(result.range), !skipped(result.range) else { continue }
                 kept += (enumerationMisspellings(of: result.range, language: language) ?? [result.range])
                     .map { NSTextCheckingResult.spellCheckingResult(range: $0) }
             case .grammar:
-                // A sentence may well contain a hidden link URL; only the
-                // flagged pieces (the details) have to be visible.
-                let hitsHidden = (result.grammarDetails ?? []).contains { detail in
+                // A sentence may well contain a link or formula; only the
+                // flagged pieces (the details) have to be prose.
+                let hitsSkipped = (result.grammarDetails ?? []).contains { detail in
                     guard let r = detail[NSGrammarRange] as? NSRange else { return false }
-                    return rangeIsHidden(NSRange(location: result.range.location + r.location, length: r.length))
+                    return skipped(NSRange(location: result.range.location + r.location, length: r.length))
                 }
-                if !touchesCaret(result.range), !inMath(result.range), !hitsHidden { kept.append(result) }
+                if !touchesCaret(result.range), !hitsSkipped { kept.append(result) }
             default:
                 kept.append(result)
             }
@@ -179,7 +181,7 @@ extension EditorTextView {
     /// enumeration part, or nil when the filter drops it.
     private func panelHit(_ hit: NSRange) -> NSRange? {
         guard let idx = blockIndexForRawOffset(hit.location),
-              !mathRanges(inBlock: idx).contains(where: { NSIntersectionRange($0, hit).length > 0 })
+              !skippedRanges(inBlock: idx).contains(where: { NSIntersectionRange($0, hit).length > 0 })
         else { return nil }
         guard let parts = enumerationMisspellings(of: hit, language: enumerationLanguage(nil)) else { return hit }
         return parts.first
@@ -199,15 +201,28 @@ extension EditorTextView {
         return hidden
     }
 
-    /// Absolute ranges of block `idx`'s math: its `$…$`/`$$…$$` spans, or the
-    /// whole block for a display-math block.
-    func mathRanges(inBlock idx: Int) -> [NSRange] {
+    /// Absolute ranges in block `idx` that aren't prose and so aren't checked:
+    /// links (text and URL), images, embeds, wikilinks, code, math, HTML tags,
+    /// #tags, footnote and block references — or the whole block for a code
+    /// fence, display math, an HTML block or front matter.
+    func skippedRanges(inBlock idx: Int) -> [NSRange] {
         guard idx < blocks.count else { return [] }
         let block = blocks[idx]
-        if block.kind == .mathDisplay { return [block.range] }
+        switch block.kind {
+        case .fence, .indentedCode, .mathDisplay, .htmlBlock, .frontMatter:
+            return [block.range]
+        default:
+            break
+        }
         return SyntaxHighlighter.parse(block.content, features: markdownFeatures).compactMap { span in
-            guard case .math = span.kind else { return nil }
-            return NSRange(location: block.range.location + span.fullRange.location, length: span.fullRange.length)
+            switch span.kind {
+            case .link, .image, .embed, .wikilink, .code, .codeBlock, .math, .htmlTag,
+                 .tag, .footnoteReference, .footnoteDefinition, .blockRef:
+                return NSRange(location: block.range.location + span.fullRange.location,
+                               length: span.fullRange.length)
+            default:
+                return nil
+            }
         }
     }
 

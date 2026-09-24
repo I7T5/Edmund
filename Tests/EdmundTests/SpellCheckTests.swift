@@ -123,6 +123,20 @@ struct SpellCheckTests {
         #expect(marked(editor) == ["sentance"])
     }
 
+    @Test("Links, images, wikilinks, code, tags and fences are never checked; prose is")
+    func markupSkipped() {
+        let doc = """
+        A [linkk](https://qqzx.example) and ![imgg](zzqy.png) and [[wikii]].
+        Some `codde` and #taggg here, then a sentance.
+
+        ```
+        fencce wrod
+        ```
+
+        """
+        #expect(marked(checkedEditor(doc)) == ["sentance"])
+    }
+
     @Test("Check Document Now steps past math and fine enumerations")
     func panelSkipsFiltered() {
         let editor = checkedEditor("See $\\mathrm{dx}$ and a,b,c then sentance.\n")
