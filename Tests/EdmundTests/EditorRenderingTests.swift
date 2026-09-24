@@ -883,13 +883,7 @@ struct EditorStylingTests {
     @Test("Checkbox list has narrower hanging indent than raw text width")
     @MainActor func checkboxHangingIndent() {
         let editor = makeEditor()
-        let bullet = editor.styleBlock("- hello")
         let checkbox = editor.styleBlock("- [ ] hello")
-
-        var bulletIndent: CGFloat = 0
-        bullet.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: bullet.length)) { val, _, _ in
-            if let ps = val as? NSParagraphStyle { bulletIndent = ps.headIndent }
-        }
 
         var cbIndent: CGFloat = 0
         checkbox.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: checkbox.length)) { val, _, _ in

@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import ScreenCaptureKit
 import SwiftUI
 import EdmundCore
 
@@ -57,8 +58,7 @@ enum SettingsRender {
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
 
         let id = CGWindowID(window.windowNumber)
-        guard let image = CGWindowListCreateImage(
-                .null, .optionIncludingWindow, id, [.boundsIgnoreFraming, .bestResolution]),
+        guard let image = captureWindow(id, scale: window.backingScaleFactor),
               let data = NSBitmapImageRep(cgImage: image)
                 .representation(using: .png, properties: [:]) else {
             fail("could not capture window \(id)")
@@ -96,6 +96,31 @@ enum SettingsRender {
             return nil
         }
         return AnyView(detail.frame(width: 440).border(.separator).padding(16))
+    }
+
+    /// ScreenCaptureKit is async-only; spin the main run loop until it answers,
+    /// the same way the settle wait above does, so this stays a plain CLI path.
+    private static func captureWindow(_ id: CGWindowID, scale: CGFloat) -> CGImage? {
+        final class Box: @unchecked Sendable { var image: CGImage?; var done = false }
+        let box = Box()
+        Task.detached {
+            defer { box.done = true }
+            guard let content = try? await SCShareableContent.excludingDesktopWindows(
+                      false, onScreenWindowsOnly: false),
+                  let scWindow = content.windows.first(where: { $0.windowID == id }) else { return }
+            let config = SCStreamConfiguration()
+            config.width = Int(scWindow.frame.width * scale)
+            config.height = Int(scWindow.frame.height * scale)
+            config.ignoreShadowsSingleWindow = true
+            box.image = try? await SCScreenshotManager.captureImage(
+                contentFilter: SCContentFilter(desktopIndependentWindow: scWindow),
+                configuration: config)
+        }
+        let deadline = Date().addingTimeInterval(10)
+        while !box.done && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        return box.image
     }
 
     private static func fail(_ message: String) -> Never {
