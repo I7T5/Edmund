@@ -98,8 +98,11 @@ enum SettingsRender {
         return AnyView(detail.frame(width: 440).border(.separator).padding(16))
     }
 
-    /// ScreenCaptureKit is async-only; spin the main run loop until it answers,
-    /// the same way the settle wait above does, so this stays a plain CLI path.
+    /// ScreenCaptureKit, because `CGWindowListCreateImage` is deprecated and
+    /// the repo allows no warnings. It needs Screen Recording granted to the
+    /// launching process, even for our own window. It is async-only, so spin
+    /// the main run loop until it answers, the same way the settle wait above
+    /// does, so `render` stays synchronous.
     private static func captureWindow(_ id: CGWindowID, scale: CGFloat) -> CGImage? {
         final class Box: @unchecked Sendable { var image: CGImage?; var done = false }
         let box = Box()

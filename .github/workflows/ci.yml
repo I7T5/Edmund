@@ -71,8 +71,11 @@ jobs:
           key: spm-v2-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-v2-${{ runner.os }}-
 
+      # `shell: bash` runs with -o pipefail; the default shell does not, and
+      # the pipe would report tee's status, passing a failing test run.
       - name: Test
         if: steps.filter.outputs.code == 'true'
+        shell: bash
         run: swift test 2>&1 | tee test.log
 
       # Zero warnings in our own code. A grep rather than -warnings-as-errors:

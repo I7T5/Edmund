@@ -166,7 +166,8 @@ geometry numbers but **cannot** confirm the pixels are right.
   inventing a new one (verify: `git log --oneline --all -- '*Math*'`).
 - CI: `.github/workflows/ci.yml` on `macos-14`, latest-stable Xcode, SPM cache
   keyed on `Package.resolved`, `concurrency: cancel-in-progress` (private-repo
-  macOS minutes bill 10×). CI runs the same `swift test`.
+  macOS minutes bill 10×). CI runs the same `swift test`, then fails on any
+  compiler warning in `Sources/` or `Tests/` (`No warnings` step).
 
 ---
 

@@ -205,6 +205,12 @@ Other run gotchas:
 `macos-14` with `latest-stable` Xcode (Swift 6.0 needs Xcode 16+), triggered
 on PRs and pushes to `main`.
 
+- **Zero warnings**: the `Test` step tees `swift test` to `test.log`
+  (`shell: bash`, so `pipefail` keeps a failing run red), and the
+  `No warnings` step fails the job on any `(Sources|Tests)/…: warning:` line.
+  A grep, not `-warnings-as-errors`: `-Xswiftc` would also reach the remote
+  dependencies.
+
 - **SPM cache**: `.build` is cached keyed on
   `spm-v2-${{ runner.os }}-${{ hashFiles('Package.resolved') }}`. The `v2`
   token exists because the repo rename `md` → `Edmund` changed the checkout
