@@ -62,6 +62,20 @@ extension EditorTextView {
 
     // MARK: - Override
 
+    /// Shift-Return in a list: a new line inside the same item, no marker.
+    /// Caught at the key rather than in `insertNewline`, because which action
+    /// AppKit's key bindings map Shift-Return to isn't ours to rely on.
+    public override func keyDown(with event: NSEvent) {
+        let returnKeys: Set<UInt16> = [36, 76]   // Return, keypad Enter
+        if returnKeys.contains(event.keyCode),
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .shift,
+           !hasMarkedText(), selectedRange().length == 0,
+           insertListSoftBreak() {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
     public override func insertNewline(_ sender: Any?) {
         let sel = selectedRange()
         guard sel.length == 0 else {
@@ -84,6 +98,51 @@ extension EditorTextView {
         super.insertNewline(sender)
     }
 
+    /// Shift-Return inside a list item (or a paragraph already continuing
+    /// one): breaks the line and indents the new one to the item's text
+    /// column, so it stays in the item without a marker of its own —
+    /// CommonMark's paragraph continuation, drawn at the item's text column
+    /// (`styleListContinuation`). Not gated on the list-continuation setting:
+    /// Shift is an explicit request. Returns false outside a list.
+    @discardableResult
+    public func insertListSoftBreak() -> Bool {
+        let sel = selectedRange()
+        guard let blockIdx = blockIndexForRawOffset(sel.location),
+              blockIdx < blocks.count else { return false }
+        let block = blocks[blockIdx]
+        let prefix: String
+        if let (indent, marker, _) = parseListMarker(block.content) {
+            prefix = indent + String(repeating: " ", count: (marker as NSString).length)
+        } else if listContinuationDepth(ofBlock: blockIdx) != nil {
+            // Keep the indent of the line the caret is on.
+            let ns = rawSource as NSString
+            let line = ns.lineRange(for: NSRange(location: sel.location, length: 0))
+            prefix = String(ns.substring(with: line).prefix { $0 == " " || $0 == "\t" })
+        } else {
+            return false
+        }
+        insertText("\n" + prefix, replacementRange: sel)
+        return true
+    }
+
+    /// Return on a continuation line (Shift-Return's markerless line) starts
+    /// the item's next sibling, as Return on the item itself would — rather
+    /// than an unindented line that ends the list. On a line that is still
+    /// only its indent, the line itself becomes that sibling.
+    private func handleContinuationNewline(_ sel: NSRange, blockIdx: Int) -> Bool {
+        guard let depth = listContinuationDepth(ofBlock: blockIdx),
+              let itemIdx = (0..<blockIdx).last(where: { listDepth(ofBlock: $0) == depth }),
+              let (indent, marker, _) = parseListMarker(blocks[itemIdx].content) else { return false }
+        let block = blocks[blockIdx]
+        let next = indent + nextMarker(for: marker)
+        if block.content.allSatisfy({ $0 == " " || $0 == "\t" }) {
+            insertText(next, replacementRange: block.range)
+        } else {
+            insertText("\n" + next, replacementRange: sel)
+        }
+        return true
+    }
+
     /// List continuation. Returns true if it handled the newline.
     private func handleListNewline(_ sel: NSRange) -> Bool {
         guard let blockIdx = blockIndexForRawOffset(sel.location),
@@ -91,7 +150,7 @@ extension EditorTextView {
 
         let block = blocks[blockIdx]
         guard let (indent, marker, hasContent) = parseListMarker(block.content) else {
-            return false
+            return handleContinuationNewline(sel, blockIdx: blockIdx)
         }
 
         if hasContent {

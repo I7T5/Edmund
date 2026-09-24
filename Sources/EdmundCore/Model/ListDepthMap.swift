@@ -27,6 +27,15 @@ enum ListDepthMap {
     /// Depth stored for a block that has no list line of its own.
     static let notAList = -1
 
+    /// Entry for a paragraph continuing the list item at `depth` (a line
+    /// indented under the item with no marker of its own, as Shift-Return
+    /// writes). Kept in the same array, below `notAList`, so the depth diff
+    /// that re-styles re-parented items re-styles these too.
+    static func continuation(ofDepth depth: Int) -> Int { -2 - depth }
+
+    /// The item depth a `continuation(ofDepth:)` entry encodes, else nil.
+    static func continuedDepth(_ entry: Int) -> Int? { entry <= -2 ? -2 - entry : nil }
+
     /// Tab stop width for turning leading whitespace into columns, per
     /// CommonMark. Only matters for tab-indented documents.
     private static let tabWidth = 4
@@ -40,7 +49,16 @@ enum ListDepthMap {
         for (i, block) in blocks.enumerated() {
             // A blank line leaves a list open (a loose list is still one list),
             // so it neither closes ancestors nor takes a depth.
-            if case .blank = block.kind { continue }
+            // One carrying an indent past an open item, though — the line a
+            // Shift-Return has just opened, before anything is typed on it —
+            // is drawn as that item's continuation, so the caret already sits
+            // at the item's text column.
+            if case .blank = block.kind {
+                let indent = columns(of: Substring(block.content))
+                let inside = stack.filter { $0 < indent }.count
+                if indent > 0, inside > 0 { depths[i] = continuation(ofDepth: inside - 1) }
+                continue
+            }
 
             let indent = columns(of: block.content.prefix(while: { $0 != "\n" }))
 
@@ -53,6 +71,9 @@ enum ListDepthMap {
                 // inside the innermost open item — a continuation paragraph,
                 // say — so it leaves the stack alone. One that popped
                 // everything has ended the list, which the popping already did.
+                if case .paragraph = block.kind, !stack.isEmpty {
+                    depths[i] = continuation(ofDepth: stack.count - 1)
+                }
                 continue
             }
             depths[i] = stack.count

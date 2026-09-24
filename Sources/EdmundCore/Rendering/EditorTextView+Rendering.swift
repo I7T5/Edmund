@@ -214,14 +214,20 @@ extension EditorTextView {
     ///     document's column stack (see `listDepths`). nil for callers with no
     ///     block index — a table cell, a callout's inner blocks, the styling
     ///     tests — which fall back to the whitespace-and-unit estimate.
+    ///   - continuationDepth: For a paragraph continuing a list item, that
+    ///     item's depth (`listContinuationDepth(ofBlock:)`); its lines are then
+    ///     drawn at the item's text column instead of at their raw spaces.
     func styleBlock(_ markdown: String, cursorPosition: Int? = nil,
                     hideComments: Bool = false,
-                    listDepth: Int? = nil) -> NSAttributedString {
+                    listDepth: Int? = nil,
+                    continuationDepth: Int? = nil) -> NSAttributedString {
         let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
         guard !markdown.isEmpty else { return result }
 
-        let spans = SyntaxHighlighter.parse(markdown, linkDefinitions: linkDefState.defsText,
-                                            features: markdownFeatures)
+        let spans = continuationDepth == nil
+            ? SyntaxHighlighter.parse(markdown, linkDefinitions: linkDefState.defsText,
+                                      features: markdownFeatures)
+            : parseDedented(markdown)
 
         // The font already applied at `loc` — the enclosing heading's when
         // inside one, else the base body font. Inline spans derive their font
@@ -798,10 +804,14 @@ extension EditorTextView {
                     } else {
                         result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                     }
-                } else if case .heading = span.kind, cursorPosition != nil {
+                } else if case .heading = span.kind,
+                          cursorPosition != nil || isEmptyHeading(span, in: markdown) {
                     // A heading is one logical line. Keep its marker visible
                     // while the caret is anywhere on that line so moving between
                     // inline tokens does not make the leading `#` flicker.
+                    // An empty heading (`#`, `## `, `# #` — valid CommonMark)
+                    // keeps it everywhere: hidden, it would leave a blank line
+                    // with a heading's height and nothing to explain it.
                     result.addAttribute(.foregroundColor, value: syntaxDimColor, range: dr)
                 } else if cursorInToken || !isDelimiterHideable(span.kind) {
                     // Visible: dim the delimiters
@@ -817,7 +827,94 @@ extension EditorTextView {
             }
         }
 
+        if let continuationDepth { styleListContinuation(result, markdown: markdown, depth: continuationDepth) }
         return result
+    }
+
+    /// Spans for a list-continuation paragraph. Parsed alone, its indent
+    /// (4+ spaces under a nested item) reads as an indented code block, so the
+    /// indent is stripped from every line for the parse and the spans are
+    /// shifted back onto the raw text.
+    private func parseDedented(_ markdown: String) -> [SyntaxHighlighter.Span] {
+        var dedented = ""
+        // Per line: (start in the dedented text, total chars removed through it).
+        var shifts: [(start: Int, removed: Int)] = []
+        var removed = 0
+        for line in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+            let ws = line.prefix { $0 == " " || $0 == "\t" }
+            removed += (String(ws) as NSString).length
+            if !shifts.isEmpty { dedented += "\n" }
+            shifts.append((start: (dedented as NSString).length, removed: removed))
+            dedented += line.dropFirst(ws.count)
+        }
+        func map(_ offset: Int) -> Int {
+            let line = shifts.last { $0.start <= offset } ?? shifts[0]
+            return offset + line.removed
+        }
+        func map(_ r: NSRange) -> NSRange {
+            let start = map(r.location)
+            return NSRange(location: start, length: max(0, map(r.upperBound) - start))
+        }
+        return SyntaxHighlighter.parse(dedented, linkDefinitions: linkDefState.defsText,
+                                       features: markdownFeatures).map {
+            SyntaxHighlighter.Span(kind: $0.kind, fullRange: map($0.fullRange),
+                                   contentRange: map($0.contentRange),
+                                   delimiterRanges: $0.delimiterRanges.map(map))
+        }
+    }
+
+    /// A paragraph continuing a list item: every line's leading whitespace is
+    /// hidden and the paragraph sits at the item's text column, as the item's
+    /// own wrapped lines do (`styleListItemSpan`'s `contentIndent`).
+    // ponytail: no indent guides here — the item's guides stop at its own line.
+    private func styleListContinuation(_ result: NSMutableAttributedString,
+                                       markdown: String, depth: Int) {
+        let spaceWidth = (" " as NSString).size(withAttributes: [.font: bodyFont]).width
+        let indent = listPadding + CGFloat(depth + 1) * (bodyFont.pointSize + spaceWidth)
+        let ns = markdown as NSString
+        var lineStart = 0
+        while lineStart < ns.length {
+            var ws = 0
+            while lineStart + ws < ns.length,
+                  [0x20, 0x09].contains(ns.character(at: lineStart + ws)) { ws += 1 }
+            if ws > 0 {
+                let lead = NSRange(location: lineStart, length: ws)
+                result.addAttribute(.font, value: hiddenFont, range: lead)
+                result.addAttribute(.foregroundColor, value: NSColor.clear, range: lead)
+            }
+            // A line that is only its indent (Shift-Return, nothing typed yet)
+            // would be all hidden-font glyphs and collapse to zero height,
+            // taking the caret with it. Its last space keeps the body font, so
+            // the line keeps a body line's height, and a negative kern of its
+            // own advance keeps it zero-width, so the caret stays on the text
+            // column. ponytail: a tab-final indent still collapses; Shift-Return
+            // always ends the indent with spaces.
+            let atLineEnd = lineStart + ws == ns.length || ns.character(at: lineStart + ws) == 0x0A
+            if ws > 0, atLineEnd, ns.character(at: lineStart + ws - 1) == 0x20 {
+                let last = NSRange(location: lineStart + ws - 1, length: 1)
+                result.addAttribute(.font, value: bodyFont, range: last)
+                result.addAttribute(.kern, value: -spaceWidth, range: last)
+            }
+            let lineEnd = ns.range(of: "\n", range: NSRange(location: lineStart,
+                                                            length: ns.length - lineStart))
+            lineStart = lineEnd.location == NSNotFound ? ns.length : lineEnd.upperBound
+        }
+        result.addAttribute(.paragraphStyle,
+                            value: listParagraphStyle(firstLineIndent: indent, contentIndent: indent),
+                            range: NSRange(location: 0, length: result.length))
+    }
+
+    /// True when a heading span holds nothing but its `#` markers and spaces.
+    private func isEmptyHeading(_ span: SyntaxHighlighter.Span, in markdown: String) -> Bool {
+        let ns = markdown as NSString
+        guard span.fullRange.upperBound <= ns.length else { return false }
+        let text = NSMutableString(string: ns.substring(with: span.fullRange))
+        for dr in span.delimiterRanges.sorted(by: { $0.location > $1.location })
+            where dr.location >= span.fullRange.location && dr.upperBound <= span.fullRange.upperBound {
+            text.deleteCharacters(in: NSRange(location: dr.location - span.fullRange.location,
+                                              length: dr.length))
+        }
+        return (text as String).allSatisfy { $0 == " " || $0 == "\t" || $0 == "#" }
     }
 
     /// Applies a whitelisted HTML tag's rendered formatting to `range` (the inner
@@ -919,11 +1016,13 @@ extension EditorTextView {
             styled = styleFrontMatter(block.content)
         } else {
             let depth = listDepth(ofBlock: blockIndex)
+            let continued = listContinuationDepth(ofBlock: blockIndex)
             switch viewMode {
             case .edit:    styled = styleBlock(block.content, cursorPosition: cursorInBlock,
-                                               listDepth: depth)
+                                               listDepth: depth, continuationDepth: continued)
             case .reading: styled = styleBlock(block.content, cursorPosition: nil,
-                                               hideComments: true, listDepth: depth)
+                                               hideComments: true, listDepth: depth,
+                                               continuationDepth: continued)
             case .source:  styled = sourceStyled(block.content)
             }
         }
