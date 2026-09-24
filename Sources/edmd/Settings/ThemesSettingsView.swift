@@ -352,6 +352,9 @@ struct ThemesSettingsView: View {
                 Image(systemName: "ellipsis.circle")
             }
             .menuIndicator(.hidden)
+            // Grey like + and −: a borderless menu button draws its label in
+            // the control tint. Never disabled — Import… needs no selection.
+            .tint(.secondary)
             .fixedSize()
             Spacer()
         }
