@@ -56,24 +56,24 @@ final class FormatToolbar: NSObject {
             // Targets this object, not the responder chain: it opens a popover
             // rather than running a formatting command, so nothing there would
             // answer it (and validation would grey it out).
-            let item = actionItem(id, label: "Format", symbol: "textformat",
+            let item = actionItem(id, label: "Format", toolTip: "Format text", symbol: "textformat",
                                   action: #selector(showFormatPopover(_:)))
             item.target = self
             formatItem = item
             return item
         case Self.image:
-            return menuItem(id, label: "Image", symbol: "photo.on.rectangle",
+            return menuItem(id, label: "Image", toolTip: "Insert an image", symbol: "photo.on.rectangle",
                             menu: imagePopupMenu())
         case Self.checklist:
-            return actionItem(id, label: "Checklist", symbol: "checklist",
+            return actionItem(id, label: "Checklist", toolTip: "Insert a checklist", symbol: "checklist",
                               action: #selector(EditorTextView.formatChecklist(_:)))
         case Self.table:
-            return actionItem(id, label: "Table", symbol: "tablecells",
+            return actionItem(id, label: "Table", toolTip: "Insert a table", symbol: "tablecells",
                               action: #selector(EditorTextView.formatTable(_:)))
         case Self.link:
             // Link only. Wikilink is Format ▸ Wikilink; a hidden right-click
             // menu here would also take the toolbar's own secondary click.
-            return actionItem(id, label: "Link", symbol: "link.badge.plus",
+            return actionItem(id, label: "Link", toolTip: "Insert a link", symbol: "link.badge.plus",
                               action: #selector(EditorTextView.formatLink(_:)))
         case Self.share:
             // AppKit's own share item: it owns the picker, the anchoring and the
@@ -115,11 +115,13 @@ final class FormatToolbar: NSObject {
     /// A plain image item with a nil target: dispatch *and* validation both ride
     /// the responder chain to the focused editor, which is why these get their
     /// enabled state for free (see `EditorTextView.validateToolbarItem`).
-    private func actionItem(_ id: NSToolbarItem.Identifier, label: String,
+    /// `toolTip` is a short verb phrase ("Insert a table"), as help tags are;
+    /// the label is the noun under the icon.
+    private func actionItem(_ id: NSToolbarItem.Identifier, label: String, toolTip: String,
                             symbol: String, action: Selector) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: id)
         item.label = label
-        item.toolTip = label
+        item.toolTip = toolTip
         item.image = Self.symbol(symbol)
         item.target = nil
         item.action = action
@@ -130,11 +132,11 @@ final class FormatToolbar: NSObject {
         return item
     }
 
-    private func menuItem(_ id: NSToolbarItem.Identifier, label: String,
+    private func menuItem(_ id: NSToolbarItem.Identifier, label: String, toolTip: String,
                           symbol: String, menu: NSMenu) -> NSToolbarItem {
         let item = FormatMenuToolbarItem(itemIdentifier: id)
         item.label = label
-        item.toolTip = label
+        item.toolTip = toolTip
         item.image = Self.symbol(symbol)
         item.showsIndicator = true
         item.menu = menu

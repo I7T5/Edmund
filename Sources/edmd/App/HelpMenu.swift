@@ -19,7 +19,7 @@ final class HelpMenu: NSObject {
         helpMenu.addItem(withTitle: "Edmund Help",
                          action: #selector(NSApplication.showHelp(_:)),
                          keyEquivalent: "?")
-        helpMenu.addItem(withTitle: "Keyboard Shortcuts",
+        helpMenu.addItem(withTitle: "Key Bindings",
                          action: #selector(AppDelegate.showKeyBindings(_:)),
                          keyEquivalent: "")
 

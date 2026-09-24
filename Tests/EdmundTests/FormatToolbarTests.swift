@@ -108,7 +108,7 @@ import AppKit
         let (bar, doc) = toolbar()
         let item = bar.makeItem(FormatToolbar.link)
         #expect(item?.action == #selector(EditorTextView.formatLink(_:)))
-        #expect(item?.toolTip == "Link")
+        #expect(item?.toolTip == "Insert a link")
         _ = doc
     }
 

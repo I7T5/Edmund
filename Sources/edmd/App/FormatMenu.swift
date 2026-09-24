@@ -148,7 +148,7 @@ enum FormatMenu {
                     action: #selector(EditorTextView.formatInlineMath(_:))),
         MenuCommand(id: "format.keyboard", submenu: "Font", title: "Keyboard",
                     action: #selector(EditorTextView.formatKeyboard(_:))),
-        MenuCommand(id: "format.comment", submenu: "Font", title: "Comments",
+        MenuCommand(id: "format.comment", submenu: "Font", title: "Comment",
                     action: #selector(EditorTextView.formatComment(_:))),
     ]
 
@@ -189,10 +189,10 @@ enum FormatMenu {
         }
         menu.addItem(.separator())
         menu.addItem(MenuCommand(id: "format.headingIncrement", submenu: "Heading",
-                                 title: "Increment Heading Level",
+                                 title: "Increase Heading Level",
                                  action: #selector(EditorTextView.formatIncrementHeading(_:))).makeItem())
         menu.addItem(MenuCommand(id: "format.headingDecrement", submenu: "Heading",
-                                 title: "Decrement Heading Level",
+                                 title: "Decrease Heading Level",
                                  action: #selector(EditorTextView.formatDecrementHeading(_:))).makeItem())
         return menu
     }

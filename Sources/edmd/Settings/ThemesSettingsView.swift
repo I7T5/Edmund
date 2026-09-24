@@ -119,7 +119,7 @@ struct ThemesSettingsView: View {
             Button("Delete", role: .destructive, action: deleteSelected)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the theme's file. You can't undo this.")
+            Text("This removes the theme’s file. You can’t undo this.")
         }
         .sheet(isPresented: Binding(get: { renaming != nil },
                                     set: { if !$0 { renaming = nil } })) {

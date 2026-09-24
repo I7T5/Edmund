@@ -407,7 +407,7 @@ class Document: NSDocument, HeadingNavigable {
         guard let contents = String(data: data, encoding: .utf8) else {
             Log.error("Read failed: \(data.count) bytes not valid UTF-8", category: .io)
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not read file as UTF-8"])
+                          userInfo: [NSLocalizedDescriptionKey: "The file couldn’t be opened because it isn’t UTF-8 text."])
         }
         Log.info("Read \(data.count) bytes from disk", category: .io)
         pendingContent = contents
@@ -594,7 +594,7 @@ class Document: NSDocument, HeadingNavigable {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.prompt = "Move"
-        panel.message = "Choose a new location for \"\(url.lastPathComponent)\""
+        panel.message = "Choose a new location for “\(url.lastPathComponent)”"
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let destDir = panel.url else { return }
             let newURL = destDir.appendingPathComponent(url.lastPathComponent)
@@ -1196,7 +1196,7 @@ class Document: NSDocument, HeadingNavigable {
         guard let data = text.data(using: .utf8) else {
             Log.error("Save failed: could not encode \(text.count) chars as UTF-8", category: .io)
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not encode text as UTF-8"])
+                          userInfo: [NSLocalizedDescriptionKey: "The document couldn’t be saved as UTF-8 text."])
         }
         Log.info("Saving \(data.count) bytes (\(ending.displayName))", category: .io)
         return data

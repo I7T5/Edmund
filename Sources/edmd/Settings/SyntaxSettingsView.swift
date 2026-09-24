@@ -149,7 +149,7 @@ struct SyntaxSettingsView: View {
                     .disabled(!selectionIsUser)
                 Button(action: revealDefinition) { Image(systemName: "folder") }
                     .accessibilityLabel("Show in Finder")
-                    .help("Show the definition's JSON file in the Finder")
+                    .help("Show the definition’s JSON file in the Finder")
                     // Built-ins are read-only inside the app bundle.
                     .disabled(!selectionIsUser)
                 Spacer()

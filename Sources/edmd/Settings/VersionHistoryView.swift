@@ -64,9 +64,9 @@ struct VersionHistoryView: View {
             Button("Delete", role: .destructive) { performRemove(pendingTargets) }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This permanently deletes the selected saved versions. It can't be undone.")
+            Text("This permanently deletes the selected saved versions. It can’t be undone.")
         }
-        .alert("Couldn't delete some versions",
+        .alert("Couldn’t Delete Some Versions",
                isPresented: .init(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK") { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
