@@ -18,11 +18,19 @@
 #   # timeout: <seconds>   default 60
 #   # expect-failures: <n> the scenario passes only if exactly n assertions
 #                          FAIL (for self-checks that prove assertions can fail)
+#   # args: <flags>        extra launch arguments, e.g.
+#                          `-settings.appearance.mode dark` (no spaces in values)
 # End every scenario with `done` so the app exits with its verdict.
 #
 # Each scenario runs against a temp copy of the whole Tests/Repro tree (the
 # document autosaves in place; fixtures and goldens must never change). The
 # runner kills only the processes it started, never another edmd.
+#
+# REPRO_DIR=<dir> runs the scenarios in <dir> (same layout: *.repro plus
+# fixtures/) instead of Tests/Repro — /verify-live keeps a branch's
+# before/after scenarios in misc/verify/<branch>/scenarios this way.
+# REPRO_OUT=<abs dir> replaces `@OUT@` in the scenarios with <dir> (e.g.
+# `snapshot @OUT@/light.png`) and copies every scenario's log there.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
@@ -42,7 +50,12 @@ fi
 for bundle in "$BIN_DIR"/*.bundle; do [ -e "$bundle" ] && cp -R "$bundle" "$APP/"; done
 
 RUN="$(mktemp -d)/repro"
-cp -R Tests/Repro "$RUN"
+cp -R "${REPRO_DIR:-Tests/Repro}" "$RUN"
+if [ -n "${REPRO_OUT:-}" ]; then
+    mkdir -p "$REPRO_OUT"
+    # One scenario can then write base and branch snapshots to separate dirs.
+    sed -i '' "s#@OUT@#$REPRO_OUT#g" "$RUN"/*.repro
+fi
 pass=0; fail=0; failed=()
 
 for script in "$RUN"/*.repro; do
@@ -50,6 +63,7 @@ for script in "$RUN"/*.repro; do
     [[ -n "$PATTERN" && "$name" != *$PATTERN* ]] && continue
     fixture="$(sed -n 's/^# fixture: *//p' "$script" | head -1)"
     timeout="$(sed -n 's/^# timeout: *//p' "$script" | head -1)"; timeout="${timeout:-60}"
+    args="$(sed -n 's/^# args: *//p' "$script" | head -1)"
     doc="$RUN/fixtures/$fixture"
     if [ -z "$fixture" ] || [ ! -f "$doc" ]; then
         echo "FAIL  $name  (fixture '$fixture' missing)"; fail=$((fail + 1)); failed+=("$name"); continue
@@ -65,7 +79,7 @@ for script in "$RUN"/*.repro; do
         -settings.general.diagnosticLogging YES \
         -settings.edit.indentStyle spaces -settings.edit.indentWidth 2 \
         -settings.edit.continueLists YES -settings.edit.autoCloseBrackets YES \
-        >/dev/null 2>&1 &
+        $args >/dev/null 2>&1 &
     pid=$!
     status=""
     for _ in $(seq 1 $((timeout * 4))); do
@@ -100,5 +114,6 @@ for script in "$RUN"/*.repro; do
 done
 
 echo ""
-echo "== $pass passed, $fail failed  (logs: $RUN/*.repro.log)"
+[ -n "${REPRO_OUT:-}" ] && cp "$RUN"/*.repro.log "$REPRO_OUT"/ 2>/dev/null
+echo "== $pass passed, $fail failed  (logs: ${REPRO_OUT:-$RUN}/*.repro.log)"
 [ "$fail" -eq 0 ]
