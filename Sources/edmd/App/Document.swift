@@ -961,6 +961,15 @@ class Document: NSDocument, HeadingNavigable {
                               window: windowControllers.first?.window)
     }
 
+    /// File ▸ Page Setup…, as a sheet on this window. It edits the *shared*
+    /// print info, not NSDocument's per-document `printInfo`: printing starts
+    /// from a copy of the shared one (MarkdownPrinter.makePrintInfo), so that
+    /// is the only layout that reaches the printer.
+    @objc override func runPageLayout(_ sender: Any?) {
+        guard let window = windowControllers.first?.window else { return }
+        NSPageLayout().beginSheet(using: .shared, on: window) { _ in }
+    }
+
     /// The editing-side view: Source when source mode is on, otherwise Edit.
     /// Read is the other half of the toggle.
     private var editingMode: EditorTextView.ViewMode {

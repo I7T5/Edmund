@@ -436,15 +436,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         fileMenu.addItem(NSMenuItem.separator())
 
-        // Targets NSApp, not the document: printing starts from a copy of the
-        // shared print info (MarkdownPrinter.makePrintInfo), so the app-wide
-        // page layout is the one that reaches the printer. NSDocument's own
-        // runPageLayout would edit a per-document printInfo nothing reads.
+        // Responder chain, like Print: Document.runPageLayout edits the shared
+        // print info that printing copies (see its note).
         let pageSetupItem = fileMenu.addItem(withTitle: "Page Setup\u{2026}",
-                                             action: #selector(NSApplication.runPageLayout(_:)),
+                                             action: #selector(NSDocument.runPageLayout(_:)),
                                              keyEquivalent: "p")
         pageSetupItem.keyEquivalentModifierMask = [.command, .shift]
-        pageSetupItem.target = NSApp
 
         fileMenu.addItem(withTitle: "Print\u{2026}",
                          action: #selector(Document.printDocument(_:)),
