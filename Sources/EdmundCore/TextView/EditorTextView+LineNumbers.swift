@@ -163,6 +163,15 @@ extension EditorTextView {
         }
     }
 
+    /// TextKit 2 lays the viewport out here. A layout that moves lines without
+    /// moving the caret — an image's reserved height arriving after the first
+    /// paint — left the numbers where the lines used to be (a "2" drawn inside
+    /// the picture above it), since only caret moves repainted them.
+    public override func layout() {
+        super.layout()
+        invalidateLineNumbers()
+    }
+
     /// Repaints the numbers after the caret may have changed line. Only the
     /// current line's ink changes, but which line that is isn't known until the
     /// draw, so mark the whole strip the numbers occupy — never the text.
@@ -210,6 +219,20 @@ extension EditorTextView {
             let offset = tlm.offset(from: tlm.documentRange.location,
                                     to: fragment.rangeInElement.location)
             let line = self.line(forOffset: offset)
+            // The empty line after a trailing newline is no paragraph of its
+            // own: TextKit hangs it on the last fragment as an extra, empty line
+            // fragment, which the first-line rule below never reaches — so it
+            // went unnumbered. Number it against its own line.
+            defer {
+                let lines = fragment.textLineFragments
+                if lines.count > 1, let extra = lines.last, extra.characterRange.length == 0,
+                   fragment.rangeInElement.endLocation.compare(tlm.documentRange.endLocation) == .orderedSame {
+                    let baseline = frame.minY + extra.typographicBounds.minY + extra.glyphOrigin.y
+                    if baseline <= bottom {
+                        body(self.lineStarts.count, baseline - self.bodyFont.capHeight / 2)
+                    }
+                }
+            }
             // A paragraph is normally one fragment, but don't repeat a number if
             // TextKit ever splits one — the first fragment owns the line.
             guard line != lastLine,
