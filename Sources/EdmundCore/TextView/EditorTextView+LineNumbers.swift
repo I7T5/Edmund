@@ -224,13 +224,23 @@ extension EditorTextView {
             // rather than the storage, where a list item's first character is
             // the 0.01 pt hidden font and would report no cap at all.
             let bounds = firstLine.typographicBounds
-            let baseline = frame.minY + bounds.minY + firstLine.glyphOrigin.y
             let text = firstLine.attributedString
             var cap: CGFloat = 0
+            var ascender: CGFloat = 0
             text.enumerateAttribute(.font,
                                     in: NSRange(location: 0, length: text.length)) { value, _, _ in
-                if let font = value as? NSFont { cap = max(cap, font.capHeight) }
+                if let font = value as? NSFont {
+                    cap = max(cap, font.capHeight)
+                    ascender = max(ascender, font.ascender)
+                }
             }
+            // A line held open for an image or formula reserves that height
+            // above its text, so its baseline sits at the bottom of the
+            // picture. Keep the number at the top of the line — where a text
+            // line's baseline already is — by capping the baseline there.
+            let lineTop = frame.minY + bounds.minY
+            let baseline = min(frame.minY + bounds.minY + firstLine.glyphOrigin.y,
+                               lineTop + max(ascender, self.bodyFont.ascender))
             body(line, baseline - (cap > 0 ? cap : self.bodyFont.capHeight) / 2)
             return true
         }
