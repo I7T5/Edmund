@@ -227,7 +227,13 @@ extension EditorTextView {
                 let lines = fragment.textLineFragments
                 if lines.count > 1, let extra = lines.last, extra.characterRange.length == 0,
                    fragment.rangeInElement.endLocation.compare(tlm.documentRange.endLocation) == .orderedSame {
-                    let baseline = frame.minY + extra.typographicBounds.minY + extra.glyphOrigin.y
+                    // TextKit's box for this line is provisional until the caret
+                    // goes there: after an empty paragraph it sits 16 pt down,
+                    // overlapping the line above (measured). The line can never
+                    // start above the previous one's bottom, so clamp it there.
+                    let above = lines[lines.count - 2].typographicBounds.maxY
+                    let top = max(extra.typographicBounds.minY, above)
+                    let baseline = frame.minY + top + self.bodyFont.ascender
                     if baseline <= bottom {
                         body(self.lineStarts.count, baseline - self.bodyFont.capHeight / 2)
                     }
