@@ -319,12 +319,12 @@ Notable subsystems:
   path) and `applyWholeDocumentEdit` (non-contiguous, e.g. footnotes).
 - **View modes**: ⌘E (View menu + toolbar button) *toggles* editing ↔ Read
   via `Document.toggleViewMode`. **Source is not a third toggle stop** —
-  it's a persisted preference (`AppSettings.sourceMode`, a "Source Mode"
-  checkbox in the View menu and the toolbar button's right-click menu):
-  when on, the editing half of the toggle is Source instead of Edit, and a
-  freshly opened document honors it. The toolbar button left-clicks to
-  toggle, right-clicks for the full mode menu (§8: why that right-click is
-  intercepted in `DocumentWindow.sendEvent`). Toolbar has
+  it's a persisted preference (`AppSettings.sourceMode`, View ▸ Show
+  Source in Editor): when on, the editing half of the toggle is Source
+  instead of Edit, and a freshly opened document honors it. Every toolbar
+  button is a plain bordered `NSToolbarItem` (image + `isBordered`, no
+  custom view), so AppKit gives them one size, hover and Icon-and-Text
+  label layout; none carries a right-click menu (§8). Toolbar has
   `allowsUserCustomization = true` (an AppKit `NSToolbar` feature).
 - **Read mode is a separate WKWebView**, not an editor styling mode.
   `.reading` swaps the editor's scroll view for a `ReadModeWebView`
@@ -907,12 +907,12 @@ Notable subsystems:
   secondary (right / control) click over the toolbar — *including* a custom
   item view — into its "Customize Toolbar…" context menu. The view's
   `menu`, a `rightMouseDown` override, and a secondary-button
-  `NSClickGestureRecognizer` **all lose**. Fix (view-mode button):
-  intercept in `DocumentWindow.sendEvent(_:)` — the documented funnel every
-  window event passes through *before* the toolbar acts — and when the
-  click falls inside the button's bounds, pop the menu and swallow the
-  event. (Caveat: true fullscreen moves the toolbar to a separate window
-  this main-window hook doesn't cover.)
+  `NSClickGestureRecognizer` **all lose**. The view-mode and Link buttons
+  once won it by intercepting in an `NSWindow.sendEvent(_:)` override;
+  both menus were removed (2026-09-23) because a hidden right-click menu on
+  a toolbar button is undiscoverable and takes AppKit's own toolbar menu
+  away. Don't reintroduce one — give a toolbar button a visible pull-down
+  (`NSMenuToolbarItem`, like Image) if it needs a menu.
 - **Window-size persistence must round-trip the frame, not the content
   size.** Saving `contentView.bounds.size` and re-applying it as the
   initializer's `contentRect` grows the window by title-bar + (unified)

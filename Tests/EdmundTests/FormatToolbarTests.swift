@@ -79,37 +79,36 @@ import AppKit
         _ = doc
     }
 
-    /// `validate()` gates formatting commands on the caret. The Format item's
-    /// action only opens a popover, so nothing in the responder chain answers it
-    /// — gating it there disabled the button permanently.
-    @Test func theFormatButtonIsNotGatedOnAFormattingAction() {
+    /// Every button is AppKit's own bordered item — no custom views — so they
+    /// share one size, one hover, and one Icon-and-Text label layout.
+    @Test func buttonsAreNativeBorderedItems() {
         let (bar, doc) = toolbar()
-        let item = bar.makeItem(FormatToolbar.format) as? FormatButtonItem
-        let button = item?.view as? NSButton
-        button?.isEnabled = false
-        item?.validate()
-        #expect(button?.isEnabled == true)
+        for id in [FormatToolbar.format, FormatToolbar.checklist,
+                   FormatToolbar.table, FormatToolbar.link] {
+            let item = bar.makeItem(id)
+            #expect(item?.view == nil, "\(id.rawValue) has a custom view")
+            #expect(item?.isBordered == true, "\(id.rawValue) is not bordered")
+        }
         _ = doc
     }
 
-    /// A tooltip names the command, never the secondary-click menu behind it —
-    /// AppKit does not advertise those, and the hint only shows once you are
-    /// already hovering the item you would have had to know about.
-    @Test func tooltipsDoNotAdvertiseTheSecondaryClickMenu() {
+    /// The Format item opens a popover, not a formatting command, so it targets
+    /// the toolbar itself — through the responder chain nothing would answer it.
+    @Test func formatItemTargetsTheToolbar() {
         let (bar, doc) = toolbar()
-        #expect(bar.makeItem(FormatToolbar.link)?.toolTip == "Link")
+        let item = bar.makeItem(FormatToolbar.format)
+        #expect(item?.target === bar)
+        #expect(item?.action == #selector(FormatToolbar.showFormatPopover(_:)))
         _ = doc
     }
 
-    /// The other custom-view item is a real command and must still be gated,
-    /// or the fix above would have blanket-enabled everything.
-    @Test func theLinkButtonIsStillGated() {
+    /// Link is just Link: Wikilink lives in Format ▸ Wikilink, and no toolbar
+    /// button carries a hidden right-click menu.
+    @Test func linkItemIsJustLink() {
         let (bar, doc) = toolbar()
-        let item = bar.makeItem(FormatToolbar.link) as? FormatButtonItem
-        let button = item?.view as? NSButton
-        button?.isEnabled = true
-        item?.validate()   // no editor is first responder here
-        #expect(button?.isEnabled == false)
+        let item = bar.makeItem(FormatToolbar.link)
+        #expect(item?.action == #selector(EditorTextView.formatLink(_:)))
+        #expect(item?.toolTip == "Link")
         _ = doc
     }
 
@@ -754,13 +753,4 @@ import AppKit
         #expect(ImageSource.allCases.filter(\.isAvailable) == [.file])
     }
 
-    /// The Link item's secondary-click menu — Image has its own toolbar item.
-    @Test func linkMenuIsLinkAndWikilink() {
-        let (bar, doc) = toolbar()
-        let menu = bar.linkMenu()
-        #expect(titles(menu) == ["Link", "Wikilink"])
-        #expect(menu.items[0].action == #selector(EditorTextView.formatLink(_:)))
-        #expect(menu.items[1].action == #selector(EditorTextView.formatWikilink(_:)))
-        _ = doc
-    }
 }

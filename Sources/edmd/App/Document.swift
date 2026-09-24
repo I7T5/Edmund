@@ -11,8 +11,7 @@ class Document: NSDocument, HeadingNavigable {
 
     var editor: EditorTextView!
     private var statusBar: StatusBarView!
-    private var viewModeButton: NSButton?
-    /// The toolbar item hosting `viewModeButton`, whose label names the mode.
+    /// The view-mode toolbar item. Its image, label and tooltip follow the mode.
     private weak var viewModeItem: NSToolbarItem?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
@@ -128,7 +127,7 @@ class Document: NSDocument, HeadingNavigable {
         let windowWidth: CGFloat = 800
         let windowHeight: CGFloat = 520
 
-        let window = DocumentWindow(
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
@@ -218,15 +217,6 @@ class Document: NSDocument, HeadingNavigable {
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .line
-
-        // Wire the window's secondary-click interceptions now that the toolbar has
-        // synchronously vended its buttons (see DocumentWindow).
-        window.secondaryClickTargets = [
-            .init(viewModeButton) { [weak self] in self?.viewModeMenu() ?? NSMenu() },
-            .init(formatToolbar.linkButton) { [weak self] in
-                self?.formatToolbar.linkMenu() ?? NSMenu()
-            },
-        ]
 
         let statusBarHeight: CGFloat = 22
         let contentBounds = window.contentView!.bounds
@@ -648,7 +638,7 @@ class Document: NSDocument, HeadingNavigable {
         // change size when the mode flips. These two numbers are chosen so the
         // *drawn* glyphs match, which is what the eye compares.
         let pointSize: CGFloat = editor.viewMode == .reading ? 12.9 : 15
-        viewModeButton?.image = icon(for: editor.viewMode)?
+        viewModeItem?.image = icon(for: editor.viewMode)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))
         // Names what the click does, not what the mode is: the icon already shows
         // the current mode, and AppKit's own toolbars read "Hide Sidebar" /
@@ -656,7 +646,7 @@ class Document: NSDocument, HeadingNavigable {
         // option *of* the editing view, not a third destination, so the toggle
         // only ever has these two halves to name — even when `toggledViewMode`
         // lands in `.source`.
-        viewModeButton?.toolTip = editor.viewMode == .reading
+        viewModeItem?.toolTip = editor.viewMode == .reading
             ? "Switch to Edit View" : "Switch to Read View"
         // The label (shown under Icon and Text) states the current mode, the
         // way the button's icon does; the palette keeps the item's generic name.
@@ -980,10 +970,7 @@ class Document: NSDocument, HeadingNavigable {
         AppSettings.sourceMode ? .source : .edit
     }
 
-    @objc private func selectEditMode(_ sender: Any?)    { setViewMode(editingMode) }
-    @objc private func selectReadingMode(_ sender: Any?) { setViewMode(.reading) }
-
-    /// The "Show source in editor" checkbox (button menu and View menu).
+    /// View ▸ Show Source in Editor.
     /// Persists the setting and, if we're in the editing view, swaps it to
     /// the new editing mode right away.
     @objc func toggleSourceMode(_ sender: Any?) {
@@ -1170,32 +1157,6 @@ class Document: NSDocument, HeadingNavigable {
         readView?.showWebInspector(nil)
     }
 
-    /// One mode menu item: icon + title, checked when `on`.
-    private func menuItem(_ title: String, _ image: NSImage?,
-                          _ action: Selector, on: Bool) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        item.target = self
-        item.image = image
-        item.state = on ? .on : .off
-        return item
-    }
-
-    /// The right-click menu: Edit / Read selection, a divider, then the
-    /// "Show source in editor" checkbox. Built fresh each time so state stays current.
-    fileprivate func viewModeMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false   // actions always fire on selection
-        let inEditing = editor?.viewMode != .reading
-        menu.addItem(menuItem("Edit", icon(for: .edit),
-                              #selector(selectEditMode(_:)), on: inEditing))
-        menu.addItem(menuItem("Read", icon(for: .reading),
-                              #selector(selectReadingMode(_:)), on: !inEditing))
-        menu.addItem(.separator())
-        menu.addItem(menuItem("Show source in editor", nil,
-                              #selector(toggleSourceMode(_:)), on: AppSettings.sourceMode))
-        return menu
-    }
-
     // MARK: - Writing
 
     override func data(ofType typeName: String) throws -> Data {
@@ -1249,66 +1210,15 @@ extension Document: NSToolbarDelegate {
         item.paletteLabel = "View Mode"
         item.visibilityPriority = .high
         viewModeItem = item
-
-        // Left-click toggles the editing view ↔ Read. The right-click mode menu
-        // is handled upstream in DocumentWindow.sendEvent — every view-level
-        // approach (the view's `menu`, rightMouseDown, a gesture recognizer)
-        // loses the secondary click to the toolbar's "Customize Toolbar…" menu.
-        let button = NSButton(image: NSImage(), target: self,
-                              action: #selector(toggleViewMode(_:)))
-        button.bezelStyle = .texturedRounded
-        button.imagePosition = .imageOnly
-        viewModeButton = button
-        item.view = button
+        // A plain bordered item, like every formatting item: AppKit sizes it,
+        // lays out its label and highlights it. No right-click menu — both of
+        // its entries (the other mode, Show Source in Editor) are in View, and
+        // a toolbar's secondary click belongs to AppKit's own toolbar menu.
+        item.isBordered = true
+        item.target = self
+        item.action = #selector(toggleViewMode(_:))
         refreshViewModeButton()
         return item
-    }
-}
-
-/// Document window that intercepts a secondary (right / control) click on a
-/// toolbar button and shows that button's own menu. `sendEvent` is the single
-/// funnel all window events pass through *before* the toolbar/titlebar can turn
-/// the click into its own "Customize Toolbar…" context menu, so this is the one
-/// place the interception reliably wins — the view's `menu`, a `rightMouseDown`
-/// override and a gesture recognizer all lose it.
-///
-/// Caveat: true full screen moves the toolbar into a separate window this
-/// main-window hook does not cover.
-final class DocumentWindow: NSWindow {
-    /// A button that claims its own secondary click, with the menu to show.
-    /// The view is weak: the toolbar owns it and may vend a replacement.
-    struct SecondaryClickTarget {
-        weak var view: NSView?
-        let makeMenu: () -> NSMenu
-
-        init(_ view: NSView?, makeMenu: @escaping () -> NSMenu) {
-            self.view = view
-            self.makeMenu = makeMenu
-        }
-    }
-
-    var secondaryClickTargets: [SecondaryClickTarget] = []
-
-    override func sendEvent(_ event: NSEvent) {
-        if isSecondaryClick(event) {
-            for target in secondaryClickTargets {
-                guard let button = target.view,
-                      button.bounds.contains(button.convert(event.locationInWindow, from: nil))
-                else { continue }
-                target.makeMenu().popUp(positioning: nil,
-                                        at: NSPoint(x: 0, y: button.bounds.maxY + 4), in: button)
-                return
-            }
-        }
-        super.sendEvent(event)
-    }
-
-    private func isSecondaryClick(_ event: NSEvent) -> Bool {
-        switch event.type {
-        case .rightMouseDown: return true
-        case .leftMouseDown:  return event.modifierFlags.contains(.control)
-        default:              return false
-        }
     }
 }
 
