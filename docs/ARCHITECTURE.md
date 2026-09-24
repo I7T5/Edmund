@@ -222,7 +222,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Format bar | `edmd/Views/FormatBarView.swift` (layout + state refresh) and `FormatBarControls.swift` (the controls), on `ChromeBarView.swift` (titlebar-material + hairline base shared with the find bar), `edmd/App/FormatMenu.swift` (the two pulldowns are the same `headingMenu()`/`calloutMenu()` factories as the Format menu — one menu definition, three homes), `Document.formatBar` (owned by the document; **off by default**, toggled by View ▸ Show/Hide Format Bar, `settings.edit.showFormatBar`, force-hidden in Reading mode). Stacks **above** the find bar, both through `layoutTopBars()` (§6 top-bar insets). Bar is horizontally centred by design (a narrow window clips the same reachable band on both sides) |
 | Format-bar on-state | `EdmundCore/Editing/EditorTextView+FormattingState.swift` — the read-only counterpart to the toggles: `activeFormattingActions()`, `activeHeadingLevel()`, `activeCalloutType()`, refreshed from `editorDidChange` / `editorSelectionDidChange`. It scans **source delimiters, not rendered attributes**, because the attributes are lossy for this: a heading is also bold, and `==mark==` and a code span are both a background fill. Star *run length* is what separates `*x*` / `**x**` / `***x***`. A callout deliberately does not also light Block Quote (it is one underneath, but the callout pulldown gives the more specific answer). Hover/on chips live on `BarControlChip`; a chip is a fixed-height box centred on the bar's `interior`, **not** on the control's own bounds — sizing it per control made every symbol a different chip height. |
 | Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
-| Status bar | `edmd/Views/StatusBarView.swift` |
+| Status bar | `edmd/Views/StatusBarView.swift`, prefs in `Model/StatusBarPrefs.swift` (app-wide; `save` posts `didChangeNotification` so every window's bar follows). View ▸ Show/Hide Status Bar + Always Show Status Bar (≙ `!autoHide`) mirror the toolbar pair; the bar's context menu picks fields only |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing, `--variant sparkle\|adhoc\|mas`), `Package.swift`, `Info.plist`, `Resources/` |
 | App Sandbox | The shipping build is sandboxed (`Resources/Edmund-Sparkle.entitlements`: sandbox, user-selected r/w, app-scope bookmarks, print, network client, Sparkle's `-spks`/`-spki` mach-lookup exceptions; `Info.plist` `SUEnableInstallerLauncherService`). Container: `~/Library/Containers/com.i7t5.edmund/` — the sparkle variant signs **with the bundle id** (no `--identifier` override) because the container name and macOS's automatic preferences migration key off the signing id. `Resources/container-migration.plist` moves `Application Support/Edmund` (themes, syntaxes, RaTeX payload) into the container on the first sandboxed launch; verified live 2026-09-15, prefs migrate automatically. Logs: `Log.defaultDirectory` = Application Support/Edmund/Logs (container-native, Settings ▸ Advanced ▸ Show in Finder). Files *beside* a document: Documents/Desktop/Downloads are entitled (home-relative temporary exceptions on the GitHub build; only Apple's Downloads entitlement on MAS — App Review scrutinizes exceptions); anything else needs a grant. `Model/FolderAccess.swift` (app-scoped bookmarks in `folderGrants`, lazily resolved, scope started once per process; entitled folders read from the running signature via `SecTask`, real home via `getpwuid`) + `Rendering/EditorTextView+FolderAccess.swift` (the `NSOpenPanel`: raised automatically once per folder per launch when a render meets an unreadable sibling image, from a wiki link that can't be read, and on ⌘-click of the "Folder access needed" placeholder as the retry after Cancel; a parent folder covers everything below it). Gotcha: under the sandbox `fileExists` answers **true** for an ungranted file while the read is denied — gate on `FolderAccess.covers`, never on stat. `-debug.reproScript` / CGEvents need the adhoc variant. **MAS variant** (`--variant mas`): `EDMUND_MAS=1` makes `Package.swift` drop the Sparkle product from the `edmd` target (package dependency stays, so `Package.resolved` never churns); `main.swift` gates the updater + "Check for Updates…" behind `#if canImport(Sparkle)`; the script skips embedding, strips the `SU*` keys with `plutil -remove`, signs with `Resources/Edmund.entitlements` (no mach-lookup exceptions). Still ad-hoc signed — App Store Connect certs/provisioning are outside the repo. Deferred: MetricKit crash reporter (dormant feature, no ingestion server; `.ips` scan just finds nothing under the sandbox). |
 
@@ -319,12 +319,12 @@ Notable subsystems:
   path) and `applyWholeDocumentEdit` (non-contiguous, e.g. footnotes).
 - **View modes**: ⌘E (View menu + toolbar button) *toggles* editing ↔ Read
   via `Document.toggleViewMode`. **Source is not a third toggle stop** —
-  it's a persisted preference (`AppSettings.sourceMode`, a "Source Mode"
-  checkbox in the View menu and the toolbar button's right-click menu):
-  when on, the editing half of the toggle is Source instead of Edit, and a
-  freshly opened document honors it. The toolbar button left-clicks to
-  toggle, right-clicks for the full mode menu (§8: why that right-click is
-  intercepted in `DocumentWindow.sendEvent`). Toolbar has
+  it's a persisted preference (`AppSettings.sourceMode`, View ▸ Show
+  Source in Editor): when on, the editing half of the toggle is Source
+  instead of Edit, and a freshly opened document honors it. Every toolbar
+  button is a plain bordered `NSToolbarItem` (image + `isBordered`, no
+  custom view), so AppKit gives them one size, hover and Icon-and-Text
+  label layout; none carries a right-click menu (§8). Toolbar has
   `allowsUserCustomization = true` (an AppKit `NSToolbar` feature).
 - **Read mode is a separate WKWebView**, not an editor styling mode.
   `.reading` swaps the editor's scroll view for a `ReadModeWebView`
@@ -907,12 +907,12 @@ Notable subsystems:
   secondary (right / control) click over the toolbar — *including* a custom
   item view — into its "Customize Toolbar…" context menu. The view's
   `menu`, a `rightMouseDown` override, and a secondary-button
-  `NSClickGestureRecognizer` **all lose**. Fix (view-mode button):
-  intercept in `DocumentWindow.sendEvent(_:)` — the documented funnel every
-  window event passes through *before* the toolbar acts — and when the
-  click falls inside the button's bounds, pop the menu and swallow the
-  event. (Caveat: true fullscreen moves the toolbar to a separate window
-  this main-window hook doesn't cover.)
+  `NSClickGestureRecognizer` **all lose**. The view-mode and Link buttons
+  once won it by intercepting in an `NSWindow.sendEvent(_:)` override;
+  both menus were removed (2026-09-23) because a hidden right-click menu on
+  a toolbar button is undiscoverable and takes AppKit's own toolbar menu
+  away. Don't reintroduce one — give a toolbar button a visible pull-down
+  (`NSMenuToolbarItem`, like Image) if it needs a menu.
 - **Window-size persistence must round-trip the frame, not the content
   size.** Saving `contentView.bounds.size` and re-applying it as the
   initializer's `contentRect` grows the window by title-bar + (unified)

@@ -81,10 +81,11 @@ enum FormatMenu {
         return formatItem
     }
 
-    /// The "Toggle View Mode" item (⌘E) for the View menu — bracketed by
-    /// dividers by the caller.
+    /// The Show Reader / Show Editor item (⌘E) for the View menu — bracketed
+    /// by dividers by the caller. Titled for a document opening in the editor;
+    /// `Document.validateMenuItem` retitles it for the current mode.
     static func viewModeToggleItem() -> NSMenuItem {
-        MenuCommand(id: "view.toggleMode", group: "View", title: "Toggle View Mode",
+        MenuCommand(id: "view.toggleMode", group: "View", title: "Show Reader",
                     action: #selector(Document.toggleViewMode(_:)),
                     shortcut: .cmd("e")).makeItem()
     }

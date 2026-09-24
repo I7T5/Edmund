@@ -460,9 +460,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // is selected. The manual counterpart to Settings ▸ Edit ▸ Document,
         // which only wraps files that already arrived wrapped. First-responder
         // routing like the Find items, so it greys out in Reading mode.
-        editMenu.addItem(withTitle: "Hard Wrap Paragraphs",
-                         action: #selector(EditorTextView.hardWrapParagraphs(_:)),
-                         keyEquivalent: "")
+        editMenu.addItem(MenuCommand(id: "edit.hardWrapParagraphs", group: "Edit",
+                                     title: "Hard Wrap Paragraphs",
+                                     action: #selector(EditorTextView.hardWrapParagraphs(_:))).makeItem())
 
         editMenu.addItem(NSMenuItem.separator())
 

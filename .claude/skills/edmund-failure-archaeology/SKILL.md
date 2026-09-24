@@ -400,7 +400,9 @@ preceding heal breadcrumb in `~/.edmund/logs` first.
   "Customize Toolbar…" menu. Working fix: `DocumentWindow` overrides
   `NSWindow.sendEvent` — the documented funnel ahead of the toolbar — and
   swallows secondary clicks on the view-mode button. Do not retry view-level
-  interception for anything the titlebar/toolbar claims.
+  interception for anything the titlebar/toolbar claims. **Superseded
+  2026-09-23:** both toolbar right-click menus (view mode, Link/Wikilink) and
+  the override were removed; the buttons became native bordered items.
 - **Invisible CJK input** (`a3df387`): IME-composed text was invisible until
   committed; fixed by keeping marked text visible. Related to (and predating)
   the round-1 marked-text rules.

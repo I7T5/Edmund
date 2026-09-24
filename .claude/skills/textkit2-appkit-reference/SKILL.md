@@ -218,11 +218,10 @@ toolbar acts. This matters because with `NSToolbar.allowsUserCustomization =
 true`, the toolbar claims **any secondary (right/control) click over the
 toolbar** — including a custom item view — for its own "Customize Toolbar…" menu,
 downstream of view-level handlers (`menu`, `rightMouseDown`, gesture
-recognizers all lose). Edmund's fix for the view-mode button: intercept in
-`DocumentWindow.sendEvent(_:)`, pop the menu when the click is inside the
-button's bounds, and swallow it (`return`); other clicks fall through to
-`super`. (Caveat: true fullscreen moves the toolbar to a separate window, so
-this main-window hook wouldn't cover it.)
+recognizers all lose). Edmund once intercepted there (a `DocumentWindow`
+override) for right-click menus on the view-mode and Link buttons; both menus
+and the override were removed on 2026-09-23 — toolbar buttons that need a menu
+use a visible `NSMenuToolbarItem` pull-down instead.
 
 ---
 

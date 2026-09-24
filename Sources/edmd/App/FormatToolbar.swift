@@ -28,11 +28,6 @@ final class FormatToolbar: NSObject {
 
     private weak var document: Document?
 
-    /// The Link item's button, so `DocumentWindow` can claim its secondary click
-    /// for the Link/Wikilink menu (see the note there — a custom item cannot win
-    /// that click by itself).
-    private(set) weak var linkButton: NSView?
-
     init(document: Document) {
         self.document = document
         super.init()
@@ -58,15 +53,13 @@ final class FormatToolbar: NSObject {
     func makeItem(_ id: NSToolbarItem.Identifier) -> NSToolbarItem? {
         switch id {
         case Self.format:
-            let item = FormatButtonItem(itemIdentifier: id)
-            item.label = "Format"
-            item.toolTip = "Format"
-            let button = NSButton(image: Self.symbol("textformat") ?? NSImage(),
-                                  target: self, action: #selector(showFormatPopover(_:)))
-            button.bezelStyle = .texturedRounded
-            button.imagePosition = .imageOnly
-            item.view = button
-            formatButton = button
+            // Targets this object, not the responder chain: it opens a popover
+            // rather than running a formatting command, so nothing there would
+            // answer it (and validation would grey it out).
+            let item = actionItem(id, label: "Format", symbol: "textformat",
+                                  action: #selector(showFormatPopover(_:)))
+            item.target = self
+            formatItem = item
             return item
         case Self.image:
             return menuItem(id, label: "Image", symbol: "photo.on.rectangle",
@@ -78,21 +71,10 @@ final class FormatToolbar: NSObject {
             return actionItem(id, label: "Table", symbol: "tablecells",
                               action: #selector(EditorTextView.formatTable(_:)))
         case Self.link:
-            let item = FormatButtonItem(itemIdentifier: id)
-            item.label = "Link"
-            // No "right-click for Wikilink" hint: AppKit never advertises a
-            // secondary-click menu in a tooltip (Safari's back button holds a
-            // history menu and says only "Show the previous page"), and a tooltip
-            // is seen only after hovering the thing whose menu you didn't know
-            // about. Wikilink stays discoverable through the Format menu.
-            item.toolTip = "Link"
-            let button = NSButton(image: Self.symbol("link.badge.plus") ?? NSImage(),
-                                  target: nil, action: #selector(EditorTextView.formatLink(_:)))
-            button.bezelStyle = .texturedRounded
-            button.imagePosition = .imageOnly
-            item.view = button
-            linkButton = button
-            return item
+            // Link only. Wikilink is Format ▸ Wikilink; a hidden right-click
+            // menu here would also take the toolbar's own secondary click.
+            return actionItem(id, label: "Link", symbol: "link.badge.plus",
+                              action: #selector(EditorTextView.formatLink(_:)))
         case Self.share:
             // AppKit's own share item: it owns the picker, the anchoring and the
             // standard icon, and asks the delegate below for what to share.
@@ -106,15 +88,15 @@ final class FormatToolbar: NSObject {
         }
     }
 
-    /// The Format item's button, so the popover has something to hang off.
-    private weak var formatButton: NSView?
+    /// The Format item, which the popover hangs off.
+    private weak var formatItem: NSToolbarItem?
     private var formatPopover: NSPopover?
 
     /// Opens (or closes) the format panel. Rebuilt each time so the rows reflect
     /// the current caret and any shortcut changed in Settings ▸ Key Bindings.
     @objc func showFormatPopover(_ sender: Any?) {
         if let open = formatPopover, open.isShown { open.performClose(sender); return }
-        guard let anchor = formatButton else { return }
+        guard let anchor = formatItem else { return }
 
         let popover = NSPopover()
         popover.behavior = .transient        // Esc + click-outside dismissal, free
@@ -124,17 +106,8 @@ final class FormatToolbar: NSObject {
                                                  popover: popover)
         popover.contentViewController = controller
         formatPopover = popover
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        popover.show(relativeTo: anchor)
         controller.refresh()
-    }
-
-    /// The Link item's secondary-click menu: Link and Wikilink.
-    func linkMenu() -> NSMenu {
-        let menu = NSMenu(title: "Link")
-        for cmd in FormatMenu.linkCommands where cmd.id != "format.image" {
-            menu.addItem(cmd.makeItem())
-        }
-        return menu
     }
 
     // MARK: - Item construction
@@ -151,8 +124,8 @@ final class FormatToolbar: NSObject {
         item.target = nil
         item.action = action
         // Without this a plain image item draws bare and never highlights under
-        // the pointer, unlike the custom-view items either side of it — which is
-        // what made Checklist and Table look dead next to Format and Link.
+        // the pointer. Every button in the toolbar is one of these, so AppKit
+        // gives them all the same size, hover and Icon-and-Text label layout.
         item.isBordered = true
         return item
     }
@@ -564,26 +537,6 @@ final class FormatMenuToolbarItem: NSMenuToolbarItem {
             as? EditorTextView)?
             .isFormattingActionEnabled(#selector(EditorTextView.formatBold(_:)),
                                        representedObject: nil) ?? false
-    }
-}
-
-/// A toolbar item with a custom view. AppKit skips validation entirely for those,
-/// so the enabled state is pushed onto the button by hand.
-final class FormatButtonItem: NSToolbarItem {
-    override func validate() {
-        guard let action, let button = view as? NSButton else { return }
-        // Only commands the editor runs are gated by the caret. The Format item
-        // opens a popover — it is not a formatting action, nothing in the
-        // responder chain answers it, and gating it here left it permanently
-        // disabled. The popover disables its own inapplicable rows.
-        guard EditorTextView.formattingActions.contains(action) else {
-            button.isEnabled = true
-            return
-        }
-        // `NSApp` is an implicitly-unwrapped optional and is genuinely nil in a
-        // test process, so chain it rather than trusting the declaration.
-        button.isEnabled = (NSApp?.target(forAction: action) as? EditorTextView)?
-            .isFormattingActionEnabled(action, representedObject: nil) ?? false
     }
 }
 

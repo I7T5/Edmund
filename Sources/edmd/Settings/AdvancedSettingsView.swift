@@ -58,6 +58,7 @@ struct AdvancedSettingsView: View {
                 Text("Diagnostics:")
                     .gridColumnAlignment(.trailing)
                 VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Ask to report crashes on GitHub", isOn: $offerCrashReports)
                     Toggle("Save diagnostic logs", isOn: $diagnosticLogging)
                         .onChange(of: diagnosticLogging) { AppSettings.applyLogging() }
                     HStack(spacing: 6) {
@@ -71,36 +72,31 @@ struct AdvancedSettingsView: View {
                     }
                     .disabled(!diagnosticLogging)
                     .padding(.leading, 20)
-                    Text("Logs are kept locally in Edmund's Application Support folder and will never leave that folder unless you move them. They are only useful if you want to improve your bug reports / GitHub issues.")
+                    Text("Logs stay on this Mac, in Edmund’s Application Support folder. Attach them to a GitHub issue when reporting a bug.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
+                    // Regular size, like every other control in the pane; the
+                    // small captions around it are text, not controls. No
+                    // ellipsis: it acts at once, asking nothing more (HIG).
                     Button("Show in Finder", action: revealLogs)
-                        .controlSize(.small)
                         .padding(.leading, 20)
+                        // Sets the tracing toggle apart from the button, which
+                        // belongs to the logs note above it.
+                        .padding(.bottom, 6)
                     Toggle("Verbose editor tracing", isOn: $verboseEditorDiagnostics)
                         .onChange(of: verboseEditorDiagnostics) { AppSettings.applyLogging() }
                         .disabled(!diagnosticLogging)
                         .padding(.leading, 20)
-                    Text("Records every keystroke, caret move, and sync — for reproducing tricky editor bugs (caret drift). Noisy; leave off unless asked.")
+                    Text("Records every keystroke, caret move, and text sync. Use only while reproducing an editor bug.")
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 360, alignment: .leading)
                         .padding(.leading, 40)
-}
-            }
-
-            GridRow {
-                Divider().gridCellColumns(2)
-            }
-
-            GridRow {
-                Text("Crash reports:")
-                    .gridColumnAlignment(.trailing)
-                Toggle("Ask to report crashes on GitHub", isOn: $offerCrashReports)
+                }
             }
         }
         .settingsPanePadding()

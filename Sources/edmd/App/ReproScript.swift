@@ -412,7 +412,7 @@ enum ReproScript {
                         // driven from here, so this is the only way to check it.
                         let tip = item.view?.toolTip ?? item.toolTip
                         report("repro toolbar \(item.itemIdentifier.rawValue) " +
-                               "enabled=\(on) tip=\(tip ?? "nil")")
+                               "enabled=\(on) label=\(item.label) tip=\(tip ?? "nil")")
                     }
                 }
             case "clicktoolbar":

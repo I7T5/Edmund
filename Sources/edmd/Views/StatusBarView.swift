@@ -4,10 +4,11 @@ import EdmundCore
 // MARK: - Status Bar View
 
 /// Floating status bar. Hidden by default and revealed when the pointer enters
-/// its strip (or pinned visible via the context menu). It draws everything
-/// itself — a vertical gradient from the editor background fading to transparent,
-/// the enabled document-count fields on the left, and the line ending on the
-/// right — so there are no subviews to truncate the text.
+/// its strip (or pinned visible / hidden outright from the View menu). It draws
+/// everything itself — a vertical gradient from the editor background fading to
+/// transparent under a hairline, the enabled document-count fields on the left,
+/// and the line ending on the right — so there are no subviews to truncate the
+/// text.
 final class StatusBarView: NSView {
 
     static let labelFont = NSFont.systemFont(ofSize: 11)
@@ -27,7 +28,9 @@ final class StatusBarView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        alphaValue = prefs.autoHide ? 0 : 1
+        alphaValue = shouldBeVisible ? 1 : 0
+        NotificationCenter.default.addObserver(self, selector: #selector(prefsDidChange),
+                                               name: StatusBarPrefs.didChangeNotification, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -45,7 +48,14 @@ final class StatusBarView: NSView {
 
     // MARK: - Visibility
 
-    private var shouldBeVisible: Bool { !prefs.autoHide || isHovering }
+    private var shouldBeVisible: Bool { prefs.isShown && (!prefs.autoHide || isHovering) }
+
+    /// Another window's bar, or the View menu, saved new prefs.
+    @objc private func prefsDidChange() {
+        prefs = StatusBarPrefs.load()
+        refreshVisibility(animated: true)
+        needsDisplay = true
+    }
 
     private func refreshVisibility(animated: Bool) {
         let target: CGFloat = shouldBeVisible ? 1 : 0
@@ -104,18 +114,10 @@ final class StatusBarView: NSView {
     }
 
     private func buildMenu() -> NSMenu {
+        // Showing and auto-hiding the bar live in the View menu, beside the
+        // toolbar's equivalents; only the field choice is here, so the items
+        // need no heading.
         let menu = NSMenu()
-
-        let autoHide = NSMenuItem(title: "Auto-hide",
-                                  action: #selector(toggleAutoHide), keyEquivalent: "")
-        autoHide.target = self
-        autoHide.state = prefs.autoHide ? .on : .off
-        menu.addItem(autoHide)
-
-        menu.addItem(.separator())
-        let header = NSMenuItem(title: "Show Fields", action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
 
         let fields: [(title: String, key: String, on: Bool)] = [
             ("Words", "words", prefs.showWords),
@@ -130,16 +132,9 @@ final class StatusBarView: NSView {
             item.target = self
             item.representedObject = field.key
             item.state = field.on ? .on : .off
-            item.indentationLevel = 1
             menu.addItem(item)
         }
         return menu
-    }
-
-    @objc private func toggleAutoHide() {
-        prefs.autoHide.toggle()
-        prefs.save()
-        refreshVisibility(animated: true)
     }
 
     @objc private func toggleField(_ sender: NSMenuItem) {
@@ -151,8 +146,7 @@ final class StatusBarView: NSView {
         case "lineEnding": prefs.showLineEnding.toggle()
         default: return
         }
-        prefs.save()
-        needsDisplay = true
+        prefs.save()   // redraws via prefsDidChange
     }
 
     // MARK: - Drawing
@@ -172,6 +166,12 @@ final class StatusBarView: NSView {
         if let gradient = NSGradient(starting: base, ending: base.withAlphaComponent(0.85)) {
             gradient.draw(in: bounds, angle: 90)   // 90° = bottom → top
         }
+        // Top hairline, as CotEditor's and Xcode's status bars have: one device
+        // pixel, filled (a stroke straddles two), in the separator colour the
+        // toolbar and chrome bars use.
+        let pixel = 1 / (window?.backingScaleFactor ?? 2)
+        NSColor.separatorColor.setFill()
+        NSRect(x: 0, y: bounds.maxY - pixel, width: bounds.width, height: pixel).fill()
 
         let hMargin: CGFloat = 12
 
