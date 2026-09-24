@@ -54,11 +54,18 @@ extension EditorTextView {
         for result in results {
             switch result.resultType {
             case .spelling:
-                guard !touchesCaret(result.range), !inMath(result.range) else { continue }
+                guard !touchesCaret(result.range), !inMath(result.range),
+                      !rangeIsHidden(result.range) else { continue }
                 kept += (enumerationMisspellings(of: result.range, language: language) ?? [result.range])
                     .map { NSTextCheckingResult.spellCheckingResult(range: $0) }
             case .grammar:
-                if !touchesCaret(result.range), !inMath(result.range) { kept.append(result) }
+                // A sentence may well contain a hidden link URL; only the
+                // flagged pieces (the details) have to be visible.
+                let hitsHidden = (result.grammarDetails ?? []).contains { detail in
+                    guard let r = detail[NSGrammarRange] as? NSRange else { return false }
+                    return rangeIsHidden(NSRange(location: result.range.location + r.location, length: r.length))
+                }
+                if !touchesCaret(result.range), !inMath(result.range), !hitsHidden { kept.append(result) }
             default:
                 kept.append(result)
             }
@@ -75,7 +82,20 @@ extension EditorTextView {
     /// delivers on a later run-loop pass (too late to spare the caret's word by
     /// the caret position it was checked at), and `super.handleTextCheckingResults`
     /// was measured not to mark anything for results handed to it directly.
-    func recheckSpelling(blocks indices: IndexSet, sparingCaret: Bool = false) {
+    /// Checks the whole document at once: on open, and when spelling or
+    /// grammar checking is switched in either direction. Off clears every mark.
+    // ponytail: one synchronous pass; spread it over run-loop turns if huge
+    // documents ever stall on open.
+    func rescanSpelling() {
+        guard let ts = textStorage, ts.length > 0 else { return }
+        guard isContinuousSpellCheckingEnabled else {
+            setSpellingState(0, range: NSRange(location: 0, length: ts.length))
+            return
+        }
+        recheckSpelling(blocks: IndexSet(blocks.indices), lineCap: .max)
+    }
+
+    func recheckSpelling(blocks indices: IndexSet, sparingCaret: Bool = false, lineCap: Int = 2_000) {
         guard isContinuousSpellCheckingEnabled, !hasMarkedText(), let ts = textStorage else { return }
         var types = NSTextCheckingResult.CheckingType.spelling.rawValue
         if isGrammarCheckingEnabled { types |= NSTextCheckingResult.CheckingType.grammar.rawValue }
@@ -90,7 +110,7 @@ extension EditorTextView {
             // big fence or table) is narrowed to the caret's line and anything
             // else is left to AppKit's own background pass.
             // ponytail: fixed cap; per-line diffing if lines themselves get huge.
-            if range.length > 2_000 {
+            if range.length > lineCap {
                 guard let caret, NSLocationInRange(caret, range) || caret == range.upperBound else { continue }
                 range = NSIntersectionRange((string as NSString).paragraphRange(for: NSRange(location: caret, length: 0)), range)
                 guard range.length > 0 else { continue }
@@ -166,6 +186,18 @@ extension EditorTextView {
     }
 
     // MARK: Helpers
+
+    /// Whether any of `range` is source the editor hides (the `hiddenFont`):
+    /// an image's alt text and path, a link's URL, a rendered formula's LaTeX.
+    /// A mark there has nothing visible to underline and draws as a stray dot.
+    func rangeIsHidden(_ range: NSRange) -> Bool {
+        guard let ts = textStorage, range.length > 0, NSMaxRange(range) <= ts.length else { return false }
+        var hidden = false
+        ts.enumerateAttribute(.font, in: range) { value, _, stop in
+            if let font = value as? NSFont, font.pointSize < 1 { hidden = true; stop.pointee = true }
+        }
+        return hidden
+    }
 
     /// Absolute ranges of block `idx`'s math: its `$…$`/`$$…$$` spans, or the
     /// whole block for a display-math block.

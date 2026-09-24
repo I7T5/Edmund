@@ -106,6 +106,23 @@ struct SpellCheckTests {
         #expect(editor.filteredCheckingResults([issue], orthography: nil, sparing: nil).count == 1)
     }
 
+    @Test("Switching checking on marks the whole document; off clears it")
+    func toggleRescans() {
+        let editor = makeEditor()
+        editor.loadContent("First sentance.\n\n" + String(repeating: "Filler words here.\n\n", count: 50) + "Last wrod.\n")
+        #expect(marked(editor) == [])
+        editor.isContinuousSpellCheckingEnabled = true
+        #expect(marked(editor) == ["sentance", "wrod"])
+        editor.isContinuousSpellCheckingEnabled = false
+        #expect(marked(editor) == [])
+    }
+
+    @Test("Source the editor hides (an image's alt text and path) is never marked")
+    func hiddenSourceSkipped() {
+        let editor = checkedEditor("Inline ![qqzx](zzqy.png) in text.\n\nA sentance.\n")
+        #expect(marked(editor) == ["sentance"])
+    }
+
     @Test("Check Document Now steps past math and fine enumerations")
     func panelSkipsFiltered() {
         let editor = checkedEditor("See $\\mathrm{dx}$ and a,b,c then sentance.\n")
