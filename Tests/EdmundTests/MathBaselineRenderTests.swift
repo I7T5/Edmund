@@ -49,9 +49,17 @@ struct MathBaselineRenderTests {
     /// its left stem, in device pixels from the top of the view.
     struct Ink { let minX: Int; let maxX: Int; let top: Double; let bottom: Double }
 
-    private func render(_ editor: EditorTextView) -> NSBitmapImageRep {
+    /// Renders at `scale` explicitly. `cacheDisplay`'s default rep follows the
+    /// screen, and a headless CI runner hands back a 1x rep while `mathOverlay`
+    /// (no window, no main screen) snaps for 2x. A window never mixes the two,
+    /// so neither may the test.
+    private func render(_ editor: EditorTextView, scale: CGFloat) -> NSBitmapImageRep {
         let bounds = editor.bounds
-        let rep = editor.bitmapImageRepForCachingDisplay(in: bounds)!
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                   pixelsWide: Int(bounds.width * scale), pixelsHigh: Int(bounds.height * scale),
+                                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.size = bounds.size
         editor.cacheDisplay(in: bounds, to: rep)
         if let dir = ProcessInfo.processInfo.environment["MATH_BASELINE_PNG_DIR"] {
             let name = MathRendering.shared.active.id.replacingOccurrences(of: "@", with: "-")
@@ -110,7 +118,10 @@ struct MathBaselineRenderTests {
         return lines
     }
 
-    private func measure() -> (lines: [[Ink]], textFont: NSFont, scale: CGFloat) {
+    /// The scale `mathOverlay` snaps to for a window-less editor.
+    private var overlayScale: CGFloat { NSScreen.main?.backingScaleFactor ?? 2 }
+
+    private func measure(scale: CGFloat) -> (lines: [[Ink]], textFont: NSFont, scale: CGFloat) {
         let editor = makeEditor()
         editor.frame.size.height = 700
         editor.appearance = NSAppearance(named: .aqua)
@@ -119,7 +130,7 @@ struct MathBaselineRenderTests {
         editor.setSelectedRange(NSRange(location: 0, length: 0))
         ensureFullLayout(editor)
         layOutViewport(editor)
-        let rep = render(editor)
+        let rep = render(editor, scale: scale)
         let at = (editor.string as NSString).range(of: "H $").location
         let font = editor.textStorage!.attribute(.font, at: at, effectiveRange: nil) as! NSFont
         // Drop the one-glyph lines; keep the lines holding text-H, math-H, text-H.
@@ -149,7 +160,7 @@ struct MathBaselineRenderTests {
             let heading = text.bottom - text.top > (h.ink.height + 2) * m.scale
             let leftInset = Double(math.minX - text.maxX - 1) - (h.advance + h.space - h.ink.maxX) * m.scale
             let rightInset = Double(after.minX - math.maxX - 1) - (h.space + h.ink.minX) * m.scale
-            print("[\(engine)] line \(i)\(heading ? " (heading)" : ""): baseline Δ \(dBottom)px, top Δ \(dTop)px"
+            print("[\(engine)@\(m.scale)x] line \(i)\(heading ? " (heading)" : ""): baseline Δ \(dBottom)px, top Δ \(dTop)px"
                   + (heading ? "" : "; math side insets \(leftInset)px / \(rightInset)px"))
             #expect(abs(dBottom) < 0.25, "\(engine) line \(i): math baseline off by \(dBottom) device px")
             if !heading {
@@ -165,7 +176,7 @@ struct MathBaselineRenderTests {
         let saved = MathRendering.shared.alternate
         MathRendering.shared.alternate = nil
         defer { MathRendering.shared.alternate = saved }
-        check(measure(), engine: "swiftmath")
+        check(measure(scale: overlayScale), engine: "swiftmath")
     }
 
     @Test("RaTeX sits on the text baseline, with no padding beside it")
@@ -177,6 +188,6 @@ struct MathBaselineRenderTests {
         let saved = MathRendering.shared.alternate
         MathRendering.shared.alternate = RaTeXRenderer(host: host)
         defer { MathRendering.shared.alternate = saved }
-        check(measure(), engine: "ratex")
+        check(measure(scale: overlayScale), engine: "ratex")
     }
 }
