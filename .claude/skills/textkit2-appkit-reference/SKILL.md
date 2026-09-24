@@ -193,6 +193,16 @@ driver synthesizes real `NSEvent`s and pushes them through `window.sendEvent(_:)
 rather than calling `insertText` directly — shortcuts skip `deleteBackward`'s
 selection machinery, which is exactly where round 6 lived.
 
+**Spelling marks are rendering attributes, and only some paths set them.**
+AppKit's continuous check re-runs on `didChangeText`, never on an
+attribute-only restyle, so marks go stale around a restyled word.
+`checkText(in:types:options:)` delivers its results on a later run-loop pass,
+and `super.handleTextCheckingResults` called directly set **no** marks
+(measured, headless and in a window). What works: `NSSpellChecker.shared.check`
++ `setSpellingState(_:range:)`, read back through
+`textLayoutManager.enumerateRenderingAttributes` (`.spellingState`). See
+`EditorTextView+SpellCheck.swift`.
+
 ---
 
 ## 8. IME / marked text lifecycle

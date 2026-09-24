@@ -202,6 +202,15 @@ public class EditorTextView: NSTextView {
     /// Coalesces the didChangeText-bypass check scheduled from
     /// shouldChangeText (see EditorTextView+EditFlow).
     var bypassedEditCheckScheduled = false
+    /// Switching either check (Settings or the Edit menu) rescans the whole
+    /// document so marks appear, filtered, or clear at once
+    /// (EditorTextView+SpellCheck).
+    public override var isContinuousSpellCheckingEnabled: Bool {
+        didSet { if isContinuousSpellCheckingEnabled != oldValue { rescanSpelling() } }
+    }
+    public override var isGrammarCheckingEnabled: Bool {
+        didSet { if isGrammarCheckingEnabled != oldValue { rescanSpelling() } }
+    }
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0
@@ -1440,6 +1449,7 @@ public class EditorTextView: NSTextView {
             undoStack.removeAll()
             redoStack.removeAll()
             recompose(cursorInRaw: 0)
+            rescanSpelling()
         }
     }
 }
