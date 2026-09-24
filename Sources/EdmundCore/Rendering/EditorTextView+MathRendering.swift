@@ -22,15 +22,16 @@ extension EditorTextView {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             color = self.foregroundColor.usingColorSpace(.deviceRGB) ?? self.foregroundColor
         }
+        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         guard let rendered = MathRendering.shared.render(latex: latex, displayMode: display,
-                                                          pointSize: fontSize, color: color) else {
+                                                          pointSize: fontSize, color: color,
+                                                          scale: backingScale) else {
             return nil
         }
 
         var width = rendered.image.size.width
         var height = rendered.image.size.height
         var descent = rendered.descent
-        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         // Interim until SwiftMath line-wrapping ships: if the equation is wider
         // than the text area, scale it down to fit (otherwise leave it natural
         // size). The baseline descent scales with it.
@@ -59,23 +60,19 @@ extension EditorTextView {
             width = (width * backingScale).rounded() / backingScale
             height = snapped
         }
-        // The rendered image's baseline sits exactly one device pixel below the
-        // surrounding text baseline (measured constant across font sizes — it's a
-        // fixed rasterization offset, not a size-dependent rounding). Lift the
-        // image by one device pixel so the math rests on the text baseline. Done
-        // here, not in the cached descent, so it tracks the window's scale if it
-        // moves between a Retina and a non-Retina display.
-        descent -= 1 / backingScale
         // Drop the image so its baseline (descent above the image bottom) lands
         // on the text baseline.
         // The engine id is part of the key so enabling/disabling a math
         // extension (which swaps the active renderer) can't serve overlays
         // built by the previous engine.
         let key = String(
-            format: "%@|%@|%.1f|%.3f,%.3f,%.3f,%.3f|%.3f|%.3f|%.3f|%@",
+            // The scale too: the image is a bitmap at it, and a 1x and a 2x
+            // render of the same equation can share every point dimension.
+            format: "%@|%@|%.1f|%.0f|%.3f,%.3f,%.3f,%.3f|%.3f|%.3f|%.3f|%@",
             MathRendering.shared.active.id,
             display ? "D" : "I",
             fontSize,
+            backingScale,
             color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent,
             width, height, descent,
             latex

@@ -387,7 +387,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                 let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
                 NSGraphicsContext.saveGraphicsState()
                 NSGraphicsContext.current = nsContext
-                image.draw(in: deviceAligned(drawRect, in: context), from: .zero,
+                image.draw(in: deviceAligned(drawRect, descent: -overlay.bounds.minY, in: context),
+                           from: .zero,
                            operation: .sourceOver,
                            fraction: 1, respectFlipped: true, hints: nil)
                 NSGraphicsContext.restoreGraphicsState()
@@ -502,10 +503,28 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// bolder in Edit mode than in Read mode. Rounding happens in *device* space,
     /// not user space, because a scrolled clip view can leave the CTM's own
     /// translation on a fraction of a point.
-    private func deviceAligned(_ rect: CGRect, in context: CGContext) -> CGRect {
-        var device = context.convertToDeviceSpace(rect.origin)
+    ///
+    /// Vertically the rect is anchored by its *baseline* (`descent` above its
+    /// bottom), snapped the way CoreText snaps the text beside it: a glyph
+    /// baseline always drops to the whole device pixel visually below it
+    /// (a y-up baseline at 20.02…20.98 draws at 20). Rounding the top-left to
+    /// the nearest pixel instead left math up to a pixel above the text,
+    /// depending on the line's fractional offset — a line below an equation
+    /// with a fractional descent, or a heading. The ascent is ceiled so any
+    /// glyph baseline inside the image (a vector SwiftMath image draws its own
+    /// glyphs, which CoreText snaps down the same way) lands on that same row.
+    private func deviceAligned(_ rect: CGRect, descent: CGFloat, in context: CGContext) -> CGRect {
+        let baseline = CGPoint(x: rect.minX, y: rect.maxY - descent)
+        var device = context.convertToDeviceSpace(baseline)
+        // Device pixels per point along "visually down"; negative when device
+        // space is y-up (a window) rather than y-down (some layer contexts).
+        let down = context.convertToDeviceSpace(CGPoint(x: baseline.x, y: baseline.y + 1)).y - device.y
+        let ascent = ((rect.height - descent) * abs(down) - 0.01).rounded(.up)
+        // The 0.01 keeps a baseline sitting on a pixel boundary (up to float
+        // noise) on that boundary instead of snapping a whole pixel.
         device.x.round()
-        device.y.round()
+        device.y = down > 0 ? (device.y - 0.01).rounded(.up) - ascent
+                            : (device.y + 0.01).rounded(.down) + ascent
         return CGRect(origin: context.convertToUserSpace(device), size: rect.size)
     }
 

@@ -119,8 +119,10 @@ struct RaTeXDisplayList: Decodable {
 final class RaTeXDisplayListRenderer {
     /// Maps a RaTeX font name ("Math-Italic") to a `CGFont`, or nil if missing.
     private let fontLoader: (String) -> CGFont?
-    /// Extra pixels of transparent inset so a glyph's ink overshoot isn't
-    /// clipped at the image edge (mirrors the SwiftMath path's inset).
+    /// Transparent inset above and below so a glyph's ink overshoot isn't
+    /// clipped at the image edge (mirrors the SwiftMath path's inset). Vertical
+    /// only: the image width is the advance the editor reserves beside text, so
+    /// a side inset read as extra space around every inline equation.
     private let insetPad: CGFloat = 2
 
     init(fontLoader: @escaping (String) -> CGFont?) {
@@ -139,8 +141,13 @@ final class RaTeXDisplayListRenderer {
         let boxH = CGFloat(dl.height + dl.depth) * fs
         guard boxW > 0, boxH > 0 else { return nil }
 
-        let pxW = Int(((boxW) * scale).rounded()) + Int((insetPad * 2 * scale).rounded())
-        let pxH = Int(((boxH) * scale).rounded()) + Int((insetPad * 2 * scale).rounded())
+        // Whole device pixels on each side of the baseline, so the baseline is
+        // a pixel boundary of the bitmap and the reported ascent/descent are
+        // exact — the editor snaps that boundary onto the text's baseline row.
+        let descentPx = Int(((CGFloat(dl.depth) * fs + insetPad) * scale - 0.01).rounded(.up))
+        let ascentPx = Int(((CGFloat(dl.height) * fs + insetPad) * scale - 0.01).rounded(.up))
+        let pxW = max(1, Int((boxW * scale).rounded()))
+        let pxH = descentPx + ascentPx
         guard let ctx = CGContext(data: nil, width: max(1, pxW), height: max(1, pxH),
                                   bitsPerComponent: 8, bytesPerRow: 0,
                                   space: CGColorSpaceCreateDeviceRGB(),
@@ -157,12 +164,19 @@ final class RaTeXDisplayListRenderer {
         ctx.setAllowsFontSmoothing(true)
         ctx.setShouldSubpixelPositionFonts(true)
         ctx.setAllowsFontSubpixelPositioning(true)
+        // Quantization snaps each glyph's origin to a pixel fraction — its
+        // baseline all the way down to a whole pixel — so a superscript or a
+        // fraction's numerator drifted up to a pixel off the rules and glyphs
+        // RaTeX placed around it. Off, every glyph lands where RaTeX put it.
+        ctx.setShouldSubpixelQuantizeFonts(false)
+        ctx.setAllowsFontSubpixelQuantization(false)
 
         // Work in a y-up context (CG default). Do NOT flip — flipping the context
         // draws glyphs upside down. Convert the display list's top-down y to y-up
-        // via boxH - y. `insetPad` shifts everything in by the transparent margin.
+        // via boxH - y, then lift it so the baseline (depth above the box
+        // bottom) lands on the whole-pixel row `descentPx`.
         ctx.scaleBy(x: scale, y: scale)
-        ctx.translateBy(x: insetPad, y: insetPad)
+        ctx.translateBy(x: 0, y: CGFloat(descentPx) / scale - CGFloat(dl.depth) * fs)
         let fill = (color.usingColorSpace(.deviceRGB) ?? color).cgColor
 
         for item in dl.items {
@@ -210,19 +224,17 @@ final class RaTeXDisplayListRenderer {
         guard !drawsSomething || hasInk(ctx) else { return nil }
 
         guard let cgImage = ctx.makeImage() else { return nil }
-        // NSImage sized in points, backed by a 2x/3x rep so it stays crisp; the
-        // inset is included in the point size on both axes.
-        let pointSizeBox = NSSize(width: boxW + insetPad * 2, height: boxH + insetPad * 2)
+        // NSImage sized in points, backed by a 2x/3x rep so it stays crisp. The
+        // point size is the pixel size exactly, so drawing it never resamples.
+        let pointSizeBox = NSSize(width: CGFloat(pxW) / scale, height: CGFloat(pxH) / scale)
         let rep = NSBitmapImageRep(cgImage: cgImage)
         rep.size = pointSizeBox
         let image = NSImage(size: pointSizeBox)
         image.addRepresentation(rep)
 
-        // The inset was added symmetrically; fold the bottom half into descent so
-        // the baseline placement is unchanged (same trick as the SwiftMath path).
         return RenderedMath(image: image,
-                            ascent: CGFloat(dl.height) * fs + insetPad,
-                            descent: CGFloat(dl.depth) * fs + insetPad)
+                            ascent: CGFloat(ascentPx) / scale,
+                            descent: CGFloat(descentPx) / scale)
     }
 
     /// Whether any pixel in `ctx` (8-bit RGBA, alpha last) is non-transparent.

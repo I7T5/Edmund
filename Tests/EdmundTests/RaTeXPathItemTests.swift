@@ -90,8 +90,8 @@ struct RaTeXPathItemTests {
         // is ~10 px away here — 1.5 px of antialiasing slack cannot hide it.
         #expect(abs(Double(box.top) - wantTop) < 1.5, "ink top \(box.top), expected ~\(wantTop)")
         #expect(abs(Double(box.bottom) - wantBottom) < 1.5, "ink bottom \(box.bottom), expected ~\(wantBottom)")
-        #expect(abs(Double(box.left) - (0.384 * Double(fs) + Double(insetPad))) < 1.5)
-        #expect(abs(Double(box.right) - (0.504 * Double(fs) + Double(insetPad))) < 1.5)
+        #expect(abs(Double(box.left) - 0.384 * Double(fs)) < 1.5)   // no side inset
+        #expect(abs(Double(box.right) - 0.504 * Double(fs)) < 1.5)
     }
 
     @Test("A curved Path draws — a tall `\\left(` is outline only, no glyph")

@@ -41,7 +41,7 @@ public final class RaTeXRenderer: MathRenderer {
     }
 
     public func render(latex: String, displayMode: Bool,
-                       pointSize: CGFloat, color: NSColor) -> RenderedMath? {
-        host.render(latex: latex, displayMode: displayMode, pointSize: pointSize, color: color)
+                       pointSize: CGFloat, color: NSColor, scale: CGFloat) -> RenderedMath? {
+        host.render(latex: latex, displayMode: displayMode, pointSize: pointSize, color: color, scale: scale)
     }
 }
