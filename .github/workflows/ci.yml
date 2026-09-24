@@ -71,6 +71,21 @@ jobs:
           key: spm-v2-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-v2-${{ runner.os }}-
 
+      # `shell: bash` runs with -o pipefail; the default shell does not, and
+      # the pipe would report tee's status, passing a failing test run.
       - name: Test
         if: steps.filter.outputs.code == 'true'
-        run: swift test
+        shell: bash
+        run: swift test 2>&1 | tee test.log
+
+      # Zero warnings in our own code. A grep rather than -warnings-as-errors:
+      # -Xswiftc reaches the remote dependencies too. The fresh checkout gives
+      # every source a new mtime, so all of ours recompile despite the .build
+      # cache and every warning reaches the log.
+      - name: No warnings
+        if: steps.filter.outputs.code == 'true'
+        run: |
+          if grep -E '(Sources|Tests)/[^:]+:[0-9]+:[0-9]+: warning:' test.log | sort -u | grep .; then
+            echo "::error::Compiler warnings in Sources/ or Tests/ (listed above). Fix them; the policy is zero."
+            exit 1
+          fi

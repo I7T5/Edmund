@@ -237,7 +237,7 @@ private final class LogStore: @unchecked Sendable {
             fm.createFile(atPath: url.path, contents: nil)
         }
         guard let h = try? FileHandle(forWritingTo: url) else { return nil }
-        try? h.seekToEnd()
+        _ = try? h.seekToEnd()
         return h
     }
 

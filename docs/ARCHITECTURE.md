@@ -653,7 +653,9 @@ Notable subsystems:
   -debug.disableUpdater YES` — also `editor:<name>` / `syntax:<name>` for a
   theme's detail box (`Sources/edmd/App/SettingsRender.swift`). Live
   `screencapture` has never worked for these panes; use this, don't
-  hand-build a scaffold.
+  hand-build a scaffold. It captures through ScreenCaptureKit, which needs
+  Screen Recording granted to the launching process; without it the render
+  exits with `could not capture window <id>`.
 - **Counting an app's windows is the flakiest measurement in this repo — don't
   trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
   `winid.swift` uses) lists windows the app has already *closed*, so a stale
@@ -1199,8 +1201,9 @@ that class.
 Do these **before every commit** (this is the workflow that worked; deviate
 only with reason):
 
-1. **`swift test` is green** (all pass). Add tests for new behavior / bug
-   repros.
+1. **`swift test` is green** (all pass) with zero compiler warnings in
+   `Sources/` and `Tests/` — CI's `No warnings` step fails on any. Add tests
+   for new behavior / bug repros.
 2. **Visual changes are measured, not eyeballed** — build the app and
    `screencapture` the result (§8), or render offscreen to a PNG. Don't trust
    headless layout alone for anything that draws. For anything phrased as
