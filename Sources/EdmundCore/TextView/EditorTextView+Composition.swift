@@ -153,6 +153,8 @@ extension EditorTextView {
 
         isUpdating = false
 
+        recheckSpelling(blocks: syncSet)
+
         if !deferred.isEmpty {
             scheduleProgressiveStyling()
         } else {
