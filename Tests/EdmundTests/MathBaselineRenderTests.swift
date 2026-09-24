@@ -49,10 +49,8 @@ struct MathBaselineRenderTests {
     /// its left stem, in device pixels from the top of the view.
     struct Ink { let minX: Int; let maxX: Int; let top: Double; let bottom: Double }
 
-    /// Renders at `scale` explicitly. `cacheDisplay`'s default rep follows the
-    /// screen, and a headless CI runner hands back a 1x rep while `mathOverlay`
-    /// (no window, no main screen) snaps for 2x. A window never mixes the two,
-    /// so neither may the test.
+    /// Renders at `scale` explicitly: `cacheDisplay`'s default rep follows the
+    /// screen, not the (overridden) window scale.
     private func render(_ editor: EditorTextView, scale: CGFloat) -> NSBitmapImageRep {
         let bounds = editor.bounds
         let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
@@ -64,7 +62,7 @@ struct MathBaselineRenderTests {
         if let dir = ProcessInfo.processInfo.environment["MATH_BASELINE_PNG_DIR"] {
             let name = MathRendering.shared.active.id.replacingOccurrences(of: "@", with: "-")
             try? rep.representation(using: .png, properties: [:])?
-                .write(to: URL(fileURLWithPath: dir).appendingPathComponent("baseline-\(name).png"))
+                .write(to: URL(fileURLWithPath: dir).appendingPathComponent("baseline-\(name)-\(Int(scale))x.png"))
         }
         return rep
     }
@@ -118,12 +116,21 @@ struct MathBaselineRenderTests {
         return lines
     }
 
-    /// The scale `mathOverlay` snaps to for a window-less editor.
-    private var overlayScale: CGFloat { NSScreen.main?.backingScaleFactor ?? 2 }
+    /// A window at a chosen backing scale, so 1x (CI runners, non-Retina
+    /// displays) and 2x are both measured on any machine. `mathOverlay` snaps
+    /// to the window's scale, and the render below draws at the same one.
+    private final class ScaledWindow: NSWindow {
+        var scale: CGFloat = 2
+        override var backingScaleFactor: CGFloat { scale }
+    }
 
     private func measure(scale: CGFloat) -> (lines: [[Ink]], textFont: NSFont, scale: CGFloat) {
         let editor = makeEditor()
         editor.frame.size.height = 700
+        let window = ScaledWindow(contentRect: editor.frame, styleMask: [.borderless],
+                                  backing: .buffered, defer: true)
+        window.scale = scale
+        window.contentView = editor
         editor.appearance = NSAppearance(named: .aqua)
         editor.updateContentInset()
         editor.loadContent(Self.doc)
@@ -176,7 +183,7 @@ struct MathBaselineRenderTests {
         let saved = MathRendering.shared.alternate
         MathRendering.shared.alternate = nil
         defer { MathRendering.shared.alternate = saved }
-        check(measure(scale: overlayScale), engine: "swiftmath")
+        for s: CGFloat in [1, 2] { check(measure(scale: s), engine: "swiftmath") }
     }
 
     @Test("RaTeX sits on the text baseline, with no padding beside it")
@@ -188,6 +195,6 @@ struct MathBaselineRenderTests {
         let saved = MathRendering.shared.alternate
         MathRendering.shared.alternate = RaTeXRenderer(host: host)
         defer { MathRendering.shared.alternate = saved }
-        check(measure(scale: overlayScale), engine: "ratex")
+        for s: CGFloat in [1, 2] { check(measure(scale: s), engine: "ratex") }
     }
 }
