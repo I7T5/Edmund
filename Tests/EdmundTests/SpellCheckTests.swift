@@ -43,7 +43,12 @@ struct SpellCheckTests {
 
     @Test("A misspelled part of an enumeration is still marked, alone")
     func enumerationKeepsMisspelledPart() {
-        #expect(marked(checkedEditor("Pick a,helo,c now.\n")) == ["helo"])
+        #expect(marked(checkedEditor("Pick a,b,zzq now.\n")) == ["zzq"])
+    }
+
+    @Test("A missing space between real words stays flagged whole")
+    func missingSpaceStaysFlagged() {
+        #expect(marked(checkedEditor("Say Hello,world now.\n")) == ["Hello,world"])
     }
 
     @Test("LaTeX in inline and display math is skipped")
@@ -70,5 +75,43 @@ struct SpellCheckTests {
         #expect(marked(editor) == [])            // still typing it
         editor.insertText(" ", replacementRange: NSRange(location: NSNotFound, length: 0))
         #expect(marked(editor) == ["wrod"])
+    }
+
+    @Test("A misspelled word under the caret is marked when nothing is being typed")
+    func caretWordMarkedOutsideEdits() {
+        let editor = checkedEditor("Helo world\n")
+        editor.setSelectedRange(NSRange(location: 0, length: 0))   // e.g. just opened
+        editor.recheckSpelling(blocks: IndexSet(editor.blocks.indices))
+        #expect(marked(editor) == ["Helo"])
+    }
+
+    @Test("Clicking into a misspelled word keeps its mark, from another block or the same one")
+    func clickKeepsMark() {
+        let editor = checkedEditor("Helo world\n\nend\n")
+        editor.setSelectedRange(NSRange(location: 2, length: 0))   // from the `end` block
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))    // the async cross-block restyle
+        #expect(marked(editor) == ["Helo"])
+        editor.setSelectedRange(NSRange(location: 7, length: 0))   // within the block
+        editor.setSelectedRange(NSRange(location: 3, length: 0))
+        #expect(marked(editor) == ["Helo"])
+    }
+
+    @Test("The grammar issue in the sentence being typed is spared")
+    func grammarSparedAtCaret() {
+        let editor = checkedEditor("One two three.\n")
+        let issue = NSTextCheckingResult.grammarCheckingResult(
+            range: NSRange(location: 0, length: 14),
+            details: [[NSGrammarRange: NSRange(location: 4, length: 3)]])
+        #expect(editor.filteredCheckingResults([issue], orthography: nil, sparing: 10).isEmpty)
+        #expect(editor.filteredCheckingResults([issue], orthography: nil, sparing: nil).count == 1)
+    }
+
+    @Test("Check Document Now steps past math and fine enumerations")
+    func panelSkipsFiltered() {
+        let editor = checkedEditor("See $\\mathrm{dx}$ and a,b,c then sentance.\n")
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.checkSpelling(nil)
+        let sel = editor.selectedRange()
+        #expect((editor.string as NSString).substring(with: sel) == "sentance")
     }
 }
