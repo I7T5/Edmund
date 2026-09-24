@@ -127,6 +127,20 @@ overlay** that could share a line with wrapping text.
 **Hiding text** = `hiddenFont` (≈0.01 pt) + clear `foregroundColor`. This is how
 delimiters (`**`, `` ` ``, `[!note]`) vanish without changing the string.
 
+**Repainting one fragment without relayout** (animated GIFs): `setNeedsDisplay`
+on the text view does **not** repaint TextKit 2 text. Each fragment paints in a
+private `_NSTextViewportElementView` under `_NSTextContentView` (see the
+`viewtree` repro command); mark every view under the fragment's rect
+(`EditorTextView+GIFAnimation` `redisplay`).
+
+**The trailing empty line is an extra line fragment, and its box is
+provisional.** After a final `\n` there is no paragraph for the empty last line:
+it is the last `textLineFragment` of the previous fragment
+(`characterRange.length == 0`). Until the caret goes there its
+`typographicBounds` can overlap the line above (after an empty paragraph:
+measured y = 16, height 14 inside a 25 pt line). Clamp to the previous line's
+bottom before trusting it (`enumerateVisibleLineNumbers`).
+
 ---
 
 ## 6. The queued selection fixup (the round-6 delete-drift mechanism)
