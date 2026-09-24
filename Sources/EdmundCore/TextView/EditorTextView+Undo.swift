@@ -131,27 +131,31 @@ extension EditorTextView {
     }
 
     func performUndo() {
-        guard let entry = undoStack.popLast() else { return }
-        redoStack.append(inverse(of: entry))
-        restoreEntry(entry)
+        guard let entry = undoStack.last,
+              let reverse = inverse(of: entry),
+              restoreEntry(entry) else { return }
+        undoStack.removeLast()
+        redoStack.append(reverse)
     }
 
     func performRedo() {
-        guard let entry = redoStack.popLast() else { return }
-        undoStack.append(inverse(of: entry))
-        restoreEntry(entry)
+        guard let entry = redoStack.last,
+              let reverse = inverse(of: entry),
+              restoreEntry(entry) else { return }
+        redoStack.removeLast()
+        undoStack.append(reverse)
     }
 
     /// The entry that reverses `entry`, built against the current text: the
     /// text `entry` removes (its span's content) becomes the inverse's
     /// `earlierText`, and `entry`'s `earlierText` becomes the span the inverse
     /// removes from the restored text.
-    private func inverse(of entry: UndoEntry) -> UndoEntry {
+    private func inverse(of entry: UndoEntry) -> UndoEntry? {
         let ns = rawSource as NSString
-        precondition(entry.location >= 0 && entry.laterLength >= 0
-                     && entry.location <= ns.length
-                     && entry.laterLength <= ns.length - entry.location,
-                     "Undo entry is outside the current text")
+        guard undoEntryFitsCurrentText(entry, length: ns.length) else {
+            discardInvalidUndoHistory(entry, stage: "inverse", textLength: ns.length)
+            return nil
+        }
         return UndoEntry(
             location: entry.location,
             laterLength: (entry.earlierText as NSString).length,
@@ -209,23 +213,23 @@ extension EditorTextView {
         return (oldRange, replacement)
     }
 
-    private func restoreEntry(_ entry: UndoEntry) {
+    private func restoreEntry(_ entry: UndoEntry) -> Bool {
         // The entry's span is exactly what this undo/redo touches, so it drives
         // the selection and the viewport — not the caret stored at record time
         // (which, for redo, is wherever the caret happened to sit when undo was
         // invoked).
         let ns = rawSource as NSString
-        precondition(entry.location >= 0 && entry.laterLength >= 0
-                     && entry.location <= ns.length
-                     && entry.laterLength <= ns.length - entry.location,
-                     "Undo entry is outside the current text")
+        guard undoEntryFitsCurrentText(entry, length: ns.length) else {
+            discardInvalidUndoHistory(entry, stage: "restore", textLength: ns.length)
+            return false
+        }
         let oldRange = NSRange(location: entry.location, length: entry.laterLength)
         let replacement = entry.earlierText
 
         guard ns.substring(with: oldRange) != replacement else {
             // Nothing changed textually — just restore the caret.
             setSelectedRange(NSRange(location: min(entry.cursorInRaw, ns.length), length: 0))
-            return
+            return true
         }
 
         isUndoRedoing = true
@@ -294,6 +298,27 @@ extension EditorTextView {
         }
 
         isUndoRedoing = false
+        lastEditType = .other
+        lastEditBlockIndex = nil
+        return true
+    }
+
+    private func undoEntryFitsCurrentText(_ entry: UndoEntry, length: Int) -> Bool {
+        entry.location >= 0 && entry.laterLength >= 0 && entry.cursorInRaw >= 0
+            && entry.location <= length && entry.laterLength <= length - entry.location
+    }
+
+    private func discardInvalidUndoHistory(_ entry: UndoEntry, stage: String, textLength: Int) {
+        let message = "Invalid undo entry during \(stage): location=\(entry.location), "
+            + "length=\(entry.laterLength), cursor=\(entry.cursorInRaw), "
+            + "textLength=\(textLength)"
+        #if DEBUG
+        assertionFailure(message)
+        #else
+        Log.error(message, category: .edit)
+        #endif
+        undoStack.removeAll()
+        redoStack.removeAll()
         lastEditType = .other
         lastEditBlockIndex = nil
     }
