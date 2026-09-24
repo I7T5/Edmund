@@ -33,7 +33,7 @@ files, code comments, user-visible strings).
 - **CHANGELOG samples**: match the entries already in `docs/CHANGELOG.md`
   (read its latest section): `### Added|Changed|Fixed`, one line per
   user-visible effect, not the mechanism; `(#NNN)` link; `@handle` for
-  outside contributors, and every author's when one is; area prefix
+  outside contributors, and every author's handle when any author is an outside contributor; area prefix
   (`Settings > …`, `App Menu > …`) where existing entries use one. A change
   with no user-visible effect (CI, tests, skills, agents, scripts) gets no
   entry: the sample should read `No user-visible change — no CHANGELOG entry.`

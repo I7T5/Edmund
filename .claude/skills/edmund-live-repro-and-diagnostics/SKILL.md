@@ -138,8 +138,8 @@ scenarios (`snapshot @OUT@/light.png`).
 
 **Before/after on `main`:** `/verify-live [class]` (`.claude/commands/verify-live.md`)
 writes scenarios to `misc/verify/<branch>/scenarios/`, then the
-`live-verifier` agent runs them with `REPRO_DIR` in a detached `main`
-worktree and in the branch, measures PNG pairs, and reports
+`live-verifier` agent runs them with `REPRO_DIR` in a detached worktree
+at the fork point from `origin/main` and in the branch, measures PNG pairs, and reports
 `main FAIL → branch PASS` per scenario. A fix whose scenario already passes
 on `main` has not been shown to fix anything. `/ship` offers it for
 edit-pipeline, drawing and chrome changes.

@@ -22,7 +22,8 @@ stopping and reporting if any step fails:
      `Tests/` for the changed types and files. Run the full `swift test`
      only when the change touches a shared path (`TextView/`, `Parsing/`,
      `Model/`, the storage or render pipeline) or no suite clearly covers it.
-   - Pipe the run through `tee` to a log file and grep it for
+   - Pipe the run through `tee` to a log file (with `set -o pipefail`, or
+     the pipe reports `tee`'s status and hides a failing run) and grep it for
      `(Sources|Tests)/[^:]+:[0-9]+:[0-9]+: warning:`. Any hit is a failure:
      the policy is zero warnings, and CI's `No warnings` step rejects them
      anyway. (An incremental build prints warnings only for the files it
@@ -58,8 +59,8 @@ stopping and reporting if any step fails:
       `should`/`nit` lines: list them in the step 8 report and carry on.
 
 2c. **Live risk class.** Classify the change by its changed paths (the
-   `edmund-change-control` table; paths under `Sources/EdmundCore/` unless
-   shown):
+   `edmund-change-control` table; paths relative to `Sources/EdmundCore/`
+   unless shown):
    - **edit-pipeline**: `TextView/EditorTextView+{EditFlow,Composition,SelectionTracking,Undo,LazyStyling,TypewriterScroll}.swift`,
      `TextView/EditorTextStorage.swift`, `Editing/**`
    - **drawing**: `Rendering/**`, `TextView/DecoratedTextLayoutFragment.swift`,
@@ -102,7 +103,7 @@ stopping and reporting if any step fails:
      paste at release: the `### Added|Changed|Fixed` heading(s) and one line
      per user-visible effect with the real PR number, in the format of the
      latest section of `docs/CHANGELOG.md` (`- <effect> (#NNN)`; `@handle`
-     for outside contributors, and every author's when one is; area prefix such as `Settings > …` where
+     for outside contributors, and every author's handle when any author is an outside contributor; area prefix such as `Settings > …` where
      existing entries use one). Internal-only changes (CI, tests, skills,
      agent files) get the line `No user-visible change — no CHANGELOG entry.`
      Print only. Never write `docs/CHANGELOG.md`; it changes only through

@@ -201,7 +201,7 @@ House format (verify against the file; current entries follow this):
 - Hyphen between version and ISO date, no separator between versions
   (0.1.0–0.1.3 used an em dash and `---`; since 0.1.4 neither).
 - `(#NNN)` for the issue or PR; `@handle` for outside contributors
-  (`(#276 @lluminate)`), listing every author when one is
+  (`(#276 @lluminate)`), listing every author's handle when any author is an outside contributor
   (`(#279 @CaliLuke @i7t5)`); an area prefix (`Settings > …`, `App Menu > …`,
   `Tables: …`) where one fits.
 - `/ship` prints sample entries in this format after each PR; the maintainer

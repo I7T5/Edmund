@@ -103,8 +103,8 @@ awk "BEGIN{p=0} /^## \[${VERSION}\]/{p=1;next} p && /^## \[/{exit} p{print}" CHA
 ```
 
 So the section header **must** start at column 0 as `## [x.y.z]` — literally
-`## [0.1.3] — 2026-07-04` in house style (em dash + ISO date after the
-bracket is fine; the match only requires the `^## \[x.y.z\]` prefix).
+`## [0.8.0] - 2026-09-22` in house style (hyphen + ISO date after the
+bracket; 0.1.0–0.1.3 used an em dash; the match only requires the `^## \[x.y.z\]` prefix).
 Extraction runs until the next `^## [` line. If nothing matches, the release
 body falls back to "See CHANGELOG for details." — a silent-ish failure, so get
 the header right. (Version dots are unescaped in the regex; harmless in
@@ -127,7 +127,7 @@ only understands Keep-a-Changelog shapes:
 - Missing section → empty output → the `<description>` is simply omitted.
 
 House format (verified from `CHANGELOG.md`): Keep a Changelog 1.1.0 + SemVer,
-newest first, sections separated by `---`.
+newest first, no separator between sections since 0.1.4.
 
 ---
 
@@ -232,7 +232,7 @@ release fails at the appcast push while the GitHub Release itself succeeds
 - [ ] Visual sanity: build and screencapture the editor in **light and dark**
       mode; click through everything the CHANGELOG claims ("fixed X" → actually
       reproduce X and confirm).
-- [ ] `CHANGELOG.md` has `## [x.y.z] — YYYY-MM-DD` for this release and the
+- [ ] `CHANGELOG.md` has `## [x.y.z] - YYYY-MM-DD` for this release and the
       version **matches Info.plist** (`CFBundleShortVersionString`); `###`
       subheads, not `##` (§2).
 - [ ] `CFBundleVersion` bumped (monotonic int).
@@ -335,7 +335,7 @@ stale-build / screencapture mechanics: `edmund-build-and-env`.
 | Git tag | `vX.Y.Z` | `v0.1.3` pending its tag; last released 0.1.2 |
 | `CFBundleShortVersionString` | SemVer marketing version | `0.1.3` |
 | `CFBundleVersion` | monotonic integer, +1 per release | `4` |
-| CHANGELOG | Keep a Changelog 1.1.0, `## [x.y.z] — YYYY-MM-DD`, `###` subheads, `---` separators | — |
+| CHANGELOG | Keep a Changelog 1.1.0, `## [x.y.z] - YYYY-MM-DD`, `###` subheads, no separators | — |
 
 `appcast.xml` (checked into repo root): RSS 2.0 with the `sparkle:` namespace.
 One `<channel>` (title/link/description/language) containing one `<item>` per

@@ -1,6 +1,6 @@
 ---
 name: live-verifier
-description: Runs one prepared before/after live check of Edmund — builds a base ref (default main) and the current working tree as debug bundles, runs the same scenarios in both, and reports PASS/FAIL, pixel measurements and evidence paths. Invoked by /verify-live after it writes misc/verify/<branch>/; not for writing scenarios or fixing code.
+description: Runs one prepared before/after live check of Edmund — builds a base ref (default: the fork point from `origin/main`) and the current working tree as debug bundles, runs the same scenarios in both, and reports PASS/FAIL, pixel measurements and evidence paths. Invoked by /verify-live after it writes misc/verify/<branch>/; not for writing scenarios or fixing code.
 tools: Bash, Read, Write, Glob, Grep
 ---
 
