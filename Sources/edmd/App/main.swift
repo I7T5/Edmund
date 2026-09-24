@@ -328,6 +328,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         appMenu.addItem(NSMenuItem.separator())
 
+        // Services, then the three Hide items: the standard app-menu block.
+        // Assigning `servicesMenu` is what makes AppKit fill it.
+        let servicesMenu = NSMenu(title: "Services")
+        let servicesItem = appMenu.addItem(withTitle: "Services", action: nil, keyEquivalent: "")
+        servicesItem.submenu = servicesMenu
+        NSApp.servicesMenu = servicesMenu
+
+        appMenu.addItem(NSMenuItem.separator())
+
+        appMenu.addItem(withTitle: "Hide Edmund",
+                        action: #selector(NSApplication.hide(_:)),
+                        keyEquivalent: "h")
+        let hideOthers = appMenu.addItem(withTitle: "Hide Others",
+                                         action: #selector(NSApplication.hideOtherApplications(_:)),
+                                         keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "Show All",
+                        action: #selector(NSApplication.unhideAllApplications(_:)),
+                        keyEquivalent: "")
+
+        appMenu.addItem(NSMenuItem.separator())
+
         appMenu.addItem(withTitle: "Quit Edmund",
                         action: #selector(NSApplication.terminate(_:)),
                         keyEquivalent: "q")
@@ -364,11 +386,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                          action: #selector(NSWindow.performClose(_:)),
                          keyEquivalent: "w")
 
+        // Titled per document in Document.validateMenuItem: "Save…" while
+        // untitled (it opens the save panel), "Save" once on disk.
         fileMenu.addItem(withTitle: "Save",
                          action: #selector(NSDocument.save(_:)),
                          keyEquivalent: "s")
 
-        fileMenu.addItem(NSMenuItem.separator())
+        // Duplicate, with Save As… under ⌥ — Pages' pair. With Auto Save off
+        // the item itself becomes Save As… (Document.validateMenuItem), the
+        // way TextEdit swaps them.
+        let duplicateItem = fileMenu.addItem(withTitle: "Duplicate",
+                                             action: #selector(Document.duplicateOrSaveAs(_:)),
+                                             keyEquivalent: "s")
+        duplicateItem.keyEquivalentModifierMask = [.command, .shift]
+        let saveAsItem = fileMenu.addItem(withTitle: "Save As\u{2026}",
+                                          action: #selector(NSDocument.saveAs(_:)),
+                                          keyEquivalent: "s")
+        saveAsItem.keyEquivalentModifierMask = [.command, .shift, .option]
+        saveAsItem.isAlternate = true
 
         // Edmund's own File commands are rebindable (Settings ▸ Key Bindings);
         // the standard New/Open/Save/Print above keep their system shortcuts.
@@ -377,6 +412,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         fileMenu.addItem(MenuCommand(id: "file.moveTo", group: "File", title: "Move To\u{2026}",
                                      action: #selector(Document.move(_:))).makeItem())
+
+        // Revert To ▸ Last Saved / Browse All Versions…. Built by hand: AppKit
+        // only fills this submenu for a nib menu item.
+        let revertMenu = NSMenu(title: "Revert To")
+        revertMenu.addItem(withTitle: "Last Saved",
+                           action: #selector(NSDocument.revertToSaved(_:)), keyEquivalent: "")
+        revertMenu.addItem(withTitle: "Browse All Versions\u{2026}",
+                           action: #selector(NSDocument.browseVersions(_:)), keyEquivalent: "")
+        let revertItem = NSMenuItem(title: "Revert To", action: nil, keyEquivalent: "")
+        revertItem.submenu = revertMenu
+        fileMenu.addItem(revertItem)
 
         fileMenu.addItem(NSMenuItem.separator())
 
@@ -387,6 +433,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let exportItem = NSMenuItem(title: "Export To", action: nil, keyEquivalent: "")
         exportItem.submenu = exportMenu
         fileMenu.addItem(exportItem)
+
+        fileMenu.addItem(NSMenuItem.separator())
+
+        // Responder chain, like Print: Document.runPageLayout edits the shared
+        // print info that printing copies (see its note).
+        let pageSetupItem = fileMenu.addItem(withTitle: "Page Setup\u{2026}",
+                                             action: #selector(NSDocument.runPageLayout(_:)),
+                                             keyEquivalent: "p")
+        pageSetupItem.keyEquivalentModifierMask = [.command, .shift]
 
         fileMenu.addItem(withTitle: "Print\u{2026}",
                          action: #selector(Document.printDocument(_:)),

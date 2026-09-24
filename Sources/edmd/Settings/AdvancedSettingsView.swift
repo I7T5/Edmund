@@ -66,6 +66,7 @@ struct AdvancedSettingsView: View {
                         Picker("", selection: $logRetention) {
                             ForEach(AppSettings.LogRetention.allCases) { Text($0.label).tag($0) }
                         }
+                        .accessibilityLabel("Clear logs after")
                         .labelsHidden()
                         .fixedSize()
                         .onChange(of: logRetention) { AppSettings.applyLogging() }

@@ -46,6 +46,30 @@ final class StatusBarView: NSView {
         needsDisplay = true
     }
 
+    /// The enabled left-hand fields, in drawing order. Shared by `draw(_:)` and
+    /// the accessibility value so VoiceOver reads exactly what is on screen.
+    private var countFields: [(name: String, value: String)] {
+        var fields: [(String, String)] = []
+        if prefs.showWords      { fields.append(("Words", "\(words)")) }
+        if prefs.showCharacters { fields.append(("Characters", "\(characters)")) }
+        if prefs.showLocation   { fields.append(("Location", "\(location)")) }
+        if prefs.showLine       { fields.append(("Line", "\(lineNumber)")) }
+        return fields
+    }
+
+    // MARK: - Accessibility
+
+    // Everything is drawn, so there are no subviews for VoiceOver to find; the
+    // bar reports itself as one static text instead.
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .staticText }
+    override func accessibilityLabel() -> String? { "Status bar" }
+    override func accessibilityValue() -> Any? {
+        var parts = countFields.map { "\($0.name): \($0.value)" }
+        if prefs.showLineEnding { parts.append(lineEnding) }
+        return parts.joined(separator: ", ")
+    }
+
     // MARK: - Visibility
 
     private var shouldBeVisible: Bool { prefs.isShown && (!prefs.autoHide || isHovering) }
@@ -184,10 +208,7 @@ final class StatusBarView: NSView {
             info.append(NSAttributedString(string: "\(name): ", attributes: labelAttrs))
             info.append(NSAttributedString(string: value, attributes: valueAttrs))
         }
-        if prefs.showWords      { field("Words", "\(words)") }
-        if prefs.showCharacters { field("Characters", "\(characters)") }
-        if prefs.showLocation   { field("Location", "\(location)") }
-        if prefs.showLine       { field("Line", "\(lineNumber)") }
+        for (name, value) in countFields { field(name, value) }
 
         if info.length > 0 {
             let size = info.size()

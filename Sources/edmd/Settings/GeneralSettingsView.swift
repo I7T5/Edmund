@@ -45,6 +45,7 @@ struct GeneralSettingsView: View {
                     Picker("", selection: $startupAction) {
                         ForEach(AppSettings.StartupAction.allCases) { Text($0.label).tag($0) }
                     }
+                    .accessibilityLabel("When nothing else is open")
                     .labelsHidden()
                     .fixedSize()
                     .padding(.leading, 20)

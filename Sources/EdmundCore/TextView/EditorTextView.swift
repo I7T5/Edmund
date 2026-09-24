@@ -548,6 +548,10 @@ public class EditorTextView: NSTextView {
     /// See EditorTextView+TableRawButton.
     var lastTableRawButtonBands: [NSRect] = []
 
+    /// Tooltip rects for the revealed `</>` and copy buttons, kept so the next
+    /// hover change can remove them. See `refreshHoverButtonToolTips()`.
+    var hoverButtonToolTips: [NSView.ToolTipTag] = []
+
     /// The active table cell at the last selection change, as `block.row.column`.
     /// Used to force a full repaint when the caret crosses into a different cell
     /// — the one moment table chrome (pills, cell outline) moves — so nothing is

@@ -407,7 +407,7 @@ class Document: NSDocument, HeadingNavigable {
         guard let contents = String(data: data, encoding: .utf8) else {
             Log.error("Read failed: \(data.count) bytes not valid UTF-8", category: .io)
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not read file as UTF-8"])
+                          userInfo: [NSLocalizedDescriptionKey: "The file couldn’t be opened because it isn’t UTF-8 text."])
         }
         Log.info("Read \(data.count) bytes from disk", category: .io)
         pendingContent = contents
@@ -594,7 +594,7 @@ class Document: NSDocument, HeadingNavigable {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.prompt = "Move"
-        panel.message = "Choose a new location for \"\(url.lastPathComponent)\""
+        panel.message = "Choose a new location for “\(url.lastPathComponent)”"
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let destDir = panel.url else { return }
             let newURL = destDir.appendingPathComponent(url.lastPathComponent)
@@ -961,6 +961,15 @@ class Document: NSDocument, HeadingNavigable {
                               window: windowControllers.first?.window)
     }
 
+    /// File ▸ Page Setup…, as a sheet on this window. It edits the *shared*
+    /// print info, not NSDocument's per-document `printInfo`: printing starts
+    /// from a copy of the shared one (MarkdownPrinter.makePrintInfo), so that
+    /// is the only layout that reaches the printer.
+    @objc override func runPageLayout(_ sender: Any?) {
+        guard let window = windowControllers.first?.window else { return }
+        NSPageLayout().beginSheet(using: .shared, on: window) { _ in }
+    }
+
     /// The editing-side view: Source when source mode is on, otherwise Edit.
     /// Read is the other half of the toggle.
     private var editingMode: EditorTextView.ViewMode {
@@ -1086,6 +1095,12 @@ class Document: NSDocument, HeadingNavigable {
         editor.additionalTopInset = containerView.bounds.height - y
     }
 
+    /// File ▸ Duplicate (⇧⌘S). With Auto Save off there are no versions to
+    /// duplicate from, so the same item is the classic Save As…, as in TextEdit.
+    @objc func duplicateOrSaveAs(_ sender: Any?) {
+        if Self.autosavesInPlace { duplicate(sender) } else { saveAs(sender) }
+    }
+
     /// Keeps the View-menu "Show Source in Editor" checkmark and the
     /// Show/Hide Toolbar title in sync with the settings.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -1103,6 +1118,18 @@ class Document: NSDocument, HeadingNavigable {
         if item.action == #selector(toggleFormatBar(_:)) {
             // Title, not a checkmark — the same idiom as Hide Toolbar above.
             item.title = AppSettings.showFormatBar ? "Hide Format Bar" : "Show Format Bar"
+        }
+        if item.action == #selector(save(_:)) {
+            // Pages' idiom: the ellipsis only while untitled, when Save opens
+            // the save panel; a document already on disk just saves.
+            item.title = fileURL == nil ? "Save\u{2026}" : "Save"
+        }
+        if item.action == #selector(duplicateOrSaveAs(_:)) {
+            item.title = Self.autosavesInPlace ? "Duplicate" : "Save As\u{2026}"
+        }
+        if item.action == #selector(saveAs(_:)), item.isAlternate {
+            // Without Auto Save the item above already is Save As….
+            item.isHidden = !Self.autosavesInPlace
         }
         if item.action == #selector(toggleStatusBarShown(_:)) {
             item.title = StatusBarPrefs.load().isShown ? "Hide Status Bar" : "Show Status Bar"
@@ -1178,7 +1205,7 @@ class Document: NSDocument, HeadingNavigable {
         guard let data = text.data(using: .utf8) else {
             Log.error("Save failed: could not encode \(text.count) chars as UTF-8", category: .io)
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not encode text as UTF-8"])
+                          userInfo: [NSLocalizedDescriptionKey: "The document couldn’t be saved as UTF-8 text."])
         }
         Log.info("Saving \(data.count) bytes (\(ending.displayName))", category: .io)
         return data
