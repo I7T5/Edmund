@@ -76,6 +76,7 @@ private struct ColorRow: View {
             // The stock color well, so these read as the same control the rest
             // of macOS edits a color with.
             ColorPicker("", selection: swatch, supportsOpacity: false)
+                .accessibilityLabel(label)
                 .labelsHidden()
                 .disabled(!isEditable)
                 // Pinned to the swatch it draws: left to itself a hidden-label
@@ -165,6 +166,7 @@ private struct ColorCell: View {
     var body: some View {
         VStack(spacing: 3) {
             ColorPicker("", selection: swatch, supportsOpacity: false)
+                .accessibilityLabel(label)
                 .labelsHidden()
                 .disabled(!isEditable)
                 .frame(width: Self.wellWidth, height: colorWellHeight)
@@ -408,6 +410,7 @@ struct GeneralThemeDetail: View {
                 // labels, which follow the opposite rule.
                 Text("New Theme…").tag(Self.newThemeTag)
             }
+            .accessibilityLabel("Code syntax")
             .labelsHidden()
             // The height is load-bearing: at `.controlSize(.small)` the popup
             // reserves less than its bezel draws, so its bottom edge and the

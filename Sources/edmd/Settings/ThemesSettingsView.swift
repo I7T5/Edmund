@@ -772,7 +772,8 @@ struct ThemesSettingsView: View {
             }
             try FileManager.default.copyItem(at: source, to: destination)
         } catch {
-            presentError("Couldn’t export “\(name)”: \(error.localizedDescription)")
+            presentError("Couldn’t export “\(name)”: \(error.localizedDescription)",
+                         title: "Export Failed")
         }
     }
 
@@ -782,9 +783,9 @@ struct ThemesSettingsView: View {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    private func presentError(_ message: String) {
+    private func presentError(_ message: String, title: String = "Import Failed") {
         let alert = NSAlert()
-        alert.messageText = "Import Failed"
+        alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.runModal()

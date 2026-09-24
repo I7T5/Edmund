@@ -175,7 +175,7 @@ extension EditorTextView {
 
     // MARK: - Pointer tracking
 
-    private func codeCopyButtonHitBox(_ rect: NSRect) -> NSRect {
+    func codeCopyButtonHitBox(_ rect: NSRect) -> NSRect {
         rect.insetBy(dx: -4, dy: -4)
     }
 
@@ -199,6 +199,7 @@ extension EditorTextView {
         guard block != hoveredCodeBlock || onButton != codeCopyButtonHovered else { return }
         hoveredCodeBlock = block
         codeCopyButtonHovered = onButton
+        refreshHoverButtonToolTips()
         needsDisplay = true
     }
 

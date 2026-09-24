@@ -134,9 +134,7 @@ struct VersionHistoryView: View {
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
-                Button { confirm(deleteTargets) } label: {
-                    Text("Delete").foregroundStyle(.red)
-                }
+                Button("Delete", role: .destructive) { confirm(deleteTargets) }
                 .disabled(deleteTargets.isEmpty)
             }
         }

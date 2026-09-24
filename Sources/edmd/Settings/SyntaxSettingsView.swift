@@ -67,6 +67,7 @@ struct SyntaxSettingsView: View {
                 Picker("", selection: $defaultCodeSyntax) {
                     ForEach(languages, id: \.id) { Text($0.label).tag($0.id) }
                 }
+                .accessibilityLabel("Default code syntax")
                 .labelsHidden()
                 .frame(width: boxWidth)   // match the list box below
                 .onChange(of: defaultCodeSyntax) {
@@ -146,7 +147,8 @@ struct SyntaxSettingsView: View {
                 Button(action: removeDefinition) { Image(systemName: "minus") }
                     .help("Remove the selected user definition")
                     .disabled(!selectionIsUser)
-                Button(action: revealDefinition) { Image(systemName: "pencil") }
+                Button(action: revealDefinition) { Image(systemName: "folder") }
+                    .accessibilityLabel("Show in Finder")
                     .help("Show the definition's JSON file in the Finder")
                     // Built-ins are read-only inside the app bundle.
                     .disabled(!selectionIsUser)

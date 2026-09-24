@@ -261,7 +261,26 @@ extension EditorTextView {
         guard block != hoveredTableBlock || onButton != tableRawButtonHovered else { return }
         hoveredTableBlock = block
         tableRawButtonHovered = onButton
+        refreshHoverButtonToolTips()
         needsDisplay = true
+    }
+
+    private static let tableRawButtonToolTip: NSString = "Edit table as Markdown"
+    private static let codeCopyButtonToolTip: NSString = "Copy code"
+
+    /// The `</>` and copy buttons are drawn, not views, so their tooltips are
+    /// rects on the text view. Re-registered on every hover change: a button
+    /// only has a place while it is revealed, and hovering its block reveals
+    /// it before the pointer reaches it, so the rect is there in time for
+    /// AppKit's normal tooltip delay. The owners are static strings because
+    /// AppKit shows an owner's `description` and does not retain it.
+    func refreshHoverButtonToolTips() {
+        for tag in hoverButtonToolTips { removeToolTip(tag) }
+        hoverButtonToolTips = revealedTableRawButtons().map {
+            addToolTip(tableRawButtonHitBox($0.rect), owner: Self.tableRawButtonToolTip, userData: nil)
+        } + revealedCodeCopyButtons().map {
+            addToolTip(codeCopyButtonHitBox($0.rect), owner: Self.codeCopyButtonToolTip, userData: nil)
+        }
     }
 
     /// The on-screen band a block's laid-out lines occupy (view coordinates).
@@ -312,6 +331,7 @@ extension EditorTextView {
         hoveredTableHandle = nil
         hoveredCodeBlock = nil
         codeCopyButtonHovered = false
+        refreshHoverButtonToolTips()
         needsDisplay = true
     }
 
