@@ -640,14 +640,11 @@ class Document: NSDocument, HeadingNavigable {
         let pointSize: CGFloat = editor.viewMode == .reading ? 12.9 : 15
         viewModeItem?.image = icon(for: editor.viewMode)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))
-        // Names what the click does, not what the mode is: the icon already shows
-        // the current mode, and AppKit's own toolbars read "Hide Sidebar" /
-        // "Show Sidebar" rather than stating the state back. Source is a display
-        // option *of* the editing view, not a third destination, so the toggle
-        // only ever has these two halves to name — even when `toggledViewMode`
-        // lands in `.source`.
-        viewModeItem?.toolTip = editor.viewMode == .reading
-            ? "Switch to Edit View" : "Switch to Read View"
+        // Names what the click does, in the ⌘E menu item's words, so one
+        // control has one name for its action; the label below states the
+        // mode. Source is a display option *of* the editing view, not a third
+        // destination, so it is still "Show Editor".
+        viewModeItem?.toolTip = editor.viewMode == .reading ? "Show Editor" : "Show Reader"
         // The label (shown under Icon and Text) states the current mode, the
         // way the button's icon does; the palette keeps the item's generic name.
         viewModeItem?.label = editor.viewMode == .reading ? "Read" : "Edit"
