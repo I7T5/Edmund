@@ -56,6 +56,8 @@ public class EditorTextView: NSTextView {
     var emphasisRange: NSRange?
     var emphasisProgress: CGFloat = 0
     var emphasisLink: CADisplayLink?
+    /// Drives animated GIF playback while one is on screen (EditorTextView+GIFAnimation).
+    var gifLink: CADisplayLink?
     /// Routes menu/keyboard find commands to the app-side find controller.
     /// Weak; mirrors the module decoupling of `contextFontMenuProvider` so
     /// EdmundCore need not know about edmd's FindController.

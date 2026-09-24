@@ -391,6 +391,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                            operation: .sourceOver,
                            fraction: 1, respectFlipped: true, hints: nil)
                 NSGraphicsContext.restoreGraphicsState()
+                if image.animatedGIFRep != nil, let view = textLayoutManager?.textContainer?.textView as? EditorTextView {
+                    MainActor.assumeIsolated { view.startGIFPlayback() }
+                }
             } else if let path = overlay.path, let color = overlay.pathColor {
                 // Stroke the vector path directly in CG — never rasterize it to
                 // an image first: an image drawn on a multi-line fragment wedges
