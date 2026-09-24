@@ -100,7 +100,7 @@ struct SyntaxSettingsView: View {
     /// One list row's height; the box shows exactly 5 (`rowHeight * 5`).
     private let rowHeight: CGFloat = 20
 
-    /// The CotEditor-style list of definitions with a `+ − ✎` toolbar, closely
+    /// The CotEditor-style list of definitions with a `+ − ⋯` toolbar, closely
     /// following FormatSettingsView: a plain `List` with a `.border`, the toolbar
     /// pinned by a bottom safe-area bar with a full-width `Divider` above it.
     private var availableSyntaxList: some View {
@@ -109,7 +109,7 @@ struct SyntaxSettingsView: View {
             SyntaxDefinitionStore.shared.isUserDefinition($0)
         } ?? false
         // CotEditor's FormatSettingsView box: a plain `List` over a white
-        // background, a full-width `Divider`, then the +/−/✎ toolbar — the whole
+        // background, a full-width `Divider`, then the +/−/⋯ toolbar — the whole
         // stack wrapped by one `.border`. (CotEditor pins the toolbar with
         // `.safeAreaBar`, macOS 15+; this container reproduces the same look on
         // the macOS 14 target.)
@@ -147,11 +147,17 @@ struct SyntaxSettingsView: View {
                 Button(action: removeDefinition) { Image(systemName: "minus") }
                     .help("Remove the selected user definition")
                     .disabled(!selectionIsUser)
-                Button(action: revealDefinition) { Image(systemName: "folder") }
-                    .accessibilityLabel("Show in Finder")
-                    .help("Show the definition’s JSON file in the Finder")
-                    // Built-ins are read-only inside the app bundle.
-                    .disabled(!selectionIsUser)
+                // The Themes pane's ⋯ menu, so an Edit… item has a home once
+                // definitions get an editor.
+                Menu {
+                    Button("Show in Finder", action: revealDefinition)
+                        // Built-ins are read-only inside the app bundle.
+                        .disabled(!selectionIsUser)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuIndicator(.hidden)
+                .fixedSize()
                 Spacer()
             }
             .buttonStyle(.borderless)
@@ -257,7 +263,7 @@ struct SyntaxSettingsView: View {
         reloadDefinitions()
     }
 
-    /// `✎` — reveal the selected user definition's JSON in the Finder. Enabled
+    /// ⋯ ▸ Show in Finder — reveal the selected user definition's JSON in the Finder. Enabled
     /// only for user defs (built-ins are read-only inside the app bundle).
     private func revealDefinition() {
         guard let id = selectedSyntax,

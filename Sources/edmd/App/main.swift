@@ -188,7 +188,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         settingsWindowController?.window?.makeKeyAndOrderFront(nil)
     }
 
-    /// Help ▸ Key Bindings: Settings, opened on the Key Bindings pane.
+    /// Help ▸ Keyboard Shortcuts: Settings, opened on the Key Bindings pane.
     @MainActor @objc func showKeyBindings(_ sender: Any?) {
         showSettings(sender)
         settingsWindowController?.selectPane(label: "Key Bindings")

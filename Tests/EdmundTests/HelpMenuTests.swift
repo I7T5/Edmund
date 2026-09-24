@@ -10,7 +10,7 @@ struct HelpMenuTests {
     @Test func itemsAreInOrderWithTheirLinks() throws {
         let menu = try #require(HelpMenu.build().submenu)
         let titles = menu.items.map { $0.isSeparatorItem ? "---" : $0.title }
-        #expect(titles == ["Edmund Help", "Key Bindings", "---",
+        #expect(titles == ["Edmund Help", "Keyboard Shortcuts", "---",
                            "App Icons", "Release Notes", "Report a Bug\u{2026}",
                            "Star on GitHub", "Website"])
 
@@ -22,7 +22,7 @@ struct HelpMenuTests {
                           "https://edmund.md"])
     }
 
-    /// Key Bindings lands on the Key Bindings pane, not wherever
+    /// Keyboard Shortcuts lands on the Key Bindings pane, not wherever
     /// Settings was left.
     @Test func keyboardShortcutsSelectsKeyBindingsPane() throws {
         ThemeScratch.activate()
