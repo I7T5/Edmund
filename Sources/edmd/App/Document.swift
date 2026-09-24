@@ -1086,6 +1086,12 @@ class Document: NSDocument, HeadingNavigable {
         editor.additionalTopInset = containerView.bounds.height - y
     }
 
+    /// File ▸ Duplicate (⇧⌘S). With Auto Save off there are no versions to
+    /// duplicate from, so the same item is the classic Save As…, as in TextEdit.
+    @objc func duplicateOrSaveAs(_ sender: Any?) {
+        if Self.autosavesInPlace { duplicate(sender) } else { saveAs(sender) }
+    }
+
     /// Keeps the View-menu "Show Source in Editor" checkmark and the
     /// Show/Hide Toolbar title in sync with the settings.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -1103,6 +1109,18 @@ class Document: NSDocument, HeadingNavigable {
         if item.action == #selector(toggleFormatBar(_:)) {
             // Title, not a checkmark — the same idiom as Hide Toolbar above.
             item.title = AppSettings.showFormatBar ? "Hide Format Bar" : "Show Format Bar"
+        }
+        if item.action == #selector(save(_:)) {
+            // Pages' idiom: the ellipsis only while untitled, when Save opens
+            // the save panel; a document already on disk just saves.
+            item.title = fileURL == nil ? "Save\u{2026}" : "Save"
+        }
+        if item.action == #selector(duplicateOrSaveAs(_:)) {
+            item.title = Self.autosavesInPlace ? "Duplicate" : "Save As\u{2026}"
+        }
+        if item.action == #selector(saveAs(_:)), item.isAlternate {
+            // Without Auto Save the item above already is Save As….
+            item.isHidden = !Self.autosavesInPlace
         }
         if item.action == #selector(toggleStatusBarShown(_:)) {
             item.title = StatusBarPrefs.load().isShown ? "Hide Status Bar" : "Show Status Bar"
