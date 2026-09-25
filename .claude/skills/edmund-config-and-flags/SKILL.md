@@ -131,7 +131,9 @@ Read `Sources/EdmundCore/Diagnostics/Log.swift` and
 `EditorTextView+Diagnostics.swift`.
 
 - API: `Log.{debug,info,error}(_:category:)`, `Log.measure(_:) { … }`.
-- File: `~/.edmund/logs/edmund-YYYY-MM-DD.log`, written on a private serial queue.
+- File: `Log.defaultDirectory/edmund-YYYY-MM-DD.log`
+  (`~/Library/Application Support/Edmund/Logs`, inside the app's container when
+  sandboxed), written on a private serial queue.
 - Config flow: `AppSettings.applyLogging()` pushes the toggle + retention into
   `Log.configure` at launch and on change; retention pruning happens there.
 - **Two independent switches**: `diagnosticLogging` (writes anything at all) and

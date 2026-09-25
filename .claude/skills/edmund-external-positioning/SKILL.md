@@ -149,11 +149,11 @@ Verified against the repo, 2026-07-05:
 
 ## 5. Release-notes and public-writing style
 
-- **Pipeline:** `CHANGELOG.md` sections become both the GitHub release notes
+- **Pipeline:** `docs/CHANGELOG.md` sections become both the GitHub release notes
   (awk-extracted) and Sparkle's update-dialog HTML
   (`scripts/changelog-to-html.py` → appcast `<description>`). A CHANGELOG
   entry IS public copy — write it that way. Mechanics: edmund-release-and-operate.
-- **Actual house style** (read `CHANGELOG.md` 0.1.0–0.1.3 before writing):
+- **Actual house style** (read `docs/CHANGELOG.md` 0.1.0–0.1.3 before writing):
   Keep-a-Changelog headers (`### Added / Changed / Fixed`); one line per item,
   sentence case, no trailing period enforced; links to issues (`[#156]`) and
   investigation docs (`([docs](docs/investigations/delete-drift-investigation.md))`);
@@ -186,7 +186,7 @@ proof bar there matters.
 
 - Sources verified 2026-07-05 against: `README.md`, `docs/ROADMAP.md`
   (last updated 2026-07-03), `misc/backlog.md`, `docs/ARCHITECTURE.md`
-  (§2, §6, §8, §13, §14), `CHANGELOG.md` (0.1.0–0.1.3), `LICENSE`,
+  (§2, §6, §8, §13, §14), `docs/CHANGELOG.md` (0.1.0–0.1.3), `LICENSE`,
   `LICENSES/lucide.txt`, `.github/ISSUE_TEMPLATE/`, `misc/marketing/`,
   `Tests/EdmundTests/PerfHarnessTests.swift`,
   `Sources/EdmundCore/Export/{ReadRenderOptions,HTMLRenderer,DocumentHTML}.swift`,

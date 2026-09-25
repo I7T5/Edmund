@@ -3,7 +3,7 @@ name: edmund-docs-and-writing
 description: >
   Documentation of record for the Edmund repo: which doc owns which fact, and
   how to write in the house style. Load whenever you are writing or updating
-  ANY project doc — docs/ARCHITECTURE.md, CHANGELOG.md, README.md,
+  ANY project doc — docs/ARCHITECTURE.md, docs/CHANGELOG.md, README.md,
   docs/ROADMAP.md, misc/backlog.md, a docs/<topic>-investigation.md
   write-up, release docs — or deciding WHERE a newly learned fact, gotcha,
   bug, or feature idea belongs. Covers the docs-of-record map, the
@@ -47,7 +47,7 @@ exist and are current as of 2026-07-09.
 | `docs/architecture/extensibility.md` | The design-of-record for themes/extensions: vision, current state (verified against `main` and the unmerged `feat/extensions-registry-and-tab` branch), themes/extensions design, staged implementation plan, honest risks | **Design only, not yet implemented on `main`.** `ARCHITECTURE.md` gets no extensibility section until code lands (same-PR rule) — this doc is the exception to the deep-doc pattern above: there is no ARCHITECTURE.md statement to expand yet. |
 | `docs/architecture/sandboxing.md` | The App Sandbox preparation plan: CotEditor reference model, touchpoint-to-fix inventory, entitlements/build-variant mechanics, the `~/.edmund/` onboarding grant, staged plan (SB0-SB4), open decisions | **Plan only, nothing sandboxed on `main`.** Same design-doc exception as `extensibility.md`: no ARCHITECTURE.md statement exists yet; when a stage lands, its facts move to `ARCHITECTURE.md` in the same PR. |
 | `README.md` | WHAT/WHY for users: differentiators, screenshots, install (incl. the Gatekeeper "DAMAGED" `xattr -dr com.apple.quarantine` workaround), dependencies, alternatives, acknowledgements, license | User-facing; no internals. |
-| `CHANGELOG.md` | User-facing version history, Keep-a-Changelog style | `## [x.y.z]` sections are machine-extracted for release notes — exact format matters (§4 below). |
+| `docs/CHANGELOG.md` | User-facing version history, Keep-a-Changelog style | `## [x.y.z]` sections are machine-extracted for release notes — exact format matters (§4 below). |
 | `docs/ROADMAP.md` | Versioned feature plan: `## v1.0.0`, `## v1.x`, `# v.2.0.0` sections of checkbox lists, grouped by theme (editing, extensions, macOS integrations) | Has a `Last updated: YYYY-MM-DD` line under the title — refresh it when you edit. |
 | `misc/backlog.md` | The maintainer's working priority list: `## Now (small releases)` (Marketing / On-going bugs / Bugs / UI/UX / Features), `## Next`, `## Later`, roadmap mirrors, `### Lurking (Unreproduceable)`, `## Done` | Stated priority: **Marketing = Bugs >= UI/UX > Features**. Bug entries carry repro pointers (`misc/bug-repros/*.mov`, `.log`, or `~/Desktop` paths). |
 | `docs/investigations/<topic>-investigation.md` | Deep multi-round investigation chronicles for active bug classes | Existing: `delete-drift-`, `viewport-glitch-investigation.md`. Template in §5. |
@@ -77,7 +77,7 @@ Route the fact FIRST, then write. One home; cross-reference from elsewhere.
 | Code debt / incomplete implementation | `ARCHITECTURE.md` §10 | Its footer says: track code-debt here, roadmap items in README/ROADMAP. |
 | Changed invariant, new subsystem, new pipeline step | `ARCHITECTURE.md` §2–§7 (the relevant section) | Update in the same PR — header rule. |
 | Multi-round investigation (2+ hypothesis cycles, live repro work) | New `docs/<topic>-investigation.md` | Use the §5 template. ALSO add a one-bullet §8 gotcha summarizing the rule it produced, pointing at the doc. |
-| User-visible change (fix/feature/rename) | `CHANGELOG.md` under the next `## [x.y.z]` | Format in §4. Link the issue and any investigation doc. |
+| User-visible change (fix/feature/rename) | `docs/CHANGELOG.md` under the next `## [x.y.z]` | Format in §4. Link the issue and any investigation doc. |
 | New bug found (reproducible) | `misc/backlog.md` under `Bugs` | `- [ ] Bug: <symptom>. See <repro pointer>.` Drop repro assets (video/log) into `misc/bug-repros/`. |
 | New bug found (unreproducible so far) | `misc/backlog.md` → `### Lurking (Unreproduceable)` | One line + "wait for screen record" style note. |
 | Bug that is really code debt (design limitation) | `ARCHITECTURE.md` §9 | e.g. the image-on-wrapping-fragment constraint. |
@@ -106,7 +106,7 @@ Derived from reading `ARCHITECTURE.md` and the investigation docs. Match it.
   `` `recomposeDirty` ``, `` `+EditFlow` `` (the extension-file shorthand),
   `` `-debug.reproScript` ``.
 - **One-line repro pointers**, not embedded essays: "See
-  `misc/bug-repros/image-blank-after.mov`", "grep `~/.edmund/logs` for
+  `misc/bug-repros/image-blank-after.mov`", "grep `~/Library/Application Support/Edmund/Logs` for
   `repairing content above origin`".
 - **Honest status labels.** The docs say "unconfirmed live", "theory +
   targeted repair, not a confirmed kill", "Verification limits (honest
@@ -236,7 +236,7 @@ Fixed on branch `fix/<slug>`, commits: `<sha>` — <subject>, ...
 
 <Exact user-visible behavior. Bulleted key properties, each a discriminating
 fact ("caret-only, text fine"; "never right after launch"). Evidence
-pointers: `misc/bug-repros/<file>`, `~/.edmund/logs/...`.>
+pointers: `misc/bug-repros/<file>`, `~/Library/Application Support/Edmund/Logs/...`.>
 
 ## How it was diagnosed
 
@@ -328,7 +328,7 @@ maintainer's own `<!-- -->` edit notes (§6).
 
 Written 2026-07-05 against `main` at `fe8a1f5` (release 0.1.3). Sources, all
 read directly: `docs/ARCHITECTURE.md` (header, §8–§13),
-`README.md`, `CHANGELOG.md`, `docs/ROADMAP.md`, `misc/backlog.md`,
+`README.md`, `docs/CHANGELOG.md`, `docs/ROADMAP.md`, `misc/backlog.md`,
 `docs/investigations/delete-drift-investigation.md`, `docs/investigations/viewport-glitch-investigation.md`,
 `docs/dev-guides/live-repro-guide.md` (§1), `misc/before-you-release.md`,
 `misc/how-to-release.md`, root `CLAUDE.md`,

@@ -226,7 +226,7 @@ STTextView, Apple forums) — even TextEdit exhibits it.
   **STATUS: mitigated-unconfirmed.** The doc is explicit: Bug 2 was **never
   reproduced live**; the repair had not been confirmed against a live
   occurrence as of this writing (2026-07-05). If it recurs: grep
-  `~/.edmund/logs` for the breadcrumb — present means diagnosis confirmed but
+  `~/Library/Application Support/Edmund/Logs` for the breadcrumb — present means diagnosis confirmed but
   repair raced/undersized; absent means different cause (scroller-only
   estimate jumps, or `textContainerOrigin`).
 - **Bug 3 (viewport oscillates during a steady drag-select).** Two scrollers
@@ -364,7 +364,7 @@ wrapped paragraph), but the root cause was the queued TextKit 2 selection
 fixup armed by an earlier bypassed drag-move edit — the wrapped paragraph was
 incidental. **STATUS: settled** with `1b1420a`. If a caret drift is reported
 "in a wrapped paragraph", do not assume wrapping is the mechanism; check for a
-preceding heal breadcrumb in `~/.edmund/logs` first.
+preceding heal breadcrumb in `~/Library/Application Support/Edmund/Logs` first.
 
 ---
 
@@ -430,7 +430,7 @@ mechanism is fixed.
 - Written 2026-07-05 by mining: `docs/investigations/delete-drift-investigation.md`,
   `docs/investigations/viewport-glitch-investigation.md`,
   `docs/investigations/archives/callout-title-wrap-investigation.md`, `docs/ARCHITECTURE.md` §13,
-  `CHANGELOG.md`, `misc/backlog.md`, `docs/ROADMAP.md`, and `git log --all`
+  `docs/CHANGELOG.md`, `misc/backlog.md`, `docs/ROADMAP.md`, and `git log --all`
   (every hash above verified with `git show` on that date).
 - **Code and git win over prose.** If this file disagrees with a commit or the
   current source, trust the commit, then fix this file.

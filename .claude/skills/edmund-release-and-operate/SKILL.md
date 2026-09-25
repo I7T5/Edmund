@@ -3,7 +3,7 @@ name: edmund-release-and-operate
 description: >
   Load when cutting or debugging an Edmund release, or operating the shipped
   app. Triggers: version bump (Info.plist CFBundleShortVersionString /
-  CFBundleVersion), tagging vX.Y.Z, CHANGELOG.md release sections, release.yml
+  CFBundleVersion), tagging vX.Y.Z, docs/CHANGELOG.md release sections, release.yml
   / release.sh / build-app.sh, appcast.xml or Sparkle update failures
   ("improperly signed", update never offered), sign_update / EdDSA keys /
   SPARKLE_ED_PRIVATE_KEY / RELEASE_TOKEN, create-dmg or DMG naming problems,
@@ -15,7 +15,7 @@ description: >
 
 Date-stamped 2026-07-05. Verified against `.github/workflows/release.yml`,
 `scripts/release.sh`, `scripts/build-app.sh`, `scripts/changelog-to-html.py`,
-`appcast.xml`, `Info.plist`, `CHANGELOG.md`, `docs/ARCHITECTURE.md` §8/§13, and
+`appcast.xml`, `Info.plist`, `docs/CHANGELOG.md`, `docs/ARCHITECTURE.md` §8/§13, and
 the Settings/CrashReporter sources. Where a doc and a script disagree, the
 script is the truth; disagreements are flagged inline.
 
@@ -46,7 +46,7 @@ Ship via a tag; CI does the rest. In order:
 1. **Bump versions in `Info.plist`** — both keys:
    - `CFBundleShortVersionString` — marketing version, e.g. `0.1.3`
    - `CFBundleVersion` — build number, **monotonic integer** (0.1.3 = `4`)
-2. **Add a `## [x.y.z]` section to `CHANGELOG.md`** — format is load-bearing,
+2. **Add a `## [x.y.z]` section to `docs/CHANGELOG.md`** — format is load-bearing,
    see §2. The version MUST match Info.plist exactly.
 3. **Merge to `main`** and push (via the normal PR flow).
 4. **Tag and push the tag:**
@@ -99,7 +99,7 @@ installed, `swift build` has run at least once (so `sign_update` exists under
 Both `release.yml` and `release.sh` extract the GitHub Release body with:
 
 ```sh
-awk "BEGIN{p=0} /^## \[${VERSION}\]/{p=1;next} p && /^## \[/{exit} p{print}" CHANGELOG.md
+awk "BEGIN{p=0} /^## \[${VERSION}\]/{p=1;next} p && /^## \[/{exit} p{print}" docs/CHANGELOG.md
 ```
 
 So the section header **must** start at column 0 as `## [x.y.z]` — literally
@@ -126,7 +126,7 @@ only understands Keep-a-Changelog shapes:
 - Blank lines and `---` are skipped; anything else becomes a `<p>`.
 - Missing section → empty output → the `<description>` is simply omitted.
 
-House format (verified from `CHANGELOG.md`): Keep a Changelog 1.1.0 + SemVer,
+House format (verified from `docs/CHANGELOG.md`): Keep a Changelog 1.1.0 + SemVer,
 newest first, no separator between sections since 0.1.4.
 
 ---
@@ -160,9 +160,11 @@ when the old script signed only the bare binary.
 
 1. `codesign --force --deep --sign - Sparkle.framework` (nested XPC helpers
    must be signed before macOS will launch them),
-2. `codesign --force --deep --sign - --identifier "com.i7t5.edmd"` on the
-   whole `.app` **while its root holds only `Contents/`** — codesign refuses
-   to seal a bundle with extra items at the root,
+2. sign the Quick Look appex with `Resources/QuickLook.entitlements`, then
+   seal the outer `.app` **without `--deep`** (entitlements and identifier vary
+   by variant: sparkle, mas, adhoc; `--deep` would re-sign the appex and strip
+   its sandbox entitlements) **while its root holds only `Contents/`** —
+   codesign refuses to seal a bundle with extra items at the root,
 3. copy the SwiftMath resource bundle to the `.app` root **after** sealing
    (its generated `Bundle.module` looks at `Bundle.main.bundleURL`; without it
    the app crashes on the first LaTeX render).
@@ -232,7 +234,7 @@ release fails at the appcast push while the GitHub Release itself succeeds
 - [ ] Visual sanity: build and screencapture the editor in **light and dark**
       mode; click through everything the CHANGELOG claims ("fixed X" → actually
       reproduce X and confirm).
-- [ ] `CHANGELOG.md` has `## [x.y.z] - YYYY-MM-DD` for this release and the
+- [ ] `docs/CHANGELOG.md` has `## [x.y.z] - YYYY-MM-DD` for this release and the
       version **matches Info.plist** (`CFBundleShortVersionString`); `###`
       subheads, not `##` (§2).
 - [ ] `CFBundleVersion` bumped (monotonic int).
@@ -282,7 +284,10 @@ first (`pgrep -x edmd`), kill only PIDs you started, or launch the binary
 directly: `build/Edmund.app/Contents/MacOS/edmd file.md &`. Full launch /
 stale-build / screencapture mechanics: `edmund-build-and-env`.
 
-### Logs — `~/.edmund/logs/edmund-YYYY-MM-DD.log`
+### Logs — `Log.defaultDirectory/edmund-YYYY-MM-DD.log`
+
+`~/Library/Application Support/Edmund/Logs`, inside the app's container
+(`~/Library/Containers/com.i7t5.edmund/Data/…`) when sandboxed.
 
 - One file per day, human-readable lines tagged `LEVEL [category]`
   (categories: app, document, io, render, compose, selection, lazy, callout,
@@ -376,7 +381,7 @@ release. Items are inserted **before `</channel>`**, so the file reads oldest
 
 Written 2026-07-05 from direct reads of: `.github/workflows/release.yml`,
 `scripts/release.sh`, `scripts/build-app.sh`, `scripts/changelog-to-html.py`,
-`appcast.xml`, `CHANGELOG.md`, `Info.plist`, `README.md`,
+`appcast.xml`, `docs/CHANGELOG.md`, `Info.plist`, `README.md`,
 `docs/ARCHITECTURE.md` (§8, §13), `misc/how-to-release.md`,
 `misc/before-you-release.md`, `docs/ROADMAP.md`, `misc/backlog.md`,
 `Sources/EdmundCore/Diagnostics/CrashReporter.swift`,

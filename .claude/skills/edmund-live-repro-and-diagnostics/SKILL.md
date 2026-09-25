@@ -67,7 +67,7 @@ Two levels deserve emphasis:
 
 ## 2. Step 0 — make the trace tell you the trigger
 
-Never script blind. The recipe is usually already in `~/.edmund/logs`, if
+Never script blind. The recipe is usually already in `~/Library/Application Support/Edmund/Logs`, if
 verbose diagnostics were on. Launch flags (file arg **must** be `argv[1]`):
 
 ```bash

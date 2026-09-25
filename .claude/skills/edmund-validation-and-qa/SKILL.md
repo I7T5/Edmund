@@ -55,7 +55,7 @@ bugs, class (a) is not evidence of a fix; you need (c)+(d).
 
 ## 2. Test-suite anatomy
 
-Run: `swift test` (full suite; ARCHITECTURE cites ~750+ tests ≈10s — 810 `@Test`
+Run: `swift test` (full suite; ARCHITECTURE cites ≈1900 tests, ~1 min — 1920 tests ran on 2026-09-24; 810 `@Test`
 cases as of 2026-07-05). One suite: `swift test --filter <Suite>`. **`swift test`
 also runs automatically as a Stop hook** (`.claude/settings.json`) at the end of
 any turn touching code, so failures surface before you commit.

@@ -49,7 +49,7 @@ the code. Read that doc fully before a deep dive.
 
 ## PHASE 0 — Classify: is it actually this class?
 
-Grep `~/.edmund/logs/edmund-<date>.log` (run the app with
+Grep `~/Library/Application Support/Edmund/Logs/edmund-<date>.log` (run the app with
 `-settings.general.diagnosticLogging YES -settings.advanced.verboseEditorDiagnostics YES`):
 
 | Signature | Meaning |
