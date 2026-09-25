@@ -248,9 +248,11 @@ extension EditorTextView {
                                                       iconNudge: info.style.iconBaselineNudge) {
                     applyOverlay(overlay, anchor: NSRange(location: header.location, length: 1),
                                  in: result)
+                    // Same top room as a custom title (the overlay's title sits
+                    // on the line baseline), so both headers share one geometry.
                     result.addAttribute(
                         .paragraphStyle,
-                        value: calloutParagraphStyle(minimumLineHeight: overlay.bounds.height + calloutTopPad),
+                        value: calloutParagraphStyle(spacingBefore: calloutTopPad),
                         range: headerLine)
                 }
             }
@@ -450,28 +452,40 @@ extension EditorTextView {
 
     // MARK: Padding constants (shared by the box and the header image)
 
-    /// Top breathing room — raised on the header line's minimum line height
-    /// (clickable text space), not dead block padding.
+    /// Top breathing room — the header line's `paragraphSpacingBefore`, which
+    /// the box covers.
     private var calloutTopPad: CGFloat { bodyFont.pointSize * 0.8 }
     /// Bottom breathing room. Delivered by growing the last line's layout
     /// fragment frame (a box `bottomPad`), so it is genuine clickable text
     /// space below the last line — not trailing paragraph spacing, which
     /// TextKit 2 leaves out of the fragment and which clicks would miss.
-    /// Tuned so the *rendered* bottom gap matches the rendered top gap: the
-    /// header overlay sits low in its line, so the top renders ~0.4·pointSize
-    /// larger than `calloutTopPad`, and this makes the bottom match it.
-    var calloutBottomPad: CGFloat { bodyFont.pointSize * 1.14 }
+    ///
+    /// Derived so the last *baseline* sits as far above the box's bottom edge
+    /// as the title's *cap line* sits below its top edge. Those are the edges
+    /// the eye reads: descenders are sparse, so matching the gap to the
+    /// descender bottom instead (ink box to ink box) leaves the bottom looking
+    /// ~1.5pt heavier. TextKit 2 line metrics are `defaultLineHeight` /
+    /// `defaultBaselineOffset`, with `lineSpacing` stacked above the glyphs.
+    var calloutBottomPad: CGFloat {
+        let metrics = NSLayoutManager()
+        let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+        let capGap = calloutTopPad + bodyParagraphStyle.lineSpacing
+            + metrics.defaultBaselineOffset(for: titleFont) - titleFont.capHeight
+        let baselineGap = metrics.defaultLineHeight(for: bodyFont)
+            - metrics.defaultBaselineOffset(for: bodyFont)
+        return max(0, capGap - baselineGap)
+    }
 
     // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 
     /// Text insets the NSTextBlock padding used to provide. The left inset is
     /// kept small so the callout's text lines up with a plain block quote's —
     /// the quote's 2pt bar inset matches this 2pt — and the top breathing room
-    /// lives in the header image (clickable text space). The bottom breathing
+    /// is the header line's `spacingBefore`. The bottom breathing
     /// room is the last line's box `bottomPad` (which grows that fragment's
     /// frame), so the drawn box covers it and clicks there land on the
     /// callout's last line — no trailing paragraph spacing needed.
-    private func calloutParagraphStyle(minimumLineHeight: CGFloat = 0) -> NSParagraphStyle {
+    private func calloutParagraphStyle(spacingBefore: CGFloat = 0) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.firstLineHeadIndent = 2
@@ -479,7 +493,7 @@ extension EditorTextView {
         // matching list items and plain blockquotes.
         ps.headIndent = 2 + quoteMarkerWidth
         ps.tailIndent = -10
-        ps.minimumLineHeight = minimumLineHeight
+        ps.paragraphSpacingBefore = spacingBefore
         return ps
     }
 
@@ -508,9 +522,9 @@ extension EditorTextView {
         var transform = CGAffineTransform(scaleX: scale, y: scale)
         guard let scaled = svgPath.copy(using: &transform) else { return nil }
         // bounds.minY is the icon's *bottom* relative to the baseline: center
-        // the square on the title's optical middle (midpoint of x-height and
-        // cap-height centers — matches the header image's icon placement).
-        let opticalCenter = (titleFont.xHeight + titleFont.capHeight) / 4
+        // the square on the title's cap height (matches the header image's
+        // icon placement).
+        let opticalCenter = titleFont.capHeight / 2
         let overlay = FragmentOverlay(
             path: scaled,
             color: color,
@@ -533,8 +547,9 @@ extension EditorTextView {
 
     /// Draws "icon  Title" into one image, tinted to the callout color, and
     /// wraps it in a `FragmentOverlay`. Returns `nil` if the Lucide icon can't
-    /// be resolved. The top breathing room is NOT in the image — the caller
-    /// raises the header line's minimum line height instead.
+    /// be resolved. The overlay is anchored by the title's baseline, so the
+    /// title sits exactly where a custom title's live text would; the top
+    /// breathing room is the header line's `paragraphSpacingBefore`.
     private func calloutHeaderOverlay(iconName: String, title: String, color: NSColor,
                                       colorKey: String,
                                       iconNudge: CGFloat) -> FragmentOverlay? {
@@ -560,16 +575,16 @@ extension EditorTextView {
         let symW = symbol.size.width, symH = symbol.size.height
         let contentHeight = ceil(max(symH, titleSize.height))
         let width = ceil(symW + gap + titleSize.width)
+        let titleY = (contentHeight - titleSize.height) / 2
+        // The title's baseline inside the image; the overlay is placed so this
+        // lands on the line's baseline, exactly where a custom title's text sits.
+        let baseline = titleY + abs(titleFont.descender)
 
         let image = NSImage(size: NSSize(width: width, height: contentHeight), flipped: false) { _ in
-            let titleY = (contentHeight - titleSize.height) / 2
             titleStr.draw(at: NSPoint(x: symW + gap, y: titleY))
-            // Center the icon on the visual middle of the bold title: the midpoint
-            // between its x-height center (too low on its own) and cap-height center
-            // (~1.5px too high on its own). This reads as centered for the
-            // mostly-lowercase, capital-initial titles.
-            let baseline = titleY + abs(titleFont.descender)
-            let opticalCenter = baseline + (titleFont.xHeight + titleFont.capHeight) / 4
+            // Center the icon on the title's cap height, so it overhangs the cap
+            // line and the baseline equally (how SF Symbols sit beside text).
+            let opticalCenter = baseline + titleFont.capHeight / 2
             symbol.draw(in: NSRect(x: 0, y: opticalCenter - symH / 2 + iconNudge, width: symW, height: symH))
             return true
         }
@@ -581,7 +596,7 @@ extension EditorTextView {
             image: image,
             bounds: CGRect(
                 x: 0,
-                y: -pointSize * 0.15,
+                y: -baseline,
                 width: width,
                 height: contentHeight
             )
