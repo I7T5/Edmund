@@ -74,92 +74,100 @@ extension EditorTextView {
 
     // MARK: - Drawing
 
-    /// The "copied" acknowledgement, one timeline driven by a display link
-    /// (`copiedCodeProgress` 0…1 over `codeCopiedFlashDuration`), in seconds:
-    /// on the click the glyph is filled and the background blinks — both at
-    /// once, no ramp, the hover fill is already there under the pointer —
-    /// the blink eases out (by 0.45), the filled glyph holds, then fades back
-    /// to the outline (0.9–1.2).
-    static let codeCopiedFlashDuration: TimeInterval = 1.2
-    static let codeCopiedBlinkOut: ClosedRange<TimeInterval> = 0...0.45
-    static let codeCopiedFillOut: ClosedRange<TimeInterval> = 0.9...1.2
+    /// The "copied" acknowledgement, in seconds — SF Symbols' off-up Replace
+    /// ("emphasizes the next state"): on the click the copy glyph and the hover
+    /// fill fade out fast (0–0.1) and a semibold `checkmark` Appears (scaling
+    /// up); it holds, Disappears (scaling down) at `codeCopiedRelease`, and
+    /// the glyph and fill fade back together as fast (1.4–1.5). The checkmark
+    /// keeps the glyph's ink, not the accent: the accent means interactive or
+    /// selected here (links, checked tasks, the caret), and HIG Color asks not
+    /// to use one colour for two meanings.
+    /// The checkmark's motion is the system's own (and its Reduce Motion
+    /// fallback), played by a transient image view over the button —
+    /// `drawBackground` has no layer to animate. That view only ever holds
+    /// the checkmark: a Replace inside one view recolours the outgoing symbol
+    /// with the incoming one's ink, and a copy glyph handed between the view
+    /// and `drawBackground` doesn't render identically. A display link times
+    /// the rest (`copiedCodeProgress` 0…1 over `codeCopiedFlashDuration`).
+    static let codeCopiedFlashDuration: TimeInterval = 1.55
+    static let codeCopiedRelease: TimeInterval = 1.3
+    static let codeCopiedFadeOut: ClosedRange<TimeInterval> = 0...0.1
+    static let codeCopiedFadeIn: ClosedRange<TimeInterval> = 1.4...1.5
 
     /// 0…1 across `range`, clamped.
     private static func ramp(_ t: TimeInterval, over range: ClosedRange<TimeInterval>) -> CGFloat {
         CGFloat(min(1, max(0, (t - range.lowerBound) / (range.upperBound - range.lowerBound))))
     }
 
-    /// How filled the glyph is at `progress`: full from the click, fading
-    /// back at the end.
-    static func copiedFillAlpha(at progress: CGFloat) -> CGFloat {
-        1 - ramp(TimeInterval(progress) * codeCopiedFlashDuration, over: codeCopiedFillOut)
+    /// Alpha of the copy glyph and the hover fill at `progress`: out fast from
+    /// the click, back once the checkmark has Disappeared.
+    static func copiedChromeAlpha(at progress: CGFloat) -> CGFloat {
+        let t = TimeInterval(progress) * codeCopiedFlashDuration
+        return max(1 - ramp(t, over: codeCopiedFadeOut), ramp(t, over: codeCopiedFadeIn))
     }
 
-    /// Alpha of the background blink at `progress`: full from the click, a
-    /// quadratic ease-out to nothing.
-    static func copiedPulseAlpha(at progress: CGFloat) -> CGFloat {
-        let out = 1 - ramp(TimeInterval(progress) * codeCopiedFlashDuration, over: codeCopiedBlinkOut)
-        return out * out
+    /// The button's symbol at `pointSize`, in the `</>` ink unless a colour is given.
+    private func codeCopySymbol(_ name: String, pointSize: CGFloat, color: NSColor? = nil,
+                                weight: NSFont.Weight = .regular) -> NSImage? {
+        let ink: NSColor = color ?? (isDarkAppearance ? syntaxDimColor : .secondaryLabelColor)
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+                .applying(.init(paletteColors: [ink])))
+    }
+
+    /// The point size at which the copy glyph fits the button's square. The
+    /// glyph is rendered at that size, not scaled down to it: SF Symbols
+    /// thickens strokes at small sizes, so a scaled-down glyph comes out
+    /// thinner and lighter than the flash's image view renders it, and the
+    /// hand-off between the two would jump.
+    private var codeCopyGlyphPointSize: CGFloat {
+        let size = codeCopyButtonSize
+        guard let full = codeCopySymbol("document.on.document", pointSize: size) else { return size }
+        return size * min(size / full.size.width, size / full.size.height)
     }
 
     /// Draws the copy buttons, from the same `drawBackground(in:)` pass as the
     /// `</>` buttons and with their ink.
     func drawCodeCopyButtons(in rect: NSRect) {
         let boxes = revealedCodeCopyButtons().filter { $0.rect.intersects(rect) }
-        guard !boxes.isEmpty else { return }
-        let dim: NSColor = isDarkAppearance ? syntaxDimColor : .secondaryLabelColor
-        let config = NSImage.SymbolConfiguration(pointSize: codeCopyButtonSize, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [dim]))
-        guard let outline = NSImage(systemSymbolName: "document.on.document",
-                                    accessibilityDescription: "Copy code")?
-                  .withSymbolConfiguration(config),
-              let filled = NSImage(systemSymbolName: "document.on.document.fill",
-                                   accessibilityDescription: "Copied")?
-                  .withSymbolConfiguration(config)
+        guard !boxes.isEmpty,
+              let copy = codeCopySymbol("document.on.document", pointSize: codeCopyGlyphPointSize)
         else { return }
 
         for (box, blockIndex) in boxes {
-            let copied = blockIndex == copiedCodeBlock
-            let pad = box.insetBy(dx: -3, dy: -3)
-            let fill: CGFloat = copied ? Self.copiedFillAlpha(at: copiedCodeProgress) : 0
-            // The hover background stays with the filled glyph — the copied
-            // state keeps it up (and fades it out with the fill) even after
-            // the pointer has left.
-            let background: CGFloat = codeCopyButtonHovered ? 1 : fill
-            if background > 0 {
+            let chrome = blockIndex == copiedCodeBlock ? Self.copiedChromeAlpha(at: copiedCodeProgress) : 1
+            guard chrome > 0 else { continue }
+            if codeCopyButtonHovered {
                 // Context alpha, not `withAlphaComponent`: the semantic colour's
                 // own alpha is the tint, and this scales it rather than replaces it.
                 NSGraphicsContext.saveGraphicsState()
-                NSGraphicsContext.current?.cgContext.setAlpha(background)
-                NSColor.quaternaryLabelColor.setFill()
-                NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
+                NSGraphicsContext.current?.cgContext.setAlpha(chrome)
+                marginButtonHoverFill.setFill()
+                NSBezierPath(roundedRect: box.insetBy(dx: -3, dy: -3), xRadius: 4, yRadius: 4).fill()
                 NSGraphicsContext.restoreGraphicsState()
             }
-            if copied {
-                // Two tiers above the hover fill, so it reads over it.
-                NSColor.secondaryLabelColor
-                    .withAlphaComponent(0.35 * Self.copiedPulseAlpha(at: copiedCodeProgress)).setFill()
-                NSBezierPath(roundedRect: pad, xRadius: 4, yRadius: 4).fill()
-            }
-            // The two glyphs share a footprint, so a plain alpha cross-fade
-            // reads as the outline filling in.
-            if fill < 1 { draw(outline, in: box, alpha: 1 - fill) }
-            if fill > 0 { draw(filled, in: box, alpha: fill) }
+            draw(copy, centredIn: box, alpha: chrome)
         }
     }
 
-    /// Fits a symbol in the box by its own aspect so it isn't squashed square.
-    private func draw(_ image: NSImage, in box: NSRect, alpha: CGFloat) {
-        let drawn = image.size
-        let scale = min(box.width / drawn.width, box.height / drawn.height)
-        let fitted = NSSize(width: drawn.width * scale, height: drawn.height * scale)
-        image.draw(in: NSRect(x: box.midX - fitted.width / 2, y: box.midY - fitted.height / 2,
-                              width: fitted.width, height: fitted.height),
-                   from: .zero, operation: .sourceOver, fraction: alpha)
+    /// Draws a symbol at its own size, centred in the box. `respectFlipped`:
+    /// the text view is flipped, and unlike the one-argument `draw(in:)` this
+    /// overload would otherwise paint the symbol upside down.
+    private func draw(_ image: NSImage, centredIn box: NSRect, alpha: CGFloat) {
+        let size = image.size
+        image.draw(in: NSRect(x: box.midX - size.width / 2, y: box.midY - size.height / 2,
+                              width: size.width, height: size.height),
+                   from: .zero, operation: .sourceOver, fraction: alpha,
+                   respectFlipped: true, hints: nil)
     }
 
     @objc private func stepCopiedFlash(_ link: CADisplayLink) {
+        let release = CGFloat(Self.codeCopiedRelease / Self.codeCopiedFlashDuration)
+        let before = copiedCodeProgress
         copiedCodeProgress = min(1, copiedCodeProgress + CGFloat(link.duration / Self.codeCopiedFlashDuration))
+        if before < release, copiedCodeProgress >= release {
+            copiedGlyphView?.addSymbolEffect(.disappear.down)
+        }
         needsDisplay = true
         if copiedCodeProgress >= 1 { endCopiedFlash() }
     }
@@ -168,6 +176,8 @@ extension EditorTextView {
     func endCopiedFlash() {
         copiedCodeLink?.invalidate()
         copiedCodeLink = nil
+        copiedGlyphView?.removeFromSuperview()
+        copiedGlyphView = nil
         copiedCodeBlock = nil
         copiedCodeProgress = 0
         needsDisplay = true
@@ -218,14 +228,41 @@ extension EditorTextView {
         pasteboard.clearContents()
         pasteboard.setString(fenceContent(blockIndex: blockIndex), forType: .string)
 
-        // A display link drives the whole flash (drawBackground has no layer
-        // to animate), the way the find "pop" does.
-        copiedCodeLink?.invalidate()
+        endCopiedFlash()
         copiedCodeBlock = blockIndex
-        copiedCodeProgress = 0
+        // The glyph's own ink, semibold: a lone stroke has far less ink than
+        // the two stacked pages, and a stronger colour read as too loud.
+        if let box = visibleCodeCopyButtons().first(where: { $0.blockIndex == blockIndex })?.rect,
+           let check = codeCopySymbol("checkmark", pointSize: codeCopyGlyphPointSize, weight: .semibold) {
+            // Twice the box, centred on it: room for the Appear's overshoot
+            // without clipping.
+            let view = CopiedGlyphView(frame: box.insetBy(dx: -box.width / 2, dy: -box.height / 2))
+            view.imageScaling = .scaleNone
+            view.image = check
+            view.addSymbolEffect(.disappear, animated: false)
+            addSubview(view)
+            view.addSymbolEffect(.appear.up)
+            copiedGlyphView = view
+        }
+
+        // A display link times the flash, the way the find "pop" does.
         let link = displayLink(target: self, selector: #selector(stepCopiedFlash))
         link.add(to: .main, forMode: .common)
         copiedCodeLink = link
         needsDisplay = true
     }
+}
+
+/// The "copied" checkmark over the copy button, while the flash plays its
+/// Appear and Disappear. Invisible to the pointer and to VoiceOver — the
+/// button underneath is drawn, and the text view takes its clicks.
+final class CopiedGlyphView: NSImageView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

@@ -73,9 +73,10 @@ struct CodeCopyButtonTests {
         #expect(editor.revealedCodeCopyButtons().count == 1)
     }
 
-    /// The press writes the pasteboard and holds the button up, filled, for
-    /// the flash — even with the pointer gone — until the timer clears it.
-    @Test("Pressing the button copies and flashes it filled")
+    /// The press writes the pasteboard and holds the button up for the flash
+    /// — even with the pointer gone — with a glyph view over it playing the
+    /// Replace to the checkmark, until the flash ends and takes the view away.
+    @Test("Pressing the button copies and flashes the checkmark")
     func pressCopiesAndFlashes() {
         let editor = loadEditor(fence)
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("CodeCopyButtonTests"))
@@ -83,26 +84,41 @@ struct CodeCopyButtonTests {
         #expect(pasteboard.string(forType: .string) == "let x = 1\nlet y = 2")
         #expect(editor.copiedCodeBlock == 0)
         #expect(editor.revealedCodeCopyButtons().count == 1)   // no hover needed
+        let view = editor.copiedGlyphView
+        #expect(view != nil)
+        #expect(view?.superview === editor)
+        #expect(view?.frame.midY == editor.visibleCodeCopyButtons().first?.rect.midY)
+        #expect(view?.hitTest(NSPoint(x: view?.frame.midX ?? 0, y: view?.frame.midY ?? 0)) == nil)
         editor.endCopiedFlash()
         #expect(editor.copiedCodeBlock == nil)
+        #expect(editor.copiedGlyphView == nil && view?.superview == nil)
         #expect(editor.revealedCodeCopyButtons().isEmpty)
     }
 
-    /// Filled and blinking from the click; the blink eases out, the fill
-    /// holds, then fades back.
-    @Test("The copied flash is on at once, blinks out, then releases the fill")
-    func flashShape() {
+    /// A second press restarts the flash rather than stacking a second view.
+    @Test("Pressing again replaces the glyph view")
+    func pressAgain() {
+        let editor = loadEditor(fence)
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("CodeCopyButtonTests"))
+        editor.copyCodeBlock(blockIndex: 0, to: pasteboard)
+        editor.copyCodeBlock(blockIndex: 0, to: pasteboard)
+        #expect(editor.subviews.filter { $0 is CopiedGlyphView }.count == 1)
+        editor.endCopiedFlash()
+    }
+
+    /// The copy glyph and fill fade out fast from the click and back as fast
+    /// once the checkmark has Disappeared.
+    @Test("The copy glyph and fill fade out for the checkmark, then back")
+    func chromeShape() {
         func at(_ seconds: TimeInterval) -> CGFloat {
-            CGFloat(seconds / EditorTextView.codeCopiedFlashDuration)
+            EditorTextView.copiedChromeAlpha(at: CGFloat(seconds / EditorTextView.codeCopiedFlashDuration))
         }
-        #expect(EditorTextView.copiedFillAlpha(at: 0) == 1)
-        #expect(EditorTextView.copiedFillAlpha(at: at(0.8)) == 1)
-        #expect(abs(EditorTextView.copiedFillAlpha(at: at(1.05)) - 0.5) < 0.001)
-        #expect(EditorTextView.copiedFillAlpha(at: 1) == 0)
-        #expect(EditorTextView.copiedPulseAlpha(at: 0) == 1)
-        #expect(EditorTextView.copiedPulseAlpha(at: at(0.2)) < 0.5)
-        #expect(EditorTextView.copiedPulseAlpha(at: at(0.46)) == 0)
-        #expect(EditorTextView.copiedPulseAlpha(at: at(1.0)) == 0)
+        #expect(at(0) == 1)
+        #expect(abs(at(0.05) - 0.5) < 0.001)
+        #expect(at(0.2) == 0)
+        #expect(at(1.35) == 0)
+        #expect(abs(at(1.45) - 0.5) < 0.001)
+        #expect(at(1.55) == 1)
     }
 
     @Test("The button scales with the zoom")
