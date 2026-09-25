@@ -142,7 +142,7 @@ extension EditorTextView {
                 // own alpha is the tint, and this scales it rather than replaces it.
                 NSGraphicsContext.saveGraphicsState()
                 NSGraphicsContext.current?.cgContext.setAlpha(chrome)
-                NSColor.quaternaryLabelColor.setFill()
+                marginButtonHoverFill.setFill()
                 NSBezierPath(roundedRect: box.insetBy(dx: -3, dy: -3), xRadius: 4, yRadius: 4).fill()
                 NSGraphicsContext.restoreGraphicsState()
             }
