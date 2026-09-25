@@ -86,8 +86,10 @@ swift test --filter Callout    # one suite
    it the updater crashes on first check) and `install_name_tool -add_rpath
    "@executable_path/../Frameworks"` so `@rpath` resolves post-install.
 5. Codesign **inside-out**: Sparkle.framework first (nested XPC helpers must
-   be signed before macOS will launch them), then the whole `.app` (ad-hoc,
-   `--deep`, identifier `com.i7t5.edmd`). Sealing the *bundle* — not just the
+   be signed before macOS will launch them), then the Quick Look appex with
+   its own entitlements, then the outer `.app` **without** `--deep`
+   (entitlements and identifier vary by variant: sparkle, mas, adhoc; `--deep`
+   would re-sign the appex and strip its sandbox entitlements). Sealing the *bundle* — not just the
    binary — is what Sparkle's update validator requires.
 6. **Only after sealing**: copy `.build/release/*.bundle` (SwiftMath's math
    fonts) into the `.app` **root**.

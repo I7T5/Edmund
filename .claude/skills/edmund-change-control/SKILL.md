@@ -64,7 +64,7 @@ Classification edge cases that have gone wrong before:
   the sibling paths and match them.
 - A test-only change is docs-class for gating purposes (nothing to screenshot),
   but the Stop hook still must pass — a broken test is a broken commit.
-- Release-adjacent edits (`Info.plist` versions, `CHANGELOG.md`, `appcast.xml`,
+- Release-adjacent edits (`Info.plist` versions, `docs/CHANGELOG.md`, `appcast.xml`,
   `scripts/release.sh`, `.github/workflows/`) are release class even when tiny.
   The v0.1.0→0.1.1 Sparkle failure came from the build script's signing step,
   not from app code.

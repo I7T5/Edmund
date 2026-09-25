@@ -43,10 +43,14 @@ is how rounds 1–5 of delete-drift shipped fixes that came back.
 
 1. **Check the open-bug inventory (§6).** If the symptom matches a known open
    bug, you are done triaging — link the backlog entry and its repro asset.
-2. **Get the logs.** `ls -t ~/.edmund/logs/` and read the day's file
-   (`edmund-YYYY-MM-DD.log`). Grep for the three permanent breadcrumbs:
+2. **Get the logs.** They live in `Log.defaultDirectory`, inside the app's
+   container when sandboxed (the shipped app); a debug build writes
+   `~/Library/Application Support/Edmund/Logs`.
+   `scripts/grep-trace.sh` in `edmund-live-repro-and-diagnostics` checks both.
+   `ls -t "$L"` and read the day's file (`edmund-YYYY-MM-DD.log`), with
+   `L=~/Library/Containers/com.i7t5.edmund/Data/Library/"Application Support"/Edmund/Logs`. Grep for the three permanent breadcrumbs:
    ```bash
-   grep -n "healing storage edit that bypassed didChangeText\|repairing content above origin\|recovered stranded desync on focus regain" ~/.edmund/logs/edmund-*.log
+   grep -n "healing storage edit that bypassed didChangeText\|repairing content above origin\|recovered stranded desync on focus regain" "$L"/edmund-*.log
    ```
    Also grep for `invariant:` (the always-on storage==rawSource tripwire) and
    `⚠︎LEN-MISMATCH`.
@@ -75,10 +79,10 @@ is how rounds 1–5 of delete-drift shipped fixes that came back.
 
 | Symptom | Likely mechanism | Discriminating first check | Where next |
 |---|---|---|---|
-| Caret lands blocks away after delete or typing; text itself correct | Delete-drift class: a storage edit bypassed `didChangeText` (drag-move to no valid target), or TextKit 2's queued `_fixSelectionAfterChangeInCharacterRange` fired at a later `endEditing` | `grep "healing storage edit that bypassed didChangeText" ~/.edmund/logs/edmund-*.log` and read the trace around it; look for `selectionDidChange` with `up=Y` at a surprising position | `edmund-caret-integrity-campaign`; `docs/investigations/delete-drift-investigation.md` |
+| Caret lands blocks away after delete or typing; text itself correct | Delete-drift class: a storage edit bypassed `didChangeText` (drag-move to no valid target), or TextKit 2's queued `_fixSelectionAfterChangeInCharacterRange` fired at a later `endEditing` | `grep "healing storage edit that bypassed didChangeText" ~/Library/Application Support/Edmund/Logs/edmund-*.log` and read the trace around it; look for `selectionDidChange` with `up=Y` at a surprising position | `edmund-caret-integrity-campaign`; `docs/investigations/delete-drift-investigation.md` |
 | Every delete drifts, persistently, until an app switch fixes it | Stranded IME composition: `hasMarkedText()` stuck true, `didChangeText` bails forever, model frozen | Grep logs for `recovered stranded desync on focus regain`; check `storage.string == rawSource` | `docs/investigations/delete-drift-investigation.md` rounds 1–2 |
 | Scroller jumps; scroll-to-target misses; content shifts on scroll | TextKit 2 height *estimates* — off-screen frames are guesses corrected as layout reaches them | Doc length vs `fullLayoutMaxLength` (100k UTF-16, `EditorTextView.swift`) — ≤100k should be fully laid out by the settle; >100k is estimate territory | `docs/investigations/viewport-glitch-investigation.md` |
-| First line unreachable above the top; scroller already at 0 | TK2 strands fragments at negative y after a top-of-document edit | `grep "repairing content above origin" ~/.edmund/logs/edmund-*.log` — present means the repair fired (diagnosis confirmed, repair maybe raced); absent means a different cause | `docs/investigations/viewport-glitch-investigation.md` Bug 2 (repair unconfirmed live) |
+| First line unreachable above the top; scroller already at 0 | TK2 strands fragments at negative y after a top-of-document edit | `grep "repairing content above origin" ~/Library/Application Support/Edmund/Logs/edmund-*.log` — present means the repair fired (diagnosis confirmed, repair maybe raced); absent means a different cause | `docs/investigations/viewport-glitch-investigation.md` Bug 2 (repair unconfirmed live) |
 | Undo/redo lands viewport in the wrong place; changed text not selected | Regression of the diff-based restore contract (`5bb2b40`): a full `recompose` resets every fragment to an estimate, then the scroll measures the estimates | Confirm `restoreSnapshot` still routes through range-bounded `recomposeReplacing`, never full `recompose` (`+Undo.swift`); check the changed range, not the stored caret, drives the viewport | `docs/investigations/viewport-glitch-investigation.md` Bug 1 |
 | Code/visual change "doesn't take" after rebuild | STALE BUILD — SwiftPM printed `Build complete!` without relinking `edmd` | `strings .build/arm64-apple-macosx/debug/edmd \| grep "<long new literal>"`; `shasum` before/after | `edmund-build-and-env`; §3c |
 | App crashes the instant any LaTeX renders | SwiftMath `*.bundle` missing from the `.app` root (its `Bundle.module` is hardcoded to `Bundle.main.bundleURL`) | `ls build/Edmund.app/*.bundle` | `scripts/build-app.sh` copy step; ARCHITECTURE §8 |
@@ -160,7 +164,7 @@ build/Edmund.app/Contents/MacOS/edmd FILE.md \
 ```
 
 Or toggle in Settings ▸ Advanced ("Save diagnostic logs" + "Verbose editor
-tracing"). Logs land in `~/.edmund/logs/edmund-YYYY-MM-DD.log`.
+tracing"). Logs land in `~/Library/Application Support/Edmund/Logs/edmund-YYYY-MM-DD.log`.
 
 **Trace field vocabulary** (source of truth:
 `Sources/EdmundCore/TextView/EditorTextView+Diagnostics.swift`,
@@ -281,7 +285,7 @@ same branch.
   diagnostic or repro code you add.
 - **Never auto-push, PR, or merge.** Branch off `main` per fix; commit small
   and often.
-- Logs in `~/.edmund/logs` are app-owned and fair game to read and quote.
+- Logs in `~/Library/Application Support/Edmund/Logs` are app-owned and fair game to read and quote.
 
 ## Provenance and maintenance
 
