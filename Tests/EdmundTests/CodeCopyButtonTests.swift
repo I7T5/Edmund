@@ -145,4 +145,34 @@ struct CodeCopyButtonTests {
         // An unterminated fence runs to the end of the document: nothing to drop.
         #expect(editor.fenceContent(blockIndex: fences[2]) == "open\nended")
     }
+
+    /// VoiceOver doesn't hover: every visible button is an element, revealed
+    /// or not, framed on the button's hit box and kept across calls.
+    @Test("Each visible button is a VoiceOver button, hover or not")
+    func accessibilityButtons() {
+        let editor = loadEditor("lead\n\n\(fence)\n\n~~~\ntilde\n~~~\n")
+        #expect(editor.revealedCodeCopyButtons().isEmpty)
+        let elements = editor.accessibilityChildren()?.compactMap { $0 as? CodeCopyButtonElement } ?? []
+        #expect(elements.count == 2)
+        #expect(elements.allSatisfy { $0.accessibilityRole() == .button && $0.accessibilityLabel() == "Copy code" })
+        #expect(elements.first?.rect
+                == editor.visibleCodeCopyButtons().first.map { editor.codeCopyButtonHitBox($0.rect) })
+        let again = editor.codeCopyAccessibilityButtons()
+        #expect(zip(elements, again).allSatisfy { $0 === $1 })
+    }
+
+    /// A press copies like the click; one whose block is no longer a fence
+    /// (an edit shifted the indices) does nothing.
+    @Test("An accessibility press copies, and only from a fence")
+    func accessibilityPress() {
+        let editor = loadEditor("lead\n\n\(fence)\n")
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("CodeCopyButtonTests.press"))
+        pasteboard.clearContents()
+        let fenceIndex = editor.blocks.firstIndex { $0.kind == .fence } ?? 0
+        #expect(editor.pressCodeCopyButton(blockIndex: 0, to: pasteboard) == false)
+        #expect(pasteboard.string(forType: .string) == nil)
+        #expect(editor.pressCodeCopyButton(blockIndex: fenceIndex, to: pasteboard))
+        #expect(pasteboard.string(forType: .string) == "let x = 1\nlet y = 2")
+        editor.endCopiedFlash()
+    }
 }
