@@ -131,6 +131,18 @@ run dumps the final source to its log. `harness-selfcheck` proves assertions
 can fail (`# expect-failures: 4`). Add a scenario for every live-only bug
 you fix. Local only — CI has no window server. Verified 2026-09-23: disabling
 undo recording fails exactly the 4 undo scenarios.
+`REPRO_DIR=<abs dir>` runs another directory of scenarios in the same layout;
+`# args: <flags>` adds launch arguments (e.g. `-settings.appearance.mode dark`);
+`REPRO_OUT=<abs dir>` collects the logs there and replaces `@OUT@` in
+scenarios (`snapshot @OUT@/light.png`).
+
+**Before/after on `main`:** `/verify-live [class]` (`.claude/commands/verify-live.md`)
+writes scenarios to `misc/verify/<branch>/scenarios/`, then the
+`live-verifier` agent runs them with `REPRO_DIR` in a detached worktree
+at the fork point from `origin/main` and in the branch, measures PNG pairs, and reports
+`main FAIL → branch PASS` per scenario. A fix whose scenario already passes
+on `main` has not been shown to fix anything. `/ship` offers it for
+edit-pipeline, drawing and chrome changes.
 
 Launch: `scripts/launch-debug.sh FILE.md SCRIPT.repro` (assembles EdmundDbg.app,
 guards the user's instance, direct-execs with all flags). Or by hand:

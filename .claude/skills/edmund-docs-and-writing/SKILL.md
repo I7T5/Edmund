@@ -165,6 +165,10 @@ direct, systematic, concise text (maintainer rule, 2026-09-23).
 5. **End with the merge checklist** when the text asks someone to act: the
    owner-tagged `[ ]` / `[x]` items of `edmund-pr-review` §4.
 
+The `hig-reviewer` agent's writing pass checks PR bodies, sample CHANGELOG
+lines and new prose against this section on every `/ship`; the `doc-drift`
+agent checks facts (stale or missing docs and comments), not wording.
+
 ## 4. CHANGELOG format — machine-read, get it exact
 
 `.github/workflows/release.yml` extracts release notes with:
@@ -182,15 +186,26 @@ wrapping bullets is safe). Full pipeline: `edmund-release-and-operate`.
 House format (verify against the file; current entries follow this):
 
 ```markdown
-## [0.1.4] — 2026-07-XX
+## [0.8.0] - 2026-09-22
+
+<One-line summary of the release.>
+
+### Added
+- App Menu > File > Export To > Plain Text / Rich Text Format
 
 ### Fixed
-- <User-facing symptom, past tense optional> ([docs](docs/<topic>-investigation.md)) [#NNN](https://github.com/I7T5/Edmund/issues/NNN)
-
----
+- Reload when file changes on disk (#293)
+- Content width does not work with portrait display (#324)
 ```
 
-- Em dash between version and ISO date; `---` separator between versions.
+- Hyphen between version and ISO date, no separator between versions
+  (0.1.0–0.1.3 used an em dash and `---`; since 0.1.4 neither).
+- `(#NNN)` for the issue or PR; `@handle` for outside contributors
+  (`(#276 @lluminate)`), listing every author's handle when any author is an outside contributor
+  (`(#279 @CaliLuke @i7t5)`); an area prefix (`Settings > …`, `App Menu > …`,
+  `Tables: …`) where one fits.
+- `/ship` prints sample entries in this format after each PR; the maintainer
+  writes the file through `/release`.
 - Subsections used so far: `### Added`, `### Changed`, `### Fixed`
   (Keep a Changelog 1.1.0 vocabulary).
 - Entries describe the user-visible effect, not the mechanism; mechanism

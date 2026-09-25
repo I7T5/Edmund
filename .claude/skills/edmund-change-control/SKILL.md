@@ -36,9 +36,9 @@ Classify FIRST, before writing code. The class decides the verification bar.
 | Class | Examples | Gate before commit |
 |---|---|---|
 | Docs-only | ARCHITECTURE.md, README, docs/*.md, comments | None beyond review. `swift test` still runs as a Stop hook; ignore no failures it surfaces. |
-| Code (logic) change | Parser, block model, helpers, non-drawing refactor | `swift test` green. New behavior or bug fix → add a test that fails without the change. |
-| Visually-drawing change | Anything in `Rendering/`, overlays, decorations, padding, fonts, layout fragments | All of the above, PLUS build the app and `screencapture` the result (window-by-id method — see `edmund-live-repro-and-diagnostics`). Headless layout is not proof for anything that draws. |
-| Edit-pipeline / selection behavior | `+EditFlow`, `+Composition`, `+SelectionTracking`, `+Undo`, caret, IME, drag, viewport timing | All of the above, PLUS a live repro or soak script (`-debug.reproScript`, see `edmund-caret-integrity-campaign` and `docs/dev-guides/live-repro-guide.md`). Headless tests cannot exercise deferred AppKit machinery — the queued selection fixup, drag paths, IME. Rounds 1–5 of delete-drift shipped on tests + reasoning; all recurred. |
+| Code (logic) change | Parser, block model, helpers, non-drawing refactor | `swift test` green with zero compiler warnings (CI's `No warnings` step fails on any in `Sources/` or `Tests/`). New behavior or bug fix → add a test that fails without the change. |
+| Visually-drawing change | Anything in `Rendering/`, overlays, decorations, padding, fonts, layout fragments | All of the above, PLUS build the app and `screencapture` the result (window-by-id method — see `edmund-live-repro-and-diagnostics`), or run `/verify-live drawing` for a light/dark before/after pair against `main`. Headless layout is not proof for anything that draws. |
+| Edit-pipeline / selection behavior | `+EditFlow`, `+Composition`, `+SelectionTracking`, `+Undo`, caret, IME, drag, viewport timing | All of the above, PLUS a live repro or soak script (`-debug.reproScript`, see `edmund-caret-integrity-campaign` and `docs/dev-guides/live-repro-guide.md`); `/verify-live edit-pipeline` runs it against `main` and the branch and keeps the evidence. Headless tests cannot exercise deferred AppKit machinery — the queued selection fixup, drag paths, IME. Rounds 1–5 of delete-drift shipped on tests + reasoning; all recurred. |
 | Release | Version bump, tag, appcast | Run `misc/before-you-release.md` top to bottom, then `misc/how-to-release.md`. See `edmund-release-and-operate`. Never start a release without being asked. |
 
 Notes on the gates:
@@ -152,9 +152,12 @@ The workflow that worked (ARCHITECTURE §12 + CLAUDE.md). Run it verbatim:
 
 ```
 [ ] swift test — all green (also enforced by the Stop hook; don't rely on it)
+[ ] Zero compiler warnings in Sources/ and Tests/ (CI fails on any)
 [ ] New behavior / bug fix → a test exists that fails without the change
 [ ] Draws anything? → build app, screencapture window-by-id, look at the PNG
+    (or /verify-live drawing)
 [ ] Edit-pipeline / selection change? → live repro or soak script passed
+    (or /verify-live edit-pipeline; /ship offers it)
 [ ] On a branch off main (fix/…, feat/…, docs/…, chore/…), NOT on main
 [ ] Diff touches only what the task needs; style matches surroundings
 [ ] Learned something non-obvious? → ARCHITECTURE.md updated in this change

@@ -1205,7 +1205,10 @@ only with reason):
    `Sources/` and `Tests/` — CI's `No warnings` step fails on any. Add tests
    for new behavior / bug repros.
 2. **Visual changes are measured, not eyeballed** — build the app and
-   `screencapture` the result (§8), or render offscreen to a PNG. Don't trust
+   `screencapture` the result (§8), or render offscreen to a PNG, or run
+   `/verify-live drawing` for a light/dark before/after pair against the
+   fork point from `origin/main` (`/ship` offers it; edit-pipeline changes
+   get `/verify-live edit-pipeline`). Don't trust
    headless layout alone for anything that draws. For anything phrased as
    *align / centre / balance the padding / match the native control*, report
    **numbers** (device px and points, 2:1 on Retina), not an impression —
