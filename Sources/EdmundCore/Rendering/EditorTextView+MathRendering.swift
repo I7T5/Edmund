@@ -53,7 +53,7 @@ extension EditorTextView {
             // to the PNG's exact pixel count for this reason (DocumentHTML
             // .fillMath). Snap the draw size onto the device grid so the blit is
             // 1:1. The *position* is snapped where it's drawn (see
-            // `deviceAligned` in EditorTextView+TextKit2): both are needed —
+            // `deviceAligned` in DecoratedTextLayoutFragment): both are needed —
             // either misalignment alone resamples just as badly.
             let snapped = (height * backingScale).rounded() / backingScale
             descent *= snapped / height
