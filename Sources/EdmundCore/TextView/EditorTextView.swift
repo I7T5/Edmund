@@ -545,6 +545,7 @@ public class EditorTextView: NSTextView {
     var copiedCodeBlock: Int?
     var copiedCodeProgress: CGFloat = 0
     var copiedCodeLink: CADisplayLink?
+    var copiedGlyphView: CopiedGlyphView?
 
     /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
@@ -973,6 +974,15 @@ public class EditorTextView: NSTextView {
         updateTableHover(at: point)
         updateTableHandleHover(at: point)
         updateCodeCopyHover(at: point)
+    }
+
+    /// Repro hook (ReproScript `hovercopy`): put the pointer on the copy button
+    /// of the code block holding `offset`, so its hover fill shows.
+    public func reproHoverCopyButton(atOffset offset: Int) {
+        guard let block = blockIndexForRawOffset(offset),
+              let box = visibleCodeCopyButtons().first(where: { $0.blockIndex == block })?.rect
+        else { return }
+        updateCodeCopyHover(at: NSPoint(x: box.midX, y: box.midY))
     }
 
     /// Repro hook (ReproScript `copycode`): press the copy button of the code

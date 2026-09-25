@@ -13,6 +13,7 @@ import ScreenCaptureKit
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
 ///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
+///   hovercopy <n>     put the pointer on the copy button of the code block at n
 ///   copycode <n>      press the copy button of the code block at offset n
 ///   snapshot <path>   render the window content to a PNG in-process
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
@@ -154,6 +155,12 @@ enum ReproScript {
                     guard let png = rep.representation(using: .png, properties: [:]) else { return }
                     try? png.write(to: URL(fileURLWithPath: arg))
                     report("repro snapshot \(arg)")
+                }
+            case "hovercopy":
+                // Pointer on the copy button of the code block at an absolute
+                // offset: the button's own hover fill, not just the reveal.
+                schedule(after: delay) { editor in
+                    editor.reproHoverCopyButton(atOffset: Int(arg) ?? 0)
                 }
             case "copycode":
                 // Press the copy button of the code block at an absolute offset.
