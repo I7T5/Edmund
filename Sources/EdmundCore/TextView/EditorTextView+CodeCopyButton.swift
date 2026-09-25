@@ -78,7 +78,7 @@ extension EditorTextView {
     /// ("emphasizes the next state"): on the click the copy glyph and the hover
     /// fill fade out fast (0–0.1) and a semibold `checkmark` Appears (scaling
     /// up); it holds, Disappears (scaling down) at `codeCopiedRelease`, and
-    /// the glyph and fill fade back together as fast (1.4–1.5). The checkmark
+    /// the glyph and fill fade back, a touch slower (1.3–1.5). The checkmark
     /// keeps the glyph's ink, not the accent: the accent means interactive or
     /// selected here (links, checked tasks, the caret), and HIG Color asks not
     /// to use one colour for two meanings.
@@ -90,9 +90,9 @@ extension EditorTextView {
     /// and `drawBackground` doesn't render identically. A display link times
     /// the rest (`copiedCodeProgress` 0…1 over `codeCopiedFlashDuration`).
     static let codeCopiedFlashDuration: TimeInterval = 1.55
-    static let codeCopiedRelease: TimeInterval = 1.3
+    static let codeCopiedRelease: TimeInterval = 1.2
     static let codeCopiedFadeOut: ClosedRange<TimeInterval> = 0...0.1
-    static let codeCopiedFadeIn: ClosedRange<TimeInterval> = 1.4...1.5
+    static let codeCopiedFadeIn: ClosedRange<TimeInterval> = 1.3...1.5
 
     /// 0…1 across `range`, clamped.
     private static func ramp(_ t: TimeInterval, over range: ClosedRange<TimeInterval>) -> CGFloat {
@@ -227,6 +227,11 @@ extension EditorTextView {
     func copyCodeBlock(blockIndex: Int, to pasteboard: NSPasteboard = .general) {
         pasteboard.clearContents()
         pasteboard.setString(fenceContent(blockIndex: blockIndex), forType: .string)
+        // The checkmark is the only other confirmation, and it is hidden from
+        // accessibility.
+        NSAccessibility.post(element: self, notification: .announcementRequested,
+                             userInfo: [.announcement: "Copied",
+                                        .priority: NSAccessibilityPriorityLevel.medium.rawValue])
 
         endCopiedFlash()
         copiedCodeBlock = blockIndex
@@ -250,6 +255,79 @@ extension EditorTextView {
         link.add(to: .main, forMode: .common)
         copiedCodeLink = link
         needsDisplay = true
+    }
+}
+
+// MARK: - Accessibility
+//
+// The button is drawn, not a view, and only revealed by hover — so VoiceOver
+// has neither to go on. Each fence whose button is in the viewport gets a
+// button element among the text view's children, hover or not.
+
+extension EditorTextView {
+
+    public override func accessibilityChildren() -> [Any]? {
+        (super.accessibilityChildren() ?? []) + codeCopyAccessibilityButtons()
+    }
+
+    /// One element per visible button, reused by block index so VoiceOver's
+    /// focus survives a redraw; its frame follows the button.
+    func codeCopyAccessibilityButtons() -> [CodeCopyButtonElement] {
+        let buttons = visibleCodeCopyButtons()
+        codeCopyButtonElements = codeCopyButtonElements.filter { entry in
+            buttons.contains { $0.blockIndex == entry.key }
+        }
+        return buttons.map { box, blockIndex in
+            let element = codeCopyButtonElements[blockIndex] ?? CodeCopyButtonElement(editor: self, blockIndex: blockIndex)
+            codeCopyButtonElements[blockIndex] = element
+            element.rect = codeCopyButtonHitBox(box)
+            return element
+        }
+    }
+
+    /// Copies from an accessibility press — as the click does, and only while
+    /// the block is still a fence (an edit can shift the indices under a
+    /// focused element).
+    func pressCodeCopyButton(blockIndex: Int, to pasteboard: NSPasteboard = .general) -> Bool {
+        guard blockIndex < blocks.count, blocks[blockIndex].kind == .fence else { return false }
+        copyCodeBlock(blockIndex: blockIndex, to: pasteboard)
+        return true
+    }
+}
+
+/// The copy button as VoiceOver sees it.
+public final class CodeCopyButtonElement: NSAccessibilityElement {
+    private weak var editor: EditorTextView?
+    let blockIndex: Int
+    /// The button's hit box, in the text view's coordinates.
+    var rect = NSRect.zero
+
+    init(editor: EditorTextView, blockIndex: Int) {
+        self.editor = editor
+        self.blockIndex = blockIndex
+        super.init()
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Copy code")
+        setAccessibilityParent(editor)
+    }
+
+    // AppKit calls accessibility on the main thread; the class isn't annotated.
+
+    /// In screen coordinates, worked out from the view each time: the frame-
+    /// in-parent-space setter ignores the text view's flipped coordinates
+    /// (measured: the button came out mirrored down the window), and this
+    /// follows the scroll too.
+    public override func accessibilityFrame() -> NSRect {
+        let editor = editor, rect = rect
+        return MainActor.assumeIsolated {
+            editor.map { NSAccessibility.screenRect(fromView: $0, rect: rect) } ?? .zero
+        }
+    }
+
+    public override func accessibilityPerformPress() -> Bool {
+        let editor = editor, blockIndex = blockIndex
+        return MainActor.assumeIsolated { editor?.pressCodeCopyButton(blockIndex: blockIndex) ?? false }
     }
 }
 

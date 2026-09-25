@@ -547,6 +547,10 @@ public class EditorTextView: NSTextView {
     var copiedCodeLink: CADisplayLink?
     var copiedGlyphView: CopiedGlyphView?
 
+    /// The copy buttons' accessibility elements, by block index, kept so
+    /// VoiceOver's focus survives a redraw. See EditorTextView+CodeCopyButton.
+    var codeCopyButtonElements: [Int: CodeCopyButtonElement] = [:]
+
     /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
     /// repaint where they were as well as where they now are.
