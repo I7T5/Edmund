@@ -106,7 +106,7 @@ struct CodeCopyButtonTests {
         editor.endCopiedFlash()
     }
 
-    /// The copy glyph and fill fade out fast from the click and back as fast
+    /// The copy glyph and fill fade out fast from the click and back a touch slower
     /// once the checkmark has Disappeared.
     @Test("The copy glyph and fill fade out for the checkmark, then back")
     func chromeShape() {
@@ -116,8 +116,8 @@ struct CodeCopyButtonTests {
         #expect(at(0) == 1)
         #expect(abs(at(0.05) - 0.5) < 0.001)
         #expect(at(0.2) == 0)
-        #expect(at(1.35) == 0)
-        #expect(abs(at(1.45) - 0.5) < 0.001)
+        #expect(at(1.2) == 0)
+        #expect(abs(at(1.4) - 0.5) < 0.001)
         #expect(at(1.55) == 1)
     }
 

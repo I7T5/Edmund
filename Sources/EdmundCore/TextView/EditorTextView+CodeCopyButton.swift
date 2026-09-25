@@ -78,7 +78,7 @@ extension EditorTextView {
     /// ("emphasizes the next state"): on the click the copy glyph and the hover
     /// fill fade out fast (0–0.1) and a semibold `checkmark` Appears (scaling
     /// up); it holds, Disappears (scaling down) at `codeCopiedRelease`, and
-    /// the glyph and fill fade back together as fast (1.4–1.5). The checkmark
+    /// the glyph and fill fade back, a touch slower (1.3–1.5). The checkmark
     /// keeps the glyph's ink, not the accent: the accent means interactive or
     /// selected here (links, checked tasks, the caret), and HIG Color asks not
     /// to use one colour for two meanings.
@@ -90,9 +90,9 @@ extension EditorTextView {
     /// and `drawBackground` doesn't render identically. A display link times
     /// the rest (`copiedCodeProgress` 0…1 over `codeCopiedFlashDuration`).
     static let codeCopiedFlashDuration: TimeInterval = 1.55
-    static let codeCopiedRelease: TimeInterval = 1.3
+    static let codeCopiedRelease: TimeInterval = 1.2
     static let codeCopiedFadeOut: ClosedRange<TimeInterval> = 0...0.1
-    static let codeCopiedFadeIn: ClosedRange<TimeInterval> = 1.4...1.5
+    static let codeCopiedFadeIn: ClosedRange<TimeInterval> = 1.3...1.5
 
     /// 0…1 across `range`, clamped.
     private static func ramp(_ t: TimeInterval, over range: ClosedRange<TimeInterval>) -> CGFloat {
