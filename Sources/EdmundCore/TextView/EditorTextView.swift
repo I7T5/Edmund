@@ -224,18 +224,31 @@ public class EditorTextView: NSTextView {
 
     // MARK: - Custom Undo/Redo State
 
-    struct UndoSnapshot {
-        let rawSource: String
-        let cursorInRaw: Int
+    /// One undoable step, stored as a *diff* against the post-edit text rather
+    /// than a full-document copy: replacing `laterLength` UTF-16 characters at
+    /// `location` in the text state right after the step with `earlierText`
+    /// yields the pre-step text. Composing coalesced keystrokes into one entry
+    /// keeps memory per step O(edited span) instead of O(document) — a 47KB
+    /// document edited 2000 times used to retain ~100MB of snapshot strings.
+    /// `cursorInRaw` restores the caret when the entry turns out to change no
+    /// text.
+    struct UndoEntry {
+        var location: Int
+        var laterLength: Int
+        var earlierText: String
+        var cursorInRaw: Int
     }
 
     enum EditType { case insert, delete, other }
 
-    var undoStack: [UndoSnapshot] = []
-    var redoStack: [UndoSnapshot] = []
+    var undoStack: [UndoEntry] = []
+    var redoStack: [UndoEntry] = []
     var lastEditBlockIndex: Int? = nil
     var lastEditType: EditType = .other
     var isUndoRedoing = false
+    /// A marked-text session edits storage while rawSource stays at its
+    /// pre-composition state. Record its final diff only after commit.
+    var hasDeferredMarkedTextUndo = false
 
     /// The separator between blocks in the display.
     /// Must match what BlockParser splits on.
@@ -1379,6 +1392,7 @@ public class EditorTextView: NSTextView {
             storageΔ=\((ts.string as NSString).length - (rawSource as NSString).length)
             """, category: .compose)
         if hasMarkedText() { unmarkText() }
+        recordDeferredMarkedTextUndoIfNeeded()
         rawSource = ts.string
         rebuildListIndentState()
         rebuildLinkDefState()
@@ -1462,6 +1476,7 @@ public class EditorTextView: NSTextView {
             Log.blockStructure(blocks)
             undoStack.removeAll()
             redoStack.removeAll()
+            hasDeferredMarkedTextUndo = false
             recompose(cursorInRaw: 0)
             rescanSpelling()
         }
