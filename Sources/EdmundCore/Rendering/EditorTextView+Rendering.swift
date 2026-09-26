@@ -132,6 +132,8 @@ extension EditorTextView {
             renderingCacheColorKey(foregroundColor),
             renderingCacheColorKey(editorBackgroundColor),
             MathRendering.shared.active.id,
+            // Math bitmaps are rasterized at the backing scale (mathOverlay).
+            "\(window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)",
             renderingCacheColorKey(linkColor),
             renderingCacheColorKey(highlightColor),
             renderingCacheColorKey(syntaxDimColor),

@@ -10,7 +10,7 @@ struct RenderCacheInvalidationTests {
         let isReady = true
 
         func render(latex: String, displayMode: Bool,
-                    pointSize: CGFloat, color: NSColor) -> RenderedMath? {
+                    pointSize: CGFloat, color: NSColor, scale: CGFloat) -> RenderedMath? {
             RenderedMath(image: NSImage(size: NSSize(width: 50, height: 50)),
                          ascent: 40, descent: 10)
         }
