@@ -365,7 +365,7 @@ class Document: NSDocument, HeadingNavigable {
         let screen = editor.window?.screen ?? NSScreen.main
         editor.maxContentWidthPoints = (screen?.cmToPoints(AppSettings.maxContentWidthCm) ?? 1000) * zoomFactor
 
-        refreshReadView()
+        refreshReadView(immediately: true)
     }
 
     @objc private func editorDidChange(_ notification: Notification) {
@@ -386,19 +386,56 @@ class Document: NSDocument, HeadingNavigable {
         guard let editor = editor, let statusBar = statusBar else { return }
         let text = editor.rawSource
         let nsText = text as NSString
-        let wordCount = text.split { $0.isWhitespace || $0.isNewline }.count
-        let charCount = text.count
 
         // Cursor position: 0-based character location and 1-based line number.
         let cursorOffset = editor.selectedRange().location
         let location = min(cursorOffset, nsText.length)
-        let upToCursor = nsText.substring(to: location)
-        let line = upToCursor.isEmpty ? 1 : upToCursor.components(separatedBy: "\n").count
 
-        // The buffer is always LF; show the file's remembered original ending.
-        statusBar.setMetrics(words: wordCount, characters: charCount,
-                             location: location, line: line,
-                             lineEnding: editor.originalLineEnding.displayName)
+        // Reuse the editor's cached line starts instead of scanning the prefix
+        // on every edit or caret move.
+        let line = editor.line(forOffset: location)
+
+        // Word/character counts are O(document): recompute only when the text
+        // changed, and debounce across a typing burst so a long document gets
+        // one pass after the user pauses, not one per keystroke. Selection
+        // changes reuse the cached counts (same text → same counts).
+        if let cached = statusMetrics, cached.source == text {
+            statusBar.setMetrics(words: cached.words, characters: cached.characters,
+                                 location: location, line: line,
+                                 lineEnding: editor.originalLineEnding.displayName)
+        } else {
+            scheduleStatusMetrics(for: text)
+            if let cached = statusMetrics {
+                statusBar.setMetrics(words: cached.words, characters: cached.characters,
+                                     location: location, line: line,
+                                     lineEnding: editor.originalLineEnding.displayName)
+            }
+        }
+    }
+
+    /// The source text the cached counts were computed for, plus the counts.
+    /// Keyed by the text itself: one `==` (same-length fast path) beats a full
+    /// tokenizing `split` on every selection change.
+    private var statusMetrics: (source: String, words: Int, characters: Int)?
+    /// The pending debounced metrics recompute, replaced on every edit.
+    private var statusMetricsWorkItem: DispatchWorkItem?
+
+    private func scheduleStatusMetrics(for text: String) {
+        statusMetricsWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let words = text.split { $0.isWhitespace || $0.isNewline }.count
+            let characters = text.count
+            self.statusMetrics = (source: text, words: words, characters: characters)
+            // Push the fresh counts; the line/location are current there.
+            self.updateStatusBar()
+        }
+        statusMetricsWorkItem = work
+        if statusMetrics == nil {
+            work.perform()   // first fill: show real counts immediately
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        }
     }
 
     // MARK: - Reading
@@ -467,7 +504,7 @@ class Document: NSDocument, HeadingNavigable {
         let offset = min(caret, (editor.rawSource as NSString).length)
         editor.setSelectedRange(NSRange(location: offset, length: 0))
         editor.scrollRangeToVisible(editor.selectedRange())
-        refreshReadView()
+        refreshReadView(immediately: true)
         Log.info("Reloaded from disk", category: .io)
     }
 
@@ -810,14 +847,39 @@ class Document: NSDocument, HeadingNavigable {
     /// Re-renders an open Read view from the editor's current source + theme.
     /// No-op unless Read mode is the active, visible view — so settings/edit
     /// broadcasts stay cheap when the user is in Edit or Source mode.
-    func refreshReadView() {
-        guard let read = readView, !read.isHidden, editor?.viewMode == .reading else { return }
-        read.render(markdown: editor.rawSource,
-                    theme: editor.theme,
-                    callouts: mergedCallouts,
-                    baseURL: documentDirectory,
-                    options: renderOptions)
+    ///
+    /// Edits debounce: `editorDidChange` fires per keystroke, and each render
+    /// rebuilds the full HTML and reloads the page. A typing burst coalesces
+    /// into one re-render 300ms after the last keystroke (the webview's own
+    /// HTML cache already skips a byte-identical reload, but producing the
+    /// HTML at all is the per-keystroke cost). Callers that need the render
+    /// now — entering Read mode, a revert, a zoom — pass `immediately`.
+    func refreshReadView(immediately: Bool = false) {
+        guard let read = readView, !read.isHidden, editor?.viewMode == .reading else {
+            readRefreshWorkItem?.cancel()
+            readRefreshWorkItem = nil
+            return
+        }
+        readRefreshWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let read = self.readView, !read.isHidden,
+                  self.editor?.viewMode == .reading else { return }
+            read.render(markdown: self.editor.rawSource,
+                        theme: self.editor.theme,
+                        callouts: self.mergedCallouts,
+                        baseURL: self.documentDirectory,
+                        options: self.renderOptions)
+        }
+        readRefreshWorkItem = work
+        if immediately {
+            work.perform()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        }
     }
+
+    /// The pending debounced Read-view re-render, replaced on every edit.
+    private var readRefreshWorkItem: DispatchWorkItem?
 
     /// The opened file's directory, used to resolve relative image paths for
     /// inlining (nil for an unsaved document).
