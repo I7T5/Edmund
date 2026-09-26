@@ -399,16 +399,9 @@ class Document: NSDocument, HeadingNavigable {
         let cursorOffset = editor.selectedRange().location
         let location = min(cursorOffset, nsText.length)
 
-        // Line number by one forward scan of the UTF-16 prefix — no substring
-        // copy, no per-line array. The old substring(to:) +
-        // components(separatedBy:) rebuilt the entire prefix (up to the whole
-        // document) on every keystroke and every caret move.
-        var line = 1
-        if location > 0 {
-            for i in 0..<location where nsText.character(at: i) == 0x0A {
-                line += 1
-            }
-        }
+        // Reuse the editor's cached line starts instead of scanning the prefix
+        // on every edit or caret move.
+        let line = editor.line(forOffset: location)
 
         // Word/character counts are O(document): recompute only when the text
         // changed, and debounce across a typing burst so a long document gets
