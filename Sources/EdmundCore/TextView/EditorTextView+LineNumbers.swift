@@ -204,7 +204,7 @@ extension EditorTextView {
     /// Builds the shared `MarginChromeGeometry`. Cheap to call once per pass:
     /// one viewport walk, one block scan bounded to the viewport, one handles
     /// computation — instead of each consumer paying for its own.
-    func marginChromeGeometry() -> MarginChromeGeometry {
+    func marginChromeGeometry(includeLineNumbers: Bool = false) -> MarginChromeGeometry {
         var geometry = MarginChromeGeometry()
         geometry.handles = tableHandles()
         guard let tlm = textLayoutManager,
@@ -228,6 +228,9 @@ extension EditorTextView {
                 break
             }
         }
+        // Hover needs line positions only for visible table or copy buttons.
+        guard includeLineNumbers || !geometry.tableHeaders.isEmpty
+            || !geometry.fenceLines.isEmpty else { return geometry }
         enumerateVisibleLineNumbers { line, capCenterY in
             geometry.visibleLines.append((line, capCenterY))
         }
@@ -362,7 +365,7 @@ extension EditorTextView {
         // ponytail: all or none, never just the ones that fit, so the column
         // can't go ragged with `9` drawn and `100` missing.
         guard lineNumbersFitBesideContent else { return }
-        let chrome = chrome ?? marginChromeGeometry()
+        let chrome = chrome ?? marginChromeGeometry(includeLineNumbers: true)
 
         // A revealed `</>` button stands in the slot of its table's header-row
         // number. One slot, one occupant — so that row's number gives way while

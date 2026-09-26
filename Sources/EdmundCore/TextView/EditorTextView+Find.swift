@@ -74,7 +74,7 @@ extension EditorTextView {
         // visible lines, the viewport's tables and code blocks, and the active
         // cell's handles. Each used to recompute this itself — several viewport
         // fragment walks and full block-list scans per redraw.
-        let chrome = marginChromeGeometry()
+        let chrome = marginChromeGeometry(includeLineNumbers: showLineNumbers)
         // Line numbers in the column's margin ride this same pass (they are
         // beside the text, never under it). See EditorTextView+LineNumbers.
         // Whether they actually fit — and so whether the gutter has them
