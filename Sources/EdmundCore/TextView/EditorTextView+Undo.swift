@@ -2,9 +2,19 @@ import AppKit
 
 // MARK: - Custom Undo/Redo
 //
-// Custom undo stack operating on rawSource snapshots.  Completely bypasses
-// NSTextView's built-in undo (allowsUndo = false) because recompose
-// replaces the entire text storage, invalidating position-based undo.
+// Custom undo stack operating on diffs, not snapshots. Completely bypasses
+// NSTextView's built-in undo (allowsUndo = false) because recompose replaces
+// the entire text storage, invalidating position-based undo.
+//
+// Each stack entry records a single contiguous edit: in the text state right
+// after the edit, replacing `location ..< location + laterLength` with
+// `earlierText` yields the pre-edit state. A coalesced typing run composes its
+// keystrokes into one entry in place (see `compose`), so the stack's memory is
+// bounded by the total edited span — never by document size × edit count.
+// Undo applies an entry and pushes its inverse onto the redo stack; redo does
+// the mirror image. Strict LIFO order guarantees every entry's coordinates
+// still match the current text: undoing the newest entry restores exactly the
+// state the next entry was recorded against.
 
 extension EditorTextView {
 
@@ -23,34 +33,150 @@ extension EditorTextView {
         return .other
     }
 
-    /// Push an undo snapshot if this edit starts a new coalescing group.
-    func recordUndoIfNeeded(editRange: NSRange, replacement: String) {
+    /// Push an undo entry if this edit starts a new coalescing group, else
+    /// fold the edit into the group's open entry. Called from
+    /// `shouldChangeText` before the edit applies. Usually `preEditText` is
+    /// rawSource; after a drag deletion bypasses didChangeText, storage is the
+    /// authoritative pre-edit text for the next mutation.
+    func recordUndoIfNeeded(editRange: NSRange, replacement: String,
+                            preEditText: String, forceNewGroup: Bool = false) {
         let editType = classifyEdit(range: editRange, replacement: replacement)
 
-        let shouldPush = undoStack.isEmpty
+        let shouldPush = forceNewGroup || undoStack.isEmpty
             || editType == .other
             || editType != lastEditType
             || activeBlockIndex != lastEditBlockIndex
 
         if shouldPush {
-            undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
+            // The entry transforms the post-edit state back to the current
+            // (pre-edit) text: the edit's replacement occupies
+            // [location, location + replacement length) in the post-edit text,
+            // and the text it removed from the pre-edit text is `earlierText`.
+            let ns = preEditText as NSString
+            let loc = min(editRange.location, ns.length)
+            let len = min(editRange.length, ns.length - loc)
+            undoStack.append(UndoEntry(
+                location: loc,
+                laterLength: (replacement as NSString).length,
+                earlierText: ns.substring(with: NSRange(location: loc, length: len)),
+                cursorInRaw: currentCursorInRaw()))
             redoStack.removeAll()
+        } else {
+            var entry = undoStack[undoStack.count - 1]
+            compose(entry: &entry, editRange: editRange, replacement: replacement,
+                    in: preEditText as NSString)
+            undoStack[undoStack.count - 1] = entry
         }
 
         lastEditType = editType
         lastEditBlockIndex = activeBlockIndex
     }
 
+    /// Marked text is provisional and its storage offsets no longer match
+    /// rawSource. Capture one entry from the committed storage back to the
+    /// pre-composition model, before didChangeText syncs that model.
+    func recordDeferredMarkedTextUndoIfNeeded() {
+        guard hasDeferredMarkedTextUndo, !hasMarkedText(),
+              let committed = textStorage?.string else { return }
+        hasDeferredMarkedTextUndo = false
+        guard let diff = Self.textDiff(old: committed, new: rawSource) else { return }
+        undoStack.append(UndoEntry(location: diff.oldRange.location,
+                                   laterLength: diff.oldRange.length,
+                                   earlierText: diff.replacement,
+                                   cursorInRaw: currentCursorInRaw()))
+        redoStack.removeAll()
+        lastEditType = .other
+        lastEditBlockIndex = nil
+    }
+
+    /// Widens the entry in place to also undo `editRange`/`replacement`, which
+    /// transformed `c` (the current text) into the post-edit text. Invariant:
+    /// replacing `[location, location + laterLength)` in the current text with
+    /// `earlierText` yields the group's pre-edit text; the edit is expressed in
+    /// `c`'s coordinates, so the splice pieces are read from `c`.
+    func compose(entry: inout UndoEntry, editRange: NSRange,
+                 replacement: String, in c: NSString) {
+        let delta = (replacement as NSString).length - editRange.length
+        let lo = min(entry.location, editRange.location)
+        let hi = max(entry.location + entry.laterLength, editRange.upperBound)
+        func splice(_ from: Int, _ to: Int) -> String {
+            guard from < to, from < c.length else { return "" }
+            return c.substring(with: NSRange(location: from,
+                                             length: min(to, c.length) - from))
+        }
+        // The pre-edit text over [lo, hi): original characters outside the
+        // span's [location, location + laterLength), spliced around the span's
+        // own original text. Either splice piece is empty when the edit stays
+        // inside the span or the span reaches the interval's edge.
+        entry.earlierText = splice(lo, entry.location)
+            + entry.earlierText
+            + splice(entry.location + entry.laterLength, hi)
+        entry.location = lo
+        entry.laterLength = hi - lo + delta
+    }
+
+    /// Folds a secondary mutation of the same undo step — one made outside
+    /// `shouldChangeText`, like list renumbering settling after a keystroke —
+    /// into the stack-top entry, so undoing the step restores the pre-step
+    /// text, not an intermediate state. `editRange`/`replacement` describe the
+    /// mutation in `preEditText`, the text before it ran. No-op with an empty
+    /// stack.
+    func composeTopUndoEntry(editRange: NSRange, replacement: String,
+                             in preEditText: NSString) {
+        guard !undoStack.isEmpty else { return }
+        var entry = undoStack[undoStack.count - 1]
+        compose(entry: &entry, editRange: editRange, replacement: replacement,
+                in: preEditText)
+        undoStack[undoStack.count - 1] = entry
+    }
+
     func performUndo() {
-        guard let snapshot = undoStack.popLast() else { return }
-        redoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
-        restoreSnapshot(snapshot)
+        guard let entry = undoStack.last,
+              let reverse = inverse(of: entry),
+              restoreEntry(entry) else { return }
+        undoStack.removeLast()
+        redoStack.append(reverse)
     }
 
     func performRedo() {
-        guard let snapshot = redoStack.popLast() else { return }
-        undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: currentCursorInRaw()))
-        restoreSnapshot(snapshot)
+        guard let entry = redoStack.last,
+              let reverse = inverse(of: entry),
+              restoreEntry(entry) else { return }
+        redoStack.removeLast()
+        undoStack.append(reverse)
+    }
+
+    /// The entry that reverses `entry`, built against the current text: the
+    /// text `entry` removes (its span's content) becomes the inverse's
+    /// `earlierText`, and `entry`'s `earlierText` becomes the span the inverse
+    /// removes from the restored text.
+    private func inverse(of entry: UndoEntry) -> UndoEntry? {
+        let ns = rawSource as NSString
+        guard undoEntryFitsCurrentText(entry, length: ns.length) else {
+            discardInvalidUndoHistory(entry, stage: "inverse", textLength: ns.length)
+            return nil
+        }
+        return UndoEntry(
+            location: entry.location,
+            laterLength: (entry.earlierText as NSString).length,
+            earlierText: ns.substring(with: NSRange(location: entry.location,
+                                                    length: entry.laterLength)),
+            cursorInRaw: currentCursorInRaw())
+    }
+
+    /// Rewrites the stack-top placeholder entry (pushed by a command before it
+    /// mutated `rawSource`) as the diff from the mutated text back to
+    /// `preEditText`. O(document) *time*, once per command — the memory win is
+    /// what matters: the stack stores only the changed span.
+    func finalizeTopUndoEntry(preEditText: String) {
+        guard undoStack.count > 0,
+              let diff = Self.textDiff(old: rawSource, new: preEditText)
+        else { return }
+        undoStack[undoStack.count - 1] = UndoEntry(
+            location: diff.oldRange.location,
+            laterLength: diff.oldRange.length,
+            earlierText: diff.replacement,
+            cursorInRaw: undoStack[undoStack.count - 1].cursorInRaw)
     }
 
     /// The single contiguous span that differs between two strings, as the
@@ -87,16 +213,23 @@ extension EditorTextView {
         return (oldRange, replacement)
     }
 
-    private func restoreSnapshot(_ snapshot: UndoSnapshot) {
-        // Diff the current text against the snapshot: the changed span is what
-        // this undo/redo actually touches, so it drives the selection and the
-        // viewport — not the caret stored at snapshot time (which, for redo,
-        // is wherever the caret happened to sit when undo was invoked).
-        guard let diff = Self.textDiff(old: rawSource, new: snapshot.rawSource) else {
+    private func restoreEntry(_ entry: UndoEntry) -> Bool {
+        // The entry's span is exactly what this undo/redo touches, so it drives
+        // the selection and the viewport — not the caret stored at record time
+        // (which, for redo, is wherever the caret happened to sit when undo was
+        // invoked).
+        let ns = rawSource as NSString
+        guard undoEntryFitsCurrentText(entry, length: ns.length) else {
+            discardInvalidUndoHistory(entry, stage: "restore", textLength: ns.length)
+            return false
+        }
+        let oldRange = NSRange(location: entry.location, length: entry.laterLength)
+        let replacement = entry.earlierText
+
+        guard ns.substring(with: oldRange) != replacement else {
             // Nothing changed textually — just restore the caret.
-            let clamped = min(snapshot.cursorInRaw, (rawSource as NSString).length)
-            setSelectedRange(NSRange(location: clamped, length: 0))
-            return
+            setSelectedRange(NSRange(location: min(entry.cursorInRaw, ns.length), length: 0))
+            return true
         }
 
         isUndoRedoing = true
@@ -104,7 +237,7 @@ extension EditorTextView {
         let oldActive = activeBlockIndex
         let oldCount = blocks.count
 
-        rawSource = snapshot.rawSource
+        rawSource = ns.replacingCharacters(in: oldRange, with: replacement)
         rebuildListIndentState()
         rebuildLinkDefState()
         let (newBlocks, changed) = BlockParser.parseWithDiff(rawSource, previous: blocks,
@@ -130,8 +263,8 @@ extension EditorTextView {
         // The changed text in restored coordinates: select it so the user sees
         // exactly what this undo/redo did. A pure deletion has no new text to
         // select — the caret goes to the deletion point instead.
-        let changedInNew = NSRange(location: diff.oldRange.location,
-                                   length: (diff.replacement as NSString).length)
+        let changedInNew = NSRange(location: oldRange.location,
+                                   length: (replacement as NSString).length)
         let selection: NSRange? = changedInNew.length > 0 ? changedInNew : nil
 
         // Range-bounded storage replacement: layout outside the changed span
@@ -139,7 +272,7 @@ extension EditorTextView {
         // TextKit 2 height estimates, and centering math done on estimates is
         // what made the post-undo scroll land too far down.)
         let apply = {
-            self.recomposeReplacing(oldRange: diff.oldRange, with: diff.replacement,
+            self.recomposeReplacing(oldRange: oldRange, with: replacement,
                                     dirty: dirty, cursorInRaw: changedInNew.location,
                                     selectionInRaw: selection)
         }
@@ -165,6 +298,27 @@ extension EditorTextView {
         }
 
         isUndoRedoing = false
+        lastEditType = .other
+        lastEditBlockIndex = nil
+        return true
+    }
+
+    private func undoEntryFitsCurrentText(_ entry: UndoEntry, length: Int) -> Bool {
+        entry.location >= 0 && entry.laterLength >= 0 && entry.cursorInRaw >= 0
+            && entry.location <= length && entry.laterLength <= length - entry.location
+    }
+
+    private func discardInvalidUndoHistory(_ entry: UndoEntry, stage: String, textLength: Int) {
+        let message = "Invalid undo entry during \(stage): location=\(entry.location), "
+            + "length=\(entry.laterLength), cursor=\(entry.cursorInRaw), "
+            + "textLength=\(textLength)"
+        #if DEBUG
+        assertionFailure(message)
+        #else
+        Log.error(message, category: .edit)
+        #endif
+        undoStack.removeAll()
+        redoStack.removeAll()
         lastEditType = .other
         lastEditBlockIndex = nil
     }

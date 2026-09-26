@@ -85,4 +85,29 @@ struct BypassedEditSyncTests {
         #expect(editor.hasMarkedText())
         #expect(editor.textStorage!.string != editor.rawSource)
     }
+
+    @Test func undoAfterDragMoveSourceDeletion() {
+        let editor = makeEditor()
+        editor.loadContent("alpha bravo charlie")
+        let source = NSRange(location: 6, length: 6)
+        editor.setSelectedRange(source)
+
+        // AppKit's drag source removes the text without didChangeText.
+        #expect(editor.shouldChangeText(in: source, replacementString: ""))
+        editor.textStorage!.replaceCharacters(in: source, with: "")
+        // Insert before the scheduled heal runs: rawSource is still stale.
+        #expect(editor.rawSource == "alpha bravo charlie")
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.insertText("bravo ", replacementRange: NSRange(location: 0, length: 0))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        #expect(editor.rawSource == "bravo alpha charlie")
+
+        editor.undo(nil) // destination insertion
+        editor.undo(nil) // source deletion
+        #expect(editor.rawSource == "alpha bravo charlie")
+        #expect(editor.textStorage?.string == editor.rawSource)
+        editor.redo(nil)
+        editor.redo(nil)
+        #expect(editor.rawSource == "bravo alpha charlie")
+    }
 }

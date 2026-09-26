@@ -31,12 +31,17 @@ extension EditorTextView {
             location: blocks[startBlock].range.location,
             length: blocks[endBlock].range.upperBound - blocks[startBlock].range.location)
 
-        undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: selectedRange().location))
+        let rawBefore = rawSource
+        let cursorBefore = selectedRange().location
+
+        undoStack.append(UndoEntry(location: 0, laterLength: 0, earlierText: "",
+                                   cursorInRaw: cursorBefore))
         redoStack.removeAll()
         lastEditType = .other
         lastEditBlockIndex = nil
 
         rawSource = ns.replacingCharacters(in: clamped, with: replacement)
+        finalizeTopUndoEntry(preEditText: rawBefore)
         rebuildListIndentState()
         rebuildLinkDefState()
         blocks = BlockParser.parse(rawSource, previous: blocks, features: markdownFeatures)
@@ -68,12 +73,17 @@ extension EditorTextView {
     /// Replace the whole document as one undoable step (for non-contiguous edits
     /// like footnotes: an inline marker plus an end-of-file definition).
     func applyWholeDocumentEdit(newRawSource: String, select: NSRange) {
-        undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: selectedRange().location))
+        let rawBefore = rawSource
+        let cursorBefore = selectedRange().location
+
+        undoStack.append(UndoEntry(location: 0, laterLength: 0, earlierText: "",
+                                   cursorInRaw: cursorBefore))
         redoStack.removeAll()
         lastEditType = .other
         lastEditBlockIndex = nil
 
         rawSource = newRawSource
+        finalizeTopUndoEntry(preEditText: rawBefore)
         rebuildListIndentState()
         rebuildLinkDefState()
         blocks = BlockParser.parse(rawSource, previous: blocks, features: markdownFeatures)

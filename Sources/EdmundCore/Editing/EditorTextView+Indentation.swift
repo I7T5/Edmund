@@ -231,7 +231,9 @@ extension EditorTextView {
             length: blocks[endBlock].range.upperBound - blocks[startBlock].range.location)
 
         // Record undo
-        undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: rawStart))
+        let rawBefore = rawSource
+        undoStack.append(UndoEntry(location: 0, laterLength: 0, earlierText: "",
+                                   cursorInRaw: rawStart))
         redoStack.removeAll()
         lastEditType = .other
         lastEditBlockIndex = nil
@@ -248,6 +250,7 @@ extension EditorTextView {
         let newText = parts[startBlock...endBlock].joined(separator: blockSeparator)
         let oldDepths = listDepths
         rawSource = parts.joined(separator: blockSeparator)
+        finalizeTopUndoEntry(preEditText: rawBefore)
         rebuildListIndentState()
         rebuildLinkDefState()
 
@@ -317,7 +320,9 @@ extension EditorTextView {
             length: blocks[endBlock].range.upperBound - blocks[startBlock].range.location)
 
         // Record undo
-        undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: rawStart))
+        let rawBefore = rawSource
+        undoStack.append(UndoEntry(location: 0, laterLength: 0, earlierText: "",
+                                   cursorInRaw: rawStart))
         redoStack.removeAll()
         lastEditType = .other
         lastEditBlockIndex = nil
@@ -334,6 +339,7 @@ extension EditorTextView {
         let newText = parts[startBlock...endBlock].joined(separator: blockSeparator)
         let oldDepths = listDepths
         rawSource = parts.joined(separator: blockSeparator)
+        finalizeTopUndoEntry(preEditText: rawBefore)
         rebuildListIndentState()
         rebuildLinkDefState()
 

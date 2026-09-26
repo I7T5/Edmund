@@ -95,4 +95,42 @@ struct InternationalInputTests {
         let committed = (editor.textStorage!.string as NSString).range(of: script.sample)
         #expect(allGraphemesCovered(committed, in: editor.textStorage!))
     }
+
+    @Test("Undo after an IME commit restores the pre-composition text in one step")
+    @MainActor func imeCommitUndo() {
+        let editor = makeEditor()
+        editor.loadContent("before after")
+        editor.setSelectedRange(NSRange(location: 7, length: 0))
+
+        editor.setMarkedText("ni", selectedRange: NSRange(location: 2, length: 0),
+                             replacementRange: NSRange(location: NSNotFound, length: 0))
+        editor.setMarkedText("你", selectedRange: NSRange(location: 1, length: 0),
+                             replacementRange: editor.markedRange())
+        #expect(editor.undoStack.isEmpty)
+        editor.insertText("你", replacementRange: editor.markedRange())
+        #expect(editor.rawSource == "before 你after")
+        #expect(editor.undoStack.count == 1)
+
+        editor.undo(nil)
+        #expect(editor.rawSource == "before after")
+        #expect(editor.textStorage?.string == editor.rawSource)
+        editor.redo(nil)
+        #expect(editor.rawSource == "before 你after")
+    }
+
+    @Test("Undo after accent composition restores the replaced character")
+    @MainActor func accentCommitUndo() {
+        let editor = makeEditor()
+        editor.loadContent("cafe noir")
+        editor.setSelectedRange(NSRange(location: 3, length: 1))
+        editor.setMarkedText("e", selectedRange: NSRange(location: 1, length: 0),
+                             replacementRange: NSRange(location: NSNotFound, length: 0))
+        editor.insertText("é", replacementRange: editor.markedRange())
+        #expect(editor.rawSource == "café noir")
+
+        editor.undo(nil)
+        #expect(editor.rawSource == "cafe noir")
+        editor.redo(nil)
+        #expect(editor.rawSource == "café noir")
+    }
 }

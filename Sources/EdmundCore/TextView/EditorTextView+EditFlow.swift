@@ -4,6 +4,13 @@ import AppKit
 /// reparse, and an attribute-only restyle of exactly the affected blocks.
 extension EditorTextView {
 
+    public override func setMarkedText(_ string: Any, selectedRange: NSRange,
+                                       replacementRange: NSRange) {
+        hasDeferredMarkedTextUndo = true
+        super.setMarkedText(string, selectedRange: selectedRange,
+                            replacementRange: replacementRange)
+    }
+
     /// NSTextView copies the attributes next to the caret into `typingAttributes`.
     /// When the caret sits beside a hidden delimiter (our near-zero-size
     /// `hiddenFont` + clear color), newly inserted text inherits that invisible
@@ -42,8 +49,15 @@ extension EditorTextView {
             return false
         }
         if let replacement = replacementString {
-            if !isUndoRedoing {
-                recordUndoIfNeeded(editRange: affectedCharRange, replacement: replacement)
+            if !isUndoRedoing && !hasDeferredMarkedTextUndo && !hasMarkedText() {
+                // A drag source deletion can mutate storage without a closing
+                // didChangeText. If the drop inserts in the same event turn,
+                // its range belongs to storage, not the still-stale rawSource.
+                let hasUnsyncedEdit = (textStorage as? EditorTextStorage)?.pendingEdit != nil
+                recordUndoIfNeeded(editRange: affectedCharRange,
+                                   replacement: replacement,
+                                   preEditText: hasUnsyncedEdit ? textStorage!.string : rawSource,
+                                   forceNewGroup: hasUnsyncedEdit)
             }
         }
         traceEdit("shouldChangeText OK range=\(affectedCharRange) repl=\(logSnippet(replacementString))")
@@ -100,6 +114,7 @@ extension EditorTextView {
                     caretAfterEdit = min(pending.oldRange.location + newLength, storage.length)
                     self.setSelectedRange(NSRange(location: caretAfterEdit!, length: 0))
                 }
+                self.recordDeferredMarkedTextUndoIfNeeded()
                 self.syncRawSourceFromDisplay()
                 // The queued fixer fires during the sync's endEditing and moves
                 // the caret even when it was just set to a valid spot — so
@@ -129,6 +144,7 @@ extension EditorTextView {
             traceEdit("didChangeText DEFERRED sync (marked text active)")
             return
         }
+        recordDeferredMarkedTextUndoIfNeeded()
         syncRawSourceFromDisplay()
         document?.updateChangeCount(.changeDone)
         scrollCursorToCenter()

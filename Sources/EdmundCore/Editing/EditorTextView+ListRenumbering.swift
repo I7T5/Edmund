@@ -163,7 +163,13 @@ extension EditorTextView {
         }
         let caretAfter = max(0, caretBefore + netDelta)
 
-        rawSource = (rawSource as NSString).replacingCharacters(in: oldSpan, with: newText)
+        // The renumber is a secondary mutation of the user's edit: fold it into
+        // that edit's undo entry so one undo restores the pre-edit text (the
+        // old full-snapshot stack got this for free — the snapshot predated
+        // every mutation of the step).
+        let preRaw = rawSource as NSString
+        composeTopUndoEntry(editRange: oldSpan, replacement: newText, in: preRaw)
+        rawSource = preRaw.replacingCharacters(in: oldSpan, with: newText)
         blocks = BlockParser.parse(rawSource, previous: blocks, features: markdownFeatures)
 
         // `recomposeReplacing` wipes the whole replaced span to base

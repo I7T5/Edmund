@@ -30,12 +30,15 @@ extension EditorTextView {
         guard newText != oldText else { return }
 
         // Record undo
-        undoStack.append(UndoSnapshot(rawSource: rawSource, cursorInRaw: sel.location))
+        let rawBefore = rawSource
+        undoStack.append(UndoEntry(location: 0, laterLength: 0, earlierText: "",
+                                   cursorInRaw: sel.location))
         redoStack.removeAll()
         lastEditType = .other
         lastEditBlockIndex = nil
 
         rawSource = ns.replacingCharacters(in: oldRange, with: newText)
+        finalizeTopUndoEntry(preEditText: rawBefore)
         rebuildListIndentState()
         rebuildLinkDefState()
         blocks = BlockParser.parse(rawSource, previous: blocks, features: markdownFeatures)
