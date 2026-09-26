@@ -5,6 +5,39 @@ import AppKit
 @Suite("Styled-content cache invalidation")
 @MainActor
 struct RenderCacheInvalidationTests {
+    private final class TallMathRenderer: MathRenderer {
+        let id = "callout-cache-test-\(UUID().uuidString)"
+        let isReady = true
+
+        func render(latex: String, displayMode: Bool,
+                    pointSize: CGFloat, color: NSColor) -> RenderedMath? {
+            RenderedMath(image: NSImage(size: NSSize(width: 50, height: 50)),
+                         ascent: 40, descent: 10)
+        }
+    }
+
+    @Test("A cached callout follows math engine changes in both directions")
+    func calloutMathEngine() throws {
+        let previous = MathRendering.shared.alternate
+        defer { MathRendering.shared.alternate = previous }
+        MathRendering.shared.alternate = nil
+        let editor = makeEditor()
+        let source = "> [!note]\n> $y^3$"
+        let position = (source as NSString).range(of: "$y^3$").location
+        func overlayHeight() throws -> CGFloat {
+            let styled = editor.styleBlock(source)
+            let overlay = try #require(styled.attribute(
+                .fragmentOverlay, at: position, effectiveRange: nil) as? FragmentOverlay)
+            return overlay.bounds.height
+        }
+        let original = try overlayHeight()
+        #expect(original != 50)
+        MathRendering.shared.alternate = TallMathRenderer()
+        #expect(try overlayHeight() == 50)
+        MathRendering.shared.alternate = nil
+        #expect(try overlayHeight() == original)
+    }
+
     private func writePNG(_ url: URL, size: NSSize) throws {
         let image = NSImage(size: size)
         image.lockFocus()

@@ -130,6 +130,8 @@ extension EditorTextView {
             "\(theme.lineSpacing)", "\(theme.standardLigatures)",
             isDarkAppearance ? "dark" : "light",
             renderingCacheColorKey(foregroundColor),
+            renderingCacheColorKey(editorBackgroundColor),
+            MathRendering.shared.active.id,
             renderingCacheColorKey(linkColor),
             renderingCacheColorKey(highlightColor),
             renderingCacheColorKey(syntaxDimColor),
