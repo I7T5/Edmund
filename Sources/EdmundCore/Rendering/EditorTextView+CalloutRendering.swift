@@ -466,6 +466,9 @@ extension EditorTextView {
     /// descender bottom instead (ink box to ink box) leaves the bottom looking
     /// ~1.5pt heavier. TextKit 2 line metrics are `defaultLineHeight` /
     /// `defaultBaselineOffset`, with `lineSpacing` stacked above the glyphs.
+    /// Plus `Self.calloutBottomOpticalBias`: a mostly-lowercase title ("Note",
+    /// "Warning") reads as starting a little below its cap line, so an exact
+    /// cap-to-baseline match still looks top-heavy.
     var calloutBottomPad: CGFloat {
         let metrics = NSLayoutManager()
         let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
@@ -473,8 +476,11 @@ extension EditorTextView {
             + metrics.defaultBaselineOffset(for: titleFont) - titleFont.capHeight
         let baselineGap = metrics.defaultLineHeight(for: bodyFont)
             - metrics.defaultBaselineOffset(for: bodyFont)
-        return max(0, capGap - baselineGap)
+        return max(0, capGap - baselineGap) + Self.calloutBottomOpticalBias
     }
+    /// Extra bottom room over the exact cap-line/baseline match (see
+    /// `calloutBottomPad`). Chosen by eye on Iowan 16pt header-only callouts.
+    static let calloutBottomOpticalBias: CGFloat = 1
 
     // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 

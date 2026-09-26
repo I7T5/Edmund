@@ -4,10 +4,11 @@ import AppKit
 
 /// A callout's vertical padding is measured the way the eye reads it: box top
 /// to the title's cap line, and the last line's baseline to the box bottom.
-/// The two must match for both header kinds (default title drawn as an overlay
-/// image, custom title as live text). Matching ink box to ink box instead —
-/// icon top vs descender bottom — left the bottom looking heavier.
-@Suite("Callout padding — cap-line top matches baseline bottom")
+/// The bottom must exceed the top by `calloutBottomOpticalBias` for both header
+/// kinds (default title drawn as an overlay image, custom title as live text)
+/// and for a header-only callout. Matching ink box to ink box instead — icon
+/// top vs descender bottom — left the bottom looking heavier.
+@Suite("Callout padding — baseline bottom = cap-line top + bias")
 struct CalloutPaddingGeometryTests {
 
     @MainActor private func windowed() -> EditorTextView {
@@ -44,17 +45,20 @@ struct CalloutPaddingGeometryTests {
                 boxBottom - lastBaseline)
     }
 
-    @Test("Default and custom titles: top cap gap equals bottom baseline gap")
-    @MainActor func topMatchesBottom() {
+    @Test("Default and custom titles: bottom baseline gap = top cap gap + bias")
+    @MainActor func bottomIsTopPlusBias() {
         let e = windowed()
-        let doc = "Intro\n\n> [!note]\n> Body line.\n\nMid\n\n> [!tip] Custom title\n> Body line.\n\nEnd"
+        let doc = "Intro\n\n> [!note]\n> Body line.\n\nMid\n\n> [!tip] Custom title\n> Body line.\n\n"
+            + "> [!warning]\n\nEnd"
         e.loadContent(doc)
         e.recompose(cursorInRaw: 0)
         let ns = doc as NSString
         let cases: [(header: String, last: String)] = [
             ("> [!note]", "> Body line.\n\nMid"),
-            ("> [!tip]", "> Body line.\n\nEnd"),
+            ("> [!tip]", "> Body line.\n\n> [!warning]"),
+            ("> [!warning]", "> [!warning]"),   // header only: the header is the last line
         ]
+        let bias = EditorTextView.calloutBottomOpticalBias
         for c in cases {
             let h = ns.range(of: c.header).location
             let l = ns.range(of: c.last).location
@@ -62,8 +66,8 @@ struct CalloutPaddingGeometryTests {
                 Issue.record("no fragments for \(c.header)"); continue
             }
             #expect(g.top > 0 && g.bottom > 0)
-            #expect(abs(g.top - g.bottom) < 0.5,
-                    "\(c.header): top cap gap \(g.top) should match bottom baseline gap \(g.bottom)")
+            #expect(abs(g.bottom - g.top - bias) < 0.5,
+                    "\(c.header): bottom baseline gap \(g.bottom) should be top cap gap \(g.top) + \(bias)")
         }
     }
 }
