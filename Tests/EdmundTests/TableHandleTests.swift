@@ -464,7 +464,6 @@ struct TableHandleTests {
     func noArrowStepRestsInDeadSpace() {
         let editor = loadEditor("Intro.\n\n| aa | bb | cc |\n| --- | --- | --- |\n"
             + "| x | longer | z |\n|  | q |  |\n")
-        let ns = editor.rawSource as NSString
         guard let index = editor.blocks.firstIndex(where: { $0.kind == .table }) else {
             Issue.record("no table")
             return

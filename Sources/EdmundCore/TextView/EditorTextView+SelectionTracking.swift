@@ -120,6 +120,9 @@ extension EditorTextView {
         } else if newActiveIndex == activeBlockIndex {
             // Same block — update active token (re-style to show/hide delimiters)
             applyBlockStyle()
+            // A caret move (never typing — that returned on `pendingEdit`
+            // above) settles the word it left, which the edit path spared.
+            if let idx = newActiveIndex { recheckSpelling(blocks: [idx]) }
         }
         if !suppressTypewriterCentering { scrollCursorToCenter() }
     }

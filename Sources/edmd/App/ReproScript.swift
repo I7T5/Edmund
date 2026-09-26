@@ -13,6 +13,7 @@ import ScreenCaptureKit
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
 ///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
+///   hovercopy <n>     put the pointer on the copy button of the code block at n
 ///   copycode <n>      press the copy button of the code block at offset n
 ///   snapshot <path>   render the window content to a PNG in-process
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
@@ -20,6 +21,7 @@ import ScreenCaptureKit
 ///   type <text>       type text, one key event per character
 ///   backspace <n>     press delete n times (300ms apart)
 ///   enter             press Return (insertNewline: list continuation, table rows)
+///   shiftenter        press Shift-Return as a real key event (list soft break)
 ///   tab / backtab     indent / dedent the selected list line(s)
 ///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
 ///                     recentering, so a block can be driven off-screen)
@@ -154,6 +156,12 @@ enum ReproScript {
                     try? png.write(to: URL(fileURLWithPath: arg))
                     report("repro snapshot \(arg)")
                 }
+            case "hovercopy":
+                // Pointer on the copy button of the code block at an absolute
+                // offset: the button's own hover fill, not just the reveal.
+                schedule(after: delay) { editor in
+                    editor.reproHoverCopyButton(atOffset: Int(arg) ?? 0)
+                }
             case "copycode":
                 // Press the copy button of the code block at an absolute offset.
                 schedule(after: delay) { editor in
@@ -198,6 +206,11 @@ enum ReproScript {
                 // different path from `return` above, and the only one that
                 // reaches list continuation and table row stepping.
                 schedule(after: delay) { $0.insertNewline(nil) }
+                delay += 0.05
+            case "shiftenter":
+                // Shift-Return as a real key event through the window, so it
+                // takes the editor's keyDown route.
+                schedule(after: delay) { press("\r", keyCode: 36, modifiers: .shift, in: $0) }
                 delay += 0.05
             case "tab":
                 schedule(after: delay) { $0.insertTab(nil) }
@@ -406,7 +419,7 @@ enum ReproScript {
                         // driven from here, so this is the only way to check it.
                         let tip = item.view?.toolTip ?? item.toolTip
                         report("repro toolbar \(item.itemIdentifier.rawValue) " +
-                               "enabled=\(on) tip=\(tip ?? "nil")")
+                               "enabled=\(on) label=\(item.label) tip=\(tip ?? "nil")")
                     }
                 }
             case "clicktoolbar":
@@ -1102,9 +1115,10 @@ enum ReproScript {
 
     /// Sends a key event through the window so it takes the full AppKit
     /// keyDown route, exactly like a physical keystroke.
-    private static func press(_ chars: String, keyCode: UInt16, in editor: EditorTextView) {
+    private static func press(_ chars: String, keyCode: UInt16,
+                              modifiers: NSEvent.ModifierFlags = [], in editor: EditorTextView) {
         guard let window = editor.window,
-              let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+              let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
                                            timestamp: ProcessInfo.processInfo.systemUptime,
                                            windowNumber: window.windowNumber, context: nil,
                                            characters: chars, charactersIgnoringModifiers: chars,

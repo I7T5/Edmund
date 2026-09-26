@@ -104,7 +104,7 @@ struct RaTeXScaffoldTests {
         let renderer = RaTeXRenderer()
         #expect(!renderer.isReady)
         #expect(renderer.render(latex: "x^2", displayMode: false,
-                                pointSize: 16, color: testColor) == nil)
+                                pointSize: 16, color: testColor, scale: 2) == nil)
     }
 
     @Test("Coordinator falls back to SwiftMath when RaTeX isn't ready")

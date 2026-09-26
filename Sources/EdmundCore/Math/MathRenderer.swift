@@ -36,9 +36,12 @@ public protocol MathRenderer: AnyObject {
     /// Renders `latex`; `displayMode` selects block vs inline typesetting.
     /// Returns `nil` when the engine can't render it (unknown command, parse
     /// error, not ready) so the caller can fall back to another engine or
-    /// show the raw source.
+    /// show the raw source. `scale` is the destination's backing scale: the
+    /// image is a bitmap at that scale with the baseline on a pixel boundary
+    /// (whole-pixel `ascent` and `descent`), so it can be placed on the text
+    /// baseline exactly.
     func render(latex: String, displayMode: Bool,
-               pointSize: CGFloat, color: NSColor) -> RenderedMath?
+                pointSize: CGFloat, color: NSColor, scale: CGFloat) -> RenderedMath?
 }
 
 /// Wraps SwiftMath — bundled, native, always ready. The default (and, today,
@@ -74,8 +77,8 @@ public final class SwiftMathRenderer: MathRenderer {
     public init() {}
 
     public func render(latex: String, displayMode: Bool,
-                       pointSize: CGFloat, color: NSColor) -> RenderedMath? {
-        let key = "\(displayMode ? "D" : "I")|\(String(format: "%.1f", pointSize))|" +
+                       pointSize: CGFloat, color: NSColor, scale: CGFloat) -> RenderedMath? {
+        let key = "\(displayMode ? "D" : "I")|\(String(format: "%.1f", pointSize))|\(scale)|" +
                   "\(String(format: "%.3f,%.3f,%.3f,%.3f", color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent))|" +
                   latex as NSString
 
@@ -84,35 +87,63 @@ public final class SwiftMathRenderer: MathRenderer {
         }
 
         let mode: MTMathUILabelMode = displayMode ? .display : .text
-        let math = MTMathImage(latex: latex, fontSize: pointSize, textColor: color, labelMode: mode)
-        // SwiftMath sizes the image to the exact typographic ascent+descent,
-        // which crops a glyph's ink overshoot below the baseline — the bottom
-        // of a lone `x`/`c` sits flush on the image edge and renders clipped.
-        // A small content inset gives the rasterizer room so the full glyph is
-        // drawn; it's folded into ascent/descent below so alignment is unchanged.
-        let insetPad: CGFloat = 2
-        math.contentInsets = MTEdgeInsets(top: insetPad, left: 0, bottom: insetPad, right: 0)
-        let (error, image) = math.asImage()
-        guard error == nil, let image else { return nil }
-
-        // Typeset once more via a label to read ascent/descent, then compute
-        // the baseline's distance from the image bottom the way SwiftMath's
-        // asImage does — including its `height < fontSize/2` clamp, which
-        // re-centers small glyphs (a lone x/c/n). Ignoring the clamp left
-        // those a pixel below the surrounding text baseline.
         let label = MTMathUILabel()
         label.latex = latex
         label.fontSize = pointSize
         label.labelMode = mode
+        label.textAlignment = .left
+        label.textColor = color
         label.layout()
-        let asc = label.displayList?.ascent ?? 0
-        let desc = label.displayList?.descent ?? 0
-        let clamped = max(asc + desc, pointSize / 2)
-        let descent = (asc + desc - clamped) / 2 + desc + insetPad
-        let ascent = image.size.height - descent
+        guard label.error == nil, let list = label.displayList else { return nil }
 
-        cache.setObject(Cached(image: image, ascent: ascent, descent: descent), forKey: key)
-        return RenderedMath(image: image, ascent: ascent, descent: descent)
+        // Drawn from SwiftMath's display list ourselves rather than through
+        // `MTMathImage.asImage`: that image is vector at a fractional height
+        // (width ceiled to whole points), so where its glyphs landed depended
+        // on how the draw rect rounded — math sat a pixel off the text at 1x,
+        // and rasterizing it again smeared it. Here the bitmap is built at the
+        // destination scale with whole device pixels either side of the
+        // baseline, the same shape RaTeX produces.
+        //
+        // The layout copies asImage's: `insetPad` above and below keeps a
+        // glyph's ink overshoot from being clipped at the image edge, and a
+        // list shorter than half the font size (a lone x/c/n) is re-centered
+        // in that height, as asImage does.
+        let insetPad: CGFloat = 2
+        let clamped = max(list.ascent + list.descent, pointSize / 2)
+        let descent = (list.ascent + list.descent - clamped) / 2 + list.descent + insetPad
+        let ascent = clamped + 2 * insetPad - descent
+        let descentPx = Int((descent * scale - 0.01).rounded(.up))
+        let ascentPx = Int((ascent * scale - 0.01).rounded(.up))
+        let pxW = max(1, Int((list.width * scale).rounded()))
+        guard let ctx = CGContext(data: nil, width: pxW, height: descentPx + ascentPx,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        // A raw bitmap context defaults antialiasing and font smoothing off,
+        // and quantizes glyph origins; match the RaTeX renderer's settings.
+        ctx.setShouldAntialias(true)
+        ctx.setShouldSmoothFonts(true)
+        ctx.setAllowsFontSmoothing(true)
+        ctx.setShouldSubpixelPositionFonts(true)
+        ctx.setShouldSubpixelQuantizeFonts(false)
+        ctx.setAllowsFontSubpixelQuantization(false)
+        ctx.scaleBy(x: scale, y: scale)
+        // The zero-size label left the list's baseline at y = descent - clamped/2
+        // (x = 0); move it onto the whole-pixel row `descentPx`.
+        ctx.translateBy(x: 0, y: CGFloat(descentPx) / scale - (list.descent - clamped / 2))
+        list.draw(ctx)
+        guard let cgImage = ctx.makeImage() else { return nil }
+
+        let box = NSSize(width: CGFloat(pxW) / scale, height: CGFloat(descentPx + ascentPx) / scale)
+        let rep = NSBitmapImageRep(cgImage: cgImage)
+        rep.size = box
+        let image = NSImage(size: box)
+        image.addRepresentation(rep)
+
+        let result = RenderedMath(image: image, ascent: CGFloat(ascentPx) / scale,
+                                  descent: CGFloat(descentPx) / scale)
+        cache.setObject(Cached(image: image, ascent: result.ascent, descent: result.descent), forKey: key)
+        return result
     }
 }
 
@@ -138,16 +169,17 @@ public final class MathRendering {
         (alternate?.isReady == true) ? alternate! : swiftMath
     }
 
+    /// `scale` defaults to 2x, which Read mode's PNGs use regardless of screen.
     public func render(latex: String, displayMode: Bool,
-                       pointSize: CGFloat, color: NSColor) -> RenderedMath? {
+                       pointSize: CGFloat, color: NSColor, scale: CGFloat = 2) -> RenderedMath? {
         let primary = active
         if let r = primary.render(latex: latex, displayMode: displayMode,
-                                  pointSize: pointSize, color: color) {
+                                  pointSize: pointSize, color: color, scale: scale) {
             return r
         }
         guard primary !== swiftMath else { return nil }
         return swiftMath.render(latex: latex, displayMode: displayMode,
-                                pointSize: pointSize, color: color)
+                                pointSize: pointSize, color: color, scale: scale)
     }
 
     /// Call after switching the active engine (or finishing an install) so

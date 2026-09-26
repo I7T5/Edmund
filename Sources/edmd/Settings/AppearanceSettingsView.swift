@@ -84,6 +84,7 @@ struct AppearanceSettingsView: View {
                 Picker("", selection: $appearanceMode) {
                     ForEach(AppSettings.AppearanceMode.displayOrder) { Text($0.label).tag($0) }
                 }
+                .accessibilityLabel("Appearance")
                 .pickerStyle(.radioGroup)
                 .horizontalRadioGroupLayout()
                 .labelsHidden()
@@ -108,10 +109,12 @@ struct AppearanceSettingsView: View {
                     // 8-pt gaps + field == 240, the font rows' label width).
                     TextField("", value: displayValueBinding,
                               format: .number.precision(.fractionLength(1)))
+                        .accessibilityLabel("Max content width")
                         .multilineTextAlignment(.trailing)
                         .frame(width: 32)
                     Stepper("", value: displayValueBinding,
                             in: displayRange, step: stepSize)
+                        .accessibilityLabel("Max content width")
                         .labelsHidden()
                     // Clickable unit toggle styled exactly like a plain label —
                     // .plain strips all button chrome so only the text shows.
@@ -139,6 +142,7 @@ struct AppearanceSettingsView: View {
                         // thing a copy cannot supply for itself.
                         Text("New Font Theme…").tag(Self.newThemeTag)
                     }
+                    .accessibilityLabel("Font theme")
                     .labelsHidden()
                     .frame(width: 240)
                     .onChange(of: fontTheme) { previous, name in
@@ -160,6 +164,7 @@ struct AppearanceSettingsView: View {
                         get: { Double(fonts.standardFont.pointSize) },
                         set: { fonts.scaleAllSizes(toStandard: CGFloat($0)) }),
                         in: 8...72, step: 1)
+                        .accessibilityLabel("Font size")
                         .labelsHidden()
                         .help("Scale every font size together")
                     fontThemeMenu
@@ -175,7 +180,7 @@ struct AppearanceSettingsView: View {
                 Text("Standard font:")
                     .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    fontRow(summary: fonts.standardSummary,
+                    fontRow(summary: fonts.standardSummary, sizeLabel: "Standard font size",
                             font: fonts.standardFont,
                             antialias: fonts.antialias,
                             size: Binding(get: { Double(fonts.standardFont.pointSize) },
@@ -193,7 +198,7 @@ struct AppearanceSettingsView: View {
                 Text("Monospaced font:")
                     .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 VStack(alignment: .leading, spacing: 6) {
-                    fontRow(summary: fonts.monospaceSummary,
+                    fontRow(summary: fonts.monospaceSummary, sizeLabel: "Monospaced font size",
                             font: fonts.monospaceFont,
                             antialias: fonts.antialias,
                             size: Binding(get: { Double(fonts.monospaceFont.pointSize) },
@@ -214,9 +219,11 @@ struct AppearanceSettingsView: View {
                     let lineHeight = Binding(get: { Double(fonts.lineHeight) },
                                              set: { fonts.setLineHeight(CGFloat($0)) })
                     TextField("", value: lineHeight, format: .number.precision(.fractionLength(1)))
+                        .accessibilityLabel("Line height")
                         .multilineTextAlignment(.trailing)
                         .frame(width: 56)
                     Stepper("", value: lineHeight, in: 1...3, step: 0.1)
+                        .accessibilityLabel("Line height")
                         .labelsHidden()
                     Text("times")
                 }
@@ -330,7 +337,7 @@ struct AppearanceSettingsView: View {
     }
 
     @ViewBuilder
-    private func fontRow(summary: String, font: NSFont, antialias: Bool,
+    private func fontRow(summary: String, sizeLabel: String, font: NSFont, antialias: Bool,
                          size: Binding<Double>, select: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             AntialiasingText(summary)
@@ -338,6 +345,7 @@ struct AppearanceSettingsView: View {
                 .font(nsFont: font)
                 .frame(width: 240)
             Stepper("", value: size, in: 8...72, step: 1)
+                .accessibilityLabel(sizeLabel)
                 .labelsHidden()
             Button("Select…", action: select)
                 .fixedSize()
@@ -539,6 +547,7 @@ extension AppearanceSettingsView {
                 set: { useDefault in
                     fonts.setCascadeFont(script, family: useDefault ? nil : preview?.familyName)
                 }))
+                .accessibilityLabel("Use the standard font for \(script.label)")
                 .labelsHidden()
                 .controlSize(.small)
                 .frame(width: Self.defaultColumnWidth, alignment: .leading)
@@ -570,6 +579,7 @@ extension AppearanceSettingsView {
             // Against the trailing edge, as Default is against the leading one:
             // each edge column belongs to its edge.
             Toggle("", isOn: cascadeLigaturesBinding(for: script))
+                .accessibilityLabel("Ligatures for \(script.label)")
                 .labelsHidden()
                 .controlSize(.small)
                 .frame(width: Self.ligatureColumnWidth, alignment: .trailing)

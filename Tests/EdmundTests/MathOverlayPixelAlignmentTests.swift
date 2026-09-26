@@ -82,10 +82,10 @@ struct MathOverlayPixelAlignmentTests {
         let rep = try #require(m.image.representations.first)
         let native = CGSize(width: CGFloat(rep.pixelsWide) / 2, height: CGFloat(rep.pixelsHigh) / 2)
 
-        // The mismatch that starts it all: pixel count is rounded, point size is not.
-        #expect(m.image.size != native)
-        // …but snapping the point size onto the device grid recovers it exactly,
-        // which is what `mathOverlay` does.
+        // The renderer sizes the image from its pixel count, so the point size
+        // is already on the device grid (it used to be rounded independently —
+        // the mismatch that made Edit mode resample); `mathOverlay` still snaps
+        // it for engines that don't.
         #expect(snap(m.image.size.width, 2) == native.width)
         #expect(snap(m.image.size.height, 2) == native.height)
 
@@ -100,13 +100,28 @@ struct MathOverlayPixelAlignmentTests {
         // Each half alone is not enough: the ink is conserved but smeared.
         let fractionalOrigin = ink(rasterize(m.image, at: CGRect(origin: CGPoint(x: 10.37, y: 20.63),
                                                                 size: native)))
-        let fractionalSize = ink(rasterize(m.image, at: CGRect(origin: CGPoint(x: 10, y: 20),
-                                                              size: m.image.size)))
+        // The size the renderer used to hand back: ~0.24pt off its pixel count.
+        let off = CGSize(width: native.width - 0.236, height: native.height - 0.236)
+        let fractionalSize = ink(rasterize(m.image, at: CGRect(origin: CGPoint(x: 10, y: 20), size: off)))
+        #expect(abs(fractionalOrigin.ink - reference.ink) < 1)    // same ink…
         for smeared in [fractionalOrigin, fractionalSize] {
-            #expect(abs(smeared.ink - reference.ink) < 1)          // same ink…
             #expect(Double(smeared.area) > Double(reference.area) * 1.2)  // …over ≥20% more pixels
             #expect(smeared.full < reference.full / 2)             // and barely any solid pixels
         }
+    }
+
+    @Test("The image is as wide as the equation, with its baseline on a pixel row")
+    @MainActor func widthAndBaseline() throws {
+        let m = try #require(RaTeXDisplayListRenderer(fontLoader: loader)
+            .render(json: json, pointSize: 16, color: .black, scale: 2))
+        // The width is the advance the editor reserves beside the text: any
+        // transparent side inset reads as extra space around inline math.
+        #expect(abs(m.image.size.width - 3.1415 * 16) <= 0.25)
+        // Whole device pixels below the baseline, so snapping the image onto
+        // the text's baseline row is exact.
+        #expect((m.descent * 2).rounded() == m.descent * 2)
+        #expect(m.descent >= 0.25 * 16)
+        #expect(abs(m.ascent + m.descent - m.image.size.height) < 0.001)
     }
 
     /// Same check against the real engine and real equations, when the RaTeX

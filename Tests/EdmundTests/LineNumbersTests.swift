@@ -45,6 +45,23 @@ struct LineNumbersTests {
         #expect(editor.offset(forLine: 2) == 6)
     }
 
+    @Test("The empty line after a trailing newline gets its own number, below the last line")
+    @MainActor func trailingEmptyLineNumbered() {
+        let editor = makeEditor()
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 320),
+                           styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = NSScrollView(frame: win.contentLayoutRect)
+        scroll.documentView = editor
+        win.contentView = scroll
+        editor.loadContent("one\ntwo\n")
+        editor.layoutSubtreeIfNeeded()
+        editor.textLayoutManager!.textViewportLayoutController.layoutViewport()
+        var seen: [(Int, CGFloat)] = []
+        editor.enumerateVisibleLineNumbers { seen.append(($0, $1)) }
+        #expect(seen.map(\.0) == [1, 2, 3])
+        #expect(seen.count == 3 && seen[2].1 > seen[1].1)
+    }
+
     @Test("A document with no trailing newline ends on its last line")
     func noTrailingNewline() {
         let editor = makeEditor()

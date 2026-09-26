@@ -56,6 +56,8 @@ public class EditorTextView: NSTextView {
     var emphasisRange: NSRange?
     var emphasisProgress: CGFloat = 0
     var emphasisLink: CADisplayLink?
+    /// Drives animated GIF playback while one is on screen (EditorTextView+GIFAnimation).
+    var gifLink: CADisplayLink?
     /// Routes menu/keyboard find commands to the app-side find controller.
     /// Weak; mirrors the module decoupling of `contextFontMenuProvider` so
     /// EdmundCore need not know about edmd's FindController.
@@ -144,10 +146,18 @@ public class EditorTextView: NSTextView {
     /// fallback.
     func listDepth(ofBlock index: Int) -> Int? {
         let depths = listDepths
-        guard index >= 0, index < depths.count, depths[index] != ListDepthMap.notAList else {
+        guard index >= 0, index < depths.count, depths[index] >= 0 else {
             return nil
         }
         return depths[index]
+    }
+
+    /// Depth of the list item that paragraph block `index` continues (its
+    /// lines sit indented under the item, markerless), or nil.
+    func listContinuationDepth(ofBlock index: Int) -> Int? {
+        let depths = listDepths
+        guard index >= 0, index < depths.count else { return nil }
+        return ListDepthMap.continuedDepth(depths[index])
     }
 
     /// List blocks whose depth differs from `old` — the depths captured before
@@ -167,8 +177,14 @@ public class EditorTextView: NSTextView {
         var suffix = 0
         while suffix < old.count - prefix, suffix < new.count - prefix,
               old[old.count - 1 - suffix] == new[new.count - 1 - suffix] { suffix += 1 }
+        // A paragraph that stopped continuing an item now reads `notAList`, but
+        // it still wears the continuation indent, so it needs the restyle too.
+        let lostContinuation = old[prefix..<(old.count - suffix)].contains {
+            ListDepthMap.continuedDepth($0) != nil
+        }
         var changed = IndexSet()
-        for i in prefix..<(new.count - suffix) where new[i] != ListDepthMap.notAList {
+        for i in prefix..<(new.count - suffix)
+            where new[i] != ListDepthMap.notAList || lostContinuation {
             changed.insert(i)
         }
         return changed
@@ -186,6 +202,15 @@ public class EditorTextView: NSTextView {
     /// Coalesces the didChangeText-bypass check scheduled from
     /// shouldChangeText (see EditorTextView+EditFlow).
     var bypassedEditCheckScheduled = false
+    /// Switching either check (Settings or the Edit menu) rescans the whole
+    /// document so marks appear, filtered, or clear at once
+    /// (EditorTextView+SpellCheck).
+    public override var isContinuousSpellCheckingEnabled: Bool {
+        didSet { if isContinuousSpellCheckingEnabled != oldValue { rescanSpelling() } }
+    }
+    public override var isGrammarCheckingEnabled: Bool {
+        didSet { if isGrammarCheckingEnabled != oldValue { rescanSpelling() } }
+    }
     /// Where the idle drain resumes scanning for unstyled blocks (a hint;
     /// it wraps around and self-corrects after edits shift indices).
     var drainCursor = 0
@@ -520,6 +545,11 @@ public class EditorTextView: NSTextView {
     var copiedCodeBlock: Int?
     var copiedCodeProgress: CGFloat = 0
     var copiedCodeLink: CADisplayLink?
+    var copiedGlyphView: CopiedGlyphView?
+
+    /// The copy buttons' accessibility elements, by block index, kept so
+    /// VoiceOver's focus survives a redraw. See EditorTextView+CodeCopyButton.
+    var codeCopyButtonElements: [Int: CodeCopyButtonElement] = [:]
 
     /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
@@ -533,6 +563,10 @@ public class EditorTextView: NSTextView {
     /// it — and where it was has to repaint too, or the old position ghosts.
     /// See EditorTextView+TableRawButton.
     var lastTableRawButtonBands: [NSRect] = []
+
+    /// Tooltip rects for the revealed `</>` and copy buttons, kept so the next
+    /// hover change can remove them. See `refreshHoverButtonToolTips()`.
+    var hoverButtonToolTips: [NSView.ToolTipTag] = []
 
     /// The active table cell at the last selection change, as `block.row.column`.
     /// Used to force a full repaint when the caret crosses into a different cell
@@ -944,6 +978,15 @@ public class EditorTextView: NSTextView {
         updateTableHover(at: point)
         updateTableHandleHover(at: point)
         updateCodeCopyHover(at: point)
+    }
+
+    /// Repro hook (ReproScript `hovercopy`): put the pointer on the copy button
+    /// of the code block holding `offset`, so its hover fill shows.
+    public func reproHoverCopyButton(atOffset offset: Int) {
+        guard let block = blockIndexForRawOffset(offset),
+              let box = visibleCodeCopyButtons().first(where: { $0.blockIndex == block })?.rect
+        else { return }
+        updateCodeCopyHover(at: NSPoint(x: box.midX, y: box.midY))
     }
 
     /// Repro hook (ReproScript `copycode`): press the copy button of the code
@@ -1420,6 +1463,7 @@ public class EditorTextView: NSTextView {
             undoStack.removeAll()
             redoStack.removeAll()
             recompose(cursorInRaw: 0)
+            rescanSpelling()
         }
     }
 }

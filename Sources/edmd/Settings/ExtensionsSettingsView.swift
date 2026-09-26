@@ -41,7 +41,7 @@ struct ExtensionsSettingsView: View {
 
             HStack {
                 Spacer()
-                Button("More extensions…") {
+                Button("More Extensions…") {
                     // STUB: link to GitHub extensions repo for now.
                     // Extensions marketplace comes later.
                 }
@@ -250,7 +250,7 @@ private struct ExtensionDetailView: View {
                 Text(ext.summary.settingsLinkTinted())
                     .fixedSize(horizontal: false, vertical: true)
                 if ext.longDescriptionURL != nil {
-                    Button("Learn more…") { showingLongDescription = true }
+                    Button("Learn More…") { showingLongDescription = true }
                         .buttonStyle(.plain)
                         .foregroundStyle(.tint)
                         .controlSize(.small)
@@ -365,7 +365,7 @@ private struct ExtensionDetailView: View {
                 // build — that download can never succeed, so say so.
                 downloadError = ext.payloadIsConfigured
                     ? "Download failed. Try again."
-                    : "\(ext.name) isn't available in this build yet."
+                    : "\(ext.name) isn’t available in this build yet."
             }
         }
     }
@@ -422,7 +422,7 @@ private struct LongDescriptionSheet: View {
                 let (data, _) = try await URLSession.shared.data(from: markdownURL)
                 markdown = String(data: data, encoding: .utf8) ?? ""
             } catch {
-                loadError = "Couldn't load the description."
+                loadError = "Couldn’t load the description."
             }
         }
     }

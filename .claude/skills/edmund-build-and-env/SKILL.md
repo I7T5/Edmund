@@ -86,8 +86,10 @@ swift test --filter Callout    # one suite
    it the updater crashes on first check) and `install_name_tool -add_rpath
    "@executable_path/../Frameworks"` so `@rpath` resolves post-install.
 5. Codesign **inside-out**: Sparkle.framework first (nested XPC helpers must
-   be signed before macOS will launch them), then the whole `.app` (ad-hoc,
-   `--deep`, identifier `com.i7t5.edmd`). Sealing the *bundle* — not just the
+   be signed before macOS will launch them), then the Quick Look appex with
+   its own entitlements, then the outer `.app` **without** `--deep`
+   (entitlements and identifier vary by variant: sparkle, mas, adhoc; `--deep`
+   would re-sign the appex and strip its sandbox entitlements). Sealing the *bundle* — not just the
    binary — is what Sparkle's update validator requires.
 6. **Only after sealing**: copy `.build/release/*.bundle` (SwiftMath's math
    fonts) into the `.app` **root**.
@@ -204,6 +206,12 @@ Other run gotchas:
 `.github/workflows/ci.yml` (verified 2026-07-05): runs `swift test` on
 `macos-14` with `latest-stable` Xcode (Swift 6.0 needs Xcode 16+), triggered
 on PRs and pushes to `main`.
+
+- **Zero warnings**: the `Test` step tees `swift test` to `test.log`
+  (`shell: bash`, so `pipefail` keeps a failing run red), and the
+  `No warnings` step fails the job on any `(Sources|Tests)/…: warning:` line.
+  A grep, not `-warnings-as-errors`: `-Xswiftc` would also reach the remote
+  dependencies.
 
 - **SPM cache**: `.build` is cached keyed on
   `spm-v2-${{ runner.os }}-${{ hashFiles('Package.resolved') }}`. The `v2`

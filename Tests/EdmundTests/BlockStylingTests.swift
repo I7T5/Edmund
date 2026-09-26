@@ -171,6 +171,18 @@ struct BlockStylingNonActiveTests {
         #expect(NSFontManager.shared.traits(of: f).contains(.boldFontMask))
     }
 
+    // `#` alone is a valid, empty ATX heading (CommonMark). Hiding its marker
+    // would leave a blank line with a heading's height and nothing to explain it.
+    @Test("Non-active empty heading keeps its # visible",
+          arguments: ["#", "# ", "###", "##  ", "# #"])
+    @MainActor func nonActiveEmptyHeading(source: String) {
+        let editor = makeEditor()
+        editor.loadContent(source + "\nother")
+        activateBlock(1, in: editor)
+        #expect(fgColor(at: 0, in: editor) == expectedDimColor)
+        #expect(font(at: 0, in: editor)!.pointSize > 1.0)
+    }
+
     @Test("Non-active ## heading applies correct scale")
     @MainActor func nonActiveH2() {
         let editor = makeEditor()

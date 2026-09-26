@@ -55,7 +55,7 @@ bugs, class (a) is not evidence of a fix; you need (c)+(d).
 
 ## 2. Test-suite anatomy
 
-Run: `swift test` (full suite; ARCHITECTURE cites ~750+ tests ≈10s — 810 `@Test`
+Run: `swift test` (full suite; ARCHITECTURE cites ≈1900 tests, ~1 min — 1920 tests ran on 2026-09-24; 810 `@Test`
 cases as of 2026-07-05). One suite: `swift test --filter <Suite>`. **`swift test`
 also runs automatically as a Stop hook** (`.claude/settings.json`) at the end of
 any turn touching code, so failures surface before you commit.
@@ -166,7 +166,8 @@ geometry numbers but **cannot** confirm the pixels are right.
   inventing a new one (verify: `git log --oneline --all -- '*Math*'`).
 - CI: `.github/workflows/ci.yml` on `macos-14`, latest-stable Xcode, SPM cache
   keyed on `Package.resolved`, `concurrency: cancel-in-progress` (private-repo
-  macOS minutes bill 10×). CI runs the same `swift test`.
+  macOS minutes bill 10×). CI runs the same `swift test`, then fails on any
+  compiler warning in `Sources/` or `Tests/` (`No warnings` step).
 
 ---
 

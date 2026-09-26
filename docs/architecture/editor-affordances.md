@@ -162,6 +162,26 @@ chrome — `selectionDidChange` calls `invalidateLineNumbers()` **before** its o
 guards, since the highlight has to follow selection changes that bail out of
 restyling, and it dirties only the numbers' strip.
 
+**The number sits at the top of its line.** It is centred on the cap band of
+the line's baseline, but a line held open for an image or formula reserves that
+height *above* its text, so its baseline is at the bottom of the picture — the
+number used to land there, crowding the next line's. The baseline is capped at
+the line's top plus its tallest ascender, which is where a text line's baseline
+already is, so only overlay-height lines move.
+
+**The document's final empty line is numbered separately.** After a trailing
+newline TextKit 2 makes no paragraph for it: it hangs off the last fragment as
+an extra, empty line fragment, which the first-line-of-each-fragment walk never
+reaches. Its box is also *provisional* until the caret goes there — after an
+empty paragraph it was measured 16 pt down with a 14 pt height, overlapping the
+line above — so its top is clamped to the previous line's bottom.
+
+**Numbers repaint after every layout pass** (`layout()` override →
+`invalidateLineNumbers()`). They are painted in the text view's background and
+otherwise repainted only on caret moves, so a layout that moves lines without
+the caret — an image's reserved height arriving after the first paint — left a
+number where its line used to be, inside the picture above.
+
 ### The face, and why its figures matter
 
 **Avenir Next Condensed** (`lineNumberFont`, CotEditor's choice for the same

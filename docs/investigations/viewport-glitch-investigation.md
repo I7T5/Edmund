@@ -173,7 +173,7 @@ settle also checks the document's **first fragment**; if its `minY < -0.5`,
 re-lay start→viewport-end (bounded at 60k chars) inside
 `preservingViewportAnchor`. Content above the origin renormalizes to y ≥ 0
 and becomes scrollable again; the visible content holds still. Breadcrumb:
-`repairing content above origin` in `~/.edmund/logs`.
+`repairing content above origin` in `~/Library/Application Support/Edmund/Logs`.
 
 ## Verification
 
@@ -201,7 +201,7 @@ dropped) and synthetic drags never armed AppKit's selection even with
 
 - **Bug 2 was never reproduced live**; the negative-origin diagnosis is
   theory + targeted repair, not a confirmed kill. If it recurs, grep
-  `~/.edmund/logs` for `repairing content above origin`: present → diagnosis
+  `~/Library/Application Support/Edmund/Logs` for `repairing content above origin`: present → diagnosis
   confirmed (and repair maybe raced/undersized); absent → different cause,
   look at estimate corrections that *don't* strand fragments (scroller-only
   jumps) or at `textContainerOrigin`.

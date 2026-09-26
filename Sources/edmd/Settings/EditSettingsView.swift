@@ -49,6 +49,7 @@ struct EditSettingsView: View {
                         Picker("", selection: $indentStyle) {
                             ForEach(AppSettings.IndentStyle.allCases) { Text($0.label).tag($0) }
                         }
+                        .accessibilityLabel("Indentation")
                         .labelsHidden()
                         .fixedSize()
                     }
@@ -56,9 +57,11 @@ struct EditSettingsView: View {
                         Text("Indent width:")
                         TextField("", value: $indentWidth,
                                   format: .number.precision(.fractionLength(0)))
+                            .accessibilityLabel("Indent width")
                             .multilineTextAlignment(.trailing)
                             .frame(width: 24)
                         Stepper("", value: $indentWidth, in: 1...8)
+                            .accessibilityLabel("Indent width")
                             .labelsHidden()
                         Text("spaces")
                     }

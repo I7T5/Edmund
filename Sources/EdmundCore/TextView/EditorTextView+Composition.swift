@@ -84,7 +84,8 @@ extension EditorTextView {
         _ dirty: IndexSet,
         cursorInRaw: Int,
         selectionInRaw: NSRange? = nil,
-        settingSelection: Bool = false
+        settingSelection: Bool = false,
+        fromEdit: Bool = false
     ) {
         guard let ts = textStorage else { return }
 
@@ -152,6 +153,8 @@ extension EditorTextView {
         typingAttributes = baseAttributes
 
         isUpdating = false
+
+        recheckSpelling(blocks: syncSet, sparingCaret: fromEdit)
 
         if !deferred.isEmpty {
             scheduleProgressiveStyling()

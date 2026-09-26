@@ -386,6 +386,8 @@ final class FindBarView: ChromeBarView, NSSearchFieldDelegate {
 
         nav.target = self
         nav.action = #selector(navClicked)
+        nav.setToolTip("Previous", forSegment: 0)
+        nav.setToolTip("Next", forSegment: 1)
 
         replaceGroup.target = self
         replaceGroup.action = #selector(replaceGroupClicked)

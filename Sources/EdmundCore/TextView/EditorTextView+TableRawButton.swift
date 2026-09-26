@@ -178,6 +178,18 @@ extension EditorTextView {
         isDarkAppearance ? syntaxDimColor : .secondaryLabelColor
     }
 
+    /// The hover fill under a margin button — the `</>` and the code block's
+    /// copy button share it. A fraction of `quaternaryLabelColor`'s *own*
+    /// alpha (~10%): `withAlphaComponent` on it directly replaces that alpha,
+    /// near-black at the given strength, a dark box rather than a lighter
+    /// one. Light takes half; dark three quarters, as a white tint at half
+    /// (5%) on the dark ground was too faint to read as a target.
+    var marginButtonHoverFill: NSColor {
+        let base = NSColor.quaternaryLabelColor
+        return base.usingColorSpace(.deviceRGB)
+            .map { $0.withAlphaComponent($0.alphaComponent * (isDarkAppearance ? 0.75 : 0.5)) } ?? base
+    }
+
     /// Draws the `</>` buttons. Called from `drawBackground(in:)` — they occupy
     /// margin the text never uses, so nothing has to move to make room. Rides
     /// the pass's shared geometry; nil builds a fresh one.
@@ -204,17 +216,8 @@ extension EditorTextView {
         for (box, blockIndex) in boxes {
             if tableRawButtonHovered && hoveredTableBlock == blockIndex {
                 // Space, not a border: the editor's chrome idiom. A soft fill
-                // is enough to read as a target under the pointer. Light mode
-                // takes half of `quaternaryLabelColor`'s *own* alpha (~10%) —
-                // `withAlphaComponent(0.5)` on it directly replaces that alpha
-                // with 50%, near-black at half strength, a dark box rather than
-                // a lighter one. Dark mode keeps the full alpha: a white tint
-                // at 5% on the dark ground was too faint to read as a target.
-                let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                let base = NSColor.quaternaryLabelColor
-                let fill = dark ? base : base.usingColorSpace(.deviceRGB)
-                    .map { $0.withAlphaComponent($0.alphaComponent * 0.5) } ?? base
-                fill.setFill()
+                // is enough to read as a target under the pointer.
+                marginButtonHoverFill.setFill()
                 // Inset and radius in proportion to the box, so the fill
                 // keeps its shape at every zoom.
                 let pad = box.width * 3 / Self.tableRawButtonBaseSize
@@ -267,7 +270,26 @@ extension EditorTextView {
         guard block != hoveredTableBlock || onButton != tableRawButtonHovered else { return }
         hoveredTableBlock = block
         tableRawButtonHovered = onButton
+        refreshHoverButtonToolTips()
         needsDisplay = true
+    }
+
+    private static let tableRawButtonToolTip: NSString = "Edit table as Markdown"
+    private static let codeCopyButtonToolTip: NSString = "Copy code"
+
+    /// The `</>` and copy buttons are drawn, not views, so their tooltips are
+    /// rects on the text view. Re-registered on every hover change: a button
+    /// only has a place while it is revealed, and hovering its block reveals
+    /// it before the pointer reaches it, so the rect is there in time for
+    /// AppKit's normal tooltip delay. The owners are static strings because
+    /// AppKit shows an owner's `description` and does not retain it.
+    func refreshHoverButtonToolTips() {
+        for tag in hoverButtonToolTips { removeToolTip(tag) }
+        hoverButtonToolTips = revealedTableRawButtons().map {
+            addToolTip(tableRawButtonHitBox($0.rect), owner: Self.tableRawButtonToolTip, userData: nil)
+        } + revealedCodeCopyButtons().map {
+            addToolTip(codeCopyButtonHitBox($0.rect), owner: Self.codeCopyButtonToolTip, userData: nil)
+        }
     }
 
     /// The on-screen band a block's laid-out lines occupy (view coordinates).
@@ -321,6 +343,7 @@ extension EditorTextView {
         hoveredTableHandle = nil
         hoveredCodeBlock = nil
         codeCopyButtonHovered = false
+        refreshHoverButtonToolTips()
         needsDisplay = true
     }
 
