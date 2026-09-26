@@ -206,7 +206,7 @@ struct EditSettingsView: View {
     /// document (Read mode reads `AppSettings.strictLineBreaks` on render).
     private func refreshReadViews() {
         for case let document as Document in NSDocumentController.shared.documents {
-            document.refreshReadView()
+            document.refreshReadView(immediately: true)
         }
     }
 }
