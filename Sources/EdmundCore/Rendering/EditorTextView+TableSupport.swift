@@ -213,7 +213,7 @@ func prettyAlignedTableLines(_ lines: [String]) -> [String] {
 /// column handles, the add/delete operations — counts columns this way instead,
 /// which is also how `splitTableRow` counts them.
 func columnSpans(in line: NSString) -> [(start: Int, end: Int)] {
-    var edges = pipeEdges(in: line)
+    let edges = pipeEdges(in: line)
     guard !edges.isEmpty else { return [] }
     var result: [(start: Int, end: Int)] = []
     for ei in 0..<(edges.count - 1) {

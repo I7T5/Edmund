@@ -37,7 +37,7 @@ struct LucideIconsTests {
         NSGraphicsContext.restoreGraphicsState()
 
         var opaque = 0
-        for x in 0..<32 where (try? rep.colorAt(x: x, y: 16)) != nil {
+        for x in 0..<32 where rep.colorAt(x: x, y: 16) != nil {
             if let c = rep.colorAt(x: x, y: 16), c.alphaComponent > 0.1 { opaque += 1 }
         }
         #expect(opaque > 0, "SVG decoded to a blank image — NSImage(data:) didn't render strokes")

@@ -230,7 +230,8 @@ func expectedFullComposition(for editor: EditorTextView) -> NSAttributedString {
             styled = editor.styleFrontMatter(block.content)
         } else {
             styled = editor.styleBlock(block.content, cursorPosition: cursorInBlock,
-                                       listDepth: editor.listDepth(ofBlock: i))
+                                       listDepth: editor.listDepth(ofBlock: i),
+                                       continuationDepth: editor.listContinuationDepth(ofBlock: i))
         }
         styled.enumerateAttributes(
             in: NSRange(location: 0, length: styled.length), options: []

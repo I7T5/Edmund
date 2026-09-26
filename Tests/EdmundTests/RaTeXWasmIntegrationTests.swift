@@ -127,8 +127,8 @@ struct RaTeXWasmIntegrationTests {
         // Inline and display must disagree, the same property the offline test
         // pins, but here through the artifact users actually download.
         let sum = "\\sum_{i=1}^{n} i"
-        let inline = renderer.render(latex: sum, displayMode: false, pointSize: 16, color: black)
-        let display = renderer.render(latex: sum, displayMode: true, pointSize: 16, color: black)
+        let inline = renderer.render(latex: sum, displayMode: false, pointSize: 16, color: black, scale: 2)
+        let display = renderer.render(latex: sum, displayMode: true, pointSize: 16, color: black, scale: 2)
         #expect(inline != nil)
         #expect(display != nil)
         if let i = inline, let d = display {

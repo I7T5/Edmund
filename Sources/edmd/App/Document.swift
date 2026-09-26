@@ -11,7 +11,8 @@ class Document: NSDocument, HeadingNavigable {
 
     var editor: EditorTextView!
     private var statusBar: StatusBarView!
-    private var viewModeButton: NSButton?
+    /// The view-mode toolbar item. Its image, label and tooltip follow the mode.
+    private weak var viewModeItem: NSToolbarItem?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
     /// Builds and owns the formatting toolbar items (see `FormatToolbar`).
@@ -126,7 +127,7 @@ class Document: NSDocument, HeadingNavigable {
         let windowWidth: CGFloat = 800
         let windowHeight: CGFloat = 520
 
-        let window = DocumentWindow(
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
@@ -216,15 +217,6 @@ class Document: NSDocument, HeadingNavigable {
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .line
-
-        // Wire the window's secondary-click interceptions now that the toolbar has
-        // synchronously vended its buttons (see DocumentWindow).
-        window.secondaryClickTargets = [
-            .init(viewModeButton) { [weak self] in self?.viewModeMenu() ?? NSMenu() },
-            .init(formatToolbar.linkButton) { [weak self] in
-                self?.formatToolbar.linkMenu() ?? NSMenu()
-            },
-        ]
 
         let statusBarHeight: CGFloat = 22
         let contentBounds = window.contentView!.bounds
@@ -415,7 +407,7 @@ class Document: NSDocument, HeadingNavigable {
         guard let contents = String(data: data, encoding: .utf8) else {
             Log.error("Read failed: \(data.count) bytes not valid UTF-8", category: .io)
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not read file as UTF-8"])
+                          userInfo: [NSLocalizedDescriptionKey: "The file couldn’t be opened because it isn’t UTF-8 text."])
         }
         Log.info("Read \(data.count) bytes from disk", category: .io)
         pendingContent = contents
@@ -602,7 +594,7 @@ class Document: NSDocument, HeadingNavigable {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.prompt = "Move"
-        panel.message = "Choose a new location for \"\(url.lastPathComponent)\""
+        panel.message = "Choose a new location for “\(url.lastPathComponent)”"
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let destDir = panel.url else { return }
             let newURL = destDir.appendingPathComponent(url.lastPathComponent)
@@ -646,16 +638,16 @@ class Document: NSDocument, HeadingNavigable {
         // change size when the mode flips. These two numbers are chosen so the
         // *drawn* glyphs match, which is what the eye compares.
         let pointSize: CGFloat = editor.viewMode == .reading ? 12.9 : 15
-        viewModeButton?.image = icon(for: editor.viewMode)?
+        viewModeItem?.image = icon(for: editor.viewMode)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))
-        // Names what the click does, not what the mode is: the icon already shows
-        // the current mode, and AppKit's own toolbars read "Hide Sidebar" /
-        // "Show Sidebar" rather than stating the state back. Source is a display
-        // option *of* the editing view, not a third destination, so the toggle
-        // only ever has these two halves to name — even when `toggledViewMode`
-        // lands in `.source`.
-        viewModeButton?.toolTip = editor.viewMode == .reading
-            ? "Switch to Edit View" : "Switch to Read View"
+        // Names what the click does, in the ⌘E menu item's words, so one
+        // control has one name for its action; the label below states the
+        // mode. Source is a display option *of* the editing view, not a third
+        // destination, so it is still "Show Editor".
+        viewModeItem?.toolTip = editor.viewMode == .reading ? "Show Editor" : "Show Reader"
+        // The label (shown under Icon and Text) states the current mode, the
+        // way the button's icon does; the palette keeps the item's generic name.
+        viewModeItem?.label = editor.viewMode == .reading ? "Read" : "Edit"
     }
 
     private func setViewMode(_ mode: EditorTextView.ViewMode) {
@@ -969,16 +961,22 @@ class Document: NSDocument, HeadingNavigable {
                               window: windowControllers.first?.window)
     }
 
+    /// File ▸ Page Setup…, as a sheet on this window. It edits the *shared*
+    /// print info, not NSDocument's per-document `printInfo`: printing starts
+    /// from a copy of the shared one (MarkdownPrinter.makePrintInfo), so that
+    /// is the only layout that reaches the printer.
+    @objc override func runPageLayout(_ sender: Any?) {
+        guard let window = windowControllers.first?.window else { return }
+        NSPageLayout().beginSheet(using: .shared, on: window) { _ in }
+    }
+
     /// The editing-side view: Source when source mode is on, otherwise Edit.
     /// Read is the other half of the toggle.
     private var editingMode: EditorTextView.ViewMode {
         AppSettings.sourceMode ? .source : .edit
     }
 
-    @objc private func selectEditMode(_ sender: Any?)    { setViewMode(editingMode) }
-    @objc private func selectReadingMode(_ sender: Any?) { setViewMode(.reading) }
-
-    /// The "Show source in editor" checkbox (button menu and View menu).
+    /// View ▸ Show Source in Editor.
     /// Persists the setting and, if we're in the editing view, swaps it to
     /// the new editing mode right away.
     @objc func toggleSourceMode(_ sender: Any?) {
@@ -1006,8 +1004,9 @@ class Document: NSDocument, HeadingNavigable {
         window?.toolbar?.isVisible = AppSettings.showToolbar
     }
 
-    /// View ▸ Auto-Hide Toolbar: in full screen, slide the toolbar away with the
-    /// menu bar until the pointer reaches the top of the screen.
+    /// View ▸ Always Show Toolbar in Full Screen, unchecked: in full screen,
+    /// slide the toolbar away with the menu bar until the pointer reaches the
+    /// top of the screen. The menu item is the inverse of `autoHideToolbar`.
     @objc func toggleAutoHideToolbar(_ sender: Any?) {
         AppSettings.autoHideToolbar.toggle()
         for case let document as Document in NSDocumentController.shared.documents {
@@ -1043,6 +1042,21 @@ class Document: NSDocument, HeadingNavigable {
     @objc func toggleFormatBar(_ sender: Any?) {
         AppSettings.showFormatBar.toggle()
         AppSettings.applyEditSettingsToOpenDocuments()
+    }
+
+    /// View ▸ Show/Hide Status Bar and Always Show Status Bar. App-wide, like the
+    /// toolbar pair: saving posts `StatusBarPrefs.didChangeNotification`, which
+    /// every window's bar observes.
+    @objc func toggleStatusBarShown(_ sender: Any?) {
+        var prefs = StatusBarPrefs.load()
+        prefs.isShown.toggle()
+        prefs.save()
+    }
+
+    @objc func toggleAlwaysShowStatusBar(_ sender: Any?) {
+        var prefs = StatusBarPrefs.load()
+        prefs.autoHide.toggle()
+        prefs.save()
     }
 
     /// Applies the format bar's visibility rule (hidden in Reading mode or when
@@ -1081,6 +1095,12 @@ class Document: NSDocument, HeadingNavigable {
         editor.additionalTopInset = containerView.bounds.height - y
     }
 
+    /// File ▸ Duplicate (⇧⌘S). With Auto Save off there are no versions to
+    /// duplicate from, so the same item is the classic Save As…, as in TextEdit.
+    @objc func duplicateOrSaveAs(_ sender: Any?) {
+        if Self.autosavesInPlace { duplicate(sender) } else { saveAs(sender) }
+    }
+
     /// Keeps the View-menu "Show Source in Editor" checkmark and the
     /// Show/Hide Toolbar title in sync with the settings.
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -1090,13 +1110,39 @@ class Document: NSDocument, HeadingNavigable {
         if item.action == #selector(toggleToolbarShown(_:)) {
             item.title = AppSettings.showToolbar ? "Hide Toolbar" : "Show Toolbar"
         }
+        if item.action == #selector(toggleViewMode(_:)) {
+            // Names the destination, like Safari's Show Reader. Source is a
+            // display option of the editor, so it is still "Show Editor".
+            item.title = editor?.viewMode == .reading ? "Show Editor" : "Show Reader"
+        }
         if item.action == #selector(toggleFormatBar(_:)) {
             // Title, not a checkmark — the same idiom as Hide Toolbar above.
             item.title = AppSettings.showFormatBar ? "Hide Format Bar" : "Show Format Bar"
         }
+        if item.action == #selector(save(_:)) {
+            // Pages' idiom: the ellipsis only while untitled, when Save opens
+            // the save panel; a document already on disk just saves.
+            item.title = fileURL == nil ? "Save\u{2026}" : "Save"
+        }
+        if item.action == #selector(duplicateOrSaveAs(_:)) {
+            item.title = Self.autosavesInPlace ? "Duplicate" : "Save As\u{2026}"
+        }
+        if item.action == #selector(saveAs(_:)), item.isAlternate {
+            // Without Auto Save the item above already is Save As….
+            item.isHidden = !Self.autosavesInPlace
+        }
+        if item.action == #selector(toggleStatusBarShown(_:)) {
+            item.title = StatusBarPrefs.load().isShown ? "Hide Status Bar" : "Show Status Bar"
+        }
+        if item.action == #selector(toggleAlwaysShowStatusBar(_:)) {
+            let prefs = StatusBarPrefs.load()
+            item.state = prefs.autoHide ? .off : .on
+            // Nothing to pin with the bar switched off entirely.
+            return prefs.isShown
+        }
         if item.action == #selector(toggleAutoHideToolbar(_:)) {
-            item.state = AppSettings.autoHideToolbar ? .on : .off
-            // Nothing to auto-hide with the toolbar switched off entirely.
+            item.state = AppSettings.autoHideToolbar ? .off : .on
+            // Nothing to pin with the toolbar switched off entirely.
             return AppSettings.showToolbar
         }
         if item.action == #selector(copyAsPlainText(_:)) || item.action == #selector(copyAsRichText(_:)) {
@@ -1135,32 +1181,6 @@ class Document: NSDocument, HeadingNavigable {
         readView?.showWebInspector(nil)
     }
 
-    /// One mode menu item: icon + title, checked when `on`.
-    private func menuItem(_ title: String, _ image: NSImage?,
-                          _ action: Selector, on: Bool) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        item.target = self
-        item.image = image
-        item.state = on ? .on : .off
-        return item
-    }
-
-    /// The right-click menu: Edit / Read selection, a divider, then the
-    /// "Show source in editor" checkbox. Built fresh each time so state stays current.
-    fileprivate func viewModeMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false   // actions always fire on selection
-        let inEditing = editor?.viewMode != .reading
-        menu.addItem(menuItem("Edit", icon(for: .edit),
-                              #selector(selectEditMode(_:)), on: inEditing))
-        menu.addItem(menuItem("Read", icon(for: .reading),
-                              #selector(selectReadingMode(_:)), on: !inEditing))
-        menu.addItem(.separator())
-        menu.addItem(menuItem("Show source in editor", nil,
-                              #selector(toggleSourceMode(_:)), on: AppSettings.sourceMode))
-        return menu
-    }
-
     // MARK: - Writing
 
     override func data(ofType typeName: String) throws -> Data {
@@ -1185,7 +1205,7 @@ class Document: NSDocument, HeadingNavigable {
         guard let data = text.data(using: .utf8) else {
             Log.error("Save failed: could not encode \(text.count) chars as UTF-8", category: .io)
             throw NSError(domain: NSOSStatusErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not encode text as UTF-8"])
+                          userInfo: [NSLocalizedDescriptionKey: "The document couldn’t be saved as UTF-8 text."])
         }
         Log.info("Saving \(data.count) bytes (\(ending.displayName))", category: .io)
         return data
@@ -1211,68 +1231,18 @@ extension Document: NSToolbarDelegate {
             return formatToolbar.makeItem(itemIdentifier)
         }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        item.label = "View Mode"
+        item.paletteLabel = "View Mode"
         item.visibilityPriority = .high
-
-        // Left-click toggles the editing view ↔ Read. The right-click mode menu
-        // is handled upstream in DocumentWindow.sendEvent — every view-level
-        // approach (the view's `menu`, rightMouseDown, a gesture recognizer)
-        // loses the secondary click to the toolbar's "Customize Toolbar…" menu.
-        let button = NSButton(image: NSImage(), target: self,
-                              action: #selector(toggleViewMode(_:)))
-        button.bezelStyle = .texturedRounded
-        button.imagePosition = .imageOnly
-        viewModeButton = button
-        item.view = button
+        viewModeItem = item
+        // A plain bordered item, like every formatting item: AppKit sizes it,
+        // lays out its label and highlights it. No right-click menu — both of
+        // its entries (the other mode, Show Source in Editor) are in View, and
+        // a toolbar's secondary click belongs to AppKit's own toolbar menu.
+        item.isBordered = true
+        item.target = self
+        item.action = #selector(toggleViewMode(_:))
         refreshViewModeButton()
         return item
-    }
-}
-
-/// Document window that intercepts a secondary (right / control) click on a
-/// toolbar button and shows that button's own menu. `sendEvent` is the single
-/// funnel all window events pass through *before* the toolbar/titlebar can turn
-/// the click into its own "Customize Toolbar…" context menu, so this is the one
-/// place the interception reliably wins — the view's `menu`, a `rightMouseDown`
-/// override and a gesture recognizer all lose it.
-///
-/// Caveat: true full screen moves the toolbar into a separate window this
-/// main-window hook does not cover.
-final class DocumentWindow: NSWindow {
-    /// A button that claims its own secondary click, with the menu to show.
-    /// The view is weak: the toolbar owns it and may vend a replacement.
-    struct SecondaryClickTarget {
-        weak var view: NSView?
-        let makeMenu: () -> NSMenu
-
-        init(_ view: NSView?, makeMenu: @escaping () -> NSMenu) {
-            self.view = view
-            self.makeMenu = makeMenu
-        }
-    }
-
-    var secondaryClickTargets: [SecondaryClickTarget] = []
-
-    override func sendEvent(_ event: NSEvent) {
-        if isSecondaryClick(event) {
-            for target in secondaryClickTargets {
-                guard let button = target.view,
-                      button.bounds.contains(button.convert(event.locationInWindow, from: nil))
-                else { continue }
-                target.makeMenu().popUp(positioning: nil,
-                                        at: NSPoint(x: 0, y: button.bounds.maxY + 4), in: button)
-                return
-            }
-        }
-        super.sendEvent(event)
-    }
-
-    private func isSecondaryClick(_ event: NSEvent) -> Bool {
-        switch event.type {
-        case .rightMouseDown: return true
-        case .leftMouseDown:  return event.modifierFlags.contains(.control)
-        default:              return false
-        }
     }
 }
 

@@ -241,7 +241,7 @@ extension EditorTextView {
             }
         }
 
-        recomposeDirty(dirty, cursorInRaw: cursorRaw)
+        recomposeDirty(dirty, cursorInRaw: cursorRaw, fromEdit: true)
 
         // If the queued selection fixup leaped the caret off the edit point
         // during the restyle's `endEditing`, put it back. Only fires on a real

@@ -89,11 +89,15 @@ public final class WasmMathHost {
     }
 
     public func render(latex: String, displayMode: Bool,
-                       pointSize: CGFloat, color: NSColor) -> RenderedMath? {
+                       pointSize: CGFloat, color: NSColor, scale requested: CGFloat = 2) -> RenderedMath? {
         guard isLoaded, let ctx, let renderer else { return nil }
 
+        // A screen mid-reconfiguration (display asleep, appearance flipping
+        // under Auto) can report a degenerate scale; rasterizing at 0 collapses
+        // the bitmap to nothing while the image keeps its point size.
+        let scale = requested >= 1 ? requested : 2
         let dev = (color.usingColorSpace(.deviceRGB) ?? color)
-        let key = "\(displayMode ? "D" : "I")|\(String(format: "%.1f", pointSize))|" +
+        let key = "\(displayMode ? "D" : "I")|\(String(format: "%.1f", pointSize))|\(scale)|" +
                   "\(String(format: "%.3f,%.3f,%.3f,%.3f", dev.redComponent, dev.greenComponent, dev.blueComponent, dev.alphaComponent))|" +
                   latex as NSString
         if let hit = cache.object(forKey: key) { return hit.m }
@@ -112,11 +116,6 @@ public final class WasmMathHost {
               !result.isUndefined, !result.isNull,
               let json = result.toString() else { return nil }
 
-        // A screen mid-reconfiguration (display asleep, appearance flipping
-        // under Auto) can report a degenerate scale; rasterizing at 0 collapses
-        // the bitmap to nothing while the image keeps its point size.
-        let screenScale = NSScreen.main?.backingScaleFactor ?? 0
-        let scale = screenScale >= 1 ? screenScale : 2
         guard let rendered = renderer.render(json: json, pointSize: pointSize, color: color, scale: scale) else {
             return nil   // decode failure = RaTeX couldn't parse it → per-equation fallback
         }

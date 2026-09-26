@@ -182,7 +182,7 @@ stale text. The heal: `shouldChangeText` schedules a next-run-loop
 **bypass check** (`scheduleBypassedEditSyncCheck`, `+EditFlow.swift`) — a
 `pendingEdit` still unconsumed by then means the closing `didChangeText`
 never came, and the editor runs the same sync itself. Breadcrumb in
-`~/.edmund/logs`: `healing storage edit that bypassed didChangeText`.
+`~/Library/Application Support/Edmund/Logs`: `healing storage edit that bypassed didChangeText`.
 **Never build a sync path on the assumption that `didChangeText` follows
 every edit.**
 

@@ -54,4 +54,27 @@ struct ViewMenuTitleTests {
         UserDefaults.standard.removeObject(forKey: AppSettings.Key.showFormatBar)
         #expect(AppSettings.showFormatBar == false)
     }
+
+    /// ⌘E names where it goes, like Safari's Show Reader, rather than
+    /// "Toggle View Mode"; a document starts in the editor.
+    @Test func viewModeItemNamesTheDestination() {
+        let item = NSMenuItem(title: "", action: #selector(Document.toggleViewMode(_:)),
+                              keyEquivalent: "")
+        _ = Document().validateMenuItem(item)
+        #expect(item.title == "Show Reader")
+        let shipped = ViewMenu.build().submenu?.items.first {
+            $0.action == #selector(Document.toggleViewMode(_:))
+        }
+        #expect(shipped?.title == item.title)
+    }
+
+    /// Toolbar and status bar read like Safari: a Show/Hide item plus an
+    /// "Always Show" checkbox, never "Auto-Hide".
+    @Test func statusBarItemsUseAppleWording() {
+        let titles = ViewMenu.build().submenu?.items.map(\.title) ?? []
+        #expect(titles.contains("Hide Status Bar"))
+        #expect(titles.contains("Always Show Status Bar"))
+        #expect(titles.contains("Always Show Toolbar in Full Screen"))
+        #expect(!titles.contains { $0.hasPrefix("Auto-Hide") })
+    }
 }

@@ -136,7 +136,7 @@ it would false-fire on every IME keystroke.
 3. The `becomeFirstResponder` recovery should still unstick it on focus regain;
    if it doesn't, confirm the override is being called and that
    `recoverFromStrandedCompositionIfNeeded` isn't guarded out.
-4. To get live signal, read `~/.edmund/logs` for the
+4. To get live signal, read `~/Library/Application Support/Edmund/Logs` for the
    `recovered stranded desync on focus regain: …` line — it's emitted (release
    too, `Log.info`) whenever focus-regain recovers a desync and snapshots
    `hasMarked` / `isUpdating` / `isUndoRedoing`, which tells you the cause.
@@ -200,7 +200,7 @@ inspected headlessly. Chasing it blind is the wrong move — so this round added
   a live-state prefix: caret range, active block, marked-text range, the
   `isUpdating`/`isUndoRedoing` flags, and storage-vs-rawSource lengths
   (`EditorTextView+Diagnostics.swift`). A reproduction now yields a readable
-  keystroke-level trail in `~/.edmund/logs`.
+  keystroke-level trail in `~/Library/Application Support/Edmund/Logs`.
 - **Always-on invariant tripwire** (`verifyEditorInvariants`, called after each
   sync): an O(1) `storage.length != rawSource.length` check logs an `error`
   whenever the hard invariant breaks — no verbose toggle needed. The full
@@ -208,7 +208,7 @@ inspected headlessly. Chasing it blind is the wrong move — so this round added
   ranges) runs under verbose and asserts in DEBUG.
 
 **Next time it happens:** ask the reporter to enable "Verbose editor tracing,"
-reproduce, and send `~/.edmund/logs`. The trace shows exactly when the caret
+reproduce, and send `~/Library/Application Support/Edmund/Logs`. The trace shows exactly when the caret
 diverges from the edit and what the marked-text / flag / length state was at that
 instant — which should finally localize the live-layer cause (still-sneaking
 marked text vs. a TextKit 2 selection-after-edit quirk).

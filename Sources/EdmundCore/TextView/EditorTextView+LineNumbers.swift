@@ -163,6 +163,15 @@ extension EditorTextView {
         }
     }
 
+    /// TextKit 2 lays the viewport out here. A layout that moves lines without
+    /// moving the caret — an image's reserved height arriving after the first
+    /// paint — left the numbers where the lines used to be (a "2" drawn inside
+    /// the picture above it), since only caret moves repainted them.
+    public override func layout() {
+        super.layout()
+        invalidateLineNumbers()
+    }
+
     /// Repaints the numbers after the caret may have changed line. Only the
     /// current line's ink changes, but which line that is isn't known until the
     /// draw, so mark the whole strip the numbers occupy — never the text.
@@ -210,6 +219,26 @@ extension EditorTextView {
             let offset = tlm.offset(from: tlm.documentRange.location,
                                     to: fragment.rangeInElement.location)
             let line = self.line(forOffset: offset)
+            // The empty line after a trailing newline is no paragraph of its
+            // own: TextKit hangs it on the last fragment as an extra, empty line
+            // fragment, which the first-line rule below never reaches — so it
+            // went unnumbered. Number it against its own line.
+            defer {
+                let lines = fragment.textLineFragments
+                if lines.count > 1, let extra = lines.last, extra.characterRange.length == 0,
+                   fragment.rangeInElement.endLocation.compare(tlm.documentRange.endLocation) == .orderedSame {
+                    // TextKit's box for this line is provisional until the caret
+                    // goes there: after an empty paragraph it sits 16 pt down,
+                    // overlapping the line above (measured). The line can never
+                    // start above the previous one's bottom, so clamp it there.
+                    let above = lines[lines.count - 2].typographicBounds.maxY
+                    let top = max(extra.typographicBounds.minY, above)
+                    let baseline = frame.minY + top + self.bodyFont.ascender
+                    if baseline <= bottom {
+                        body(self.lineStarts.count, baseline - self.bodyFont.capHeight / 2)
+                    }
+                }
+            }
             // A paragraph is normally one fragment, but don't repeat a number if
             // TextKit ever splits one — the first fragment owns the line.
             guard line != lastLine,
@@ -224,13 +253,23 @@ extension EditorTextView {
             // rather than the storage, where a list item's first character is
             // the 0.01 pt hidden font and would report no cap at all.
             let bounds = firstLine.typographicBounds
-            let baseline = frame.minY + bounds.minY + firstLine.glyphOrigin.y
             let text = firstLine.attributedString
             var cap: CGFloat = 0
+            var ascender: CGFloat = 0
             text.enumerateAttribute(.font,
                                     in: NSRange(location: 0, length: text.length)) { value, _, _ in
-                if let font = value as? NSFont { cap = max(cap, font.capHeight) }
+                if let font = value as? NSFont {
+                    cap = max(cap, font.capHeight)
+                    ascender = max(ascender, font.ascender)
+                }
             }
+            // A line held open for an image or formula reserves that height
+            // above its text, so its baseline sits at the bottom of the
+            // picture. Keep the number at the top of the line — where a text
+            // line's baseline already is — by capping the baseline there.
+            let lineTop = frame.minY + bounds.minY
+            let baseline = min(frame.minY + bounds.minY + firstLine.glyphOrigin.y,
+                               lineTop + max(ascender, self.bodyFont.ascender))
             body(line, baseline - (cap > 0 ? cap : self.bodyFont.capHeight) / 2)
             return true
         }

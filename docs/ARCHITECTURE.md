@@ -16,7 +16,7 @@ rule applies to both.
 
 ```bash
 swift build                 # debug build of both targets
-swift test                  # full suite (≈1200 tests, ~10s)
+swift test                  # full suite (≈1900 tests, ~1 min)
 swift test --filter Callout # one suite
 ./scripts/repro.sh [pattern]  # live-app scenarios (Tests/Repro/*.repro) in a debug bundle; local only, not CI
 ./scripts/build-app.sh      # builds build/Edmund.app — SANDBOXED (release + bundles + icon + codesign)
@@ -86,7 +86,7 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 - **`styleBlock(_:cursorPosition:listDepth:)`**
   (`Rendering/EditorTextView+Rendering.swift`) renders ONE block. Each feature
   has a `Rendering/` extension: Callout, Code, Image, List, ListMarker, Math,
-  Table, WikiLinks. `listDepth` is the one piece of *document* context a block
+  Mermaid, Table, WikiLinks. `listDepth` is the one piece of *document* context a block
   can't derive from its own text (see §6's list nesting); callers without a
   block index pass nil and get a whitespace estimate.
 - **Recompose** (`TextView/EditorTextView+Composition.swift`) drives styling:
@@ -195,13 +195,13 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Block model | `Model/Block.swift`, `Callout.swift`, `EditorTheme.swift`, `ListIndentState.swift`, `ListDepthMap.swift` (list nesting depth per block — see the List nesting row below), `LinkDefinitionState.swift` (incremental index of `[label]: dest` reference-link definitions, which resolve across blocks — so a definition edit dirties the blocks that cite it), `LineEnding.swift` (buffer is always LF internally so `BlockParser`'s `\n` split stays clean; the file's original CRLF/CR style is remembered and written back on save), `StatusBarPrefs.swift`, `SVGPath.swift` (minimal SVG→`CGPath` for the vendored Lucide geometry — §5's wrapping-callout icon) |
 | Text storage | `TextView/EditorTextStorage.swift` — `NSTextStorage` subclass whose `fixAttributes` does **font substitution only**. The editor manages every attribute on every character (incl. custom keys like `.blockDecoration`/`.fragmentOverlay`), so AppKit's usual attribute fixing would fight it. Substitution is **cascade-aware**: when `EditorTheme.fontCascade` assigns a font to a script (`Model/FontCascade.swift` — `FontCascadeScript` classifier + `FontCascadeResolver` cache), graphemes of that script get the user's font (at the run's size × the script's `fontCascadeSizeRatios` entry) *before* coverage is even checked, and the generic CoreText fallback pass skips those sequences (applied later in the same fix list, it would silently overwrite the cascade). The UTF-16 pre-scan bound is U+00A9, not U+0300: ©/® are `isEmoji` and lead the emoji CSS range, so a higher bound would let a "© 2026" line keep the body font in Edit while Read paints the emoji face. Empty cascade ⇒ byte-identical pre-cascade behavior. Also carries the `pendingEdit` that drives incremental reparse (§4) and the bypassed-edit heal (§8). |
 | Markdown feature toggles | `Model/MarkdownFeatures.swift` — one `OptionSet` (`.all` default) gating each extension (highlight, `%%`comment, callout, wikilink, footnote, math, image dimensions `\|WxH`, `![[embed]]`, collapsible callouts `[!x]-/+`, plus Phase-2 front-matter/tag/blockRef/multi-block-comment). Threaded into `SyntaxHighlighter.parse(features:)` (gates each custom-parser pass; callout gated at render via `calloutInfo`), `EditorTextView.markdownFeatures` (didSet recompose), and `ReadRenderOptions.features` (→ `HTMLRenderer`). Assembled from per-feature UserDefaults toggles by `AppSettings.markdownFeatures`; Settings ▸ Syntax pane. A cleared flag renders the syntax as plain text in **both** back-ends. |
-| Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Table, WikiLinks) |
+| Rendering | `Rendering/EditorTextView+*Rendering.swift` (Callout, Code, Image, List, Math, Mermaid, Table, WikiLinks) |
 | Table editing (interactive) | `TextView/EditorTextView+TableHandles.swift` (row/column ⋯ pills and their menus, the cell-selection box and its corner dots, and every rule about where a caret may rest in a table), `TextView/EditorTextView+TableRawButton.swift` (the `</>` toggle: revealed by hover *or* the caret being in the table, sharing the line-number margin with the row pill), `Rendering/EditorTextView+TableGeometry.swift` (`TableGrid` — row rects and column edges read back off the `.tableRow` decoration), `Editing/EditorTextView+TableStructure.swift` (add/delete row and column; Delete on a cell selection clears it, a second Delete on an empty complete row/column removes it; Return on the separator autocompletes the table in canonical aligned form via `prettyAlignedTableLines`), `Editing/EditorTextView+TableInlineEditing.swift` (Tab/Return between cells, and the deletions that must not eat table structure), `Rendering/EditorTextView+TableCellCaret.swift` (a *wrapped* cell — one drawn from the scratch layout — hides its real characters, so its caret, selection highlight, drag-select and Up/Down are drawn and resolved by hand there, AppKit's caret view hidden meanwhile; a drag that leaves the cell becomes a cell block), `Editing/EditorTextView+TableCopy.swift` (⌘C: a cell's own text, or a selected block as tab-separated rows for a spreadsheet). All the chrome scales with zoom (`tableChromeScale`). The gestures and their traps: §8. |
-| Code block copy button | `TextView/EditorTextView+CodeCopyButton.swift` — Edit mode's counterpart to Read mode's copy button: the `</>` mechanism (same margin slot, size, ink, hover band) keyed on `.fence` blocks, level with the opening fence. Copies the lines between the fences; the glyph flashes filled in the accent colour for 1.2s (`copiedCodeBlock`, a timed swap — `drawBackground` has no layer to animate). Hover is the only reveal; Source mode gets none. |
-| Images | Edit mode renders `![alt](path)` **inline**: outside the token an overlay draws the picture (raw, editable markdown shows when the caret is inside it); an image that can't load draws a small icon + the reason instead. Resolution: absolute/`~`/`file:` load directly, relative resolves against the document's directory, `https` only when `allowRemoteImages` (`AppSettings.blockExternalImages`) and always async, `http` never (ATS). Loaded images are cached in a plain dict, **not** `NSCache` — eviction re-fetched remote badges and tripped host rate limits. Failure reasons are one shared `ImageLoadFailure` enum so Edit and Read report the same words. `Rendering/EditorTextView+ImageRendering.swift`. |
-| Inserting images | Format ▸ Image ▸ Attach File… and **drag & drop from Finder** both land on `insertImages(at:)` (`Editing/EditorTextView+FormattingCommands.swift`), inserting `![alt text](dest)` with the placeholder selected. `imageDestination(for:)` writes a path relative to the document's folder when the file sits under it, absolute otherwise, percent-encoded (a raw space or `)` would truncate the destination; `DocumentHTML.resolveLocalImage` decodes symmetrically). Files are referenced where they lie — Edmund never copies them, so moving an image later breaks the link. Drop mechanics: `Editing/EditorTextView+ImageDrop.swift`. |
+| Code block copy button | `TextView/EditorTextView+CodeCopyButton.swift` — Edit mode's counterpart to Read mode's copy button: the `</>` mechanism (same margin slot, size, ink, hover band) keyed on `.fence` blocks, level with the opening fence. Copies the lines between the fences; on the click the copy glyph and hover fill fade out fast and a semibold `checkmark` in the glyph's own ink (not the accent, which means interactive here), plays SF Symbols' Appear (off-up Replace), holds, Disappears at 1.2s, and glyph and fill fade back over 0.2s. The checkmark lives in a transient non-hit-testing `CopiedGlyphView` (`drawBackground` has no layer to animate) that never holds the copy glyph — a Replace inside one view recolours the outgoing symbol with the incoming one's ink. The copy glyph is rendered at the point size that fits the square, never scaled down to it (SF Symbols thickens strokes at small sizes). Hover is the only visible reveal; VoiceOver gets every button in the viewport regardless, as `CodeCopyButtonElement` children of the text view (press copies, and a copy announces "Copied"). Source mode gets none. |
+| Images | Edit mode renders `![alt](path)` **inline**: outside the token an overlay draws the picture (raw, editable markdown shows when the caret is inside it); an image that can't load draws a small icon + the reason instead. Resolution: absolute/`~`/`file:` load directly, relative resolves against the document's directory, `https` only when `allowRemoteImages` (`AppSettings.blockExternalImages`) and always async, `http` never (ATS). Loaded images are cached in a plain dict, **not** `NSCache` — eviction re-fetched remote badges and tripped host rate limits. Failure reasons are one shared `ImageLoadFailure` enum so Edit and Read report the same words. `Rendering/EditorTextView+ImageRendering.swift`. **Animated GIFs** play in Edit mode (`Rendering/EditorTextView+GIFAnimation.swift`): the decoded `NSImage` already holds every frame, so a display link on the editor sets the rep's `currentFrame` from wall-clock time modulo the loop (loops forever; views of one cached GIF agree) and redraws the fragment. The fragment's `draw` starts the link whenever it paints an animated overlay; the first tick with none in the viewport stops it, so an off-screen GIF costs nothing. Redraw has to mark the fragment's own `_NSTextViewportElementView` — marking the text view never repaints TextKit 2 text. A share link such as `tenor.com/….gif` is an HTML page, not an image, and correctly shows "Not an image". |
+| Inserting images | Format ▸ Image ▸ Attach File… lands on `insertImages(at:)` (`Editing/EditorTextView+FormattingCommands.swift`), inserting `![alt text](dest)` with the placeholder selected and referencing the file where it lies. `imageDestination(for:)` writes a path relative to the document's folder when the file sits under it, absolute otherwise, percent-encoded (a raw space or `)` would truncate the destination; `LocalImageInlining.resolve` decodes symmetrically). **Paste and drop** go through the attach flow (`Editing/EditorTextView+ImageAttachments.swift`, its own `performDragOperation`): an image file or raw image data is copied into a sibling `<docname>.assets/` folder and linked relatively; Option-drop links the file in place; a remote image URL is inserted as-is. An unsaved document is saved first. `Editing/EditorTextView+ImageDrop.swift` keeps only the pasteboard type ordering. |
 | Invisible characters | `TextView/EditorTextView+Invisibles.swift` — faint marks (· → ¬ ␣ ▯) overdrawn on laid-out whitespace, riding `DecoratedTextLayoutFragment.draw`. Pure display overlay: no characters inserted, TextKit 2 only. `EditorTextView.invisibles` ← `AppSettings.invisiblesConfig`; Settings ▸ Edit. Mechanism: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
-| List nesting depth | `Model/ListDepthMap.swift` — how far in a list item is drawn. A **stack of the indent columns of the lines above it**, so depth is local to its own list: `EditorTextView.listDepths` (built lazily, dropped by `blocks`' `didSet`), read per block by `listDepth(ofBlock:)` and handed to `styleBlock`. The nesting rule is the editor's own, **not** CommonMark's: *any* deeper indent opens a level, where CommonMark makes a child reach its parent's content column (3 for `1. `) — hence the editor/read-mode split in §9. This replaced `columns / listIndentUnit`: that unit is the document's *narrowest* list indent, so one Tab writing a narrower indent than the document used re-depthed every other list on screen. `listIndentUnit` now only serves `styleBlock` calls with no block index (a list in a table cell or callout, the styling tests). An edit that moves one item re-parents the items nested under it, so `listDepthChanges(from:)` diffs the pre/post depth arrays (by common prefix and suffix) to dirty exactly those. |
+| List nesting depth | `Model/ListDepthMap.swift` — how far in a list item is drawn. A **stack of the indent columns of the lines above it**, so depth is local to its own list: `EditorTextView.listDepths` (built lazily, dropped by `blocks`' `didSet`), read per block by `listDepth(ofBlock:)` and handed to `styleBlock`. The nesting rule is the editor's own, **not** CommonMark's: *any* deeper indent opens a level, where CommonMark makes a child reach its parent's content column (3 for `1. `) — hence the editor/read-mode split in §9. This replaced `columns / listIndentUnit`: that unit is the document's *narrowest* list indent, so one Tab writing a narrower indent than the document used re-depthed every other list on screen. `listIndentUnit` now only serves `styleBlock` calls with no block index (a list in a table cell or callout, the styling tests). An edit that moves one item re-parents the items nested under it, so `listDepthChanges(from:)` diffs the pre/post depth arrays (by common prefix and suffix) to dirty exactly those. The same array marks a **continuation paragraph** (a markerless line indented under an item, what Shift-Return writes) as `ListDepthMap.continuation(ofDepth:)` (≤ −2), read by `listContinuationDepth(ofBlock:)`: `styleBlock(continuationDepth:)` hides its indent, draws it at the item's text column, and parses it dedented (alone, 4+ spaces is indented code). Living in the same array is what gets it re-styled when the item above changes. |
 | List indent guides | Faint vertical hairlines on list items: one per *ancestor* level spanning the item, plus the item's own column beside its wrapped continuation lines. Offsets from `listGuideOffsets(depth:slotWidth:)` (`Rendering/EditorTextView+ListRendering.swift`), written to `.listGuides` **whether or not the setting is on** — the fragment gates the drawing, so toggling is a re-vend, never a restyle. `EditorTextView.showListIndentGuides`; Settings ▸ Edit. Geometry traps (container-relative offsets, `lineFragmentPadding`): [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Line numbers | `TextView/EditorTextView+LineNumbers.swift` — source line numbers (Settings ▸ Edit ▸ Lines, off by default), `EditorTextView.showLineNumbers`. **Two placements over one walk**, and the placement is **not** a setting: it follows whether the margin can hold them (beside the content by default, a `LineNumberRulerView` at the window edge otherwise). Also home to `line(forOffset:)`/`offset(forLine:)`, binary-searching the cached `lineStarts`. Editor-only; never printed. Placement rules, the macOS 14 SIGSEGV, draw rules and the tabular-figure face: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
 | Focus mode | `TextView/EditorTextView+FocusMode.swift` — dims all but the lines the selection touches (Settings ▸ Edit ▸ Editor, Edit ▸ Focus Mode; off by default), `EditorTextView.focusMode`. **One transparency layer around `DecoratedTextLayoutFragment.draw`**, so text and its decorations fade as one composite; it cannot be a scrim (NSTextView composites fragments *after* `draw(_:)` returns). Editor-only. Why, and the measurements: [`architecture/editor-affordances.md`](architecture/editor-affordances.md). |
@@ -220,11 +220,12 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
 | Auto-update | Sparkle 2.x. `Info.plist`: `SUFeedURL` (raw GitHub URL to `appcast.xml`), `SUPublicEDKey`. `scripts/release.sh`: build → DMG (sindresorhus `create-dmg`, **npm** — not the homebrew tool) → EdDSA sign → update appcast → `gh release create`. The DMG is the Sparkle enclosure. CI: `.github/workflows/release.yml` (tag-triggered). Full pipeline + signing + `RELEASE_TOKEN`: §13. |
 | Find & Replace | `EdmundCore/Find/FindEngine.swift` (pure search), `TextView/EditorTextView+Find.swift` (match state, highlight drawing, pop animation, `EditorFindHandling`), `edmd/Views/FindBarView.swift` (the bar), `edmd/App/FindController.swift` (mediator); Edit ▸ Find menu in `main.swift` |
 | Format bar | `edmd/Views/FormatBarView.swift` (layout + state refresh) and `FormatBarControls.swift` (the controls), on `ChromeBarView.swift` (titlebar-material + hairline base shared with the find bar), `edmd/App/FormatMenu.swift` (the two pulldowns are the same `headingMenu()`/`calloutMenu()` factories as the Format menu — one menu definition, three homes), `Document.formatBar` (owned by the document; **off by default**, toggled by View ▸ Show/Hide Format Bar, `settings.edit.showFormatBar`, force-hidden in Reading mode). Stacks **above** the find bar, both through `layoutTopBars()` (§6 top-bar insets). Bar is horizontally centred by design (a narrow window clips the same reachable band on both sides) |
-| Format-bar on-state | `EdmundCore/Editing/EditorTextView+FormattingState.swift` — the read-only counterpart to the toggles: `activeFormattingActions()`, `activeHeadingLevel()`, `activeCalloutType()`, refreshed from `editorDidChange` / `editorSelectionDidChange`. It scans **source delimiters, not rendered attributes**, because the attributes are lossy for this: a heading is also bold, and `==mark==` and a code span are both a background fill. Star *run length* is what separates `*x*` / `**x**` / `***x***`. A callout deliberately does not also light Block Quote (it is one underneath, but the callout pulldown gives the more specific answer). Hover/on chips live on `BarControlChip`; a chip is a fixed-height box centred on the bar's `interior`, **not** on the control's own bounds — sizing it per control made every symbol a different chip height. |
+| Format-bar on-state | `EdmundCore/Editing/EditorTextView+ActiveStyles.swift` — the read-only counterpart to the toggles: `activeFormattingActions()`, `activeHeadingLevel()`, `activeCalloutType()`, refreshed from `editorDidChange` / `editorSelectionDidChange`. It scans **source delimiters, not rendered attributes**, because the attributes are lossy for this: a heading is also bold, and `==mark==` and a code span are both a background fill. Star *run length* is what separates `*x*` / `**x**` / `***x***`. A callout deliberately does not also light Block Quote (it is one underneath, but the callout pulldown gives the more specific answer). Hover/on chips live on `BarControlChip`; a chip is a fixed-height box centred on the bar's `interior`, **not** on the control's own bounds — sizing it per control made every symbol a different chip height. |
 | Standard text menus | `edmd/App/main.swift` — Edit ▸ Spelling and Grammar, Transformations, Speech; stock `NSTextView` actions routed to the first responder. **Substitutions is deliberately excluded** (§8) |
-| Status bar | `edmd/Views/StatusBarView.swift` |
+| Spell check | `Editing/EditorTextView+SpellCheck.swift` — AppKit's continuous checker over the raw markdown, filtered. **Skipped:** everything that isn't prose (`skippedRanges`: links — text and URL — images, embeds, wikilinks, code, math, HTML tags, #tags, footnote/block refs; whole fences, display math, HTML blocks, front matter) and anything in `hiddenFont` (a mark under rendered markup draws as a stray dot). A `,`/`;`-joined token of ≤ 3-letter parts (`a,b,c`, `i,ii,iii`) — which NSSpellChecker flags as one word — is re-checked part by part; longer parts (`Hello,world`) are a missing space and stay flagged. **Fresh marks:** restyles are attribute-only, so AppKit never re-checked a word it skipped under the caret; `recomposeDirty` re-checks every restyled block (sparing the caret word only on the edit path, as AppKit does), a same-block caret move re-checks its block, and `rescanSpelling` checks the whole document on open and whenever either checking toggle flips. The re-check is synchronous (`NSSpellChecker.check` + `setSpellingState`): `checkText(in:)` delivers on a later run-loop pass, and `super.handleTextCheckingResults` set no marks for results handed to it directly. AppKit's own pass and the Spelling panel (`checkSpelling`, `showGuessPanel`) go through the same filter. Blocks over 2,000 chars re-check only the caret's line per keystroke. |
+| Status bar | `edmd/Views/StatusBarView.swift`, prefs in `Model/StatusBarPrefs.swift` (app-wide; `save` posts `didChangeNotification` so every window's bar follows). View ▸ Show/Hide Status Bar + Always Show Status Bar (≙ `!autoHide`) mirror the toolbar pair; the bar's context menu picks fields only |
 | Build/packaging | `scripts/build-app.sh` (release build + Sparkle.framework embedding + signing, `--variant sparkle\|adhoc\|mas`), `Package.swift`, `Info.plist`, `Resources/` |
-| App Sandbox | The shipping build is sandboxed (`Resources/Edmund-Sparkle.entitlements`: sandbox, user-selected r/w, app-scope bookmarks, print, network client, Sparkle's `-spks`/`-spki` mach-lookup exceptions; `Info.plist` `SUEnableInstallerLauncherService`). Container: `~/Library/Containers/com.i7t5.edmund/` — the sparkle variant signs **with the bundle id** (no `--identifier` override) because the container name and macOS's automatic preferences migration key off the signing id. `Resources/container-migration.plist` moves `Application Support/Edmund` (themes, syntaxes, RaTeX payload) into the container on the first sandboxed launch; verified live 2026-09-15, prefs migrate automatically. Logs: `Log.defaultDirectory` = Application Support/Edmund/Logs (container-native, Settings ▸ Advanced ▸ Show in Finder). Files *beside* a document: Documents/Desktop/Downloads are entitled (home-relative temporary exceptions on the GitHub build; only Apple's Downloads entitlement on MAS — App Review scrutinizes exceptions); anything else needs a grant. `Model/FolderAccess.swift` (app-scoped bookmarks in `folderGrants`, lazily resolved, scope started once per process; entitled folders read from the running signature via `SecTask`, real home via `getpwuid`) + `Rendering/EditorTextView+FolderAccess.swift` (the `NSOpenPanel`: raised automatically once per folder per launch when a render meets an unreadable sibling image, from a wiki link that can't be read, and on ⌘-click of the "Folder access needed" placeholder as the retry after Cancel; a parent folder covers everything below it). Gotcha: under the sandbox `fileExists` answers **true** for an ungranted file while the read is denied — gate on `FolderAccess.covers`, never on stat. `-debug.reproScript` / CGEvents need the adhoc variant. **MAS variant** (`--variant mas`): `EDMUND_MAS=1` makes `Package.swift` drop the Sparkle product from the `edmd` target (package dependency stays, so `Package.resolved` never churns); `main.swift` gates the updater + "Check for Updates…" behind `#if canImport(Sparkle)`; the script skips embedding, strips the `SU*` keys with `plutil -remove`, signs with `Resources/Edmund.entitlements` (no mach-lookup exceptions). Still ad-hoc signed — App Store Connect certs/provisioning are outside the repo. Deferred: MetricKit crash reporter (dormant feature, no ingestion server; `.ips` scan just finds nothing under the sandbox). |
+| App Sandbox | The shipping build is sandboxed (`Resources/Edmund-Sparkle.entitlements`: sandbox, user-selected r/w, app-scope bookmarks, print, network client, Sparkle's `-spks`/`-spki` mach-lookup exceptions; `Info.plist` `SUEnableInstallerLauncherService`). Container: `~/Library/Containers/com.i7t5.edmund/` — the sparkle variant signs **with the bundle id** (no `--identifier` override) because the container name and macOS's automatic preferences migration key off the signing id. `Resources/container-migration.plist` moves `Application Support/Edmund` (themes, syntaxes, RaTeX payload) into the container on the first sandboxed launch; verified live 2026-09-15, prefs migrate automatically. Logs: `Log.defaultDirectory` = Application Support/Edmund/Logs (container-native, Settings ▸ Advanced ▸ Show in Finder). Files *beside* a document: Documents/Desktop/Downloads are entitled (home-relative temporary exceptions on the GitHub build; only Apple's Downloads entitlement on MAS — App Review scrutinizes exceptions); anything else needs a grant. `Model/FolderAccess.swift` (app-scoped bookmarks in `folderGrants`, lazily resolved, scope started once per process; entitled folders read from the running signature via `SecTask`, real home via `getpwuid`) + `Rendering/EditorTextView+FolderAccess.swift` (the `NSOpenPanel`: raised automatically once per folder per launch when a render meets an unreadable sibling image, from a wiki link that can't be read, and on ⌘-click of the "Folder access needed" placeholder as the retry after Cancel; a parent folder covers everything below it). Gotcha: under the sandbox `fileExists` answers **true** for an ungranted file while the read is denied — gate on `FolderAccess.covers`, never on stat. `-debug.reproScript` / CGEvents need the adhoc variant. **MAS variant** (`--variant mas`): `EDMUND_MAS=1` makes `Package.swift` drop the Sparkle product from the `edmd` target (package dependency stays, so `Package.resolved` never churns); `main.swift` gates the updater + "Check for Updates…" behind `#if canImport(Sparkle)`; the script skips embedding, strips the `SU*` keys with `plutil -remove`, signs with `Resources/Edmund.entitlements` (no mach-lookup exceptions). Still ad-hoc signed — App Store Connect certs/provisioning are outside the repo. Crash reports work under the sandbox: MetricKit payloads (§7) replaced the `.ips` scan, which the sandbox can't read. |
 
 Notable subsystems:
 
@@ -306,7 +307,7 @@ Notable subsystems:
   inset alone misses narrower windows with fixed margins. The refresh
   preserves the viewport, waits out
   marked text/pending edits, and uses the existing lazy dirty-block path for
-  offscreen work. Image sizes are baked at render time (§4 `fragmentOverlay`),
+  offscreen work. Image sizes are baked at render time (§5 `fragmentOverlay`),
   so TextKit reflow alone cannot resize them.
 - **Format menu & shortcuts**: pure AppKit (no SwiftUI scene, so SwiftUI
   `Commands` isn't an option). `FormatMenu.swift` is a declarative command
@@ -319,12 +320,12 @@ Notable subsystems:
   path) and `applyWholeDocumentEdit` (non-contiguous, e.g. footnotes).
 - **View modes**: ⌘E (View menu + toolbar button) *toggles* editing ↔ Read
   via `Document.toggleViewMode`. **Source is not a third toggle stop** —
-  it's a persisted preference (`AppSettings.sourceMode`, a "Source Mode"
-  checkbox in the View menu and the toolbar button's right-click menu):
-  when on, the editing half of the toggle is Source instead of Edit, and a
-  freshly opened document honors it. The toolbar button left-clicks to
-  toggle, right-clicks for the full mode menu (§8: why that right-click is
-  intercepted in `DocumentWindow.sendEvent`). Toolbar has
+  it's a persisted preference (`AppSettings.sourceMode`, View ▸ Show
+  Source in Editor): when on, the editing half of the toggle is Source
+  instead of Edit, and a freshly opened document honors it. Every toolbar
+  button is a plain bordered `NSToolbarItem` (image + `isBordered`, no
+  custom view), so AppKit gives them one size, hover and Icon-and-Text
+  label layout; none carries a right-click menu (§8). Toolbar has
   `allowsUserCustomization = true` (an AppKit `NSToolbar` feature).
 - **Read mode is a separate WKWebView**, not an editor styling mode.
   `.reading` swaps the editor's scroll view for a `ReadModeWebView`
@@ -382,7 +383,8 @@ Notable subsystems:
   background; the one just navigated to also gets a Preview-style "pop" — a
   drop-shadowed rounded yellow box that springs in from a larger scale with
   an `easeOutBack` overshoot, holds, then fades, driven by a `CADisplayLink`
-  (constants at the top of `+Find.swift`). Replace / Replace All are the
+  (`emphasisSpring`, `emphasisHold`, `emphasisFade`, `startScale` in
+  `+Find.swift`). Replace / Replace All are the
   only paths that touch text and go through the sanctioned edit cycle (§4),
   Replace All rebuilding the source back-to-front so it lands as one undo
   step. EdmundCore stays unaware of the controller via the
@@ -537,7 +539,9 @@ Notable subsystems:
 - **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
   (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to
-  `~/.edmund/logs/edmund-YYYY-MM-DD.log` on a private serial queue. One
+  `Log.defaultDirectory/edmund-YYYY-MM-DD.log`
+  (`~/Library/Application Support/Edmund/Logs`, container-relative when
+  sandboxed) on a private serial queue. One
   compile-time level threshold (DEBUG = `debug`+; release = `info`+); the
   user only toggles on/off and picks retention (Settings ▸ General ▸
   Diagnostics). `AppSettings.applyLogging()` pushes toggle/retention into
@@ -595,8 +599,10 @@ Notable subsystems:
   rejected as *"The update is improperly signed…"*. The old script signed
   only the main binary (no `_CodeSignature/CodeResources`) — **every
   Sparkle update failed** (the v0.1.0→0.1.1 error). Fix: `build-app.sh`
-  seals the whole `.app` (`codesign --deep`) while the root holds only
-  `Contents/`, then copies the SwiftMath bundle in **after** signing (it
+  signs inside-out — Sparkle.framework with `--deep`, the Quick Look appex
+  with its own entitlements — then seals the outer `.app` **without**
+  `--deep` (it would re-sign the appex and strip its sandbox entitlements)
+  while the root holds only `Contents/`, then copies the SwiftMath bundle in **after** signing (it
   must sit at the `.app` root — its generated `Bundle.module` accessor is
   hardcoded to `Bundle.main.bundleURL` — and codesign refuses to seal with
   any item at the root). That one unsealed root item makes
@@ -652,7 +658,9 @@ Notable subsystems:
   -debug.disableUpdater YES` — also `editor:<name>` / `syntax:<name>` for a
   theme's detail box (`Sources/edmd/App/SettingsRender.swift`). Live
   `screencapture` has never worked for these panes; use this, don't
-  hand-build a scaffold.
+  hand-build a scaffold. It captures through ScreenCaptureKit, which needs
+  Screen Recording granted to the launching process; without it the render
+  exits with `could not capture window <id>`.
 - **Counting an app's windows is the flakiest measurement in this repo — don't
   trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
   `winid.swift` uses) lists windows the app has already *closed*, so a stale
@@ -760,7 +768,7 @@ Notable subsystems:
   rounded independently of its pixel count, so `image.size` usually is
   *not*), and the origin must be a whole device pixel (a text baseline, or
   a centered x, never is). `mathOverlay` snaps the size; `deviceAligned`
-  (EditorTextView+TextKit2) snaps the origin in *device* space, since a
+  (`DecoratedTextLayoutFragment.swift`) snaps the origin in *device* space, since a
   scrolled clip view can leave the CTM's translation on a fraction of a
   point. Measured on RaTeX equations before the fix: +32–38% inked device
   pixels at the same total ink, with solid-coverage pixels collapsing
@@ -789,9 +797,12 @@ Notable subsystems:
   round trips — there is a test pinning that (`ImageDropTests`).
 - **`readSelection(from:type:)` serves drag *and* paste.** It is the hook
   NSTextView's drag destination calls after moving the insertion point to the
-  drop location (so overriding it gets drop-caret tracking for free, unlike a
-  hand-rolled `performDragOperation`) — but `readablePasteboardTypes` also
-  drives `paste:`, so a type added for dropping changes pasting too. Order
+  drop location — but `readablePasteboardTypes` also drives `paste:`, so a
+  type added for dropping changes pasting too. Image drops no longer reach
+  it: the attach flow's own `performDragOperation`
+  (`Editing/EditorTextView+ImageAttachments.swift`) takes them. For a
+  non-image file drop, `readSelection` declines `.fileURL`, so AppKit falls
+  through to the next type and pastes the path as text. Order
   matters: a Finder drag carries a file URL **and** a plain-string path, and
   the first supported type wins, so `.fileURL` has to lead or a drop pastes a
   bare path (`Editing/EditorTextView+ImageDrop.swift`).
@@ -816,7 +827,7 @@ Notable subsystems:
   `shouldChangeText` therefore schedules a next-run-loop bypass check: a
   storage `pendingEdit` still unconsumed means the closing `didChangeText`
   never came, and the editor heals by running the same sync (`+EditFlow`,
-  `scheduleBypassedEditSyncCheck`; breadcrumb in `~/.edmund/logs`: `healing
+  `scheduleBypassedEditSyncCheck`; breadcrumb in the log under `Log.defaultDirectory`: `healing
   storage edit that bypassed didChangeText`). Never build a sync path on
   the assumption that `didChangeText` follows every edit.
 - **A bypassed edit also leaves TK2's selection fixup queued** (delete-drift
@@ -907,12 +918,12 @@ Notable subsystems:
   secondary (right / control) click over the toolbar — *including* a custom
   item view — into its "Customize Toolbar…" context menu. The view's
   `menu`, a `rightMouseDown` override, and a secondary-button
-  `NSClickGestureRecognizer` **all lose**. Fix (view-mode button):
-  intercept in `DocumentWindow.sendEvent(_:)` — the documented funnel every
-  window event passes through *before* the toolbar acts — and when the
-  click falls inside the button's bounds, pop the menu and swallow the
-  event. (Caveat: true fullscreen moves the toolbar to a separate window
-  this main-window hook doesn't cover.)
+  `NSClickGestureRecognizer` **all lose**. The view-mode and Link buttons
+  once won it by intercepting in an `NSWindow.sendEvent(_:)` override;
+  both menus were removed (2026-09-23) because a hidden right-click menu on
+  a toolbar button is undiscoverable and takes AppKit's own toolbar menu
+  away. Don't reintroduce one — give a toolbar button a visible pull-down
+  (`NSMenuToolbarItem`, like Image) if it needs a menu.
 - **Window-size persistence must round-trip the frame, not the content
   size.** Saving `contentView.bounds.size` and re-applying it as the
   initializer's `contentRect` grows the window by title-bar + (unified)
@@ -1182,8 +1193,9 @@ Notable subsystems:
 1. Skim README (what/why), then this doc (how).
 2. `swift build && swift test` — confirm green before changing anything.
 3. Find the feature's `Rendering/` or `TextView/` extension via §6.
-4. Make the change; add/adjust tests in `Tests/EdmundTests` (helpers:
-   `makeEditor()`, `ensureFullLayout()`, `styleBlock()`).
+4. Make the change; add/adjust tests in `Tests/EdmundTests` (helpers in
+   `TestHelpers.swift`: `makeEditor()`, `ensureFullLayout(_:)`,
+   `type(_:into:)`…; tests also call the editor's own `styleBlock(_:)`).
 5. Verify per §12 before committing.
 
 Debugging a live-only bug (caret, IME, drag, viewport timing)? Follow
@@ -1198,10 +1210,14 @@ that class.
 Do these **before every commit** (this is the workflow that worked; deviate
 only with reason):
 
-1. **`swift test` is green** (all pass). Add tests for new behavior / bug
-   repros.
+1. **`swift test` is green** (all pass) with zero compiler warnings in
+   `Sources/` and `Tests/` — CI's `No warnings` step fails on any. Add tests
+   for new behavior / bug repros.
 2. **Visual changes are measured, not eyeballed** — build the app and
-   `screencapture` the result (§8), or render offscreen to a PNG. Don't trust
+   `screencapture` the result (§8), or render offscreen to a PNG, or run
+   `/verify-live drawing` for a light/dark before/after pair against the
+   fork point from `origin/main` (`/ship` offers it; edit-pipeline changes
+   get `/verify-live edit-pipeline`). Don't trust
    headless layout alone for anything that draws. For anything phrased as
    *align / centre / balance the padding / match the native control*, report
    **numbers** (device px and points, 2:1 on Retina), not an impression —
@@ -1253,7 +1269,7 @@ How a release happens, plus the non-obvious things that broke shipping 0.1.0.
 **Flow (tag-triggered).** Push a `vX.Y.Z` tag →
 `.github/workflows/release.yml` (`macos-14`): build the `.app`
 (`build-app.sh`) → DMG (npm `create-dmg`) → EdDSA-sign the DMG →
-`gh release create` (notes = the matching `CHANGELOG.md` section, extracted
+`gh release create` (notes = the matching `docs/CHANGELOG.md` section, extracted
 by `awk`) → commit the new `<item>` into `appcast.xml` on `main`.
 `scripts/release.sh` mirrors this locally but leaves the appcast
 commit/push to you. The `<item>` also gets a `<description>` (HTML release
@@ -1261,13 +1277,13 @@ notes from the CHANGELOG section via `scripts/changelog-to-html.py`) so
 Sparkle's update dialog shows the changelog.
 
 **To cut a release:** bump `CFBundleShortVersionString` / `CFBundleVersion`
-in `Info.plist`, add a `## [x.y.z]` section to `CHANGELOG.md`, merge to
+in `Info.plist`, add a `## [x.y.z]` section to `docs/CHANGELOG.md`, merge to
 `main`, then `git tag vx.y.z && git push origin vx.y.z`.
 
 A `PreToolUse` hook (`.claude/hooks/guard-release-gate.sh`) gates that last
 step for agents: it **denies** a tag push / `gh release create` /
 `release.sh` whose version disagrees with `Info.plist` or has no non-empty
-`## [x.y.z]` CHANGELOG section, denies bulk `--tags` pushes, and otherwise
+`## [x.y.z]` section in `docs/CHANGELOG.md`, denies bulk `--tags` pushes, and otherwise
 **asks** — showing the version and the notes — so a release is never
 automatic. The version number and the release-note wording are the
 maintainer's call, not something to infer from "cut a release".

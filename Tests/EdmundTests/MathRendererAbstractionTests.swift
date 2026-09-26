@@ -12,7 +12,7 @@ struct MathRendererAbstractionTests {
         var lastLatex: String?
         init(id: String, isReady: Bool) { self.id = id; self.isReady = isReady }
         func render(latex: String, displayMode: Bool,
-                   pointSize: CGFloat, color: NSColor) -> RenderedMath? {
+                   pointSize: CGFloat, color: NSColor, scale: CGFloat) -> RenderedMath? {
             lastLatex = latex
             guard latex != "unsupported" else { return nil }
             return RenderedMath(image: NSImage(size: NSSize(width: 42, height: 42)),
@@ -23,7 +23,7 @@ struct MathRendererAbstractionTests {
     @Test("SwiftMathRenderer renders valid LaTeX with ascent+descent summing to image height")
     @MainActor func swiftMathRendersValidLatex() {
         let r = SwiftMathRenderer()
-        let out = r.render(latex: "x^2", displayMode: false, pointSize: 16, color: NSColor(red: 0, green: 0, blue: 0, alpha: 1))
+        let out = r.render(latex: "x^2", displayMode: false, pointSize: 16, color: NSColor(red: 0, green: 0, blue: 0, alpha: 1), scale: 2)
         #expect(out != nil)
         if let out { #expect(abs((out.ascent + out.descent) - out.image.size.height) < 0.01) }
     }
@@ -31,7 +31,7 @@ struct MathRendererAbstractionTests {
     @Test("SwiftMathRenderer returns nil for invalid LaTeX")
     @MainActor func swiftMathRejectsInvalidLatex() {
         let r = SwiftMathRenderer()
-        #expect(r.render(latex: "\\frac{", displayMode: false, pointSize: 16, color: NSColor(red: 0, green: 0, blue: 0, alpha: 1)) == nil)
+        #expect(r.render(latex: "\\frac{", displayMode: false, pointSize: 16, color: NSColor(red: 0, green: 0, blue: 0, alpha: 1), scale: 2) == nil)
     }
 
     @Test("Coordinator defaults to SwiftMath when no alternate is set")

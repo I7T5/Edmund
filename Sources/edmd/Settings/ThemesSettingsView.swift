@@ -119,7 +119,7 @@ struct ThemesSettingsView: View {
             Button("Delete", role: .destructive, action: deleteSelected)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the theme's file. You can't undo this.")
+            Text("This removes the theme’s file. You can’t undo this.")
         }
         .sheet(isPresented: Binding(get: { renaming != nil },
                                     set: { if !$0 { renaming = nil } })) {
@@ -352,6 +352,9 @@ struct ThemesSettingsView: View {
                 Image(systemName: "ellipsis.circle")
             }
             .menuIndicator(.hidden)
+            // Grey like + and −: a borderless menu button draws its label in
+            // the control tint. Never disabled — Import… needs no selection.
+            .tint(.secondary)
             .fixedSize()
             Spacer()
         }
@@ -772,7 +775,8 @@ struct ThemesSettingsView: View {
             }
             try FileManager.default.copyItem(at: source, to: destination)
         } catch {
-            presentError("Couldn’t export “\(name)”: \(error.localizedDescription)")
+            presentError("Couldn’t export “\(name)”: \(error.localizedDescription)",
+                         title: "Export Failed")
         }
     }
 
@@ -782,9 +786,9 @@ struct ThemesSettingsView: View {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    private func presentError(_ message: String) {
+    private func presentError(_ message: String, title: String = "Import Failed") {
         let alert = NSAlert()
-        alert.messageText = "Import Failed"
+        alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.runModal()

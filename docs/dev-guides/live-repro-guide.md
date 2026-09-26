@@ -41,7 +41,7 @@ Two levels deserve emphasis:
 ## 2. Step 0 — make the trace tell you the trigger
 
 Never start scripting blind. The repro recipe is almost always already in
-`~/.edmund/logs`, if verbose diagnostics were on:
+`~/Library/Application Support/Edmund/Logs`, if verbose diagnostics were on:
 
 ```bash
 # launch flags (defaults keys are namespaced; file arg MUST be argv[1]):

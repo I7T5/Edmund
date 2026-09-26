@@ -127,6 +127,20 @@ overlay** that could share a line with wrapping text.
 **Hiding text** = `hiddenFont` (≈0.01 pt) + clear `foregroundColor`. This is how
 delimiters (`**`, `` ` ``, `[!note]`) vanish without changing the string.
 
+**Repainting one fragment without relayout** (animated GIFs): `setNeedsDisplay`
+on the text view does **not** repaint TextKit 2 text. Each fragment paints in a
+private `_NSTextViewportElementView` under `_NSTextContentView` (see the
+`viewtree` repro command); mark every view under the fragment's rect
+(`EditorTextView+GIFAnimation` `redisplay`).
+
+**The trailing empty line is an extra line fragment, and its box is
+provisional.** After a final `\n` there is no paragraph for the empty last line:
+it is the last `textLineFragment` of the previous fragment
+(`characterRange.length == 0`). Until the caret goes there its
+`typographicBounds` can overlap the line above (after an empty paragraph:
+measured y = 16, height 14 inside a 25 pt line). Clamp to the previous line's
+bottom before trusting it (`enumerateVisibleLineNumbers`).
+
 ---
 
 ## 6. The queued selection fixup (the round-6 delete-drift mechanism)
@@ -179,6 +193,16 @@ driver synthesizes real `NSEvent`s and pushes them through `window.sendEvent(_:)
 rather than calling `insertText` directly — shortcuts skip `deleteBackward`'s
 selection machinery, which is exactly where round 6 lived.
 
+**Spelling marks are rendering attributes, and only some paths set them.**
+AppKit's continuous check re-runs on `didChangeText`, never on an
+attribute-only restyle, so marks go stale around a restyled word.
+`checkText(in:types:options:)` delivers its results on a later run-loop pass,
+and `super.handleTextCheckingResults` called directly set **no** marks
+(measured, headless and in a window). What works: `NSSpellChecker.shared.check`
++ `setSpellingState(_:range:)`, read back through
+`textLayoutManager.enumerateRenderingAttributes` (`.spellingState`). See
+`EditorTextView+SpellCheck.swift`.
+
 ---
 
 ## 8. IME / marked text lifecycle
@@ -218,11 +242,10 @@ toolbar acts. This matters because with `NSToolbar.allowsUserCustomization =
 true`, the toolbar claims **any secondary (right/control) click over the
 toolbar** — including a custom item view — for its own "Customize Toolbar…" menu,
 downstream of view-level handlers (`menu`, `rightMouseDown`, gesture
-recognizers all lose). Edmund's fix for the view-mode button: intercept in
-`DocumentWindow.sendEvent(_:)`, pop the menu when the click is inside the
-button's bounds, and swallow it (`return`); other clicks fall through to
-`super`. (Caveat: true fullscreen moves the toolbar to a separate window, so
-this main-window hook wouldn't cover it.)
+recognizers all lose). Edmund once intercepted there (a `DocumentWindow`
+override) for right-click menus on the view-mode and Link buttons; both menus
+and the override were removed on 2026-09-23 — toolbar buttons that need a menu
+use a visible `NSMenuToolbarItem` pull-down instead.
 
 ---
 

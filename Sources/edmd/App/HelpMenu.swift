@@ -54,6 +54,12 @@ final class HelpMenu: NSObject {
 
     @objc private func openLink(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        NSWorkspace.shared.open(url)
+        // A local .html goes to whatever owns the file type — often a code
+        // editor. Hand it to the default web browser (the https handler).
+        if url.isFileURL, let browser = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https:")!) {
+            NSWorkspace.shared.open([url], withApplicationAt: browser, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)
+        }
     }
 }

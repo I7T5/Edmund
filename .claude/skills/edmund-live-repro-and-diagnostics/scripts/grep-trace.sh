@@ -7,10 +7,16 @@
 set -euo pipefail
 
 day="${1:-$(date +%F)}"
-log="$HOME/.edmund/logs/edmund-${day}.log"
+# Log.defaultDirectory: the sandboxed app writes inside its container, a
+# debug build (unsandboxed) writes the real folder. Take whichever has the day.
+log=""
+for dir in "$HOME/Library/Containers/com.i7t5.edmund/Data/Library/Application Support/Edmund/Logs" \
+           "$HOME/Library/Application Support/Edmund/Logs"; do
+  [[ -f "$dir/edmund-${day}.log" ]] && { log="$dir/edmund-${day}.log"; break; }
+done
 
-if [[ ! -f "$log" ]]; then
-  echo "No log for ${day} at ${log}" >&2
+if [[ -z "$log" ]]; then
+  echo "No log for ${day} in the container or ~/Library/Application Support/Edmund/Logs" >&2
   exit 1
 fi
 
