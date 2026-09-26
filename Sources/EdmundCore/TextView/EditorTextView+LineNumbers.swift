@@ -187,6 +187,65 @@ extension EditorTextView {
         }
     }
 
+    /// Everything the margin chrome (line numbers, `</>` buttons, copy buttons,
+    /// table handles) draws from, computed in **one** pass and shared by every
+    /// piece in the same draw or hover update. Before this existed each piece
+    /// recomputed it: every `drawBackground` did ~6 viewport fragment walks and
+    /// ~3 full block-list scans, and `mouseMoved` redid them at event rate.
+    struct MarginChromeGeometry {
+        /// One entry per visible source line, from the single viewport walk:
+        /// the line number and its cap-band centre (see
+        /// `enumerateVisibleLineNumbers`).
+        var visibleLines: [(line: Int, capCenterY: CGFloat)] = []
+        /// Table header line → block index, for the tables intersecting the
+        /// laid-out viewport. A button only ever lands on a visible header
+        /// row, so blocks outside the viewport can't contribute one.
+        var tableHeaders: [Int: Int] = [:]
+        /// Opening-fence line → block index, for the code blocks intersecting
+        /// the viewport (Edit mode only, matching `visibleCodeCopyButtons`).
+        var fenceLines: [Int: Int] = [:]
+        /// The active cell's row and column pills — `tableHandles()`, computed
+        /// once so the `</>` button's pill dodge and the handles' own draw
+        /// don't each enumerate the table's fragments.
+        var handles: [TableHandle] = []
+    }
+
+    /// Builds the shared `MarginChromeGeometry`. Cheap to call once per pass:
+    /// one viewport walk, one block scan bounded to the viewport, one handles
+    /// computation — instead of each consumer paying for its own.
+    func marginChromeGeometry(includeLineNumbers: Bool = false) -> MarginChromeGeometry {
+        var geometry = MarginChromeGeometry()
+        geometry.handles = tableHandles()
+        guard let tlm = textLayoutManager,
+              let viewport = tlm.textViewportLayoutController.viewportRange
+        else { return geometry }
+        let docStart = tlm.documentRange.location
+        let lo = tlm.offset(from: docStart, to: viewport.location)
+        let hi = tlm.offset(from: docStart, to: viewport.endLocation)
+        guard lo >= 0, hi > lo else { return geometry }
+        // Only blocks overlapping the laid-out viewport can put chrome on
+        // screen, so the scan tracks what's visible rather than the whole
+        // document.
+        for (i, block) in blocks.enumerated()
+        where block.range.location < hi && block.range.upperBound > lo {
+            switch block.kind {
+            case .table:
+                geometry.tableHeaders[line(forOffset: block.range.location)] = i
+            case .fence where viewMode == .edit:
+                geometry.fenceLines[line(forOffset: block.range.location)] = i
+            default:
+                break
+            }
+        }
+        // Hover needs line positions only for visible table or copy buttons.
+        guard includeLineNumbers || !geometry.tableHeaders.isEmpty
+            || !geometry.fenceLines.isEmpty else { return geometry }
+        enumerateVisibleLineNumbers { line, capCenterY in
+            geometry.visibleLines.append((line, capCenterY))
+        }
+        return geometry
+    }
+
     /// Calls `body` once per visible source line, with its 1-indexed number and
     /// the vertical extent of its **first** visual line in text-container
     /// coordinates (so a wrapped line is numbered once, against its top line).
@@ -316,8 +375,12 @@ extension EditorTextView {
 
     /// Draws the numbers in the reading column's left margin, right-aligned just
     /// short of the text. Called from `drawBackground(in:)` — they occupy margin
-    /// the text never uses, so nothing has to move to make room.
-    func drawLineNumbersBesideContent(in rect: NSRect) {
+    /// the text never uses, so nothing has to move to make room. Takes the
+    /// pass's shared `MarginChromeGeometry` so the numbers ride the same single
+    /// viewport walk as the rest of the margin chrome; nil builds a fresh one
+    /// (the click/test paths).
+    func drawLineNumbersBesideContent(in rect: NSRect,
+                                      chrome: MarginChromeGeometry? = nil) {
         let style = lineNumberStyle
         let origin = textContainerOrigin
         // The column's text starts a `lineFragmentPadding` inside the container.
@@ -331,20 +394,21 @@ extension EditorTextView {
         // ponytail: all or none, never just the ones that fit, so the column
         // can't go ragged with `9` drawn and `100` missing.
         guard lineNumbersFitBesideContent else { return }
+        let chrome = chrome ?? marginChromeGeometry(includeLineNumbers: true)
 
         // A revealed `</>` button stands in the slot of its table's header-row
         // number. One slot, one occupant — so that row's number gives way while
         // the button shows, rather than the two overdrawing each other.
-        let covered = linesCoveredByTableRawButtons()
+        let covered = linesCoveredByTableRawButtons(using: chrome)
 
-        enumerateVisibleLineNumbers { line, capCenterY in
-            guard !covered.contains(line) else { return }
+        for (line, capCenterY) in chrome.visibleLines {
+            guard !covered.contains(line) else { continue }
             let label = NSAttributedString(string: "\(line)", attributes: style.attributed(line))
             // dev: Add one-char space between content and line number
             let x = rightEdge - style.digitWidth * CGFloat(label.length + 1)
             let y = origin.y + capCenterY - style.digitCenterFromTop
             guard rect.intersects(NSRect(x: x, y: y, width: rightEdge - x,
-                                         height: 2 * style.digitCenterFromTop)) else { return }
+                                         height: 2 * style.digitCenterFromTop)) else { continue }
             label.draw(at: NSPoint(x: x, y: y))
         }
     }
