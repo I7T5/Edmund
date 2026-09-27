@@ -12,9 +12,8 @@ import AppKit
 //   content is ready before the user gets there.
 // - Scroll promotion: when the clip view scrolls, unstyled blocks entering
 //   the viewport window are styled so the user never sees raw
-//   base-attributed text. Both mechanisms are paused while the user is
-//   actively scrolling (their layout invalidations fight the scroll) and
-//   resume once the scroll goes quiescent.
+//   base-attributed text. Promotion stays active during live scrolling;
+//   only the idle drain and full-layout settle wait for scroll quiescence.
 
 extension EditorTextView {
 
@@ -29,8 +28,10 @@ extension EditorTextView {
         progressiveStylingScheduled = true
         RunLoop.main.perform { [weak self] in
             MainActor.assumeIsolated {
-                self?.progressiveStylingScheduled = false
-                self?.drainStylingSlice()
+                guard let self else { return }
+                self.progressiveStylingScheduled = false
+                guard !self.isScrollingActive else { return }
+                self.drainStylingSlice()
             }
         }
     }
@@ -258,13 +259,13 @@ extension EditorTextView {
     }
 
     /// Keep the gate briefly after AppKit ends a live user scroll, so successive
-    /// wheel gestures do not interleave promotion with the next scroll.
+    /// wheel gestures do not interleave background styling with the next scroll.
     private static let scrollQuiescenceDelay: TimeInterval = 0.25
 
     @objc private func clipViewBoundsDidChange(_ note: Notification) {
         // Bounds also change for caret centering, outline jumps, and viewport
         // compensation. Those must promote promptly without pausing styling.
-        guard !isScrollingActive, !isPromotingVisibleBlocks else { return }
+        guard !isPromotingVisibleBlocks else { return }
         scheduleScrollPromotion()
     }
 
@@ -308,7 +309,6 @@ extension EditorTextView {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.scrollPromotionScheduled = false
-                guard !self.isScrollingActive else { return }
                 if self.isUpdating {
                     self.scheduleScrollPromotion()
                     return
