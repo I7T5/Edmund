@@ -228,12 +228,15 @@ extension EditorTextView {
     /// A `FragmentOverlay` for `destination`'s image or placeholder, or nil
     /// while a remote fetch is pending (the caller then shows plain alt text).
     /// `width`/`height` are declared pixel dimensions from an HTML `<img>` tag.
-    func imageOverlay(destination: String, width: Int? = nil, height: Int? = nil) -> FragmentOverlay? {
+    /// `fontSize` sizes a placeholder to the surrounding text (a heading's);
+    /// nil means the body size.
+    func imageOverlay(destination: String, width: Int? = nil, height: Int? = nil,
+                      fontSize: CGFloat? = nil) -> FragmentOverlay? {
         switch imageDisplay(destination: destination) {
         case .image(let image):
             return scaledOverlay(image: image, width: width, height: height)
         case .blocked(let failure):
-            return placeholderOverlay(failure: failure)
+            return placeholderOverlay(failure: failure, fontSize: fontSize)
         case .pending:
             return nil
         }
@@ -271,23 +274,25 @@ extension EditorTextView {
     /// showing nothing.
     /// A placeholder overlay for a non-image `![[file]]` embed, labelled by the
     /// file's type (uses a `file-x` icon rather than the image `image-off`).
-    func embedOverlay(destination: String) -> FragmentOverlay? {
-        placeholderOverlay(failure: .forEmbed(destination: destination), icon: "file-x")
+    func embedOverlay(destination: String, fontSize: CGFloat? = nil) -> FragmentOverlay? {
+        placeholderOverlay(failure: .forEmbed(destination: destination), icon: "file-x", fontSize: fontSize)
     }
 
-    private func placeholderOverlay(failure: ImageLoadFailure, icon iconName: String = "image-off") -> FragmentOverlay? {
-        let pointSize = bodyFont.pointSize
+    private func placeholderOverlay(failure: ImageLoadFailure, icon iconName: String = "image-off",
+                                    fontSize: CGFloat? = nil) -> FragmentOverlay? {
+        let font = fontSize.map { bodyFont.withSize($0) } ?? bodyFont
+        let pointSize = font.pointSize
         guard let icon = LucideIcons.image(iconName, color: .secondaryLabelColor, pointSize: pointSize)
         else { return nil }
 
-        let labelAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont, .foregroundColor: NSColor.secondaryLabelColor]
+        let labelAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.secondaryLabelColor]
         let label = NSAttributedString(string: failure.label, attributes: labelAttrs)
         let labelSize = label.size()
 
         let gap = pointSize * 0.3
         let iconW = icon.size.width, iconH = icon.size.height
-        let descent = -bodyFont.descender
-        let textH = bodyFont.ascender + descent
+        let descent = -font.descender
+        let textH = font.ascender + descent
         let height = ceil(max(iconH, textH))
         let width = ceil(iconW + gap + labelSize.width)
         // The label's baseline inside the image (y-up). The overlay's minY is
