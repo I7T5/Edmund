@@ -76,6 +76,24 @@ enum HTMLTheme {
         // SVG (`MermaidRenderer.tighteningCanvas`), so this is the whole margin.
         let diagramMargin = NSLayoutManager().defaultLineHeight(for: theme.monospaceFont())
 
+        // Callout box padding, landing the same visible gaps as the editor: box
+        // top to the title's cap line, last baseline to box bottom
+        // (`EditorTextView.calloutVisibleGaps`). A CSS line box adds half-leading
+        // plus the ascent above the baseline and the descent below it, so each
+        // pad subtracts what the line box already contributes.
+        let titleFont = NSFontManager.shared.convert(theme.bodyFont, toHaveTrait: .boldFontMask)
+        let lineBox = naturalLineHeight + theme.lineSpacing
+        func halfLeading(_ f: NSFont) -> CGFloat { (lineBox - (f.ascender - f.descender)) / 2 }
+        let calloutGaps = EditorTextView.calloutVisibleGaps(bodyFont: theme.bodyFont,
+                                                            lineSpacing: theme.lineSpacing)
+        let calloutPadTop = calloutGaps.top - halfLeading(titleFont)
+            - (titleFont.ascender - titleFont.capHeight)
+        let calloutPadBottom = calloutGaps.bottom - halfLeading(theme.bodyFont) + theme.bodyFont.descender
+        // The icon's line-high box centers it on the line box; shift it onto the
+        // title's cap-height center, as the editor places it.
+        let calloutIconShift = halfLeading(titleFont) + titleFont.ascender
+            - titleFont.capHeight / 2 - lineBox / 2
+
         // CSS px and AppKit points are both device-independent, so the editor's
         // physical cap (EditorTextView.maxContentWidthPoints) carries over as-is.
         // A huge/infinite value means "uncapped" in the editor too; `none` skips
@@ -109,6 +127,9 @@ enum HTMLTheme {
           --check-fill: \(general.checkbox ?? resolvedRGBA(.controlAccentColor, dark: dark));
           --line-height: \(trim(lineHeight));
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
+          --callout-pad-top: \(trim(max(calloutPadTop, 0)))px;
+          --callout-pad-bottom: \(trim(max(calloutPadBottom, 0)))px;
+          --callout-icon-shift: \(trim(calloutIconShift))px;
           --page-max-width: \(pageMaxWidth);
         }
         \(calloutVars(callouts, dark: dark))
@@ -373,23 +394,15 @@ enum HTMLTheme {
     /* Outer margin matches the gap between two consecutive <pre> blocks (UA
        stylesheet gives pre { margin: 1em 0 }; collapsing → 1em gap). Using
        the same value here means neighboring callouts look equally spaced. */
-    /* Square corners and em padding both track the editor, which fills a square
-       rect per layout fragment (they tile into one box) and derives its pads from
-       `pointSize`: the rendered top gap is ~1.2em, calloutBottomPad is 1.14em, and
-       the text inset is 2pt + quoteMarkerWidth ≈ 1.24em. The editor's right inset
-       is narrower (a `tailIndent = -10` artifact, not a design choice), so both
-       sides use the left value rather than reproducing a lopsided box.
-       Top padding is NOT a flat 1.2em: what the eye reads as the gap runs from the
-       box edge to the title's cap-top, and the title's line box adds half-leading
-       above the glyph — so a flat 1.2em rendered ~6pt too deep (measured 25.5pt
-       against the editor's 19.5pt). Subtracting half the line box's excess over the
-       cap height puts the *rendered* gap on the editor's, and keeps it there as the
-       line-height stepper moves. The 0.78 stands in for the body face's cap height
-       in em; it is a serif-ish average, not a per-font measurement — a font-agnostic
-       version would emit the real capHeight/unitsPerEm ratio alongside --body-size.
-       The bottom needs no such correction: it is measured box-edge to box-edge. */
+    /* Square corners and padding both track the editor, which fills a square
+       rect per layout fragment (they tile into one box). The text inset is 2pt +
+       quoteMarkerWidth ≈ 1.24em. The editor's right inset is narrower (a
+       `tailIndent = -10` artifact, not a design choice), so both sides use the
+       left value rather than reproducing a lopsided box. Top and bottom pads are
+       computed from the font's metrics (see `css`) so the rendered cap-line and
+       baseline gaps land on the editor's. */
     .callout { background: var(--c-bg); border-radius: 0; margin: 1em 0;
-               padding: calc(1.22em - (var(--line-height) - 0.78) * 0.5em) 1.24em 1.14em; }
+               padding: var(--callout-pad-top) 1.24em var(--callout-pad-bottom); }
     /* Icon sits at the top so it stays on the first line of a wrapped title; its
        box is exactly one line tall and centers the glyph, so it lines up with the
        first line's text rather than floating above it. */
@@ -397,21 +410,8 @@ enum HTMLTheme {
                      font-weight: 600; color: var(--c-accent); }
     .callout-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
                     height: calc(var(--body-size) * var(--line-height)); }
-    /* Lucide glyphs sit a touch low against the title's optical (cap-height)
-       center; nudge the icon up so it reads as centered with the title text. */
-    .callout-icon svg { width: 1em; height: 1em; transform: translateY(-0.06em); }
-    /* Per-glyph optical nudge: a few Lucide icons sit high in their 24-box, so
-       push them down a hair to read as centered against the title cap-height.
-       Aliases share an icon, so they get the same value. */
-    .callout-info .callout-icon, .callout-todo .callout-icon,
-    .callout-question .callout-icon, .callout-help .callout-icon, .callout-faq .callout-icon,
-    .callout-quote .callout-icon, .callout-cite .callout-icon { padding-top: 0.05em; }
-    .callout-warning .callout-icon, .callout-attention .callout-icon,
-    .callout-bug .callout-icon { padding-top: 0.06em; }
-    .callout-example .callout-icon { padding-top: 0.1em; }
-    .callout-success .callout-icon, .callout-check .callout-icon, .callout-done .callout-icon,
-    .callout-failure .callout-icon, .callout-fail .callout-icon,
-    .callout-missing .callout-icon { padding-top: 0.15em; }
+    /* Centered on the title's cap height, as the editor places it. */
+    .callout-icon svg { width: 1em; height: 1em; transform: translateY(var(--callout-icon-shift)); }
     .callout-title-text { flex: 1 1 auto; }
     /* Collapsible callout (`[!type]-`/`+`): a real <details>/<summary>. Hide the
        native disclosure marker and draw our own chevron that rotates on open. */
@@ -420,9 +420,11 @@ enum HTMLTheme {
     .callout-collapsible > summary::after { content: "›"; flex: 0 0 auto;
         margin-left: 0.3em; transition: transform 0.15s ease; }
     .callout-collapsible[open] > summary::after { transform: rotate(90deg); }
-    .callout-body { margin-top: 0.4em; }
+    /* Title to body: one paragraph gap, the editor's spacing between the header
+       line and the first body line. */
+    .callout-body { margin-top: var(--para-space); }
     /* A title-only callout still emits an empty body div; collapse its top margin
-       so the box doesn't carry the 0.4em title gap as dead space at the bottom. */
+       so the box doesn't carry the title gap as dead space at the bottom. */
     .callout-body:empty { margin-top: 0; }
     /* Reduce paragraph spacing inside callout bodies so nested callouts and
        body text don't sit too far apart. The full 1em bottom margin (from the

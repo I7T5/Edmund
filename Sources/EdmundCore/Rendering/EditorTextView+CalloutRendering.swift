@@ -454,33 +454,43 @@ extension EditorTextView {
 
     /// Top breathing room — the header line's `paragraphSpacingBefore`, which
     /// the box covers.
-    private var calloutTopPad: CGFloat { bodyFont.pointSize * 0.8 }
+    private var calloutTopPad: CGFloat { Self.calloutTopPad(bodyFont) }
+    static func calloutTopPad(_ bodyFont: NSFont) -> CGFloat { bodyFont.pointSize * 0.8 }
+
+    /// The box padding the eye reads, shared with Read mode's CSS: box top to
+    /// the title's *cap line*, and the last *baseline* to the box bottom.
+    /// Descenders are sparse, so matching ink box to ink box (icon top vs
+    /// descender bottom) left the bottom looking ~1.5pt heavier. The bottom
+    /// also gets `calloutBottomOpticalBias`: a mostly-lowercase title ("Note",
+    /// "Warning") reads as starting a little below its cap line, so an exact
+    /// cap-to-baseline match still looks top-heavy. TextKit 2 line metrics are
+    /// `defaultLineHeight` / `defaultBaselineOffset`, with `lineSpacing`
+    /// stacked above the glyphs.
+    static func calloutVisibleGaps(bodyFont: NSFont, lineSpacing: CGFloat)
+        -> (top: CGFloat, bottom: CGFloat) {
+        let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+        let top = calloutTopPad(bodyFont) + lineSpacing
+            + NSLayoutManager().defaultBaselineOffset(for: titleFont) - titleFont.capHeight
+        return (top, top + calloutBottomOpticalBias)
+    }
+    /// Extra bottom room over the exact cap-line/baseline match (see
+    /// `calloutVisibleGaps`). Chosen by eye on Iowan 16pt header-only callouts.
+    static let calloutBottomOpticalBias: CGFloat = 1
+
     /// Bottom breathing room. Delivered by growing the last line's layout
     /// fragment frame (a box `bottomPad`), so it is genuine clickable text
     /// space below the last line — not trailing paragraph spacing, which
     /// TextKit 2 leaves out of the fragment and which clicks would miss.
-    ///
-    /// Derived so the last *baseline* sits as far above the box's bottom edge
-    /// as the title's *cap line* sits below its top edge. Those are the edges
-    /// the eye reads: descenders are sparse, so matching the gap to the
-    /// descender bottom instead (ink box to ink box) leaves the bottom looking
-    /// ~1.5pt heavier. TextKit 2 line metrics are `defaultLineHeight` /
-    /// `defaultBaselineOffset`, with `lineSpacing` stacked above the glyphs.
-    /// Plus `Self.calloutBottomOpticalBias`: a mostly-lowercase title ("Note",
-    /// "Warning") reads as starting a little below its cap line, so an exact
-    /// cap-to-baseline match still looks top-heavy.
+    /// Sized so the last baseline lands `calloutVisibleGaps().bottom` above
+    /// the box's bottom edge.
     var calloutBottomPad: CGFloat {
         let metrics = NSLayoutManager()
-        let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-        let capGap = calloutTopPad + bodyParagraphStyle.lineSpacing
-            + metrics.defaultBaselineOffset(for: titleFont) - titleFont.capHeight
-        let baselineGap = metrics.defaultLineHeight(for: bodyFont)
+        let baselineToLineBottom = metrics.defaultLineHeight(for: bodyFont)
             - metrics.defaultBaselineOffset(for: bodyFont)
-        return max(0, capGap - baselineGap) + Self.calloutBottomOpticalBias
+        let gaps = Self.calloutVisibleGaps(bodyFont: bodyFont,
+                                           lineSpacing: bodyParagraphStyle.lineSpacing)
+        return max(0, gaps.bottom - baselineToLineBottom)
     }
-    /// Extra bottom room over the exact cap-line/baseline match (see
-    /// `calloutBottomPad`). Chosen by eye on Iowan 16pt header-only callouts.
-    static let calloutBottomOpticalBias: CGFloat = 1
 
     // MARK: Paragraph style (text insets; the box itself is a BlockDecoration)
 
