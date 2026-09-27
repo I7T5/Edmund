@@ -612,11 +612,16 @@ struct HTMLRenderer: MarkupVisitor {
     mutating func visitStrong(_ strong: Strong) -> String { "<strong>\(renderChildren(of: strong))</strong>" }
     mutating func visitStrikethrough(_ s: Strikethrough) -> String { "<del>\(renderChildren(of: s))</del>" }
     mutating func visitInlineCode(_ code: InlineCode) -> String { "<code>\(Self.escape(code.code))</code>" }
-    mutating func visitLineBreak(_ lineBreak: LineBreak) -> String { "<br>\n" }
+    mutating func visitLineBreak(_ lineBreak: LineBreak) -> String { Self.lineBreakHTML }
     // Off → each single newline becomes a literal break (Edit ▸ Strict line breaks).
     mutating func visitSoftBreak(_ softBreak: SoftBreak) -> String {
-        options.strictLineBreaks ? "\n" : "<br>\n"
+        options.strictLineBreaks ? "\n" : Self.lineBreakHTML
     }
+    /// Every source line is its own paragraph in the editor, spaced by
+    /// `paragraphSpacingBefore`; the empty `.line-gap` span (a block in Read
+    /// mode's CSS) adds that same space. The `<br>` keeps the break in HTML
+    /// without the stylesheet (copied or exported rich text).
+    static let lineBreakHTML = "<br><span class=\"line-gap\"></span>\n"
 
     mutating func visitLink(_ link: Link) -> String {
         let dest = link.destination ?? ""

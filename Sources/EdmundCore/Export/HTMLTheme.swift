@@ -89,6 +89,12 @@ enum HTMLTheme {
         let calloutPadTop = calloutGaps.top - halfLeading(titleFont)
             - (titleFont.ascender - titleFont.capHeight)
         let calloutPadBottom = calloutGaps.bottom - halfLeading(theme.bodyFont) + theme.bodyFont.descender
+        // Horizontal inset, box edge to text: the editor fills the box to the
+        // text container's edge, and its text starts the container's
+        // `lineFragmentPadding` in, plus the callout's 2pt + `> ` marker indent
+        // (`EditorTextView.calloutParagraphStyle`).
+        let calloutPadX = NSTextContainer().lineFragmentPadding + 2
+            + ("> " as NSString).size(withAttributes: [.font: theme.bodyFont]).width
         // The icon's bottom sits on the title's baseline; drop it by half its
         // overhang past the cap height so it centers on the cap height, as the
         // editor places it (the icon is 1em square). Floored to a whole px: a
@@ -132,6 +138,7 @@ enum HTMLTheme {
           --para-space: \(trim(max(theme.paragraphSpacingBefore, 0)))px;
           --callout-pad-top: \(trim(max(calloutPadTop, 0)))px;
           --callout-pad-bottom: \(trim(max(calloutPadBottom, 0)))px;
+          --callout-pad-x: \(trim(calloutPadX))px;
           --callout-icon-shift: \(trim(calloutIconShift))px;
           --page-max-width: \(pageMaxWidth);
         }
@@ -219,6 +226,9 @@ enum HTMLTheme {
        room, so the cadence feels like a clean, readable version of Edit mode
        rather than a collapsed publication layout. */
     p { margin: 0 0 1em; }
+    /* A line break's gap: the editor spaces each source line as its own
+       paragraph (see HTMLRenderer.lineBreakHTML). */
+    .line-gap { display: block; height: var(--para-space); }
     h1, h2, h3, h4, h5, h6 { line-height: 1.25; font-weight: 600; margin: 1.7em 0 0.7em; }
     /* Heading scale mirrors the editor's, which is the source of truth — see the
        `case .heading` arm in EditorTextView+Rendering.swift. Keep the two in step:
@@ -398,14 +408,14 @@ enum HTMLTheme {
        stylesheet gives pre { margin: 1em 0 }; collapsing → 1em gap). Using
        the same value here means neighboring callouts look equally spaced. */
     /* Square corners and padding both track the editor, which fills a square
-       rect per layout fragment (they tile into one box). The text inset is 2pt +
-       quoteMarkerWidth ≈ 1.24em. The editor's right inset is narrower (a
-       `tailIndent = -10` artifact, not a design choice), so both sides use the
-       left value rather than reproducing a lopsided box. Top and bottom pads are
-       computed from the font's metrics (see `css`) so the rendered cap-line and
-       baseline gaps land on the editor's. */
+       rect per layout fragment (they tile into one box). All pads are computed
+       from the editor's metrics (see `css`): the text inset lands where the
+       editor's does, and the rendered cap-line and baseline gaps match. The
+       editor's right inset is narrower (a `tailIndent = -10` artifact, not a
+       design choice), so both sides use the left value rather than reproducing
+       a lopsided box. */
     .callout { background: var(--c-bg); border-radius: 0; margin: 1em 0;
-               padding: var(--callout-pad-top) 1.24em var(--callout-pad-bottom); }
+               padding: var(--callout-pad-top) var(--callout-pad-x) var(--callout-pad-bottom); }
     /* The icon is anchored to the title's first-line baseline (its box has no
        text, so its baseline is its bottom edge), then shifted to center on the
        cap height — the editor's geometry. Centering it in a line-tall box
