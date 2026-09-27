@@ -286,16 +286,24 @@ extension EditorTextView {
 
         let gap = pointSize * 0.3
         let iconW = icon.size.width, iconH = icon.size.height
-        let height = ceil(max(iconH, labelSize.height))
+        let descent = -bodyFont.descender
+        let textH = bodyFont.ascender + descent
+        let height = ceil(max(iconH, textH))
         let width = ceil(iconW + gap + labelSize.width)
+        // The label's baseline inside the image (y-up). The overlay's minY is
+        // set to minus this so the label shares the surrounding text's
+        // baseline; a bottom-on-baseline image floated it a descent too high.
+        let baselineY = (height - textH) / 2 + descent
 
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             icon.draw(in: NSRect(x: 0, y: (height - iconH) / 2, width: iconW, height: iconH))
-            label.draw(at: NSPoint(x: iconW + gap, y: (height - labelSize.height) / 2))
+            // No `.usesLineFragmentOrigin`: the rect's origin is the baseline.
+            label.draw(with: NSRect(x: iconW + gap, y: baselineY, width: labelSize.width, height: textH),
+                       options: [])
             return true
         }
         image.cacheMode = .never   // re-rasterize at the screen's backing scale, like the callout header
 
-        return FragmentOverlay(image: image, bounds: CGRect(x: 0, y: 0, width: width, height: height))
+        return FragmentOverlay(image: image, bounds: CGRect(x: 0, y: -baselineY, width: width, height: height))
     }
 }

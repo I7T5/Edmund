@@ -106,6 +106,17 @@ struct ImageRenderingTests {
         }
     }
 
+    @Test("Placeholder label sits on the text baseline, not the image bottom")
+    func placeholderSeatsOnBaseline() throws {
+        let editor = makeEditor()
+        let overlay = try #require(editor.imageOverlay(destination: "/no/such/file.png"))
+        // bounds.minY is the image bottom relative to the baseline; the label's
+        // descenders need at least the font's descent below it.
+        let below = -overlay.bounds.minY
+        #expect(below >= -editor.bodyFont.descender)
+        #expect(below <= overlay.bounds.height / 2)
+    }
+
     @Test("Percent-encoded relative destination (non-ASCII assets folder) resolves and renders")
     func percentEncodedRelativeResolves() throws {
         // Mirror a real paste into a document with a non-ASCII name: the
