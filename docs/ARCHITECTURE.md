@@ -1115,21 +1115,16 @@ Notable subsystems:
   exactly as edit mode reads by range. The `?? Self.plainText(of:)` fallback
   on that line is the mangled path — anything that makes `sourceText` return
   nil reintroduces the collapse.
-- **A callout that is the first block of a document is ~3.5pt short on top.**
-  Measured on a fresh open, caret moved off the block: 14.5pt above the title
-  vs 18.0pt for an identical callout mid-document (bands 80.0 / 83.0pt). Repro:
-  first line `> [!NOTE]`, a second callout further down, compare. (While the
-  caret is *inside* it the callout renders as raw source with no background —
-  that is live preview working, not the bug.) The top breathing room is not
-  paragraph spacing: it is reserved as *text* space by raising the header
-  line's `minimumLineHeight` in `calloutParagraphStyle`
-  (`+CalloutRendering.swift`), then painted by `decorationDrawHeight` /
-  `layoutFragmentFrame` (`DecoratedTextLayoutFragment.swift`). Check first whether the
-  *mid-document* callout is absorbing the blank line above it into its
-  fragment — `layoutFragmentFrame` already special-cases the trailing-empty-line
-  mirror of that — in which case 18.0pt is the inflated figure and the fix
-  belongs at the other end. Also reported and **not** reproduced: pushing such a
-  callout down with newlines loses its background entirely.
+- **TextKit drops `paragraphSpacingBefore` and `lineSpacing` on the document's
+  first paragraph.** Space reserved that way vanishes when the block opens the
+  document (a callout there once got ~5pt of top padding instead of ~22pt). A
+  callout's top room is therefore reserved on the header line itself, by
+  raising its hidden anchor glyph's `.baselineOffset`
+  (`reserveCalloutTopRoom`, `+CalloutRendering.swift`); the header paragraph
+  gets no `lineSpacing` so it lands the same anywhere. `minimumLineHeight` is
+  not an alternative: it is paragraph-wide and would make every line of a
+  wrapped custom title taller. Also reported and **not** reproduced: pushing a
+  first-block callout down with newlines loses its background entirely.
 - *(Add new ones here as you find them — with a one-line repro and a
   pointer to any deeper write-up in `docs/`.)*
 
