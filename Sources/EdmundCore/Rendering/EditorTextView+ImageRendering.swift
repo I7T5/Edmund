@@ -65,7 +65,7 @@ enum ImageLoadFailure: Equatable {
         case .notAnImage: return "Not an image"
         case .notFound: return "Image not found"
         case .needsFolderAccess: return "Folder access needed"
-        case .embedTypeUnsupported: return "Embeded file not an image"
+        case .embedTypeUnsupported: return "Embedded file not an image"
         case .embedTypeGenerallyUnsupported: return "Embed file type generally unsupported"
         }
     }
