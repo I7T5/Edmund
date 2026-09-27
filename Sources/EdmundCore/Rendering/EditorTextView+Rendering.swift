@@ -292,7 +292,6 @@ extension EditorTextView {
         let result = NSMutableAttributedString(string: markdown, attributes: baseAttributes)
         guard !markdown.isEmpty else { return result }
 
-
         // The font already applied at `loc` — the enclosing heading's when
         // inside one, else the base body font. Inline spans derive their font
         // from it so `# **bold** and `code`` keeps the heading's size. Spans

@@ -259,8 +259,8 @@ public class EditorTextView: NSTextView {
     // re-parsing (and skips restyling entirely when the caret's token set is
     // unchanged).
 
-    /// The active block's parsed spans, keyed by everything `SyntaxHighlighter.
-    /// parse` reads besides the caret.
+    /// The active block's parsed spans, including the continuation context
+    /// that selects normal versus dedented parsing.
     var activeSpanCache: (content: String, defsText: String,
                           features: MarkdownFeatures, continuationDepth: Int?,
                           spans: [SyntaxHighlighter.Span])?
