@@ -219,12 +219,11 @@ extension EditorTextView {
                 // wrapped lines align under the title. Top breathing room is
                 // above the first line only (the box covers it).
                 let ps = NSMutableParagraphStyle()
-                ps.lineSpacing = bodyParagraphStyle.lineSpacing
                 ps.firstLineHeadIndent = 2
                 ps.headIndent = 2 + quoteMarkerWidth + iconAdvance
                 ps.tailIndent = -10
-                ps.paragraphSpacingBefore = calloutTopPad
                 result.addAttribute(.paragraphStyle, value: ps, range: headerLine)
+                reserveCalloutTopRoom(at: header.location, headerLine: headerLine, in: result)
             } else {
                 // Default title (synthesized type name, not in the source, and
                 // short enough never to wrap): hide the whole header and draw the
@@ -250,10 +249,7 @@ extension EditorTextView {
                                  in: result)
                     // Same top room as a custom title (the overlay's title sits
                     // on the line baseline), so both headers share one geometry.
-                    result.addAttribute(
-                        .paragraphStyle,
-                        value: calloutParagraphStyle(spacingBefore: calloutTopPad),
-                        range: headerLine)
+                    reserveCalloutTopRoom(at: header.location, headerLine: headerLine, in: result)
                 }
             }
         }
@@ -452,8 +448,8 @@ extension EditorTextView {
 
     // MARK: Padding constants (shared by the box and the header image)
 
-    /// Top breathing room — the header line's `paragraphSpacingBefore`, which
-    /// the box covers.
+    /// Top breathing room, reserved on the header line by raising its hidden
+    /// anchor (see `reserveCalloutTopRoom`); the box covers it.
     private var calloutTopPad: CGFloat { Self.calloutTopPad(bodyFont) }
     static func calloutTopPad(_ bodyFont: NSFont) -> CGFloat { bodyFont.pointSize * 0.8 }
 
@@ -473,6 +469,34 @@ extension EditorTextView {
             + NSLayoutManager().defaultBaselineOffset(for: titleFont) - titleFont.capHeight
         return (top, top + calloutBottomOpticalBias)
     }
+    /// Reserves the box's top room on the header line itself: the hidden
+    /// anchor glyph at `location` is raised so the line's ascent puts the
+    /// title's baseline `calloutVisibleGaps().top + capHeight` below the
+    /// fragment top.
+    ///
+    /// Not `paragraphSpacingBefore`: TextKit drops it on the document's first
+    /// paragraph, which left a callout opening the document with ~5pt of top
+    /// padding. Not `minimumLineHeight`: it is paragraph-wide, so it would
+    /// inflate every wrapped line of a long custom title. TextKit also stacks
+    /// `lineSpacing` above every line except the document's first, so the
+    /// header paragraph gets none — the raise covers it — and the box top sits
+    /// the same distance above the title wherever the callout is. (A wrapped
+    /// custom title's lines are set solid, like a heading's.)
+    private func reserveCalloutTopRoom(at location: Int, headerLine: NSRange,
+                                       in result: NSMutableAttributedString) {
+        guard location < result.length, headerLine.upperBound <= result.length else { return }
+        let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+        let gaps = Self.calloutVisibleGaps(bodyFont: bodyFont,
+                                           lineSpacing: bodyParagraphStyle.lineSpacing)
+        result.addAttribute(.baselineOffset, value: gaps.top + titleFont.capHeight,
+                            range: NSRange(location: location, length: 1))
+        let base = result.attribute(.paragraphStyle, at: headerLine.location, effectiveRange: nil)
+            as? NSParagraphStyle ?? calloutParagraphStyle()
+        let ps = base.mutableCopy() as! NSMutableParagraphStyle
+        ps.lineSpacing = 0
+        result.addAttribute(.paragraphStyle, value: ps, range: headerLine)
+    }
+
     /// Extra bottom room over the exact cap-line/baseline match (see
     /// `calloutVisibleGaps`). Chosen by eye on Iowan 16pt header-only callouts.
     static let calloutBottomOpticalBias: CGFloat = 1
@@ -497,11 +521,11 @@ extension EditorTextView {
     /// Text insets the NSTextBlock padding used to provide. The left inset is
     /// kept small so the callout's text lines up with a plain block quote's —
     /// the quote's 2pt bar inset matches this 2pt — and the top breathing room
-    /// is the header line's `spacingBefore`. The bottom breathing
+    /// is reserved on the header line (`reserveCalloutTopRoom`). The bottom breathing
     /// room is the last line's box `bottomPad` (which grows that fragment's
     /// frame), so the drawn box covers it and clicks there land on the
     /// callout's last line — no trailing paragraph spacing needed.
-    private func calloutParagraphStyle(spacingBefore: CGFloat = 0) -> NSParagraphStyle {
+    private func calloutParagraphStyle() -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
         ps.lineSpacing = bodyParagraphStyle.lineSpacing
         ps.firstLineHeadIndent = 2
@@ -509,7 +533,6 @@ extension EditorTextView {
         // matching list items and plain blockquotes.
         ps.headIndent = 2 + quoteMarkerWidth
         ps.tailIndent = -10
-        ps.paragraphSpacingBefore = spacingBefore
         return ps
     }
 
@@ -565,7 +588,7 @@ extension EditorTextView {
     /// wraps it in a `FragmentOverlay`. Returns `nil` if the Lucide icon can't
     /// be resolved. The overlay is anchored by the title's baseline, so the
     /// title sits exactly where a custom title's live text would; the top
-    /// breathing room is the header line's `paragraphSpacingBefore`.
+    /// breathing room is reserved on the header line (`reserveCalloutTopRoom`).
     private func calloutHeaderOverlay(iconName: String, title: String, color: NSColor,
                                       colorKey: String,
                                       iconNudge: CGFloat) -> FragmentOverlay? {

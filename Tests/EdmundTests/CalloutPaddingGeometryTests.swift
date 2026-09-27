@@ -70,4 +70,25 @@ struct CalloutPaddingGeometryTests {
                     "\(c.header): bottom baseline gap \(g.bottom) should be top cap gap \(g.top) + \(bias)")
         }
     }
+
+    /// Regression: TextKit drops `paragraphSpacingBefore` (and the line's
+    /// `lineSpacing`) on the document's first paragraph, so a callout opening
+    /// the document lost ~16pt of top padding.
+    @Test("A callout opening the document keeps its top padding",
+          arguments: ["> [!note]\n> Body line.", "> [!tip] Custom title\n> Body line."])
+    @MainActor func documentStartKeepsTopPadding(callout: String) {
+        let e = windowed()
+        let doc = callout + "\n\nMid\n\n" + callout + "\n\nEnd"
+        e.loadContent(doc)
+        let ns = doc as NSString
+        e.recompose(cursorInRaw: ns.range(of: "Mid").location)
+        let second = ns.range(of: callout, options: .backwards).location
+        let bodyOffset = (callout as NSString).range(of: "> Body").location
+        guard let first = gaps(e, headerLocation: 0, lastLocation: bodyOffset),
+              let mid = gaps(e, headerLocation: second, lastLocation: second + bodyOffset) else {
+            Issue.record("no fragments"); return
+        }
+        #expect(abs(first.top - mid.top) < 0.5,
+                "document-start top gap \(first.top) should match mid-document \(mid.top)")
+    }
 }
