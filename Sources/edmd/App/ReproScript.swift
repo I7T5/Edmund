@@ -31,6 +31,8 @@ import ScreenCaptureKit
 ///                     activating the app the way an AX-driven ⌘F would
 ///   readscroll <y>    raw-scroll the Read-mode webview to y
 ///   readclick <css>   click the first element matching a CSS selector in Read
+///   readeval <js>     evaluate JavaScript in the Read-mode webview, report the result
+///   readsnapshot <path>  render the Read-mode webview to a PNG
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
 ///   logtoolbar        log every toolbar item's identifier and enabled state
@@ -326,6 +328,37 @@ enum ReproScript {
                     web.evaluateJavaScript("document.querySelector('\(selector)').click()",
                                            completionHandler: nil)
                     Log.info("repro readclick \(arg)", category: .app)
+                }
+            case "readeval":
+                // Evaluates JavaScript in the Read-mode webview and reports the
+                // result — for measuring WebKit's own layout (line boxes,
+                // baselines) instead of inferring it from pixels.
+                scheduleDoc(after: delay) { doc in
+                    guard let content = doc.windowControllers.first?.window?.contentView,
+                          let web = firstWebView(in: content) else {
+                        report("repro readeval: no webview"); return
+                    }
+                    web.evaluateJavaScript(arg) { result, error in
+                        report("repro readeval \(result.map { "\($0)" } ?? "nil") err=\(error.map { "\($0)" } ?? "none")")
+                    }
+                }
+            case "readsnapshot":
+                // Renders the Read-mode webview to a PNG. `snapshot` can't: WebKit
+                // draws out of process, so `cacheDisplay` captures a blank view.
+                scheduleDoc(after: delay) { doc in
+                    guard let content = doc.windowControllers.first?.window?.contentView,
+                          let web = firstWebView(in: content) else {
+                        report("repro readsnapshot: no webview"); return
+                    }
+                    web.takeSnapshot(with: nil) { image, _ in
+                        guard let tiff = image?.tiffRepresentation,
+                              let png = NSBitmapImageRep(data: tiff)?
+                                .representation(using: .png, properties: [:]) else {
+                            report("repro readsnapshot: no image"); return
+                        }
+                        try? png.write(to: URL(fileURLWithPath: arg))
+                        report("repro readsnapshot \(arg)")
+                    }
                 }
             case "logstate":
                 // Dumps view-swap state to stdout (shell-visible even when the

@@ -27,4 +27,11 @@ struct StrictLineBreaksTests {
         #expect(html("a  \nb", strict: true).contains("<br>"))
         #expect(html("a  \nb", strict: false).contains("<br>"))
     }
+
+    @Test("A break carries the editor's paragraph gap (.line-gap)")
+    @MainActor func breakCarriesLineGap() {
+        #expect(html("a\nb", strict: false).contains("a" + HTMLRenderer.lineBreakHTML))
+        #expect(html("a  \nb", strict: true).contains(HTMLRenderer.lineBreakHTML))
+        #expect(HTMLTheme.css(.default, callouts: [:], dark: false).contains(".line-gap"))
+    }
 }
