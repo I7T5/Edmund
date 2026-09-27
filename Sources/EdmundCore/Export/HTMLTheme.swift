@@ -89,10 +89,13 @@ enum HTMLTheme {
         let calloutPadTop = calloutGaps.top - halfLeading(titleFont)
             - (titleFont.ascender - titleFont.capHeight)
         let calloutPadBottom = calloutGaps.bottom - halfLeading(theme.bodyFont) + theme.bodyFont.descender
-        // The icon's line-high box centers it on the line box; shift it onto the
-        // title's cap-height center, as the editor places it.
-        let calloutIconShift = halfLeading(titleFont) + titleFont.ascender
-            - titleFont.capHeight / 2 - lineBox / 2
+        // The icon's bottom sits on the title's baseline; drop it by half its
+        // overhang past the cap height so it centers on the cap height, as the
+        // editor places it (the icon is 1em square). Floored to a whole px: a
+        // fractional translate smears the icon's bottom edge onto the next
+        // device pixel, leaving it a pixel lower than the editor's pixel-snapped
+        // icon.
+        let calloutIconShift = ((theme.fontSize - titleFont.capHeight) / 2).rounded(.down)
 
         // CSS px and AppKit points are both device-independent, so the editor's
         // physical cap (EditorTextView.maxContentWidthPoints) carries over as-is.
@@ -403,14 +406,14 @@ enum HTMLTheme {
        baseline gaps land on the editor's. */
     .callout { background: var(--c-bg); border-radius: 0; margin: 1em 0;
                padding: var(--callout-pad-top) 1.24em var(--callout-pad-bottom); }
-    /* Icon sits at the top so it stays on the first line of a wrapped title; its
-       box is exactly one line tall and centers the glyph, so it lines up with the
-       first line's text rather than floating above it. */
-    .callout-title { display: flex; align-items: flex-start; gap: 0.3em;
+    /* The icon is anchored to the title's first-line baseline (its box has no
+       text, so its baseline is its bottom edge), then shifted to center on the
+       cap height — the editor's geometry. Centering it in a line-tall box
+       instead left it up to ~1pt low: WebKit snaps the text baseline to a whole
+       pixel but not a centered box. */
+    .callout-title { display: flex; align-items: baseline; gap: 0.3em;
                      font-weight: 600; color: var(--c-accent); }
-    .callout-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-                    height: calc(var(--body-size) * var(--line-height)); }
-    /* Centered on the title's cap height, as the editor places it. */
+    .callout-icon { flex: 0 0 auto; display: inline-flex; }
     .callout-icon svg { width: 1em; height: 1em; transform: translateY(var(--callout-icon-shift)); }
     .callout-title-text { flex: 1 1 auto; }
     /* Collapsible callout (`[!type]-`/`+`): a real <details>/<summary>. Hide the
@@ -420,9 +423,9 @@ enum HTMLTheme {
     .callout-collapsible > summary::after { content: "›"; flex: 0 0 auto;
         margin-left: 0.3em; transition: transform 0.15s ease; }
     .callout-collapsible[open] > summary::after { transform: rotate(90deg); }
-    /* Title to body: one paragraph gap, the editor's spacing between the header
-       line and the first body line. */
-    .callout-body { margin-top: var(--para-space); }
+    /* Sets the title off from the body; the editor matches it
+       (`EditorTextView.calloutTitleBodyGap`). */
+    .callout-body { margin-top: 0.4em; }
     /* A title-only callout still emits an empty body div; collapse its top margin
        so the box doesn't carry the title gap as dead space at the bottom. */
     .callout-body:empty { margin-top: 0; }

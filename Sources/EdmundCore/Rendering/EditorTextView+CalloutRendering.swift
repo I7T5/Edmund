@@ -384,7 +384,7 @@ extension EditorTextView {
         }
 
         // Paragraph styles and decorations, per body line.
-        for lm in lineMap {
+        for (i, lm) in lineMap.enumerated() {
             let ss = lm.stripped.location
             guard ss < subLen else { continue }
 
@@ -396,6 +396,13 @@ extension EditorTextView {
             ps.firstLineHeadIndent += step
             ps.headIndent += step
             if ps.tailIndent == 0 { ps.tailIndent = -10 }
+            // Set the title off from the body, as Read mode's `.callout-body`
+            // margin does. `max` keeps a larger inner reservation (a table's
+            // handle band).
+            if i == 0 {
+                ps.paragraphSpacingBefore = max(ps.paragraphSpacingBefore,
+                                                Self.calloutTitleBodyGap(bodyFont))
+            }
             result.addAttribute(.paragraphStyle, value: ps, range: lm.real)
 
             // Decoration: stack any inner box/bar (inset bumped) under the
@@ -452,22 +459,25 @@ extension EditorTextView {
     /// anchor (see `reserveCalloutTopRoom`); the box covers it.
     private var calloutTopPad: CGFloat { Self.calloutTopPad(bodyFont) }
     static func calloutTopPad(_ bodyFont: NSFont) -> CGFloat { bodyFont.pointSize * 0.8 }
+    /// Space between the title line and the first body line, over the normal
+    /// line pitch. Read mode's `.callout-body { margin-top: 0.4em }` matches.
+    static func calloutTitleBodyGap(_ bodyFont: NSFont) -> CGFloat { bodyFont.pointSize * 0.4 }
 
     /// The box padding the eye reads, shared with Read mode's CSS: box top to
     /// the title's *cap line*, and the last *baseline* to the box bottom.
     /// Descenders are sparse, so matching ink box to ink box (icon top vs
     /// descender bottom) left the bottom looking ~1.5pt heavier. The bottom
-    /// also gets `calloutBottomOpticalBias`: a mostly-lowercase title ("Note",
-    /// "Warning") reads as starting a little below its cap line, so an exact
-    /// cap-to-baseline match still looks top-heavy. TextKit 2 line metrics are
-    /// `defaultLineHeight` / `defaultBaselineOffset`, with `lineSpacing`
-    /// stacked above the glyphs.
+    /// also gets half the title's cap-to-x-height span: a mostly-lowercase
+    /// title ("Note", "Warning") reads as starting between its cap line and
+    /// x-height, so an exact cap-to-baseline match still looks top-heavy.
+    /// TextKit 2 line metrics are `defaultLineHeight` /
+    /// `defaultBaselineOffset`, with `lineSpacing` stacked above the glyphs.
     static func calloutVisibleGaps(bodyFont: NSFont, lineSpacing: CGFloat)
         -> (top: CGFloat, bottom: CGFloat) {
         let titleFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
         let top = calloutTopPad(bodyFont) + lineSpacing
             + NSLayoutManager().defaultBaselineOffset(for: titleFont) - titleFont.capHeight
-        return (top, top + calloutBottomOpticalBias)
+        return (top, top + (titleFont.capHeight - titleFont.xHeight) / 2)
     }
     /// Reserves the box's top room on the header line itself: the hidden
     /// anchor glyph at `location` is raised so the line's ascent puts the
@@ -496,10 +506,6 @@ extension EditorTextView {
         ps.lineSpacing = 0
         result.addAttribute(.paragraphStyle, value: ps, range: headerLine)
     }
-
-    /// Extra bottom room over the exact cap-line/baseline match (see
-    /// `calloutVisibleGaps`). Chosen by eye on Iowan 16pt header-only callouts.
-    static let calloutBottomOpticalBias: CGFloat = 1
 
     /// Bottom breathing room. Delivered by growing the last line's layout
     /// fragment frame (a box `bottomPad`), so it is genuine clickable text

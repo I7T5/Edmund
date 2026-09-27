@@ -4,7 +4,7 @@ import AppKit
 
 /// A callout's vertical padding is measured the way the eye reads it: box top
 /// to the title's cap line, and the last line's baseline to the box bottom.
-/// The bottom must exceed the top by `calloutBottomOpticalBias` for both header
+/// The bottom must exceed the top by the optical bias for both header
 /// kinds (default title drawn as an overlay image, custom title as live text)
 /// and for a header-only callout. Matching ink box to ink box instead — icon
 /// top vs descender bottom — left the bottom looking heavier.
@@ -58,7 +58,10 @@ struct CalloutPaddingGeometryTests {
             ("> [!tip]", "> Body line.\n\n> [!warning]"),
             ("> [!warning]", "> [!warning]"),   // header only: the header is the last line
         ]
-        let bias = EditorTextView.calloutBottomOpticalBias
+        let expected = EditorTextView.calloutVisibleGaps(bodyFont: e.bodyFont,
+                                                         lineSpacing: e.bodyParagraphStyle.lineSpacing)
+        let bias = expected.bottom - expected.top
+        #expect(bias > 0)
         for c in cases {
             let h = ns.range(of: c.header).location
             let l = ns.range(of: c.last).location
@@ -69,6 +72,21 @@ struct CalloutPaddingGeometryTests {
             #expect(abs(g.bottom - g.top - bias) < 0.5,
                     "\(c.header): bottom baseline gap \(g.bottom) should be top cap gap \(g.top) + \(bias)")
         }
+    }
+
+    @Test("The first body line is set off from the title; later lines are not")
+    @MainActor func titleBodyGap() {
+        let e = windowed()
+        let doc = "Intro\n\n> [!note]\n> First line.\n> Second line.\n\nEnd"
+        e.loadContent(doc)
+        e.recompose(cursorInRaw: 0)
+        let ns = doc as NSString
+        func spacingBefore(_ needle: String) -> CGFloat? {
+            (e.textStorage?.attribute(.paragraphStyle, at: ns.range(of: needle).location,
+                                      effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacingBefore
+        }
+        #expect(spacingBefore("> First") == EditorTextView.calloutTitleBodyGap(e.bodyFont))
+        #expect(spacingBefore("> Second") == e.bodyParagraphStyle.paragraphSpacingBefore)
     }
 
     /// Regression: TextKit drops `paragraphSpacingBefore` (and the line's
