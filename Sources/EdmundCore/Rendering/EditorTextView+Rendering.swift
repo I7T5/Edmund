@@ -393,8 +393,13 @@ extension EditorTextView {
                 // failure placeholder), even with the caret inside the token.
                 let showRaw = cursorInToken
                     && !destination.lowercased().hasPrefix("data:")
+                // Size a placeholder to the font already applied here (a
+                // heading's), like inline math.
+                let contextSize = (result.attribute(.font, at: span.fullRange.location,
+                                                    effectiveRange: nil) as? NSFont)?.pointSize
                 if !showRaw, let overlay = imageOverlay(destination: destination,
-                                                        width: width, height: height) {
+                                                        width: width, height: height,
+                                                        fontSize: contextSize) {
                     // Rendered: draw the image at the leading character (`!` of
                     // `![alt](path)`, `<` of `<img …>`) and hide the rest of the
                     // source, reserving the line height so the picture has room.
@@ -433,7 +438,10 @@ extension EditorTextView {
                 // placeholder (same overlay as a blocked image) when rendered,
                 // hiding the `[[…]]` source and reserving line height. Active
                 // (cursor inside): the raw `![[file]]` shows with base attributes.
-                if !cursorInToken, let overlay = embedOverlay(destination: destination) {
+                let contextSize = (result.attribute(.font, at: span.fullRange.location,
+                                                    effectiveRange: nil) as? NSFont)?.pointSize
+                if !cursorInToken, let overlay = embedOverlay(destination: destination,
+                                                              fontSize: contextSize) {
                     let hideStart = span.fullRange.location + 1
                     let hideLen = span.fullRange.upperBound - hideStart
                     if hideLen > 0 {

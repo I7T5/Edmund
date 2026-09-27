@@ -117,6 +117,22 @@ struct ImageRenderingTests {
         #expect(below <= overlay.bounds.height / 2)
     }
 
+    @Test("Placeholders take the size of the text around them, like a heading's")
+    func placeholderScalesWithFont() throws {
+        let editor = makeEditor()
+        func overlay(_ source: String) throws -> FragmentOverlay {
+            let styled = editor.styleBlock(source, cursorPosition: nil)
+            let at = (source as NSString).range(of: "!").location
+            return try #require(styled.attribute(.fragmentOverlay, at: at, effectiveRange: nil) as? FragmentOverlay)
+        }
+        let body = try overlay("x ![a](/no/such/file.png)")
+        let heading = try overlay("# x ![a](/no/such/file.png)")
+        #expect(heading.bounds.height > body.bounds.height)
+        let bodyEmbed = try overlay("x ![[clip.mp4]]")
+        let headingEmbed = try overlay("# x ![[clip.mp4]]")
+        #expect(headingEmbed.bounds.height > bodyEmbed.bounds.height)
+    }
+
     @Test("Percent-encoded relative destination (non-ASCII assets folder) resolves and renders")
     func percentEncodedRelativeResolves() throws {
         // Mirror a real paste into a document with a non-ASCII name: the
