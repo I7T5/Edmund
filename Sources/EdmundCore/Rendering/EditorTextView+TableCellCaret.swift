@@ -52,6 +52,13 @@ extension EditorTextView {
               // the layout work below must never touch a document without one.
               let blockIndex = blockIndexForRawOffset(range.location),
               blockIndex < blocks.count, blocks[blockIndex].kind == .table,
+              // …and only a row that actually wraps (`.tableCellWraps` covers
+              // the row, newline excluded, so a caret at the row's end is
+              // checked one character back). The layout below walks every
+              // fragment above the caret even when nothing is invalid —
+              // ~5ms at 300k, ~15ms at 1 MB, per draw — so a caret in an
+              // ordinary table must not reach it.
+              rowWraps(at: range.location, in: storage),
               let location = tlm.location(tlm.documentRange.location,
                                           offsetBy: range.location)
         else { return [] }
@@ -85,6 +92,13 @@ extension EditorTextView {
         let origin = textContainerOrigin
         return fragment.cellWrapRects(forParagraphRange: local).map {
             $0.offsetBy(dx: frame.minX + origin.x, dy: frame.minY + origin.y)
+        }
+    }
+
+    private func rowWraps(at offset: Int, in storage: NSTextStorage) -> Bool {
+        [offset, offset - 1].contains { i in
+            i >= 0 && i < storage.length
+                && storage.attribute(.tableCellWraps, at: i, effectiveRange: nil) != nil
         }
     }
 
