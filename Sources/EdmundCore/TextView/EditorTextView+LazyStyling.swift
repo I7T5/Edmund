@@ -305,7 +305,10 @@ extension EditorTextView {
     private func scheduleScrollPromotion() {
         guard !scrollPromotionScheduled else { return }
         scrollPromotionScheduled = true
-        RunLoop.main.perform { [weak self] in
+        // Common modes, not the default: dragging the scroller knob tracks the
+        // mouse in `.eventTracking`, and a default-mode block would wait for
+        // mouse-up — raw Markdown on screen for the whole drag.
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.scrollPromotionScheduled = false
