@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [0.8.1] - 2026-09-28
 
-Minor bug fixes and UI and performance improvements. 
+Minor bug fixes and UI and performance improvements. Thanks to @robince for their first contribution!
 
 ### Added
 - Editor: Play GIF in loop
