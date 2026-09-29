@@ -123,6 +123,19 @@ public class EditorTextView: NSTextView {
         didSet { listDepthsCache = nil }
     }
     var listDepthsCache: [Int]?
+    /// Whole-document `ListDepthMap` builds so far; tests assert styling
+    /// doesn't rebuild it per block.
+    var listDepthsBuildCount = 0
+
+    /// Flags block `index` styled or unstyled. Keeps `listDepthsCache`, which
+    /// `blocks`' `didSet` would otherwise drop: depth reads only a block's kind
+    /// and indent, never its styling. Dropping it here made every restyle
+    /// rebuild the map over the whole document — O(blocks²) across a drain.
+    func setStyled(_ index: Int, _ styled: Bool) {
+        let depths = listDepthsCache
+        blocks[index].isStyled = styled
+        listDepthsCache = depths
+    }
 
     /// Nesting depth of each block's list line, or `ListDepthMap.notAList`.
     /// Built lazily and dropped by `blocks`' `didSet`, the one hook covering
@@ -136,6 +149,7 @@ public class EditorTextView: NSTextView {
     // stack matches the old one, since everything past that point is unchanged.
     var listDepths: [Int] {
         if let listDepthsCache { return listDepthsCache }
+        listDepthsBuildCount += 1
         let depths = ListDepthMap.build(from: blocks)
         listDepthsCache = depths
         return depths

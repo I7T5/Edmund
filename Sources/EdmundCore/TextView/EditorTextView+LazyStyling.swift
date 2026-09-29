@@ -67,7 +67,7 @@ extension EditorTextView {
                     let cursorInBlock: Int? = (idx == activeBlockIndex)
                         ? max(0, cursor - blocks[idx].range.location) : nil
                     restyleBlock(idx, cursorInBlock: cursorInBlock)
-                    blocks[idx].isStyled = true
+                    setStyled(idx, true)
                     restyled.insert(idx)
                     if ContinuousClock.now - start > budget {
                         remaining = true
@@ -202,7 +202,7 @@ extension EditorTextView {
                 let cursorInBlock: Int? = (idx == activeBlockIndex)
                     ? max(0, cursor - blocks[idx].range.location) : nil
                 restyleBlock(idx, cursorInBlock: cursorInBlock)
-                blocks[idx].isStyled = true
+                setStyled(idx, true)
             }
             ts.endEditing()
         }

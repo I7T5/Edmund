@@ -57,6 +57,15 @@ struct LazyRenderingTests {
         assertMatchesFullRecomposeOracle(editor, "after drain")
     }
 
+    @Test("The drain builds the list-depth map once, not once per block")
+    @MainActor func drainBuildsDepthMapOnce() {
+        let (editor, _) = windowedEditor()
+        editor.loadContent(bigDocument())
+        let before = editor.listDepthsBuildCount
+        drainAllStyling(editor)
+        #expect(editor.listDepthsBuildCount - before <= 1)
+    }
+
     @Test("Scrolling promotes newly visible blocks synchronously")
     @MainActor func scrollPromotes() {
         let (editor, scroll) = windowedEditor()

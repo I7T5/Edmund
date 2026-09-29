@@ -99,7 +99,7 @@ extension EditorTextView {
                     if let vis = self.syncStylingBlockRange(), vis.contains(old) {
                         dirty.insert(old)   // visible — restyle in place
                     } else {
-                        self.blocks[old].isStyled = false   // off screen — defer
+                        self.setStyled(old, false)   // off screen — defer
                         deferred = true
                     }
                 }
