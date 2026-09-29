@@ -3,6 +3,52 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-09-28
+
+Minor bug fixes and UI and performance improvements. 
+
+### Added
+- Editor: Play GIF in loop
+- Status bar: Added top border to match toolbar
+- App menu > View's Status bar section
+
+### Changed
+- Various performance improvements
+  - Editor: Faster typing and caret movement in long documents (#343 @i7t5)
+  - Editor: Undo history keeps only the changed text of each step, so memory stays flat during long editing sessions (#331 @arthurlee116)
+  - Editor: Faster redraws and pointer tracking for line numbers, table buttons and code copy buttons (#353 @arthurlee116)
+  - Editor: Faster restyling of tables and callouts when caret moves elsewhere (#354 @arthurlee116)
+  - Status bar: Word and character counts update after a pause in typing, not on every keystroke (#357 @arthurlee116)
+  - Read mode: Re-renders once after a burst of edits (#357 @arthurlee116)
+- Editor: Reveal `#`s for empty headings
+- Editor: `Shift+Return` on list items now starts a markerless indented new line
+- Editor: Spell check now skips math, links, images, etc. 
+- Editor: Improved animation for copy button for code block and matched hover background to show raw table button
+- Images: Image and placeholders inside headings are now heading-sized
+- Toolbar: Removed right-click action from toolbar items
+- Toolbar: Changed view-mode button's label to "Edit" / "Read"
+- Toolbar: Changed view-mode button's tooltip to "Show Reader" / "Show Editor"
+- Status bar: Moved "Auto-Hide" control to View menu
+- App menu > View's `CMD+E` now reads "Show Reader" / "Show Editor"
+- App menu > View's Auto-Hide options now reads "Automatically hide..."
+- App menu > Help > Acknowledgements jumps to browser instead of default application for `.html`
+- Settings > Syntax > Code syntax's scrollbar appears/fades with System Settings
+- Settings > Syntax > Code syntax's edit button symbol changed to `ellipses.circle`
+- Settings > Advanced > Diagnostics includes crash reporting with updated notes
+- Downsized application by removing extra fonts
+
+### Fixed
+- Editor: Undo after IME input (Chinese, Japanese, accented letters) restores text from before composition in one step (#331 @arthurlee116)
+- Tables and images now shrinks when window narrows below max content-width (#290 @robince @i7t5)
+- Images: Placeholder baseline alignment
+- Images: Placeholder now reads "Embedded" without typo
+- Math: Baseline alignment
+- Callout: Icon baseline alignment and padding tweaks in both editor and reader
+- Advanced Math: Removed extra horizontal paddding
+- Advanced Math: Rendering in dark mode
+- Status bar: Character count no longer lags one keystroke behind (#357 @arthurlee116)
+- Settings: Hard Wrap Paragraphs now appears in Settings > Key Bindings
+
 ## [0.8.0] - 2026-09-22
 
 Mermaid support. Image gets copied to folder. Sandboxing. Various bug-fixes. Thanks to @lluminate for their first contribution! 
