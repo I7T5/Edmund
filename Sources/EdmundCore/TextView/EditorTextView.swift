@@ -250,6 +250,25 @@ public class EditorTextView: NSTextView {
     /// pre-composition state. Record its final diff only after commit.
     var hasDeferredMarkedTextUndo = false
 
+    // MARK: - Active-Block Span Cache
+    //
+    // `applyBlockStyle` runs on every caret move within the active block.
+    // Parsing is the expensive part and depends only on the block content and
+    // the parse inputs — not the caret — so the spans are cached here and a
+    // caret move within an unchanged block re-scans them instead of
+    // re-parsing (and skips restyling entirely when the caret's token set is
+    // unchanged).
+
+    /// The active block's parsed spans, including the continuation context
+    /// that selects normal versus dedented parsing.
+    var activeSpanCache: (content: String, defsText: String,
+                          features: MarkdownFeatures, continuationDepth: Int?,
+                          spans: [SyntaxHighlighter.Span])?
+    /// Indices of the spans containing the caret at the last cursor-aware
+    /// restyle. nil means "some restyle ran without a signature" — the next
+    /// applyBlockStyle must actually re-style.
+    var appliedCursorSpans: [Int]?
+
     /// The separator between blocks in the display.
     /// Must match what BlockParser splits on.
     let blockSeparator = "\n"
