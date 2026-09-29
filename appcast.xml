@@ -462,5 +462,64 @@
                        length="15097818"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.8.1</title>
+            <pubDate>Tue, 29 Sep 2026 02:19:08 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<p>Minor bug fixes and UI and performance improvements.</p>
+<h3>Added</h3>
+<ul>
+<li>Editor: Play GIF in loop</li>
+<li>Status bar: Added top border to match toolbar</li>
+<li>App menu &gt; View&#x27;s Status bar section</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Various performance improvements</li>
+<li>Editor: Faster typing and caret movement in long documents (#343 @i7t5)</li>
+<li>Editor: Undo history keeps only the changed text of each step, so memory stays flat during long editing sessions (#331 @arthurlee116)</li>
+<li>Editor: Faster redraws and pointer tracking for line numbers, table buttons and code copy buttons (#353 @arthurlee116)</li>
+<li>Editor: Faster restyling of tables and callouts when caret moves elsewhere (#354 @arthurlee116)</li>
+<li>Status bar: Word and character counts update after a pause in typing, not on every keystroke (#357 @arthurlee116)</li>
+<li>Read mode: Re-renders once after a burst of edits (#357 @arthurlee116)</li>
+<li>Editor: Reveal <code>#</code>s for empty headings</li>
+<li>Editor: <code>Shift+Return</code> on list items now starts a markerless indented new line</li>
+<li>Editor: Spell check now skips math, links, images, etc.</li>
+<li>Editor: Improved animation for copy button for code block and matched hover background to show raw table button</li>
+<li>Images: Image and placeholders inside headings are now heading-sized</li>
+<li>Toolbar: Removed right-click action from toolbar items</li>
+<li>Toolbar: Changed view-mode button&#x27;s label to &quot;Edit&quot; / &quot;Read&quot;</li>
+<li>Toolbar: Changed view-mode button&#x27;s tooltip to &quot;Show Reader&quot; / &quot;Show Editor&quot;</li>
+<li>Status bar: Moved &quot;Auto-Hide&quot; control to View menu</li>
+<li>App menu &gt; View&#x27;s <code>CMD+E</code> now reads &quot;Show Reader&quot; / &quot;Show Editor&quot;</li>
+<li>App menu &gt; View&#x27;s Auto-Hide options now reads &quot;Automatically hide...&quot;</li>
+<li>App menu &gt; Help &gt; Acknowledgements jumps to browser instead of default application for <code>.html</code></li>
+<li>Settings &gt; Syntax &gt; Code syntax&#x27;s scrollbar appears/fades with System Settings</li>
+<li>Settings &gt; Syntax &gt; Code syntax&#x27;s edit button symbol changed to <code>ellipses.circle</code></li>
+<li>Settings &gt; Advanced &gt; Diagnostics includes crash reporting with updated notes</li>
+<li>Downsized application by removing extra fonts</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Editor: Undo after IME input (Chinese, Japanese, accented letters) restores text from before composition in one step (#331 @arthurlee116)</li>
+<li>Tables and images now shrinks when window narrows below max content-width (#290 @robince @i7t5)</li>
+<li>Images: Placeholder baseline alignment</li>
+<li>Images: Placeholder now reads &quot;Embedded&quot; without typo</li>
+<li>Math: Baseline alignment</li>
+<li>Callout: Icon baseline alignment and padding tweaks in both editor and reader</li>
+<li>Advanced Math: Removed extra horizontal paddding</li>
+<li>Advanced Math: Rendering in dark mode</li>
+<li>Status bar: Character count no longer lags one keystroke behind (#357 @arthurlee116)</li>
+<li>Settings: Hard Wrap Paragraphs now appears in Settings &gt; Key Bindings</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.8.1/Edmund-0.8.1.dmg"
+                       sparkle:version="18"
+                       sparkle:shortVersionString="0.8.1"
+                       sparkle:edSignature="otkjO227eEK7yS2YdX1XoUxObHaeffW8gU2jSQSMiHF6YlNY3ZJVFJak+InzA/FRY3zBAO/rNTcXLoHF/lWQAA=="
+                       length="6719066"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
