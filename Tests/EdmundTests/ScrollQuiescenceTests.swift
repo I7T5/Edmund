@@ -124,7 +124,13 @@ struct ScrollQuiescenceTests {
         let timer = editor.scrollQuiescenceTimer
         scroll.contentView.scroll(to: NSPoint(x: 0, y: 200))
         #expect(editor.scrollQuiescenceTimer === timer)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.35))
+        // Poll rather than wait a fixed 0.35 s: the 250 ms timer shares the
+        // run loop with the first promotion of an 800-paragraph document, and
+        // under load it fires late. A gate that never clears still fails.
+        let deadline = Date().addingTimeInterval(2)
+        while editor.isScrollingActive, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
         #expect(!editor.isScrollingActive)
     }
 }
