@@ -158,7 +158,9 @@ extension EditorTextView {
     /// `shouldChangeText`, which consults this — so the structure is protected
     /// once, whatever key produced the edit, rather than one override per
     /// selector. Content is never protected: only the pipes and the single
-    /// space standing against each.
+    /// space standing against each. `shouldChangeText` skips this while the
+    /// storage's `pendingEdit` is set (an IME composition), because `blocks`
+    /// then hold pre-edit ranges (issue #365).
     func deletionHitsTableStructure(_ range: NSRange) -> Bool {
         guard !rawTableEditing, range.length > 0 else { return false }
         let ns = rawSource as NSString
