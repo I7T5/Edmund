@@ -377,7 +377,7 @@ extension EditorTextView {
     /// splits that glyph's advance down the middle, so the far half of a cell's
     /// pad hit-tests as the *next* cell's first character.
     func tableCell(at point: NSPoint) -> TableCellRef? {
-        for (i, block) in blocks.enumerated() where block.kind == .table {
+        for i in tableBlocks(near: point) {
             // Layout forced: this runs on the click paths, and the click has
             // just restyled the block it landed in. See `tableGrid`.
             guard let grid = tableGrid(blockIndex: i, ensuringLayout: true),
@@ -388,6 +388,25 @@ extension EditorTextView {
             return tableCell(blockIndex: i, row: position.row, column: position.column)
         }
         return nil
+    }
+
+    /// The tables that can hold `point`: the block under it, and its neighbours
+    /// for the bands a grid reaches past its own rows. Found through the
+    /// fragment at the point — which is on screen, so laid out — because
+    /// forcing layout on every table instead lays out the whole document up
+    /// to the last one: seconds per drag event on a large file.
+    private func tableBlocks(near point: NSPoint) -> [Int] {
+        guard let tlm = textLayoutManager,
+              let fragment = tlm.textLayoutFragment(
+                  for: CGPoint(x: point.x - textContainerOrigin.x,
+                               y: point.y - textContainerOrigin.y)),
+              let index = blockIndexForRawOffset(
+                  tlm.offset(from: tlm.documentRange.location,
+                             to: fragment.rangeInElement.location))
+        else { return [] }
+        return [index - 1, index, index + 1].filter {
+            $0 >= 0 && $0 < blocks.count && blocks[$0].kind == .table
+        }
     }
 
     /// Where a click at `point` should leave the caret, or nil to keep the

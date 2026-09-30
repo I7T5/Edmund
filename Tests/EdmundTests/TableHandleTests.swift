@@ -298,6 +298,28 @@ struct TableHandleTests {
         NSGraphicsContext.restoreGraphicsState()
     }
 
+    /// The hit test looks only at the table under the point, not at every
+    /// table: each cell of every table in a many-table document still resolves.
+    @Test("A point resolves to its cell in any of many tables")
+    func pointFindsCellAmongManyTables() {
+        let doc = (0..<25).map { "Para \($0).\n\n| h\($0) | k |\n| --- | --- |\n| v\($0) | w |" }
+            .joined(separator: "\n\n") + "\n"
+        let editor = loadEditor(doc)
+        let tables = editor.blocks.indices.filter { editor.blocks[$0].kind == .table }
+        #expect(tables.count == 25)
+        for index in tables {
+            for (row, column) in [(0, 0), (2, 1)] {
+                guard let grid = editor.tableGrid(blockIndex: index),
+                      let box = grid.cellRect(row: row, column: column),
+                      let cell = editor.tableCell(blockIndex: index, row: row, column: column)
+                else { Issue.record("no grid for table \(index)"); continue }
+                let found = editor.tableCell(at: NSPoint(x: box.midX, y: box.midY))
+                #expect(found?.contentRange == cell.contentRange,
+                        "table \(index) row \(row) col \(column)")
+            }
+        }
+    }
+
     /// The failure the offset-only snap could not see: AppKit splits a pad
     /// glyph's advance down the middle, so a click in the far part of a cell's
     /// pad hit-tests as the *next* cell's first character — the caret crosses a
