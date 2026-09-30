@@ -55,6 +55,44 @@ struct CodeCopyButtonTests {
         #expect(copy.rect.width == editor.tableRawButtonSize)
     }
 
+    @Test("Mid-document, exactly the fences overlapping the viewport get buttons")
+    func viewportBoundedScan() {
+        let editor = makeEditor()
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 300),
+                           styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = NSScrollView(frame: win.contentLayoutRect)
+        scroll.documentView = editor
+        win.contentView = scroll
+        editor.typewriterModeEnabled = false
+        editor.isVerticallyResizable = true
+        editor.minSize = .zero
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                height: CGFloat.greatestFiniteMagnitude)
+        editor.autoresizingMask = [.width]
+        editor.loadContent((0..<300).map { "para \($0)\n\n\(fence)" }.joined(separator: "\n\n"))
+        drainAllStyling(editor)
+        ensureFullLayout(editor)
+        editor.sizeToFit()
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: editor.frame.height / 2))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        layOutViewport(editor)
+
+        guard let tlm = editor.textLayoutManager,
+              let viewport = tlm.textViewportLayoutController.viewportRange else {
+            Issue.record("no viewport"); return
+        }
+        let lo = tlm.offset(from: tlm.documentRange.location, to: viewport.location)
+        let hi = tlm.offset(from: tlm.documentRange.location, to: viewport.endLocation)
+        let expected = Set(editor.blocks.indices.filter {
+            guard case .fence = editor.blocks[$0].kind else { return false }
+            let r = editor.blocks[$0].range
+            return r.location < hi && r.upperBound > lo
+        })
+        #expect(lo > 0, "viewport should start mid-document")
+        #expect(!expected.isEmpty)
+        #expect(Set(editor.marginChromeGeometry().fenceLines.values) == expected)
+    }
+
     @Test("Indented code and Source mode get no button")
     func onlyFencesInEditMode() {
         let indented = loadEditor("para\n\n    let x = 1\n")

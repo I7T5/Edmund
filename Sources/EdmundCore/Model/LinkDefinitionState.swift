@@ -21,7 +21,9 @@ struct LinkDefinitionState: Equatable {
 
     /// The collected definition lines, sorted and newline-joined. Empty when the
     /// document defines no references (then parsing skips the append entirely).
-    var defsText: String { lines.keys.sorted().joined(separator: "\n") }
+    /// Stored, not computed: every block parse reads it, and it changes only
+    /// when a definition line appears or disappears.
+    private(set) var defsText = ""
 
     mutating func add(_ content: String) { scan(content, sign: 1) }
     mutating func remove(_ content: String) { scan(content, sign: -1) }
@@ -33,11 +35,15 @@ struct LinkDefinitionState: Equatable {
     }
 
     private mutating func scan(_ content: String, sign: Int) {
+        var keysChanged = false
         for line in content.split(separator: "\n", omittingEmptySubsequences: false) {
             guard let key = Self.canonicalDefinition(from: String(line)) else { continue }
-            let count = (lines[key] ?? 0) + sign
+            let old = lines[key] ?? 0
+            let count = old + sign
             lines[key] = count <= 0 ? nil : count
+            if (old > 0) != (count > 0) { keysChanged = true }
         }
+        if keysChanged { defsText = lines.keys.sorted().joined(separator: "\n") }
     }
 
     /// A CommonMark link reference definition line: up to 3 leading spaces, a

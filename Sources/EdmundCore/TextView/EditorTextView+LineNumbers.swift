@@ -224,10 +224,14 @@ extension EditorTextView {
         let hi = tlm.offset(from: docStart, to: viewport.endLocation)
         guard lo >= 0, hi > lo else { return geometry }
         // Only blocks overlapping the laid-out viewport can put chrome on
-        // screen, so the scan tracks what's visible rather than the whole
-        // document.
-        for (i, block) in blocks.enumerated()
-        where block.range.location < hi && block.range.upperBound > lo {
+        // screen, so the scan starts at the viewport's first block (binary
+        // search) and stops past its last. This runs on every drawBackground
+        // and mouseMoved, so a whole-list scan here was O(blocks) per frame.
+        guard let first = blockIndexForRawOffset(lo) else { return geometry }
+        for i in first..<blocks.count {
+            let block = blocks[i]
+            guard block.range.location < hi else { break }
+            guard block.range.upperBound > lo else { continue }
             switch block.kind {
             case .table:
                 geometry.tableHeaders[line(forOffset: block.range.location)] = i

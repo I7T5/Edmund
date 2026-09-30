@@ -26,6 +26,53 @@ struct TableCellEditorGeometryTests {
         return editor
     }
 
+    @Test("A scroll carries the open card to where a full placement would put it")
+    func scrollMovesCardWithoutReplacing() throws {
+        let editor = makeEditor()
+        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 600, height: 400),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = NSScrollView(frame: window.contentLayoutRect)
+        scroll.documentView = editor
+        window.contentView = scroll
+        editor.typewriterModeEnabled = false
+        editor.isVerticallyResizable = true
+        editor.minSize = .zero
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                height: CGFloat.greatestFiniteMagnitude)
+        editor.autoresizingMask = [.width]
+        let filler = (0..<40).map { "para \($0)" }.joined(separator: "\n\n")
+        editor.loadContent("\(filler)\n\n\(table)\n\n\(filler)\n")
+        drainAllStyling(editor)
+        ensureFullLayout(editor)
+        editor.sizeToFit()
+        let b = try #require(editor.blocks.firstIndex(where: { $0.kind == .table }))
+        let tableY = try #require(editor.tableRect(blockIndex: b)).minY
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, tableY - 100)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        let cell = try #require(editor.tableCell(blockIndex: b, row: 2, column: 1))
+        editor.openTableCellEditor(cell)
+        defer { editor.closeTableCellEditor(commit: false) }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))   // entrance animation
+        let panel = try #require(editor.cellEditorPanel)
+        // Baseline from a full placement: the settle can scroll during the
+        // entrance animation, which then lands the card on a stale frame.
+        editor.repositionCellEditor(animateArrow: false)
+        let before = panel.frame
+
+        let clip = scroll.contentView
+        clip.scroll(to: NSPoint(x: 0, y: clip.bounds.minY + 40))
+        scroll.reflectScrolledClipView(clip)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let followed = panel.frame
+        #expect(abs(followed.minY - (before.minY + 40)) < 0.5, "card moves with the content")
+        #expect(followed.size == before.size)
+
+        editor.repositionCellEditor(animateArrow: false)
+        #expect(abs(panel.frame.minX - followed.minX) < 0.5)
+        #expect(abs(panel.frame.minY - followed.minY) < 0.5)
+        #expect(panel.frame.size == followed.size)
+    }
+
     @Test("The popup is as wide as a row")
     func widthMatchesTheRow() {
         let editor = loadEditor("lead\n\n\(table)\n")

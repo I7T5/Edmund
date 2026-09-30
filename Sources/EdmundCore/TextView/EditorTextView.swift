@@ -210,9 +210,12 @@ public class EditorTextView: NSTextView {
     var pendingRecompose = false
     /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
     var progressiveStylingScheduled = false
-    /// Coalesces scroll-driven promotion onto the next run-loop turn, off the
-    /// scroll notification (see EditorTextView+LazyStyling).
-    var pendingPromotion = false
+    /// True during a user scroll and for a short settling period afterward.
+    var isScrollingActive = false
+    var userScrollInProgress = false
+    var scrollQuiescenceTimer: Timer?
+    var scrollPromotionScheduled = false
+    var isPromotingVisibleBlocks = false
     /// Coalesces the didChangeText-bypass check scheduled from
     /// shouldChangeText (see EditorTextView+EditFlow).
     var bypassedEditCheckScheduled = false
@@ -702,6 +705,12 @@ public class EditorTextView: NSTextView {
     /// The card's top edge in view coordinates, fixed for as long as it points
     /// at one cell. Nil re-reads it from the row on the next placement.
     var cellEditorAnchorY: CGFloat?
+    /// The card's top-left in view coordinates from the last full placement,
+    /// so a scroll can move the card without re-measuring it.
+    var cellEditorTopLeftInView: NSPoint?
+    /// Clip-view size at the last card placement; a change means a resize,
+    /// which can move and resize the table, not just scroll it.
+    var cellEditorClipSize: NSSize?
 
     /// True once this popup session has pushed its undo snapshot. Typing in the
     /// popup rewrites the cell on every keystroke so the table reflows live, and
