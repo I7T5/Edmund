@@ -691,6 +691,12 @@ public class EditorTextView: NSTextView {
     /// The card's top edge in view coordinates, fixed for as long as it points
     /// at one cell. Nil re-reads it from the row on the next placement.
     var cellEditorAnchorY: CGFloat?
+    /// The card's top-left in view coordinates from the last full placement,
+    /// so a scroll can move the card without re-measuring it.
+    var cellEditorTopLeftInView: NSPoint?
+    /// Clip-view size at the last card placement; a change means a resize,
+    /// which can move and resize the table, not just scroll it.
+    var cellEditorClipSize: NSSize?
 
     /// True once this popup session has pushed its undo snapshot. Typing in the
     /// popup rewrites the cell on every keystroke so the table reflows live, and

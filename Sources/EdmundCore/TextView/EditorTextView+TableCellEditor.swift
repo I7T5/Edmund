@@ -176,6 +176,8 @@ extension EditorTextView {
         let anchorY = cellEditorAnchorY ?? (cellRect.maxY - trailingPad)
         cellEditorAnchorY = anchorY
         let bottomLeftInView = NSPoint(x: table.minX, y: anchorY)
+        cellEditorTopLeftInView = bottomLeftInView
+        cellEditorClipSize = enclosingScrollView?.contentView.bounds.size
         let inWindow = convert(bottomLeftInView, to: nil)
         let onScreen = window.convertPoint(toScreen: inWindow)
         let width = max(Self.cellEditorMinWidth, table.width)
@@ -335,6 +337,26 @@ extension EditorTextView {
         panel.setFrame(frame, display: true)
     }
 
+    /// Carries the card along with a scroll. A scroll changes nothing about
+    /// the card but where it is on screen — not its height, its width or its
+    /// arrow — so this only re-maps the anchor from the last full placement.
+    /// Running `repositionCellEditor` per scroll tick measured the field twice,
+    /// walked the table's segments three times and redrew the panel (and its
+    /// shadow) on every tick.
+    func followScrollWithCellEditor() {
+        guard let panel = cellEditorPanel, !isCellEditorDetached, let window else { return }
+        // The same notification fires for a resize, which can change the
+        // table's width and position — that one needs the full placement.
+        let clipSize = enclosingScrollView?.contentView.bounds.size
+        guard let anchor = cellEditorTopLeftInView, clipSize == cellEditorClipSize else {
+            cellEditorClipSize = clipSize
+            repositionCellEditor()
+            return
+        }
+        let onScreen = window.convertPoint(toScreen: convert(anchor, to: nil))
+        panel.setFrameTopLeftPoint(NSPoint(x: onScreen.x, y: onScreen.y - Self.cellEditorGap))
+    }
+
     /// Commits the open cell and re-anchors on another cell of the same table.
     /// Only the arrow moves — the card is a row wide, so the field stays exactly
     /// where the user is already looking.
@@ -449,7 +471,7 @@ extension EditorTextView {
             cellEditorScrollObserver = center.addObserver(
                 forName: NSView.boundsDidChangeNotification, object: clip, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.repositionCellEditor() }
+                MainActor.assumeIsolated { self?.followScrollWithCellEditor() }
             }
         }
     }
