@@ -87,4 +87,25 @@ struct MathRendererAbstractionTests {
 
         #expect(fake.lastLatex == "x^2")
     }
+
+    /// An engine change restyles what an engine draws — math and fences — and
+    /// leaves plain prose alone: launch posts it up to three times.
+    @Test("An engine change restyles only math and fenced blocks")
+    @MainActor func engineChangeRestylesOnlyEngineBlocks() {
+        let editor = makeEditor()
+        editor.loadContent("Plain prose here.\n\nInline $x^2$ math.\n\n```mermaid\ngraph A\n```\n")
+        let ns = editor.rawSource as NSString
+        let marker = NSAttributedString.Key("EngineChangeTestMarker")
+        let spots = ["Plain", "Inline", "graph"].map { ns.range(of: $0) }
+        for r in spots { editor.textStorage?.addAttribute(marker, value: true, range: r) }
+
+        NotificationCenter.default.post(name: .renderEngineChanged, object: nil)
+
+        func marked(_ r: NSRange) -> Bool {
+            editor.textStorage?.attribute(marker, at: r.location, effectiveRange: nil) != nil
+        }
+        #expect(marked(spots[0]), "plain prose was restyled")
+        #expect(!marked(spots[1]), "the math block was not restyled")
+        #expect(!marked(spots[2]), "the fence was not restyled")
+    }
 }
