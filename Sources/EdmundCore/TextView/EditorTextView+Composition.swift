@@ -154,7 +154,7 @@ extension EditorTextView {
 
         isUpdating = false
 
-        recheckSpelling(blocks: syncSet, sparingCaret: fromEdit)
+        if !skipsSpellRecheck { recheckSpelling(blocks: syncSet, sparingCaret: fromEdit) }
 
         if !deferred.isEmpty {
             scheduleProgressiveStyling()

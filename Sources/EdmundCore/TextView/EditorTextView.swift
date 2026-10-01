@@ -199,6 +199,8 @@ public class EditorTextView: NSTextView {
     /// Bumped by every whole-document spell scan, so a scan's remaining
     /// chunks stop once a newer one (or a newly loaded document) starts.
     var spellScanGeneration = 0
+    /// Set while `loadContent` restyles, which a whole-document scan follows.
+    var skipsSpellRecheck = false
     /// True during a user scroll and for a short settling period afterward.
     var isScrollingActive = false
     var userScrollInProgress = false
@@ -1513,7 +1515,12 @@ public class EditorTextView: NSTextView {
             undoStack.removeAll()
             redoStack.removeAll()
             hasDeferredMarkedTextUndo = false
+            // The scan below covers every block; the restyle's own synchronous
+            // recheck would only duplicate it — and, as the process's first
+            // call to the spell server, cost ~0.3 s of launch on its own.
+            skipsSpellRecheck = true
             recompose(cursorInRaw: 0)
+            skipsSpellRecheck = false
             rescanSpelling()
         }
     }
