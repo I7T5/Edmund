@@ -30,24 +30,41 @@ public enum LineEnding: String, Sendable {
     /// Detects the line ending used in `text`. CRLF is checked before CR/LF
     /// because it contains both. Defaults to `.lf` when there are no breaks.
     public static func detect(in text: String) -> LineEnding {
-        if text.contains("\r\n") { return .crlf }
-        if text.contains("\r")   { return .cr }
-        return .lf
+        let found = styles(in: text)
+        return found.crlf ? .crlf : found.cr ? .cr : .lf
     }
 
     /// Whether `text` mixes more than one line-ending style (e.g. some CRLF and
     /// some LF) — the case the "inconsistent line endings" warning flags.
     public static func isInconsistent(in text: String) -> Bool {
-        let hasCRLF = text.contains("\r\n")
-        let withoutCRLF = text.replacingOccurrences(of: "\r\n", with: "")
-        let hasCR = withoutCRLF.contains("\r")
-        let hasLF = withoutCRLF.contains("\n")
-        return [hasCRLF, hasCR, hasLF].filter { $0 }.count > 1
+        let found = styles(in: text)
+        return [found.crlf, found.cr, found.lf].filter { $0 }.count > 1
     }
 
     /// Converts every line ending in `text` to LF (`\n`).
     public static func normalize(_ text: String) -> String {
-        text.replacingOccurrences(of: "\r\n", with: "\n")
+        guard text.utf8.contains(0x0D) else { return text }   // already LF
+        return text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    /// Which styles occur, in one pass over the UTF-8 bytes: a CR followed by
+    /// LF is CRLF, any other CR is CR, an LF without a CR before it is LF.
+    /// Byte-wise because `"\r\n"` is a single Character, which sent the old
+    /// `String.contains` checks through Unicode-aware search — four passes,
+    /// ~0.1 s, over a 1 MB document on every open.
+    private static func styles(in text: String) -> (crlf: Bool, cr: Bool, lf: Bool) {
+        var crlf = false, cr = false, lf = false
+        var afterCR = false
+        for byte in text.utf8 {
+            if byte == 0x0A {
+                if afterCR { crlf = true } else { lf = true }
+            } else if afterCR {
+                cr = true
+            }
+            afterCR = byte == 0x0D
+        }
+        if afterCR { cr = true }
+        return (crlf, cr, lf)
     }
 }
