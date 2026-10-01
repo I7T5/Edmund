@@ -95,7 +95,7 @@ extension EditorTextView {
     ///
     /// Asynchronous: the spell server takes ~12 ms per KB, so one synchronous
     /// pass held a 1 MB document's first paint for over ten seconds. The
-    /// visible window is requested first, then the rest in line-aligned
+    /// visible window is requested first, then the rest in small line-aligned
     /// chunks, one at a time; each lands on the main thread only if its text
     /// is unchanged (an edit re-checks its own blocks anyway).
     func rescanSpelling() {
@@ -128,7 +128,9 @@ extension EditorTextView {
         requestSpelling(chunks[...], generation: spellScanGeneration)
     }
 
-    static let spellScanChunk = 32_000
+    // Small: NSSpellChecker serializes requests, so a synchronous recheck (an
+    // edit, a restyle) waits for the chunk in flight — ~12 ms per KB.
+    static let spellScanChunk = 8_000
 
     private func requestSpelling(_ chunks: ArraySlice<NSRange>, generation: Int) {
         guard generation == spellScanGeneration, let range = chunks.first else { return }

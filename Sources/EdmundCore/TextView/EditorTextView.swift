@@ -960,9 +960,15 @@ public class EditorTextView: NSTextView {
     #endif
 
     @objc private func renderEngineDidChange(_ note: Notification) {
-        guard !blocks.isEmpty else { return }
-        recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
-                      cursorInRaw: selectedRange().location)
+        // Only what an engine draws: math (any `$`, in any block kind) and
+        // diagrams (fences). Launch posts this up to three times as the
+        // extensions load, and restyling every block each time was a full
+        // restyle of a long document, three times over.
+        let dirty = IndexSet(blocks.indices.filter {
+            blocks[$0].kind == .fence || blocks[$0].content.contains("$")
+        })
+        guard !dirty.isEmpty else { return }
+        recomposeDirty(dirty, cursorInRaw: selectedRange().location)
     }
 
     /// Hook up scroll promotion once the editor lands in its scroll view.
