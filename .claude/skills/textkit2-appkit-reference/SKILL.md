@@ -82,6 +82,9 @@ whole editor misbehaves subtly.
 happens (`EditorTextView.swift:273`+, message "TextKit 1 fallback triggered").
 Never add code that reads `layoutManager` or stores table attributes; draw
 tables as decorations instead (`EditorTextView+TableRendering.swift`).
+Edmund's own code need not read it: if `shouldChangeText` refuses an IME
+commit, AppKit's `unmarkText` recovery calls `-[NSTextView layoutManager]`
+itself, and that engages TK1 (issue #365).
 
 ---
 

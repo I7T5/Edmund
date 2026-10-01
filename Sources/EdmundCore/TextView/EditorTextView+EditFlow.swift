@@ -44,7 +44,15 @@ extension EditorTextView {
         // that spans a pipe. Rows and columns are changed through the pill menu,
         // never by deleting a delimiter out from under the render. See
         // `deletionHitsTableStructure`.
-        if deletionHitsTableStructure(affectedCharRange) {
+        //
+        // Not while the storage is ahead of `rawSource` (an IME composition):
+        // the check maps the range onto stale text, and committing Pinyin typed
+        // on the line above a table read as deleting its opening pipe. After
+        // the refused commit, AppKit's `unmarkText` called `-layoutManager`,
+        // which falls back to TextKit 1 and drops the table's drawing
+        // (issue #365).
+        let storageAhead = (textStorage as? EditorTextStorage)?.pendingEdit != nil
+        if !storageAhead, deletionHitsTableStructure(affectedCharRange) {
             traceEdit("shouldChangeText REJECTED (table structure) range=\(affectedCharRange)")
             return false
         }
