@@ -196,6 +196,9 @@ public class EditorTextView: NSTextView {
     var pendingRecompose = false
     /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
     var progressiveStylingScheduled = false
+    /// Bumped by every whole-document spell scan, so a scan's remaining
+    /// chunks stop once a newer one (or a newly loaded document) starts.
+    var spellScanGeneration = 0
     /// True during a user scroll and for a short settling period afterward.
     var isScrollingActive = false
     var userScrollInProgress = false
