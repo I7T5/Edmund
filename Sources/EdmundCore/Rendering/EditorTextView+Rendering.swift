@@ -146,7 +146,8 @@ extension EditorTextView {
             renderingCacheColorKey(theme.mathNumberColor),
             "\(markdownFeatures.rawValue)",
             String(format: "%.2f", availableContentWidth),
-            linkDefState.defsText,
+            // No link definitions: cached content has no `[` (see
+            // `canCacheStyledContent`), so it is parsed with none.
             calloutStyleOverrides.map { "\($0.key)=\($0.value)" }
                 .sorted().joined(separator: ";"),
         ].joined(separator: "|")
@@ -273,7 +274,7 @@ extension EditorTextView {
                     listDepth: Int? = nil,
                     continuationDepth: Int? = nil) -> NSAttributedString {
         let spans = continuationDepth == nil
-            ? SyntaxHighlighter.parse(markdown, linkDefinitions: linkDefState.defsText,
+            ? SyntaxHighlighter.parse(markdown, linkDefinitions: linkDefState.definitions(for: markdown),
                                       features: markdownFeatures)
             : parseDedented(markdown)
         return styleParsedBlock(markdown, spans: spans, cursorPosition: cursorPosition,
@@ -926,7 +927,7 @@ extension EditorTextView {
             let start = map(r.location)
             return NSRange(location: start, length: max(0, map(r.upperBound) - start))
         }
-        return SyntaxHighlighter.parse(dedented, linkDefinitions: linkDefState.defsText,
+        return SyntaxHighlighter.parse(dedented, linkDefinitions: linkDefState.definitions(for: dedented),
                                        features: markdownFeatures).map {
             SyntaxHighlighter.Span(kind: $0.kind, fullRange: map($0.fullRange),
                                    contentRange: map($0.contentRange),
@@ -1149,22 +1150,23 @@ extension EditorTextView {
         let cursorInBlock = max(0, selectedRange().location - block.range.location)
 
         let continuationDepth = listContinuationDepth(ofBlock: activeIdx)
+        let defs = linkDefState.definitions(for: block.content)
         let spans: [SyntaxHighlighter.Span]
         if let cached = activeSpanCache,
            cached.content == block.content,
-           cached.defsText == linkDefState.defsText,
+           cached.defsText == defs,
            cached.features == markdownFeatures,
            cached.continuationDepth == continuationDepth {
             spans = cached.spans
         } else {
             spans = continuationDepth == nil
                 ? SyntaxHighlighter.parse(block.content,
-                                          linkDefinitions: linkDefState.defsText,
+                                          linkDefinitions: defs,
                                           features: markdownFeatures)
                 : parseDedented(block.content)
             appliedCursorSpans = nil
             activeSpanCache = (content: block.content,
-                               defsText: linkDefState.defsText,
+                               defsText: defs,
                                features: markdownFeatures,
                                continuationDepth: continuationDepth,
                                spans: spans)

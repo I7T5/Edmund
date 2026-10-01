@@ -25,6 +25,25 @@ struct LinkDefinitionState: Equatable {
     /// when a definition line appears or disappears.
     private(set) var defsText = ""
 
+    /// Normalized label → its definition lines, for `definitions(for:)`.
+    private var byLabel: [String: [String]] = [:]
+
+    /// Only the definitions `markdown` can reference: those whose label
+    /// appears inside a `[…]` in it, sorted like `defsText`. Appending every
+    /// definition to every block's parse made each parse O(definitions) — a
+    /// document with 1,400 footnotes paid ~5 ms on every block, heading or rule.
+    /// Unreferenced definitions never change a block's spans, so a superset of
+    /// the referenced ones parses identically to `defsText`.
+    func definitions(for markdown: String) -> String {
+        guard !byLabel.isEmpty, markdown.contains("[") else { return "" }
+        var seen = Set<String>()
+        var found: [String] = []
+        for label in Self.bracketContents(markdown) where seen.insert(label).inserted {
+            found += byLabel[label] ?? []
+        }
+        return found.sorted().joined(separator: "\n")
+    }
+
     mutating func add(_ content: String) { scan(content, sign: 1) }
     mutating func remove(_ content: String) { scan(content, sign: -1) }
 
@@ -43,7 +62,39 @@ struct LinkDefinitionState: Equatable {
             lines[key] = count <= 0 ? nil : count
             if (old > 0) != (count > 0) { keysChanged = true }
         }
-        if keysChanged { defsText = lines.keys.sorted().joined(separator: "\n") }
+        guard keysChanged else { return }
+        defsText = lines.keys.sorted().joined(separator: "\n")
+        byLabel = Dictionary(grouping: lines.keys) { line in
+            let open = line.firstIndex(of: "[")!   // defRegex guarantees `[label]:`
+            let close = line[open...].firstIndex(of: "]")!
+            return Self.normalizedLabel(line[line.index(after: open)..<close])
+        }
+    }
+
+    /// CommonMark label matching: case-insensitive, whitespace runs collapsed.
+    // ponytail: lowercased() stands in for Unicode case folding (ß, ſ…);
+    // a miss there only drops a reference to an exotic-cased label.
+    private static func normalizedLabel(_ s: Substring) -> String {
+        s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").lowercased()
+    }
+
+    /// The innermost `[…]` contents in `markdown`, normalized. Labels may span
+    /// lines, so a newline doesn't end one; a nested `[` restarts it.
+    private static func bracketContents(_ markdown: String) -> [String] {
+        var out: [String] = []
+        var open: String.Index?
+        var i = markdown.startIndex
+        while i < markdown.endIndex {
+            switch markdown[i] {
+            case "[": open = markdown.index(after: i)
+            case "]":
+                if let start = open { out.append(normalizedLabel(markdown[start..<i])) }
+                open = nil
+            default: break
+            }
+            i = markdown.index(after: i)
+        }
+        return out
     }
 
     /// A CommonMark link reference definition line: up to 3 leading spaces, a
