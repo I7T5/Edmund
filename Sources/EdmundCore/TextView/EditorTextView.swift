@@ -349,10 +349,22 @@ public class EditorTextView: NSTextView {
         didSet {
             guard oldValue != viewMode else { return }
             isEditable = (viewMode != .reading)
-            // Re-style every block under the new mode (viewport-first for big docs).
             guard !blocks.isEmpty else { return }
-            recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
-                           cursorInRaw: selectedRange().location)
+            // Edit and Read style a block identically except the active block
+            // (Edit reveals its raw markdown) and what Read hides: `%%` and
+            // `<!--` comments and `^id` block references. Only those change
+            // between the two; Source differs everywhere. Restyling the whole
+            // document instead cost a 1 MB file ~2 s of drain per switch.
+            var dirty = IndexSet(integersIn: 0..<blocks.count)
+            if oldValue != .source, viewMode != .source {
+                dirty = IndexSet(blocks.indices.filter {
+                    let c = blocks[$0].content
+                    return c.contains("%%") || c.contains("<!--") || c.contains("^")
+                })
+                if let active = activeBlockIndex { dirty.insert(active) }
+            }
+            // Re-style under the new mode (viewport-first for big sets).
+            recomposeDirty(dirty, cursorInRaw: selectedRange().location)
         }
     }
 

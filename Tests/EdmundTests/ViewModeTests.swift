@@ -10,6 +10,54 @@ struct ViewModeTests {
         editor.textStorage?.attribute(.font, at: loc, effectiveRange: nil) as? NSFont
     }
 
+    /// Edit ↔ Read restyles only the blocks that differ between the two (the
+    /// active block, comments, block refs). The result must equal a full
+    /// restyle, which going through Source still does.
+    @Test("Edit ↔ Read ends where a full restyle would")
+    func editReadSwitchMatchesFullRestyle() {
+        let doc = """
+        # Title ^h1
+
+        Para with %%hidden%% and **bold** <!-- note -->.
+
+        - item ^ref
+        - other *item*
+
+        > quote with `code`
+
+        foot[^1] and [[Wiki]]
+
+        [^1]: the note
+
+        last **para**
+        """
+        let caret = (doc as NSString).range(of: "bold").location
+        func editor(through modes: [EditorTextView.ViewMode]) -> EditorTextView {
+            let e = makeEditor()
+            e.loadContent(doc)
+            e.setSelectedRange(NSRange(location: caret, length: 0))
+            e.recomposeIncremental(cursorInRaw: caret)
+            for m in modes { e.viewMode = m }
+            return e
+        }
+        var path: [EditorTextView.ViewMode] = []
+        for mode in [EditorTextView.ViewMode.reading, .edit, .reading, .edit] {
+            path.append(mode)
+            let live = editor(through: path)
+            let full = editor(through: [.source, mode])
+            guard let a = live.textStorage, let b = full.textStorage else { continue }
+            var i = 0
+            while i < a.length {
+                var ra = NSRange(), rb = NSRange()
+                let whole = NSRange(location: i, length: a.length - i)
+                let diff = attributeDifference(expected: b.attributes(at: i, longestEffectiveRange: &rb, in: whole),
+                                               actual: a.attributes(at: i, longestEffectiveRange: &ra, in: whole))
+                if let diff { Issue.record("after \(path): offset \(i): \(diff)"); break }
+                i = max(min(ra.upperBound, rb.upperBound), i + 1)
+            }
+        }
+    }
+
     @Test("Source mode shows plain monospace raw markdown")
     func sourceMode() {
         let editor = makeEditor()
