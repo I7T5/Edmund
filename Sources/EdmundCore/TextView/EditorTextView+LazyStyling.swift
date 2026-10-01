@@ -60,49 +60,55 @@ extension EditorTextView {
         // leaving an empty band on screen. `recomposeDirty` invalidates its
         // synchronously-styled blocks for the same reason.
         var restyled = IndexSet()
-        // Explicit pool: styling churns through transient images/attributed
-        // strings, and a caller may run many slices without a run-loop turn.
-        autoreleasepool {
-            ts.beginEditing()
-            // Resume the scan where the last slice stopped (`drainCursor` is a
-            // hint — edits shift indices, the wrap-around pass self-corrects).
-            // Rescanning from 0 each slice made the drain quadratic: deep
-            // slices burned their whole budget skipping styled blocks.
-            let count = blocks.count
-            var scanned = 0
-            var idx = min(drainCursor, max(0, count - 1))
-            while scanned < count {
-                if idx >= count { idx = 0 }
-                if !blocks[idx].isStyled {
-                    let cursorInBlock: Int? = (idx == activeBlockIndex)
-                        ? max(0, cursor - blocks[idx].range.location) : nil
-                    restyleBlock(idx, cursorInBlock: cursorInBlock)
-                    setStyled(idx, true)
-                    restyled.insert(idx)
-                    if ContinuousClock.now - start > budget {
-                        remaining = true
-                        idx += 1
-                        break
+        // Anchored, edits included: restyled blocks above the viewport change
+        // height (after a zoom or appearance change everything off screen is
+        // restyled here), and TextKit re-estimates them as soon as the edit is
+        // processed — nothing else compensates the clip, so the text under a
+        // still viewport slid by hundreds of lines as the drain caught up.
+        preservingViewportAnchor {
+            // Explicit pool: styling churns through transient images/attributed
+            // strings, and a caller may run many slices without a run-loop turn.
+            autoreleasepool {
+                ts.beginEditing()
+                // Resume the scan where the last slice stopped (`drainCursor` is a
+                // hint — edits shift indices, the wrap-around pass self-corrects).
+                // Rescanning from 0 each slice made the drain quadratic: deep
+                // slices burned their whole budget skipping styled blocks.
+                let count = blocks.count
+                var scanned = 0
+                var idx = min(drainCursor, max(0, count - 1))
+                while scanned < count {
+                    if idx >= count { idx = 0 }
+                    if !blocks[idx].isStyled {
+                        let cursorInBlock: Int? = (idx == activeBlockIndex)
+                            ? max(0, cursor - blocks[idx].range.location) : nil
+                        restyleBlock(idx, cursorInBlock: cursorInBlock)
+                        setStyled(idx, true)
+                        restyled.insert(idx)
+                        if ContinuousClock.now - start > budget {
+                            remaining = true
+                            idx += 1
+                            break
+                        }
                     }
+                    idx += 1
+                    scanned += 1
                 }
-                idx += 1
-                scanned += 1
+                drainCursor = idx
+                ts.endEditing()
             }
-            drainCursor = idx
-            ts.endEditing()
-        }
 
-        if let tlm = textLayoutManager {
-            // Anchored: blocks restyled above the viewport change height (a
-            // zoom or appearance change restyles everything off screen here),
-            // and nothing else compensates the clip — the text under a still
-            // viewport slid by over a hundred lines as the drain caught up.
-            preservingViewportAnchor {
+            if let tlm = textLayoutManager {
                 for idx in restyled where idx < blocks.count {
                     if let range = blockTextRange(blocks[idx].range, tlm) {
                         tlm.invalidateLayout(for: range)
                     }
                 }
+                // Measure the "after" through the same viewport layout the
+                // anchor's "before" went through: a lone fragment layout can
+                // place the anchor a few points off it, and once per slice
+                // that error compounded into a line.
+                tlm.textViewportLayoutController.layoutViewport()
             }
         }
         isUpdating = false
