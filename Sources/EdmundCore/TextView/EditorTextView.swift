@@ -662,15 +662,6 @@ public class EditorTextView: NSTextView {
     /// The pointer-tracking area behind `hoveredTableBlock`.
     var tableHoverTrackingArea: NSTrackingArea?
 
-    /// The open popup cell editor, and the cell it is editing. See
-    /// EditorTextView+TableCellEditor.
-    var cellEditorPanel: CellEditorPanel?
-    var editingTableCell: TableCellRef?
-
-    /// Set once the popup has been dragged off the table into a free-floating
-    /// window: it stops tracking the table and grows its own close box.
-    var isCellEditorDetached = false
-
     /// True while a table is deliberately showing its raw markdown, which the
     /// `</>` button asks for. A caret inside a table no longer implies raw —
     /// the table stays rendered and the cell is edited in place — so this is
@@ -687,20 +678,6 @@ public class EditorTextView: NSTextView {
     public internal(set) var wrappedCaretOn = false
     public internal(set) var wrappedCaretRect: NSRect?
     public internal(set) var wrappedCaretTimer: Timer?
-
-    /// The card's top edge in view coordinates, fixed for as long as it points
-    /// at one cell. Nil re-reads it from the row on the next placement.
-    var cellEditorAnchorY: CGFloat?
-
-    /// True once this popup session has pushed its undo snapshot. Typing in the
-    /// popup rewrites the cell on every keystroke so the table reflows live, and
-    /// without this every keystroke would also be its own undo step.
-    var cellEditorDidSnapshot = false
-
-    /// Ends the edit when the document window stops being key, and keeps the
-    /// attached popup under its table while the view scrolls.
-    var cellEditorKeyObserver: NSObjectProtocol?
-    var cellEditorScrollObserver: NSObjectProtocol?
 
     // MARK: - Derived Visual Properties
 
@@ -1092,16 +1069,6 @@ public class EditorTextView: NSTextView {
         // this takes the gesture whole. See EditorTextView+TableHandles.
         if let grab = tableCellSelectionAnchor(at: convert(event.locationInWindow, from: nil)) {
             trackTableCellSelection(from: grab.anchor, blockIndex: grab.block.blockIndex)
-            return
-        }
-        // An open popup ends on any click that isn't on its own table. The
-        // popover is `.applicationDefined`, so nothing else does this.
-        dismissCellEditorIfClickIsOutside(event)
-        // EXPERIMENT (inline table editing): the popover no longer takes the
-        // click. A table now stays rendered with the caret inside it, so the
-        // click falls through to ordinary caret placement in the real text.
-        if false, let cell = tableCellForCellEditor(at: event) {
-            openTableCellEditor(cell)
             return
         }
         // A single click/drag on a wrapped cell's drawn text is taken whole:
