@@ -199,8 +199,21 @@ public class EditorTextView: NSTextView {
     /// Bumped by every whole-document spell scan, so a scan's remaining
     /// chunks stop once a newer one (or a newly loaded document) starts.
     var spellScanGeneration = 0
-    /// Set while `loadContent` restyles, which a whole-document scan follows.
+    /// Set while a restyle changes styling only — not the text, not the caret —
+    /// so `recomposeDirty` skips its spell recheck. See `stylingOnly(_:)`.
     var skipsSpellRecheck = false
+
+    /// Runs a restyle that changes styling only (zoom, appearance, theme, view
+    /// mode, a render engine, the column width) without the synchronous spell
+    /// recheck `recomposeDirty` does for edits and caret moves: the text and
+    /// the caret's word are unchanged, so the marks are too, and each recheck
+    /// was a round trip to the spell server — queued behind any scan in flight.
+    func stylingOnly(_ body: () -> Void) {
+        let was = skipsSpellRecheck
+        skipsSpellRecheck = true
+        defer { skipsSpellRecheck = was }
+        body()
+    }
     /// True during a user scroll and for a short settling period afterward.
     var isScrollingActive = false
     var userScrollInProgress = false
@@ -356,8 +369,10 @@ public class EditorTextView: NSTextView {
             isEditable = (viewMode != .reading)
             // Re-style every block under the new mode (viewport-first for big docs).
             guard !blocks.isEmpty else { return }
-            recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
-                           cursorInRaw: selectedRange().location)
+            stylingOnly {
+                recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
+                               cursorInRaw: selectedRange().location)
+            }
         }
     }
 
@@ -958,8 +973,10 @@ public class EditorTextView: NSTextView {
 
     @objc private func renderEngineDidChange(_ note: Notification) {
         guard !blocks.isEmpty else { return }
-        recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
-                      cursorInRaw: selectedRange().location)
+        stylingOnly {
+            recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
+                           cursorInRaw: selectedRange().location)
+        }
     }
 
     /// Hook up scroll promotion once the editor lands in its scroll view.
@@ -1518,9 +1535,7 @@ public class EditorTextView: NSTextView {
             // The scan below covers every block; the restyle's own synchronous
             // recheck would only duplicate it — and, as the process's first
             // call to the spell server, cost ~0.3 s of launch on its own.
-            skipsSpellRecheck = true
-            recompose(cursorInRaw: 0)
-            skipsSpellRecheck = false
+            stylingOnly { recompose(cursorInRaw: 0) }
             rescanSpelling()
         }
     }

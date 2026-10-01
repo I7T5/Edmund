@@ -199,11 +199,13 @@ extension EditorTextView {
     /// viewport top keeps the user looking at what they were looking at.
     public func recomposeAllDirty() {
         appliedCursorSpans = nil
-        preservingViewportAnchor {
-            for i in blocks.indices { blocks[i].isStyled = false }
-            recomposeDirty(IndexSet(blocks.indices),
-                           cursorInRaw: currentCursorInRaw(),
-                           settingSelection: true)
+        stylingOnly {
+            preservingViewportAnchor {
+                for i in blocks.indices { blocks[i].isStyled = false }
+                recomposeDirty(IndexSet(blocks.indices),
+                               cursorInRaw: currentCursorInRaw(),
+                               settingSelection: true)
+            }
         }
     }
 
