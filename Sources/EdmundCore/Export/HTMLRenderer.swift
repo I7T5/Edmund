@@ -45,6 +45,10 @@ struct HTMLRenderer: MarkupVisitor {
     /// editor's styling layer does.
     private let source: String
     private let sourceLines: [String]
+    /// UTF-8 offset of each source line's start, plus one past the end, so
+    /// `utf16Offset(for:)` doesn't re-sum every earlier line per call — that
+    /// made the walk quadratic, ~40% of a 1 MB document's render.
+    private let lineUTF8Starts: [Int]
     private let options: ReadRenderOptions
 
     /// Footnote definitions collected while walking the document (see
@@ -66,6 +70,10 @@ struct HTMLRenderer: MarkupVisitor {
                  options: ReadRenderOptions) {
         self.source = source
         self.sourceLines = source.components(separatedBy: "\n")
+        var starts = [0]
+        starts.reserveCapacity(sourceLines.count + 1)
+        for line in sourceLines { starts.append(starts[starts.count - 1] + line.utf8.count + 1) }
+        self.lineUTF8Starts = starts
         self.removedLineRuns = removedLineRuns
         self.options = options
     }
@@ -891,10 +899,8 @@ struct HTMLRenderer: MarkupVisitor {
     }
 
     private func utf16Offset(for loc: SourceLocation) -> Int {
-        var utf8Offset = 0
-        for i in 0..<(loc.line - 1) where i < sourceLines.count {
-            utf8Offset += sourceLines[i].utf8.count + 1
-        }
+        // Lines before `loc.line`, capped at the whole document.
+        var utf8Offset = lineUTF8Starts[min(max(0, loc.line - 1), sourceLines.count)]
         utf8Offset += loc.column - 1
         let utf8View = source.utf8
         let targetIdx = utf8View.index(utf8View.startIndex,
