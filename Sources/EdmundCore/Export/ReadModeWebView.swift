@@ -177,6 +177,13 @@ public final class ReadModeWebView: WKWebView {
     /// document change) can skip the reload entirely — instant, no white flash.
     private var lastLoadedHTML: String?
 
+    /// What `lastLoadedHTML` was built from (see `performLoad`).
+    private struct LoadInputs: Equatable {
+        var markdown: String, theme: EditorTheme, callouts: [String: CalloutStyle]
+        var baseURL: URL?, options: ReadRenderOptions, dark: Bool
+    }
+    private var lastLoadedInputs: LoadInputs?
+
     func reloadHTML() {
         guard let p = pending else { return }
         guard hasLoadedOnce else {
@@ -212,6 +219,18 @@ public final class ReadModeWebView: WKWebView {
         // visible in dark mode): the page background shows immediately instead
         // of the system default white.
         underPageBackgroundColor = HTMLTheme.backgroundColor(dark: dark)
+        // Same inputs as the page on screen: skip building the HTML at all —
+        // ~0.75 s for a 1 MB document, paid on every Edit→Read entry just to
+        // find it unchanged. Not for documents with images: local ones are
+        // inlined from disk and can change while the markdown doesn't.
+        let inputs = LoadInputs(markdown: p.markdown, theme: p.theme, callouts: p.callouts,
+                                baseURL: p.baseURL, options: p.options, dark: dark)
+        if inputs == lastLoadedInputs,
+           !p.markdown.contains("!["), !p.markdown.contains("<img") {
+            applyPendingScrollRestoreAndNotify()
+            return
+        }
+        lastLoadedInputs = inputs
         let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
                                      callouts: p.callouts, dark: dark,
                                      baseURL: p.baseURL, options: p.options)
@@ -226,6 +245,10 @@ public final class ReadModeWebView: WKWebView {
 
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        // Hidden in Edit mode: rebuilding a page nobody sees cost a full
+        // render on every light/dark flip. Entering Read mode renders again,
+        // and the changed appearance makes that a real rebuild.
+        guard !isHidden else { return }
         reloadHTML()
     }
 
