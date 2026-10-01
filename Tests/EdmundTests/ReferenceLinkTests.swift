@@ -98,6 +98,21 @@ struct LinkDefinitionStateTests {
         #expect(LinkDefinitionState.build(from: "just prose\n[not a def]").defsText == "")
     }
 
+    @Test("definitions(for:) keeps only the labels a block references")
+    func definitionsForBlock() {
+        var s = LinkDefinitionState.build(
+            from: "[Foo Bar]: /a\n[x]: /x\n[^n1]: note\n[unused]: /u\n> [quoted]: /q")
+        #expect(s.definitions(for: "no brackets here") == "")
+        #expect(s.definitions(for: "see [foo   BAR]") == "[Foo Bar]: /a")
+        #expect(s.definitions(for: "[text][x] and [x][] and [Foo\nbar]")
+                == "[Foo Bar]: /a\n[x]: /x")
+        #expect(s.definitions(for: "a footnote[^n1]") == "[^n1]: note")
+        #expect(s.definitions(for: "[quoted]") == "[quoted]: /q")
+        #expect(s.definitions(for: "[nothing defined]") == "")
+        s.remove("[x]: /x")
+        #expect(s.definitions(for: "[x]") == "")
+    }
+
     @Test("add then remove of the same block content is exact")
     func addRemoveExact() {
         var s = LinkDefinitionState()
