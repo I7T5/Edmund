@@ -10,10 +10,10 @@ import AppKit
 // column handles need, so the grid is *read back* here rather than measured
 // again, and the handles can never disagree with the borders the reader sees.
 //
-// Contrast `tableCellRect(for:)`, which unions a cell's text segments: that is
-// approximate at the column edges (TextKit 2 splits a kern gap between the
-// segments either side of it) and useless for an overflowing cell, whose real
-// characters are hidden. The decoration is exact for both.
+// Unioning a cell's text segments instead would be approximate at the column
+// edges (TextKit 2 splits a kern gap between the segments either side of it)
+// and useless for an overflowing cell, whose real characters are hidden. The
+// decoration is exact for both.
 
 /// A table's on-screen grid, in view coordinates.
 struct TableGrid {

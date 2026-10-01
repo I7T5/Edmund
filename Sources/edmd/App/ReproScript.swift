@@ -36,7 +36,6 @@ import ScreenCaptureKit
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
 ///   logtoolbar        log every toolbar item's identifier and enabled state
-///   celltype <text>   type into the open table-cell card
 ///   logwindows        log each visible window's id, for `screencapture -l`
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   clickrow <title>  press a format-popover row by its title
@@ -385,34 +384,6 @@ enum ReproScript {
                     web?.evaluateJavaScript("document.scrollingElement.scrollTop + ',' + document.body.childElementCount") { v, e in
                         NSLog("WEBSTATE \(v.map(String.init(describing:)) ?? "nil") err=\(e.map(String.init(describing:)) ?? "none")")
                     }
-                }
-            case "cellpopup":
-                // Opens the table cell editor on a raw offset, in-process. The
-                // card is driven by a real mouse click in the app; there is no
-                // way to synthesize one here that lands, because a background
-                // app cannot take focus. This is the seam that lets the card be
-                // seen at all from a script.
-                schedule(after: delay) { editor in
-                    guard let cell = editor.reproTableCell(atRawOffset: Int(arg) ?? 0) else {
-                        report("repro cellpopup no cell at \(arg)")
-                        return
-                    }
-                    editor.reproOpenTableCellEditor(cell)
-                    report("repro cellpopup opened at \(arg)")
-                }
-            case "cellstep":
-                // Tab / Shift-Tab equivalent: move the open card along the row.
-                schedule(after: delay) { editor in
-                    editor.reproStepTableCellEditor(by: Int(arg) ?? 1)
-                    report("repro cellstep \(arg)")
-                }
-            case "celltype":
-                // The card is key while it is up, so `type` — which aims at the
-                // document's editor — would land in the wrong view.
-                for ch in arg {
-                    let s = String(ch)
-                    schedule(after: delay) { $0.reproTypeInCellEditor(s) }
-                    delay += 0.08
                 }
             case "logwindows":
                 // `NSWindow.windowNumber` is the CGWindowID `screencapture -l`

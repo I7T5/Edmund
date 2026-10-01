@@ -9,8 +9,8 @@ import AppKit
 // renders it again, so "click outside to leave raw editing" needs no code of
 // its own.
 //
-// It is the way back to the markdown now that a plain click on a cell opens the
-// popup editor instead (EditorTextView+TableCellEditor).
+// It is the way back to the markdown now that a plain click on a cell edits it
+// in place, with the table still rendered (EditorTextView+TableInlineEditing).
 //
 // The margin stays empty until the pointer is over the table or the caret is
 // inside it. While the button shows and the numbers are on, it stands in for

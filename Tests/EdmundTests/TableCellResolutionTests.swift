@@ -3,7 +3,7 @@ import AppKit
 @testable import EdmundCore
 
 /// Mapping a document offset to the table cell that holds it — the primitive
-/// the popup cell editor opens on.
+/// in-place cell editing and the table commands start from.
 
 @Suite("Table cell resolution")
 @MainActor
