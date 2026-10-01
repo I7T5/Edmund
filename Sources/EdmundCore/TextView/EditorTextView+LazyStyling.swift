@@ -190,6 +190,11 @@ extension EditorTextView {
     /// viewport layout first because callers may run before the next layout
     /// pass (the viewport range would otherwise be stale).
     func promoteVisibleUnstyledBlocks() {
+        // Nothing to promote once the drain has styled everything — the usual
+        // state after the first seconds. Skip the forced viewport layout then:
+        // each one re-estimates the height of every unlaid-out paragraph, a
+        // quarter of a large document's per-tick scroll cost.
+        guard blocks.contains(where: { !$0.isStyled }) else { return }
         textLayoutManager?.textViewportLayoutController.layoutViewport()
         guard let bounds = syncStylingBlockRange() else { return }
         let unstyled = IndexSet(bounds.filter { !blocks[$0].isStyled })
