@@ -112,6 +112,12 @@ struct SpellCheckTests {
         editor.loadContent("First sentance.\n\n" + String(repeating: "Filler words here.\n\n", count: 50) + "Last wrod.\n")
         #expect(marked(editor) == [])
         editor.isContinuousSpellCheckingEnabled = true
+        // The whole-document scan is asynchronous (the spell server answers on
+        // its own queue), so wait for its marks rather than reading them now.
+        let deadline = Date().addingTimeInterval(5)
+        while marked(editor) != ["sentance", "wrod"], Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
         #expect(marked(editor) == ["sentance", "wrod"])
         editor.isContinuousSpellCheckingEnabled = false
         #expect(marked(editor) == [])
