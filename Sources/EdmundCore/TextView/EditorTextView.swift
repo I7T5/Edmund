@@ -1198,6 +1198,17 @@ public class EditorTextView: NSTextView {
         if stillSelecting, let first = ranges.first?.rangeValue {
             traceEdit("dragTick sel'={\(first.location),\(first.length)}")
         }
+        // Every table rule below reads `blocks`, which lag the storage until
+        // didChangeText syncs — for a whole IME composition. Against those
+        // stale ranges the caret after Pinyin typed on the line above a table
+        // read as on its opening pipe and was moved into the first cell,
+        // breaking the composition and the table (issue #365). While an edit
+        // is in flight the selection comes from that edit, not the user, so
+        // install it unchanged and skip every table rule below.
+        if let storage = textStorage as? EditorTextStorage, storage.pendingEdit != nil {
+            super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+            return
+        }
         // A drag that crosses from one table cell into another selects whole
         // cells, the way Notes does: a selection that stops mid-cell cannot say
         // which cells a Copy would take. It is installed as one range per row —

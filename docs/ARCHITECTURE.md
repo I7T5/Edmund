@@ -818,6 +818,12 @@ Notable subsystems:
   began (`+SelectionTracking`'s caret-move restyle). `becomeFirstResponder`
   resyncs from storage as a catch-all. Full write-up:
   `docs/investigations/delete-drift-investigation.md`.
+  The same lag breaks any rule that maps a storage offset onto `blocks`:
+  it must stand down while `EditorTextStorage.pendingEdit != nil`. Today
+  that is the table caret rules in `setSelectedRanges` and
+  `deletionHitsTableStructure` in `shouldChangeText`. On stale ranges,
+  Pinyin typed above a table had its caret moved into the first cell and
+  its commit refused (issue #365).
 - **AppKit does not pair every storage mutation with `didChangeText`.** A
   drag-move whose drop lands on no valid target (e.g. released past the end
   of the document) deletes the dragged range via `shouldChangeText` →

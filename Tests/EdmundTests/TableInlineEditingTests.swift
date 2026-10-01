@@ -175,6 +175,30 @@ struct TableInlineEditingTests {
         #expect(editor.selectedRange().location == ns.range(of: "col1X Y").upperBound)
     }
 
+    /// Issue #365: Pinyin typed on the blank line right above a table. While
+    /// the IME composes, `blocks` still hold pre-edit ranges, so the caret
+    /// after the marked text reads as sitting on the table's opening pipe; the
+    /// caret-resting rule then pulled the caret into the first cell and
+    /// aborted the composition. The commit then read as deleting that pipe and
+    /// was refused, which tripped the TextKit 1 fallback (a DEBUG trap here).
+    @Test("IME composition above a table keeps its caret and commits")
+    func imeAboveATable() {
+        let editor = loadEditor(doc)
+        let blank = (doc as NSString).range(of: "\n\n").location + 1
+        editor.setSelectedRange(NSRange(location: blank, length: 0))
+        for (i, pinyin) in ["n", "ni"].enumerated() {
+            editor.setMarkedText(pinyin, selectedRange: NSRange(location: i + 1, length: 0),
+                                 replacementRange: NSRange(location: NSNotFound, length: 0))
+            #expect(editor.hasMarkedText())
+            #expect(editor.selectedRange() == NSRange(location: blank + i + 1, length: 0))
+        }
+        editor.insertText("你", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(!editor.hasMarkedText())
+        #expect(editor.rawSource == doc.replacingOccurrences(of: "\n\n", with: "\n你\n"))
+        #expect(editor.selectedRange() == NSRange(location: blank + 1, length: 0))
+        #expect(editor.blocks.contains { $0.kind == .table })
+    }
+
     // MARK: - Return: down a row, or a new one
 
     @Test("Return moves to the cell below and selects it")
