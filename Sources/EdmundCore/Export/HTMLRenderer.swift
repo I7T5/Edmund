@@ -1,5 +1,6 @@
 import Foundation
 import Markdown
+import os
 
 // MARK: - HTMLRenderer
 //
@@ -978,10 +979,20 @@ public enum ReadModeAnchors {
     /// Parses `markdown` with the same options `HTMLRenderer.render` uses, so
     /// the reported spans match the document that's actually rendered.
     public static func topLevelBlockSpans(for markdown: String) -> [(startLine: Int, endLine: Int)] {
+        // A mode switch asks for the same source twice (entering Read, then
+        // returning), and parsing a 1 MB document costs ~100 ms each time.
+        if let hit = lastSpans.withLock({ $0?.source == markdown ? $0?.spans : nil }) {
+            return hit
+        }
         let document = Document(parsing: markdown, options: [.disableSmartOpts])
-        return document.children.compactMap { child in
+        let spans: [(startLine: Int, endLine: Int)] = document.children.compactMap { child in
             guard let range = child.range else { return nil }
             return (startLine: range.lowerBound.line, endLine: range.upperBound.line)
         }
+        lastSpans.withLock { $0 = (markdown, spans) }
+        return spans
     }
+
+    private static let lastSpans =
+        OSAllocatedUnfairLock<(source: String, spans: [(startLine: Int, endLine: Int)])?>(initialState: nil)
 }
