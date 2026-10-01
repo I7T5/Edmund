@@ -351,6 +351,9 @@ struct RenderingRegressionTests {
         scroll.contentView.scroll(to: NSPoint(x: 0, y: e.frame.height / 2))
         scroll.reflectScrolledClipView(scroll.contentView)
         e.promoteVisibleUnstyledBlocks()
+        // Promotion skips its forced viewport layout once every block is
+        // styled, and a headless test has no display pass to do it instead.
+        e.textLayoutManager?.textViewportLayoutController.layoutViewport()
         let before = scroll.contentView.bounds.origin.y
 
         // Move the caret to a visible block in the middle (the old active block
