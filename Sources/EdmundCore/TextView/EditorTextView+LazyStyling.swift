@@ -93,9 +93,15 @@ extension EditorTextView {
         }
 
         if let tlm = textLayoutManager {
-            for idx in restyled where idx < blocks.count {
-                if let range = blockTextRange(blocks[idx].range, tlm) {
-                    tlm.invalidateLayout(for: range)
+            // Anchored: blocks restyled above the viewport change height (a
+            // zoom or appearance change restyles everything off screen here),
+            // and nothing else compensates the clip — the text under a still
+            // viewport slid by over a hundred lines as the drain caught up.
+            preservingViewportAnchor {
+                for idx in restyled where idx < blocks.count {
+                    if let range = blockTextRange(blocks[idx].range, tlm) {
+                        tlm.invalidateLayout(for: range)
+                    }
                 }
             }
         }
