@@ -113,6 +113,8 @@ enum AppSettings {
         static let offerCrashReports = "settings.advanced.offerCrashReports"
         static let lastWindowWidth  = "settings.window.lastWidth"
         static let lastWindowHeight = "settings.window.lastHeight"
+        static let lastWindowOriginX = "settings.window.lastOriginX"
+        static let lastWindowOriginY = "settings.window.lastOriginY"
         // Syntax feature toggles (all default on). Read into `markdownFeatures`.
         // Master switch: off → every non-GFM extension is disabled at once.
         // The GFM callout alerts (NOTE/TIP/…) have no toggle — always on.
@@ -238,6 +240,36 @@ enum AppSettings {
             UserDefaults.standard.set(Double(s.width),  forKey: Key.lastWindowWidth)
             UserDefaults.standard.set(Double(s.height), forKey: Key.lastWindowHeight)
         }
+    }
+
+    /// Bottom-left origin of the last document window. Nil until a window has
+    /// been moved or resized once (the keys are absent, not 0,0).
+    static var lastWindowOrigin: NSPoint? {
+        get {
+            let d = UserDefaults.standard
+            guard d.object(forKey: Key.lastWindowOriginX) != nil,
+                  d.object(forKey: Key.lastWindowOriginY) != nil else { return nil }
+            return NSPoint(x: d.double(forKey: Key.lastWindowOriginX),
+                           y: d.double(forKey: Key.lastWindowOriginY))
+        }
+        set {
+            guard let p = newValue else { return }
+            UserDefaults.standard.set(Double(p.x), forKey: Key.lastWindowOriginX)
+            UserDefaults.standard.set(Double(p.y), forKey: Key.lastWindowOriginY)
+        }
+    }
+
+    /// The saved frame, or nil when it no longer shows on any screen (display
+    /// unplugged, resolution changed) and the caller should center instead. A
+    /// frame counts as reachable when its title-bar strip meets a screen's
+    /// visible area, so the window can always be grabbed.
+    static func reachableFrame(_ frame: NSRect, screens: [NSRect]) -> NSRect? {
+        let titleStrip = NSRect(x: frame.minX, y: frame.maxY - 40, width: frame.width, height: 40)
+        let ok = screens.contains {
+            let hit = $0.intersection(titleStrip)
+            return hit.width >= 100 && hit.height >= 20
+        }
+        return ok ? frame : nil
     }
 
     static var reopenWindows: Bool {

@@ -278,6 +278,10 @@ class Document: NSDocument, HeadingNavigable {
             name: NSWindow.didResizeNotification, object: window
         )
         NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidMove(_:)),
+            name: NSWindow.didMoveNotification, object: window
+        )
+        NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSWindow.didChangeScreenNotification, object: window
         )
@@ -300,11 +304,22 @@ class Document: NSDocument, HeadingNavigable {
 
         // Restore the last window's frame size (the toolbar is now installed, so
         // the frame is final). Applied as a frame, not a contentRect, so it
-        // round-trips exactly with what windowDidResize saves. Then center.
+        // round-trips exactly with what windowDidResize/windowDidMove save. No
+        // saved origin, or one no screen shows any more: center.
         if let savedSize = AppSettings.lastWindowSize {
             window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
         }
-        window.center()
+        if let origin = AppSettings.lastWindowOrigin,
+           let frame = AppSettings.reachableFrame(
+            NSRect(origin: origin, size: window.frame.size),
+            screens: NSScreen.screens.map(\.visibleFrame)) {
+            // A second window at the identical frame would hide the first.
+            let others = NSApp.windows.filter { $0.isVisible && $0.delegate is DocumentWindowController }
+            let offset = CGFloat(others.count % 10) * 22
+            window.setFrameOrigin(NSPoint(x: frame.minX + offset, y: frame.minY - offset))
+        } else {
+            window.center()
+        }
 
         let wc = DocumentWindowController(window: window)
         addWindowController(wc)
@@ -331,7 +346,20 @@ class Document: NSDocument, HeadingNavigable {
         guard let window = notification.object as? NSWindow else { return }
         // Save the full frame size; it's restored verbatim via setFrame on the
         // next window, so the size round-trips exactly (no title-bar/toolbar drift).
+        saveWindowFrame(window)
+    }
+
+    @objc private func windowDidMove(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        saveWindowFrame(window)
+    }
+
+    /// Full-screen frames are transient, not the user's chosen window; saving
+    /// them made the next window open screen-sized.
+    private func saveWindowFrame(_ window: NSWindow) {
+        guard !window.styleMask.contains(.fullScreen) else { return }
         AppSettings.lastWindowSize = window.frame.size
+        AppSettings.lastWindowOrigin = window.frame.origin
     }
 
     /// Reapply the content-width cap in points when the window moves to a

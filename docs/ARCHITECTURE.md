@@ -477,9 +477,11 @@ Notable subsystems:
   physical (§6). Default is locale-aware — 5 in (US) / 12 cm (elsewhere) —
   and is the slider's magnetic snap point; slider range: 3 in floor → the
   screen's physical width (`NSScreen.physicalWidthCm`).
-- **Window size** persists as the last window's full **frame** size
-  (`settings.window.lastWidth`/`lastHeight`) — §8 on why frame, not content
-  size.
+- **Window size and position** persist as the last window's full **frame**
+  (`settings.window.lastWidth`/`lastHeight`/`lastOriginX`/`lastOriginY`, saved
+  on resize and move, never in full screen) — §8 on why frame, not content
+  size. An origin no screen shows (`AppSettings.reachableFrame`) falls back to
+  centering; later windows cascade 22pt per open window.
 - **"Reopen windows from last session" (`reopenWindows`) has to be enforced in
   two places**, because AppKit brings work back by two independent routes:
   1. *Window restoration.* Document windows are `isRestorable = true` for the
