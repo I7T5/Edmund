@@ -262,7 +262,8 @@ enum AppSettings {
     /// The saved frame, or nil when it no longer shows on any screen (display
     /// unplugged, resolution changed) and the caller should center instead. A
     /// frame counts as reachable when its title-bar strip meets a screen's
-    /// visible area, so the window can always be grabbed.
+    /// visible area, so the window can always be grabbed. The 40pt strip and
+    /// the 100x20 minimum overlap are heuristics for "enough title bar to drag".
     static func reachableFrame(_ frame: NSRect, screens: [NSRect]) -> NSRect? {
         let titleStrip = NSRect(x: frame.minX, y: frame.maxY - 40, width: frame.width, height: 40)
         let ok = screens.contains {

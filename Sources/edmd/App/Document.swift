@@ -308,7 +308,7 @@ class Document: NSDocument, HeadingNavigable {
             name: NSWindow.didExitFullScreenNotification, object: window
         )
 
-        // Restore the last window's frame size (the toolbar is now installed, so
+        // Restore the last window's frame, size and origin (the toolbar is now installed, so
         // the frame is final). Applied as a frame, not a contentRect, so it
         // round-trips exactly with what windowDidResize/windowDidMove save. No
         // saved origin, or one no screen shows any more: center.
@@ -319,10 +319,7 @@ class Document: NSDocument, HeadingNavigable {
            let frame = AppSettings.reachableFrame(
             NSRect(origin: origin, size: window.frame.size),
             screens: NSScreen.screens.map(\.visibleFrame)) {
-            // A second window at the identical frame would hide the first.
-            let others = NSApp.windows.filter { $0.isVisible && $0.delegate is DocumentWindowController }
-            let offset = CGFloat(others.count % 10) * 22
-            window.setFrameOrigin(NSPoint(x: frame.minX + offset, y: frame.minY - offset))
+            window.setFrameOrigin(frame.origin)
         } else {
             window.center()
         }

@@ -481,7 +481,7 @@ Notable subsystems:
   (`settings.window.lastWidth`/`lastHeight`/`lastOriginX`/`lastOriginY`, saved
   on resize and move, never in full screen) — §8 on why frame, not content
   size. An origin no screen shows (`AppSettings.reachableFrame`) falls back to
-  centering; later windows cascade 22pt per open window.
+  centering. Every window opens at the same saved frame (no cascade).
 - **"Reopen windows from last session" (`reopenWindows`) has to be enforced in
   two places**, because AppKit brings work back by two independent routes:
   1. *Window restoration.* Document windows are `isRestorable = true` for the
@@ -946,8 +946,11 @@ Notable subsystems:
   toolbar height every reopen — and content heights below the frame
   `minSize` get silently rejected. Save `window.frame.size`, re-apply with
   `window.setFrame(_:)` **after the toolbar is installed** (the frame is
-  only final then), so frame-in == frame-out (`windowDidResize` ↔
-  `makeWindowControllers` in `Document.swift`).
+  only final then), so frame-in == frame-out (`windowDidResize`/`windowDidMove`
+  ↔ `makeWindowControllers` in `Document.swift`). Setup itself resizes and
+  moves the window; those notifications must not save, or they overwrite the
+  stored origin with the build-time (0, 0) before it is read — so the saved
+  frame is read first and `savesWindowFrame` flips on the next run-loop turn.
 - **A frame-managed subview parked at the zero frame sets the window's
   minimum width.** A top chrome bar resizes by `autoresizingMask`, but its
   contents are Auto Layout, so its required constraints reach the window as
