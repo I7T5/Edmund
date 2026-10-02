@@ -211,7 +211,11 @@ extension EditorTextView {
         guard let bounds = syncStylingBlockRange() else { return }
         let unstyled = IndexSet(bounds.filter { !blocks[$0].isStyled })
         guard !unstyled.isEmpty else { return }
-        recomposeDirty(unstyled, cursorInRaw: selectedRange().location)
+        // Styling only: the text is unchanged, and the whole-document scan
+        // covers its spelling. A synchronous recheck here queued behind the
+        // scan's chunk in flight — 100–150 ms stalls in the first scroll
+        // after opening a long file.
+        stylingOnly { recomposeDirty(unstyled, cursorInRaw: selectedRange().location) }
     }
 
     /// Synchronously styles every unstyled block from the document start
