@@ -4,9 +4,10 @@ import AppKit
 //
 // The renderer splits a table into rows and cells on every restyle
 // (`styleTableSpan`) and throws the split away again, so nothing in the editor
-// can answer "which cell is this offset in?". The popup cell editor needs
-// exactly that, in *document* coordinates: `cellRanges(in:)` is line-local and
-// takes no document context, and `blockIndexForRawOffset` stops at the block.
+// can answer "which cell is this offset in?". In-place cell editing, the
+// structural edits and copy need exactly that, in *document* coordinates:
+// `cellRanges(in:)` is line-local and takes no document context, and
+// `blockIndexForRawOffset` stops at the block.
 
 /// One cell of one table, located in the document.
 public struct TableCellRef: Equatable {

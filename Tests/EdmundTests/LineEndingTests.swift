@@ -66,4 +66,17 @@ struct LineEndingNormalizationTests {
         #expect(LineEnding.crlf.displayName == "CRLF")
         #expect(LineEnding.cr.displayName == "CR")
     }
+
+    @Test("Inconsistent means more than one style: CRLF, lone CR, lone LF")
+    func inconsistency() {
+        #expect(!LineEnding.isInconsistent(in: "a\nb\nc"))
+        #expect(!LineEnding.isInconsistent(in: "a\r\nb\r\nc"))
+        #expect(!LineEnding.isInconsistent(in: "a\rb\rc"))
+        #expect(!LineEnding.isInconsistent(in: "no breaks"))
+        #expect(LineEnding.isInconsistent(in: "a\r\nb\nc"))
+        #expect(LineEnding.isInconsistent(in: "a\rb\nc"))
+        #expect(LineEnding.isInconsistent(in: "a\r\r\nb"))       // lone CR, then CRLF
+        #expect(LineEnding.isInconsistent(in: "a\nb\r"))         // trailing lone CR
+        #expect(LineEnding.detect(in: "a\nb\r") == .cr)
+    }
 }

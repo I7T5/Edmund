@@ -69,6 +69,20 @@ struct ScrollQuiescenceTests {
         #expect(!editor.fullLayoutSettleScheduled)
     }
 
+    @Test("Dragging the scroller knob promotes: promotion runs in event-tracking mode")
+    func knobDragPromotes() throws {
+        let (editor, scroll, window) = windowedEditor()
+        defer { withExtendedLifetime(window) {} }
+        loadDocument(editor)
+        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification,
+                                        object: scroll)
+        scrollToBottom(editor, scroll)
+        // A knob drag tracks the mouse in `.eventTracking`, so the run loop
+        // never passes through the default mode until the button comes up.
+        RunLoop.main.run(mode: .eventTracking, before: Date().addingTimeInterval(0.02))
+        try expectVisibleStyling(editor)
+    }
+
     @Test("Promotion continues during settling and the idle drain resumes afterward")
     func scrollEndResumesStyling() throws {
         let (editor, scroll, window) = windowedEditor()

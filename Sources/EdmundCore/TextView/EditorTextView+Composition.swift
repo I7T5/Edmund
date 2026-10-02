@@ -36,7 +36,7 @@ extension EditorTextView {
             (ts as? EditorTextStorage)?.clearPendingEdit()
             isUpdating = false
 
-            for i in blocks.indices { blocks[i].isStyled = false }
+            for i in blocks.indices { setStyled(i, false) }
             recomposeDirty(IndexSet(blocks.indices), cursorInRaw: cursorInRaw,
                            selectionInRaw: selectionInRaw, settingSelection: true)
         }
@@ -65,7 +65,7 @@ extension EditorTextView {
         (ts as? EditorTextStorage)?.clearPendingEdit()
         isUpdating = false
 
-        for idx in dirty where idx < blocks.count { blocks[idx].isStyled = false }
+        for idx in dirty where idx < blocks.count { setStyled(idx, false) }
         recomposeDirty(dirty, cursorInRaw: cursorInRaw,
                        selectionInRaw: selectionInRaw, settingSelection: true)
     }
@@ -114,7 +114,7 @@ extension EditorTextView {
             let cursorInBlock: Int? = (idx == newActiveIndex)
                 ? max(0, cursorInRaw - blocks[idx].range.location) : nil
             restyleBlock(idx, cursorInBlock: cursorInBlock)
-            blocks[idx].isStyled = true
+            setStyled(idx, true)
         }
         ts.endEditing()
 
@@ -133,7 +133,7 @@ extension EditorTextView {
         }
 
         for idx in deferred where idx < blocks.count {
-            blocks[idx].isStyled = false
+            setStyled(idx, false)
         }
 
         if settingSelection {
@@ -154,7 +154,7 @@ extension EditorTextView {
 
         isUpdating = false
 
-        recheckSpelling(blocks: syncSet, sparingCaret: fromEdit)
+        if !skipsSpellRecheck { recheckSpelling(blocks: syncSet, sparingCaret: fromEdit) }
 
         if !deferred.isEmpty {
             scheduleProgressiveStyling()
@@ -199,11 +199,13 @@ extension EditorTextView {
     /// viewport top keeps the user looking at what they were looking at.
     public func recomposeAllDirty() {
         appliedCursorSpans = nil
-        preservingViewportAnchor {
-            for i in blocks.indices { blocks[i].isStyled = false }
-            recomposeDirty(IndexSet(blocks.indices),
-                           cursorInRaw: currentCursorInRaw(),
-                           settingSelection: true)
+        stylingOnly {
+            preservingViewportAnchor {
+                for i in blocks.indices { setStyled(i, false) }
+                recomposeDirty(IndexSet(blocks.indices),
+                               cursorInRaw: currentCursorInRaw(),
+                               settingSelection: true)
+            }
         }
     }
 

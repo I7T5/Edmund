@@ -6,8 +6,8 @@ import Foundation
 /// against `[label]: destination` definitions that may live in *other* blocks.
 /// Edmund styles one block at a time, so the editor collects every definition
 /// line here — built whole-document on load and maintained per changed block on
-/// the edit path (mirroring `ListIndentState`) — and appends `defsText` to each
-/// block's parse so swift-markdown's CommonMark parser resolves the references
+/// the edit path (mirroring `ListIndentState`) — and appends `definitions(for:)` (only the
+/// definitions whose labels appear in a `[…]` in the block) to each block's parse so swift-markdown's CommonMark parser resolves the references
 /// (see `SyntaxHighlighter.parse(_:linkDefinitions:)`).
 ///
 /// A multiset of the raw definition *lines* is enough: swift-markdown applies
@@ -21,7 +21,29 @@ struct LinkDefinitionState: Equatable {
 
     /// The collected definition lines, sorted and newline-joined. Empty when the
     /// document defines no references (then parsing skips the append entirely).
-    var defsText: String { lines.keys.sorted().joined(separator: "\n") }
+    /// Stored, not computed: it changes only when a definition line appears or
+    /// disappears. Block parses use `definitions(for:)`; whole-document callers
+    /// such as `PlainTextExport` read this.
+    private(set) var defsText = ""
+
+    /// Normalized label → its definition lines, for `definitions(for:)`.
+    private var byLabel: [String: [String]] = [:]
+
+    /// Only the definitions `markdown` can reference: those whose label
+    /// appears inside a `[…]` in it, sorted like `defsText`. Appending every
+    /// definition to every block's parse made each parse O(definitions) — a
+    /// document with 1,400 footnotes paid ~5 ms on every block, heading or rule.
+    /// Unreferenced definitions never change a block's spans, so a superset of
+    /// the referenced ones parses identically to `defsText`.
+    func definitions(for markdown: String) -> String {
+        guard !byLabel.isEmpty, markdown.contains("[") else { return "" }
+        var seen = Set<String>()
+        var found: [String] = []
+        for label in Self.bracketContents(markdown) where seen.insert(label).inserted {
+            found += byLabel[label] ?? []
+        }
+        return found.sorted().joined(separator: "\n")
+    }
 
     mutating func add(_ content: String) { scan(content, sign: 1) }
     mutating func remove(_ content: String) { scan(content, sign: -1) }
@@ -33,11 +55,47 @@ struct LinkDefinitionState: Equatable {
     }
 
     private mutating func scan(_ content: String, sign: Int) {
+        var keysChanged = false
         for line in content.split(separator: "\n", omittingEmptySubsequences: false) {
             guard let key = Self.canonicalDefinition(from: String(line)) else { continue }
-            let count = (lines[key] ?? 0) + sign
+            let old = lines[key] ?? 0
+            let count = old + sign
             lines[key] = count <= 0 ? nil : count
+            if (old > 0) != (count > 0) { keysChanged = true }
         }
+        guard keysChanged else { return }
+        defsText = lines.keys.sorted().joined(separator: "\n")
+        byLabel = Dictionary(grouping: lines.keys) { line in
+            let open = line.firstIndex(of: "[")!   // defRegex guarantees `[label]:`
+            let close = line[open...].firstIndex(of: "]")!
+            return Self.normalizedLabel(line[line.index(after: open)..<close])
+        }
+    }
+
+    /// CommonMark label matching: case-insensitive, whitespace runs collapsed.
+    // ponytail: lowercased() stands in for Unicode case folding (ß, ſ…);
+    // a miss there only drops a reference to an exotic-cased label.
+    private static func normalizedLabel(_ s: Substring) -> String {
+        s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").lowercased()
+    }
+
+    /// The innermost `[…]` contents in `markdown`, normalized. Labels may span
+    /// lines, so a newline doesn't end one; a nested `[` restarts it.
+    private static func bracketContents(_ markdown: String) -> [String] {
+        var out: [String] = []
+        var open: String.Index?
+        var i = markdown.startIndex
+        while i < markdown.endIndex {
+            switch markdown[i] {
+            case "[": open = markdown.index(after: i)
+            case "]":
+                if let start = open { out.append(normalizedLabel(markdown[start..<i])) }
+                open = nil
+            default: break
+            }
+            i = markdown.index(after: i)
+        }
+        return out
     }
 
     /// A CommonMark link reference definition line: up to 3 leading spaces, a

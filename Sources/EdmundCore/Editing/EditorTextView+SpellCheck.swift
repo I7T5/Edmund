@@ -41,7 +41,13 @@ extension EditorTextView {
     /// touching that offset (the word and sentence still being typed).
     func filteredCheckingResults(_ results: [NSTextCheckingResult], orthography: NSOrthography?,
                                  sparing caret: Int?) -> [NSTextCheckingResult] {
-        let language = enumerationLanguage(orthography)
+        filteredCheckingResults(results, dominantLanguage: orthography?.dominantLanguage,
+                                sparing: caret)
+    }
+
+    func filteredCheckingResults(_ results: [NSTextCheckingResult], dominantLanguage: String?,
+                                 sparing caret: Int?) -> [NSTextCheckingResult] {
+        let language = enumerationLanguage(dominantLanguage)
         var skippedByBlock: [Int: [NSRange]] = [:]
         func skipped(_ range: NSRange) -> Bool {
             if rangeIsHidden(range) { return true }
@@ -75,6 +81,103 @@ extension EditorTextView {
         return kept
     }
 
+    /// Checks the whole document: on open, and when spelling or
+    /// grammar checking is switched in either direction. Off clears every mark.
+    ///
+    /// Asynchronous: the spell server takes ~12 ms per KB, so one synchronous
+    /// pass held a 1 MB document's first paint for over ten seconds. The
+    /// visible window is requested first, then the rest in small line-aligned
+    /// chunks, one at a time; each lands on the main thread only if its text
+    /// is unchanged (an edit re-checks its own blocks anyway).
+    func rescanSpelling() {
+        spellScanGeneration &+= 1
+        guard let ts = textStorage, ts.length > 0 else { return }
+        guard isContinuousSpellCheckingEnabled else {
+            setSpellingState(0, range: NSRange(location: 0, length: ts.length))
+            return
+        }
+        let ns = string as NSString
+        func lineEnd(after offset: Int) -> Int {
+            guard offset < ns.length else { return ns.length }
+            let nl = ns.range(of: "\n", range: NSRange(location: offset, length: ns.length - offset))
+            return nl.location == NSNotFound ? ns.length : nl.upperBound
+        }
+        var first = NSRange(location: 0, length: lineEnd(after: min(ns.length, Self.spellScanChunk)))
+        if let window = syncStylingBlockRange() {
+            let lo = blocks[window.lowerBound].range.location
+            first = NSRange(location: lo, length: min(blocks[window.upperBound].range.upperBound, ns.length) - lo)
+        }
+        var chunks = [first]
+        for (lo, hi) in [(0, first.location), (first.upperBound, ns.length)] {
+            var start = lo
+            while start < hi {
+                let end = min(hi, lineEnd(after: start + Self.spellScanChunk))
+                chunks.append(NSRange(location: start, length: end - start))
+                start = end
+            }
+        }
+        requestSpelling(chunks[...], generation: spellScanGeneration)
+    }
+
+    // Small: NSSpellChecker serializes requests, so a synchronous recheck (an
+    // edit, a restyle) waits for the chunk in flight — ~12 ms per KB.
+    static let spellScanChunk = 8_000
+
+    private func requestSpelling(_ chunks: ArraySlice<NSRange>, generation: Int) {
+        guard generation == spellScanGeneration, let range = chunks.first else { return }
+        let ns = string as NSString
+        guard range.length > 0, range.upperBound <= ns.length else {
+            requestSpelling(chunks.dropFirst(), generation: generation)
+            return
+        }
+        let text = ns.substring(with: range)
+        var types = NSTextCheckingResult.CheckingType.spelling.rawValue
+        if isGrammarCheckingEnabled { types |= NSTextCheckingResult.CheckingType.grammar.rawValue }
+        NSSpellChecker.shared.requestChecking(
+            of: text, range: NSRange(location: 0, length: (text as NSString).length), types: types,
+            options: nil, inSpellDocumentWithTag: spellCheckerDocumentTag
+        ) { @Sendable [weak self] _, results, orthography, _ in
+            // Off the main thread — `@Sendable`, or the closure would inherit
+            // this method's main-actor isolation and trap when the spell
+            // server calls it from its own queue. Keep only what can cross.
+            let hits = results.map { SpellHit($0, offset: range.location) }
+            let language = orthography.dominantLanguage
+            RunLoop.main.perform(inModes: [.common]) {
+                MainActor.assumeIsolated {
+                    guard let self, generation == self.spellScanGeneration else { return }
+                    let now = self.string as NSString
+                    if self.isContinuousSpellCheckingEnabled, !self.hasMarkedText(),
+                       range.upperBound <= now.length, now.substring(with: range) == text {
+                        self.applySpelling(
+                            self.filteredCheckingResults(hits.map(\.result),
+                                                         dominantLanguage: language, sparing: nil),
+                            in: range)
+                    }
+                    self.requestSpelling(chunks.dropFirst(), generation: generation)
+                }
+            }
+        }
+    }
+
+    /// Clears `range`'s marks and sets those for `results`.
+    private func applySpelling(_ results: [NSTextCheckingResult], in range: NSRange) {
+        setSpellingState(0, range: range)
+        for result in results {
+            switch result.resultType {
+            case .spelling:
+                setSpellingState(NSAttributedString.SpellingState.spelling.rawValue, range: result.range)
+            case .grammar:
+                for detail in result.grammarDetails ?? [] {
+                    guard let r = detail[NSGrammarRange] as? NSRange else { continue }
+                    setSpellingState(NSAttributedString.SpellingState.grammar.rawValue,
+                                     range: NSRange(location: result.range.location + r.location, length: r.length))
+                }
+            default:
+                break
+            }
+        }
+    }
+
     /// Re-checks spelling (and grammar, when on) over the given blocks and
     /// redraws their marks, one check per contiguous run so a caret jump from
     /// the top of the document to the bottom doesn't check everything between.
@@ -84,19 +187,6 @@ extension EditorTextView {
     /// delivers on a later run-loop pass (too late to spare the caret's word by
     /// the caret position it was checked at), and `super.handleTextCheckingResults`
     /// was measured not to mark anything for results handed to it directly.
-    /// Checks the whole document at once: on open, and when spelling or
-    /// grammar checking is switched in either direction. Off clears every mark.
-    // ponytail: one synchronous pass; spread it over run-loop turns if huge
-    // documents ever stall on open.
-    func rescanSpelling() {
-        guard let ts = textStorage, ts.length > 0 else { return }
-        guard isContinuousSpellCheckingEnabled else {
-            setSpellingState(0, range: NSRange(location: 0, length: ts.length))
-            return
-        }
-        recheckSpelling(blocks: IndexSet(blocks.indices), lineCap: .max)
-    }
-
     func recheckSpelling(blocks indices: IndexSet, sparingCaret: Bool = false, lineCap: Int = 2_000) {
         guard isContinuousSpellCheckingEnabled, !hasMarkedText(), let ts = textStorage else { return }
         var types = NSTextCheckingResult.CheckingType.spelling.rawValue
@@ -122,22 +212,8 @@ extension EditorTextView {
                 string, range: range, types: types, options: nil,
                 inSpellDocumentWithTag: spellCheckerDocumentTag,
                 orthography: &orthography, wordCount: nil)
-            setSpellingState(0, range: range)
-            for result in filteredCheckingResults(results, orthography: orthography,
-                                                  sparing: sparingCaret ? caret : nil) {
-                switch result.resultType {
-                case .spelling:
-                    setSpellingState(NSAttributedString.SpellingState.spelling.rawValue, range: result.range)
-                case .grammar:
-                    for detail in result.grammarDetails ?? [] {
-                        guard let r = detail[NSGrammarRange] as? NSRange else { continue }
-                        setSpellingState(NSAttributedString.SpellingState.grammar.rawValue,
-                                         range: NSRange(location: result.range.location + r.location, length: r.length))
-                    }
-                default:
-                    break
-                }
-            }
+            applySpelling(filteredCheckingResults(results, orthography: orthography,
+                                                  sparing: sparingCaret ? caret : nil), in: range)
         }
     }
 
@@ -229,10 +305,10 @@ extension EditorTextView {
     /// The language an enumeration's parts are checked in: the user's fixed
     /// choice, or under "Automatic by Language" the text's — left to guess
     /// from a lone `helo`, the checker finds some language that accepts it.
-    private func enumerationLanguage(_ orthography: NSOrthography?) -> String {
+    private func enumerationLanguage(_ dominantLanguage: String?) -> String {
         let checker = NSSpellChecker.shared
         guard checker.automaticallyIdentifiesLanguages else { return checker.language() }
-        return orthography.map(\.dominantLanguage).flatMap { $0 == "und" ? nil : $0 } ?? checker.language()
+        return dominantLanguage.flatMap { $0 == "und" ? nil : $0 } ?? checker.language()
     }
 
     /// For a flagged `,`/`;`-joined token of short parts (`a,b,c`,
@@ -261,5 +337,27 @@ extension EditorTextView {
             offset += length + 1   // + the separator
         }
         return misses
+    }
+}
+
+/// One spelling or grammar result, carried from the spell server's queue to
+/// the main thread (`NSTextCheckingResult` is not Sendable). Ranges are made
+/// document-absolute on the way.
+struct SpellHit: Sendable {
+    let isGrammar: Bool
+    let range: NSRange
+    /// Grammar detail ranges, relative to `range` as AppKit reports them.
+    let details: [NSRange]
+
+    init(_ result: NSTextCheckingResult, offset: Int) {
+        isGrammar = result.resultType == .grammar
+        range = NSRange(location: result.range.location + offset, length: result.range.length)
+        details = (result.grammarDetails ?? []).compactMap { $0[NSGrammarRange] as? NSRange }
+    }
+
+    var result: NSTextCheckingResult {
+        isGrammar
+            ? .grammarCheckingResult(range: range, details: details.map { [NSGrammarRange: NSValue(range: $0)] })
+            : .spellCheckingResult(range: range)
     }
 }

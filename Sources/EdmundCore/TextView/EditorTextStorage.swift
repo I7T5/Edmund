@@ -88,6 +88,18 @@ public class EditorTextStorage: NSTextStorage {
         backing.attributes(at: location, effectiveRange: range)
     }
 
+    // Without this, NSAttributedString's default single-attribute lookup goes
+    // through `attributes(at:)` above — which, being a Swift override, bridges
+    // the whole attribute dictionary to Swift and back on every call. TextKit 2
+    // enumerates one attribute across the edited range after each restyle
+    // (`_supportsTextAttributesInRange:`), so that bridging was ~70% of a
+    // zoom or appearance switch on a long document.
+    override public func attribute(
+        _ attrName: NSAttributedString.Key, at location: Int, effectiveRange range: NSRangePointer?
+    ) -> Any? {
+        backing.attribute(attrName, at: location, effectiveRange: range)
+    }
+
     override public func replaceCharacters(in range: NSRange, with str: String) {
         let delta = (str as NSString).length - range.length
         accumulateEdit(currentRange: range, delta: delta)

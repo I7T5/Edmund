@@ -57,6 +57,49 @@ struct LazyRenderingTests {
         assertMatchesFullRecomposeOracle(editor, "after drain")
     }
 
+    @Test("The drain builds the list-depth map once, not once per block")
+    @MainActor func drainBuildsDepthMapOnce() {
+        let (editor, _) = windowedEditor()
+        editor.loadContent(bigDocument())
+        let before = editor.listDepthsBuildCount
+        drainAllStyling(editor)
+        #expect(editor.listDepthsBuildCount - before <= 1)
+    }
+
+    /// After a zoom, the blocks above the viewport keep their old font until
+    /// the drain reaches them; restyled, they change height. Past the
+    /// full-layout threshold those heights are estimates, and the viewport
+    /// must not slide while the drain catches up.
+    @Test("Zoom keeps the top line while the drain restyles the rest")
+    @MainActor func zoomHoldsTopLineThroughDrain() throws {
+        let (editor, scroll) = windowedEditor(height: 400)
+        let doc = (0..<1300).map {
+            "## Heading \($0)\n\nparagraph **\($0)** with enough words to wrap a couple of times here."
+        }.joined(separator: "\n\n")
+        #expect((doc as NSString).length > EditorTextView.fullLayoutMaxLength)
+        editor.loadContent(doc)
+        drainAllStyling(editor)
+        let tlm = try #require(editor.textLayoutManager)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: editor.frame.height / 2))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        tlm.textViewportLayoutController.layoutViewport()
+
+        editor.setZoom(1.3)
+        tlm.textViewportLayoutController.layoutViewport()
+        let afterZoom = try #require(editor.topmostVisibleCharacterOffset())
+        var slices = 0
+        while editor.blocks.contains(where: { !$0.isStyled }), slices < 10_000 {
+            editor.drainStylingSlice()
+            tlm.textViewportLayoutController.layoutViewport()   // the display pass
+            slices += 1
+        }
+        let afterDrain = try #require(editor.topmostVisibleCharacterOffset())
+        let lineAfterZoom = editor.line(forOffset: afterZoom)
+        let lineAfterDrain = editor.line(forOffset: afterDrain)
+        #expect(abs(lineAfterDrain - lineAfterZoom) <= 2,
+                "top line slid from \(lineAfterZoom) to \(lineAfterDrain) as the drain ran")
+    }
+
     @Test("Scrolling promotes newly visible blocks synchronously")
     @MainActor func scrollPromotes() {
         let (editor, scroll) = windowedEditor()

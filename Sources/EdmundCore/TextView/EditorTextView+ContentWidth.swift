@@ -215,8 +215,10 @@ extension EditorTextView {
                 || blocks[$0].content.localizedCaseInsensitiveContains("<img")
         })
         guard !dirty.isEmpty else { return }
-        preservingViewportAnchor {
-            recomposeDirty(dirty, cursorInRaw: currentCursorInRaw())
+        stylingOnly {
+            preservingViewportAnchor {
+                recomposeDirty(dirty, cursorInRaw: currentCursorInRaw())
+            }
         }
         // `setFrameSize` already ran `updateWrappedCaret` against the old
         // column geometry; the in-cell caret has to be re-read once the new

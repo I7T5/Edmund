@@ -123,6 +123,19 @@ public class EditorTextView: NSTextView {
         didSet { listDepthsCache = nil }
     }
     var listDepthsCache: [Int]?
+    /// Whole-document `ListDepthMap` builds so far; tests assert styling
+    /// doesn't rebuild it per block.
+    var listDepthsBuildCount = 0
+
+    /// Flags block `index` styled or unstyled. Keeps `listDepthsCache`, which
+    /// `blocks`' `didSet` would otherwise drop: depth reads only a block's kind
+    /// and indent, never its styling. Dropping it here made every restyle
+    /// rebuild the map over the whole document — O(blocks²) across a drain.
+    func setStyled(_ index: Int, _ styled: Bool) {
+        let depths = listDepthsCache
+        blocks[index].isStyled = styled
+        listDepthsCache = depths
+    }
 
     /// Nesting depth of each block's list line, or `ListDepthMap.notAList`.
     /// Built lazily and dropped by `blocks`' `didSet`, the one hook covering
@@ -136,6 +149,7 @@ public class EditorTextView: NSTextView {
     // stack matches the old one, since everything past that point is unchanged.
     var listDepths: [Int] {
         if let listDepthsCache { return listDepthsCache }
+        listDepthsBuildCount += 1
         let depths = ListDepthMap.build(from: blocks)
         listDepthsCache = depths
         return depths
@@ -196,6 +210,24 @@ public class EditorTextView: NSTextView {
     var pendingRecompose = false
     /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
     var progressiveStylingScheduled = false
+    /// Bumped by every whole-document spell scan, so a scan's remaining
+    /// chunks stop once a newer one (or a newly loaded document) starts.
+    var spellScanGeneration = 0
+    /// Set while a restyle changes styling only — not the text, not the caret —
+    /// so `recomposeDirty` skips its spell recheck. See `stylingOnly(_:)`.
+    var skipsSpellRecheck = false
+
+    /// Runs a restyle that changes styling only (zoom, appearance, theme, view
+    /// mode, a render engine, the column width) without the synchronous spell
+    /// recheck `recomposeDirty` does for edits and caret moves: the text and
+    /// the caret's word are unchanged, so the marks are too, and each recheck
+    /// was a round trip to the spell server — queued behind any scan in flight.
+    func stylingOnly(_ body: () -> Void) {
+        let was = skipsSpellRecheck
+        skipsSpellRecheck = true
+        defer { skipsSpellRecheck = was }
+        body()
+    }
     /// True during a user scroll and for a short settling period afterward.
     var isScrollingActive = false
     var userScrollInProgress = false
@@ -349,10 +381,22 @@ public class EditorTextView: NSTextView {
         didSet {
             guard oldValue != viewMode else { return }
             isEditable = (viewMode != .reading)
-            // Re-style every block under the new mode (viewport-first for big docs).
             guard !blocks.isEmpty else { return }
-            recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
-                           cursorInRaw: selectedRange().location)
+            // Edit and Read style a block identically except the active block
+            // (Edit reveals its raw markdown) and what Read hides: `%%` and
+            // `<!--` comments and `^id` block references. Only those change
+            // between the two; Source differs everywhere. Restyling the whole
+            // document instead cost a 1 MB file ~2 s of drain per switch.
+            var dirty = IndexSet(integersIn: 0..<blocks.count)
+            if oldValue != .source, viewMode != .source {
+                dirty = IndexSet(blocks.indices.filter {
+                    let c = blocks[$0].content
+                    return c.contains("%%") || c.contains("<!--") || c.contains("^")
+                })
+                if let active = activeBlockIndex { dirty.insert(active) }
+            }
+            // Re-style under the new mode (viewport-first for big sets).
+            stylingOnly { recomposeDirty(dirty, cursorInRaw: selectedRange().location) }
         }
     }
 
@@ -662,15 +706,6 @@ public class EditorTextView: NSTextView {
     /// The pointer-tracking area behind `hoveredTableBlock`.
     var tableHoverTrackingArea: NSTrackingArea?
 
-    /// The open popup cell editor, and the cell it is editing. See
-    /// EditorTextView+TableCellEditor.
-    var cellEditorPanel: CellEditorPanel?
-    var editingTableCell: TableCellRef?
-
-    /// Set once the popup has been dragged off the table into a free-floating
-    /// window: it stops tracking the table and grows its own close box.
-    var isCellEditorDetached = false
-
     /// True while a table is deliberately showing its raw markdown, which the
     /// `</>` button asks for. A caret inside a table no longer implies raw —
     /// the table stays rendered and the cell is edited in place — so this is
@@ -687,20 +722,6 @@ public class EditorTextView: NSTextView {
     public internal(set) var wrappedCaretOn = false
     public internal(set) var wrappedCaretRect: NSRect?
     public internal(set) var wrappedCaretTimer: Timer?
-
-    /// The card's top edge in view coordinates, fixed for as long as it points
-    /// at one cell. Nil re-reads it from the row on the next placement.
-    var cellEditorAnchorY: CGFloat?
-
-    /// True once this popup session has pushed its undo snapshot. Typing in the
-    /// popup rewrites the cell on every keystroke so the table reflows live, and
-    /// without this every keystroke would also be its own undo step.
-    var cellEditorDidSnapshot = false
-
-    /// Ends the edit when the document window stops being key, and keeps the
-    /// attached popup under its table while the view scrolls.
-    var cellEditorKeyObserver: NSObjectProtocol?
-    var cellEditorScrollObserver: NSObjectProtocol?
 
     // MARK: - Derived Visual Properties
 
@@ -952,9 +973,15 @@ public class EditorTextView: NSTextView {
     #endif
 
     @objc private func renderEngineDidChange(_ note: Notification) {
-        guard !blocks.isEmpty else { return }
-        recomposeDirty(IndexSet(integersIn: 0..<blocks.count),
-                      cursorInRaw: selectedRange().location)
+        // Only what an engine draws: math (any `$`, in any block kind) and
+        // diagrams (fences). Launch posts this up to three times as the
+        // extensions load, and restyling every block each time was a full
+        // restyle of a long document, three times over.
+        let dirty = IndexSet(blocks.indices.filter {
+            blocks[$0].kind == .fence || blocks[$0].content.contains("$")
+        })
+        guard !dirty.isEmpty else { return }
+        stylingOnly { recomposeDirty(dirty, cursorInRaw: selectedRange().location) }
     }
 
     /// Hook up scroll promotion once the editor lands in its scroll view.
@@ -1092,16 +1119,6 @@ public class EditorTextView: NSTextView {
         // this takes the gesture whole. See EditorTextView+TableHandles.
         if let grab = tableCellSelectionAnchor(at: convert(event.locationInWindow, from: nil)) {
             trackTableCellSelection(from: grab.anchor, blockIndex: grab.block.blockIndex)
-            return
-        }
-        // An open popup ends on any click that isn't on its own table. The
-        // popover is `.applicationDefined`, so nothing else does this.
-        dismissCellEditorIfClickIsOutside(event)
-        // EXPERIMENT (inline table editing): the popover no longer takes the
-        // click. A table now stays rendered with the caret inside it, so the
-        // click falls through to ordinary caret placement in the real text.
-        if false, let cell = tableCellForCellEditor(at: event) {
-            openTableCellEditor(cell)
             return
         }
         // A single click/drag on a wrapped cell's drawn text is taken whole:
@@ -1510,7 +1527,10 @@ public class EditorTextView: NSTextView {
             undoStack.removeAll()
             redoStack.removeAll()
             hasDeferredMarkedTextUndo = false
-            recompose(cursorInRaw: 0)
+            // The scan below covers every block; the restyle's own synchronous
+            // recheck would only duplicate it — and, as the process's first
+            // call to the spell server, cost ~0.3 s of launch on its own.
+            stylingOnly { recompose(cursorInRaw: 0) }
             rescanSpelling()
         }
     }

@@ -157,7 +157,13 @@ extension EditorTextView {
             ensureBlocksStyled(upTo: offset)
             tlm.ensureLayout(for: range)
         } else if !ensureRegionLaidOut(upTo: offset) {
-            scrollRangeToVisible(NSRange(location: offset, length: 0)); return
+            // Too far from the viewport to lay the span out cheaply. A plain
+            // reveal only puts the target *somewhere* on screen — the Edit↔Read
+            // round trip landed up to ~30 lines off and crept with each toggle.
+            // The reveal does bring the viewport next to it, though, so the
+            // span is short now: lay it out and pin the target precisely.
+            scrollRangeToVisible(NSRange(location: offset, length: 0))
+            guard ensureRegionLaidOut(upTo: offset) else { return }
         }
         guard let rect = lineRect(forCharacterAt: offset) else { return }
         // Top of the *visible* area: without the inset the anchored line lands
