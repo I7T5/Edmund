@@ -10,6 +10,10 @@ import EdmundCore
 class Document: NSDocument, HeadingNavigable {
 
     var editor: EditorTextView!
+    /// False while the window is being built and placed: setup resizes it, and
+    /// saving those frames overwrote the user's saved origin with the build-time
+    /// (0, 0) before it was read back.
+    private var savesWindowFrame = false
     private var statusBar: StatusBarView!
     /// The view-mode toolbar item. Its image, label and tooltip follow the mode.
     private weak var viewModeItem: NSToolbarItem?
@@ -126,6 +130,8 @@ class Document: NSDocument, HeadingNavigable {
         // on a 14" display) balanced margins rather than being arbitrary.
         let windowWidth: CGFloat = 800
         let windowHeight: CGFloat = 520
+        let savedOrigin = AppSettings.lastWindowOrigin
+        let savedSize = AppSettings.lastWindowSize
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -306,10 +312,10 @@ class Document: NSDocument, HeadingNavigable {
         // the frame is final). Applied as a frame, not a contentRect, so it
         // round-trips exactly with what windowDidResize/windowDidMove save. No
         // saved origin, or one no screen shows any more: center.
-        if let savedSize = AppSettings.lastWindowSize {
+        if let savedSize {
             window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
         }
-        if let origin = AppSettings.lastWindowOrigin,
+        if let origin = savedOrigin,
            let frame = AppSettings.reachableFrame(
             NSRect(origin: origin, size: window.frame.size),
             screens: NSScreen.screens.map(\.visibleFrame)) {
@@ -319,6 +325,11 @@ class Document: NSDocument, HeadingNavigable {
             window.setFrameOrigin(NSPoint(x: frame.minX + offset, y: frame.minY - offset))
         } else {
             window.center()
+        }
+        // On the next run-loop turn: AppKit posts the resize/move notifications
+        // for the frames set above after this returns, and they must not save.
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated { self?.savesWindowFrame = true }
         }
 
         let wc = DocumentWindowController(window: window)
@@ -357,7 +368,7 @@ class Document: NSDocument, HeadingNavigable {
     /// Full-screen frames are transient, not the user's chosen window; saving
     /// them made the next window open screen-sized.
     private func saveWindowFrame(_ window: NSWindow) {
-        guard !window.styleMask.contains(.fullScreen) else { return }
+        guard savesWindowFrame, !window.styleMask.contains(.fullScreen) else { return }
         AppSettings.lastWindowSize = window.frame.size
         AppSettings.lastWindowOrigin = window.frame.origin
     }
