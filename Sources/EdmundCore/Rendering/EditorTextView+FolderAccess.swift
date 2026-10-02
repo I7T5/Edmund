@@ -47,10 +47,12 @@ extension EditorTextView {
         }
     }
 
-    /// Asks for the document's folder; on OK stores the grant, restyles so
-    /// placeholders become images, then runs `then` (a retried link follow).
-    func requestFolderAccess(then: (() -> Void)? = nil) {
-        guard let window, let dir = document?.fileURL?.deletingLastPathComponent() else { return }
+    /// Asks for `folder` (default: the document's); on OK stores the grant,
+    /// restyles so placeholders become images, then runs `then` (a retried
+    /// link follow).
+    func requestFolderAccess(for folder: URL? = nil, then: (() -> Void)? = nil) {
+        guard let window,
+              let dir = folder ?? document?.fileURL?.deletingLastPathComponent() else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true

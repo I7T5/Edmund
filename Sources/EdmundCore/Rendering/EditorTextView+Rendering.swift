@@ -397,6 +397,10 @@ extension EditorTextView {
                 if !target.isEmpty {
                     result.addAttribute(.editorWikiTarget, value: target, range: span.contentRange)
                 }
+                // Sandboxed and the document's folder isn't granted: offer it
+                // now, like a sibling image, so following the link never fails
+                // silently. The click path re-prompts after a Cancel.
+                if ungrantedDocumentFolder != nil { promptForFolderAccessOnce() }
 
             case .image(let destination, let width, let height):
                 guard span.fullRange.upperBound <= result.length else { continue }

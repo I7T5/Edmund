@@ -69,9 +69,13 @@ extension EditorTextView {
         guard let fileURL = resolved, FolderAccess.covers(fileURL) else {
             // Sandboxed and the folder isn't granted: the recursive search
             // can't run and `openDocument` would fail with a permission alert.
-            // Offer the grant, then retry (once granted, `covers` is true).
-            if ungrantedDocumentFolder != nil {
-                requestFolderAccess { [weak self] in self?.openLinkedFile(path: path, heading: heading) }
+            // Offer the grant, then retry (once granted, `covers` is true). A
+            // resolved target outside the document's folder (absolute, `~`,
+            // `file:`) needs its own folder granted; an unresolved one means
+            // the search itself was blocked, so ask for the document's.
+            let folder = resolved?.deletingLastPathComponent() ?? ungrantedDocumentFolder
+            if FolderAccess.isSandboxed, let folder {
+                requestFolderAccess(for: folder) { [weak self] in self?.openLinkedFile(path: path, heading: heading) }
             } else {
                 NSSound.beep()
             }
