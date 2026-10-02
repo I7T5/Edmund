@@ -648,6 +648,13 @@ extension SyntaxHighlighter {
     /// and HTML tags. Must run after every other pass.
     static func parseAutolinks(_ text: String, into spans: inout [Span]) {
         let ns = text as NSString
+        // Every autolink has an `@`, a `://` or a `www.`; prose without any
+        // (most of it) skips the regex, whose email branch is otherwise tried
+        // at nearly every word — ~17% of rendering a long document for Read.
+        guard ns.range(of: "@").location != NSNotFound
+                || ns.range(of: "://").location != NSNotFound
+                || ns.range(of: "www.", options: .caseInsensitive).location != NSNotFound
+        else { return }
 
         func isTrimPunct(_ c: unichar) -> Bool {
             // ? ! . , : * _ ~ ' "
