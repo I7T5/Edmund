@@ -139,6 +139,38 @@ struct ScrollStabilityTests {
     // viewport re-measures and the same clip origin lands elsewhere: measured
     // at +64 lines on a 2000-line file when the appearance switched.
 
+    /// Read→Edit lands the editor with `scrollCharacterToTop`. A target past
+    /// the cheap-layout cap and far from the viewport used to get a plain
+    /// reveal — somewhere on screen, not at the top — so every Edit↔Read round
+    /// trip moved the viewport.
+    @Test("A far target lands at the top of the viewport")
+    @MainActor func scrollCharacterToTopFarTarget() throws {
+        let editor = makeEditor()
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+                           styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = NSScrollView(frame: win.contentLayoutRect)
+        scroll.documentView = editor
+        win.contentView = scroll
+        editor.typewriterModeEnabled = false
+        editor.isVerticallyResizable = true
+        editor.minSize = .zero
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                height: CGFloat.greatestFiniteMagnitude)
+        editor.autoresizingMask = [.width]
+        let doc = (0..<900).map {
+            "## Section \($0)\n\nparagraph number \($0) with enough text on it to wrap at least once here."
+        }.joined(separator: "\n\n")
+        editor.loadContent(doc)
+
+        let line = editor.line(forOffset: (doc as NSString).range(of: "## Section 850").location)
+        let target = editor.offset(forLine: line)
+        #expect(target > 60_000)
+        editor.scrollCharacterToTop(target)
+        let top = try #require(editor.topmostVisibleCharacterOffset())
+        #expect(editor.line(forOffset: top) == line,
+                "landed on line \(editor.line(forOffset: top)), wanted \(line)")
+    }
+
     @Test("A whole-document restyle (appearance/theme) keeps the viewport put")
     @MainActor func rerenderStylesKeepsViewport() {
         let (editor, _) = scrolledEditor()
