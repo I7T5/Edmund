@@ -10,6 +10,10 @@ import EdmundCore
 class Document: NSDocument, HeadingNavigable {
 
     var editor: EditorTextView!
+    /// False while the window is being built and placed: setup resizes it, and
+    /// saving those frames overwrote the user's saved origin with the build-time
+    /// (0, 0) before it was read back.
+    private var savesWindowFrame = false
     private var statusBar: StatusBarView!
     /// The view-mode toolbar item. Its image, label and tooltip follow the mode.
     private weak var viewModeItem: NSToolbarItem?
@@ -126,6 +130,8 @@ class Document: NSDocument, HeadingNavigable {
         // on a 14" display) balanced margins rather than being arbitrary.
         let windowWidth: CGFloat = 800
         let windowHeight: CGFloat = 520
+        let savedOrigin = AppSettings.lastWindowOrigin
+        let savedSize = AppSettings.lastWindowSize
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -278,6 +284,10 @@ class Document: NSDocument, HeadingNavigable {
             name: NSWindow.didResizeNotification, object: window
         )
         NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidMove(_:)),
+            name: NSWindow.didMoveNotification, object: window
+        )
+        NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSWindow.didChangeScreenNotification, object: window
         )
@@ -298,13 +308,26 @@ class Document: NSDocument, HeadingNavigable {
             name: NSWindow.didExitFullScreenNotification, object: window
         )
 
-        // Restore the last window's frame size (the toolbar is now installed, so
+        // Restore the last window's frame, size and origin (the toolbar is now installed, so
         // the frame is final). Applied as a frame, not a contentRect, so it
-        // round-trips exactly with what windowDidResize saves. Then center.
-        if let savedSize = AppSettings.lastWindowSize {
+        // round-trips exactly with what windowDidResize/windowDidMove save. No
+        // saved origin, or one no screen shows any more: center.
+        if let savedSize {
             window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
         }
-        window.center()
+        if let origin = savedOrigin,
+           let frame = AppSettings.reachableFrame(
+            NSRect(origin: origin, size: window.frame.size),
+            screens: NSScreen.screens.map(\.visibleFrame)) {
+            window.setFrameOrigin(frame.origin)
+        } else {
+            window.center()
+        }
+        // On the next run-loop turn: AppKit posts the resize/move notifications
+        // for the frames set above after this returns, and they must not save.
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated { self?.savesWindowFrame = true }
+        }
 
         let wc = DocumentWindowController(window: window)
         addWindowController(wc)
@@ -331,7 +354,20 @@ class Document: NSDocument, HeadingNavigable {
         guard let window = notification.object as? NSWindow else { return }
         // Save the full frame size; it's restored verbatim via setFrame on the
         // next window, so the size round-trips exactly (no title-bar/toolbar drift).
+        saveWindowFrame(window)
+    }
+
+    @objc private func windowDidMove(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        saveWindowFrame(window)
+    }
+
+    /// Full-screen frames are transient, not the user's chosen window; saving
+    /// them made the next window open screen-sized.
+    private func saveWindowFrame(_ window: NSWindow) {
+        guard savesWindowFrame, !window.styleMask.contains(.fullScreen) else { return }
         AppSettings.lastWindowSize = window.frame.size
+        AppSettings.lastWindowOrigin = window.frame.origin
     }
 
     /// Reapply the content-width cap in points when the window moves to a

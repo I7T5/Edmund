@@ -49,6 +49,7 @@ Swift name) is what you pass as a launch arg.
 | `verboseEditorDiagnostics` | `settings.advanced.verboseEditorDiagnostics` | **Verbose editor trace** (see §4; pairs with diagnosticLogging) |
 | `offerCrashReports` | `settings.advanced.offerCrashReports` | **Ask to report crashes on GitHub** (default on; the alert's "Don't ask again" clears it) |
 | `lastWindowHeight` | `settings.window.lastHeight` | Persisted window sizing (see the frame-not-content trap) |
+| `lastWindowOriginX` / `lastWindowOriginY` | `settings.window.lastOriginX` / `lastOriginY` | Persisted window origin; absent until the first move/resize; saved on resize/move, never in full screen |
 | `automaticallyChecksForUpdates` | `SUAutomaticallyChecksForUpdates` | Sparkle's own key (not namespaced) |
 | `EditorTheme.Keys.fontCascade` | `EditorFontCascade` | Per-script font cascade: `[script: family]` dict (Settings ▸ Appearance ▸ Fonts by script). Scripts: han, kana, hangul, cyrillic, greek, arabic, hebrew, thai, emoji; absent/uninstalled ⇒ system fallback. Lives in `EditorTheme.swift`, **not** `AppSettings` |
 | `EditorTheme.Keys.fontCascadeSizeRatios` | `EditorFontCascadeSizeRatios` | Per-script size ratios: `[script: Double]` multiplier of the run's size; absent = 1.0 (clamped 0.5–2.0 on load). Same home as the cascade |
@@ -68,6 +69,9 @@ title-bar + toolbar height on every reopen, and heights below `minSize` get
 silently rejected. Save `window.frame.size`, reapply with `window.setFrame(_:)`
 **after the toolbar is installed**. (Note: the key on disk is
 `settings.window.lastHeight` — code, not the `lastWindowSize` some docs say.)
+The origin is saved too and restored only if `AppSettings.reachableFrame` finds
+it on a screen (else `center()`). Saving is gated by `savesWindowFrame` until the
+run-loop turn after setup, since setup's own resizes would overwrite it.
 
 **No crash upload:** `offerCrashReports` only gates a prompt that opens a
 prefilled GitHub issue; Edmund sends nothing itself. DEBUG flag
