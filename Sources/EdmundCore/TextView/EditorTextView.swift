@@ -630,6 +630,11 @@ public class EditorTextView: NSTextView {
     /// VoiceOver's focus survives a redraw. See EditorTextView+CodeCopyButton.
     var codeCopyButtonElements: [Int: CodeCopyButtonElement] = [:]
 
+    /// Whether each wiki-link path resolved to a note, so styling never walks
+    /// the folder twice for one link. Cleared when the app regains focus (the
+    /// note may have been created meanwhile). See `wikiNoteIsMissing`.
+    var wikiNoteExists: [String: Bool] = [:]
+
     /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
     /// repaint where they were as well as where they now are.
@@ -957,6 +962,21 @@ public class EditorTextView: NSTextView {
             name: .renderEngineChanged,
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive(_:)),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    /// Notes are created outside the app: forget which wiki links were missing
+    /// and restyle so a link to a note that now exists stops looking broken.
+    @objc private func appDidBecomeActive(_ note: Notification) {
+        guard !wikiNoteExists.isEmpty else { return }
+        wikiNoteExists.removeAll()
+        recomposeAllDirty()
     }
 
     deinit {

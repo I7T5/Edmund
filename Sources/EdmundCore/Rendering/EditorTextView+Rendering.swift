@@ -396,6 +396,14 @@ extension EditorTextView {
                                     range: span.contentRange)
                 if !target.isEmpty {
                     result.addAttribute(.editorWikiTarget, value: target, range: span.contentRange)
+                    // No such note: recede with a dashed underline, so a typo
+                    // or a not-yet-written note is visible before the click.
+                    if wikiNoteIsMissing(target) {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.contentRange)
+                        result.addAttribute(.underlineStyle,
+                                            value: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue,
+                                            range: span.contentRange)
+                    }
                 }
                 // Sandboxed and the document's folder isn't granted: offer it
                 // now, like a sibling image, so following the link never fails

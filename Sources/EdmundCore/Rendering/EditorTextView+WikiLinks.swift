@@ -29,6 +29,21 @@ extension EditorTextView {
         return storage.attribute(.editorWikiTarget, at: i, effectiveRange: nil) as? String
     }
 
+    /// True when `target` names a note that isn't there, so it can be drawn as
+    /// a placeholder. Never true for `#heading` links, or while the sandbox
+    /// hasn't granted the folder (a stat there lies; the folder prompt owns
+    /// that case).
+    func wikiNoteIsMissing(_ target: String) -> Bool {
+        let path = Self.splitHeading(target).path
+        guard !path.isEmpty, let docDir = document?.fileURL?.deletingLastPathComponent(),
+              FolderAccess.covers(docDir) else { return false }
+        if let known = wikiNoteExists[path] { return !known }
+        let url = resolveLinkedFile(path)
+        let exists = url.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        wikiNoteExists[path] = exists
+        return !exists
+    }
+
     // MARK: Following
 
     /// Follows a `[[wikilink]]` target (`path#heading`, no scheme, `.md` implied).
