@@ -6,8 +6,8 @@ import Foundation
 /// against `[label]: destination` definitions that may live in *other* blocks.
 /// Edmund styles one block at a time, so the editor collects every definition
 /// line here — built whole-document on load and maintained per changed block on
-/// the edit path (mirroring `ListIndentState`) — and appends `defsText` to each
-/// block's parse so swift-markdown's CommonMark parser resolves the references
+/// the edit path (mirroring `ListIndentState`) — and appends `definitions(for:)` (only the
+/// definitions whose labels appear in a `[…]` in the block) to each block's parse so swift-markdown's CommonMark parser resolves the references
 /// (see `SyntaxHighlighter.parse(_:linkDefinitions:)`).
 ///
 /// A multiset of the raw definition *lines* is enough: swift-markdown applies
@@ -21,8 +21,9 @@ struct LinkDefinitionState: Equatable {
 
     /// The collected definition lines, sorted and newline-joined. Empty when the
     /// document defines no references (then parsing skips the append entirely).
-    /// Stored, not computed: every block parse reads it, and it changes only
-    /// when a definition line appears or disappears.
+    /// Stored, not computed: it changes only when a definition line appears or
+    /// disappears. Block parses use `definitions(for:)`; whole-document callers
+    /// such as `PlainTextExport` read this.
     private(set) var defsText = ""
 
     /// Normalized label → its definition lines, for `definitions(for:)`.

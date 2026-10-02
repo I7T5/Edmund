@@ -100,8 +100,9 @@ public enum SyntaxHighlighter {
 
     /// Returns all inline syntax spans found in `text`, ordered by position.
     ///
-    /// `linkDefinitions` (the document's collected `[label]: url` lines, from
-    /// `LinkDefinitionState.defsText`) is appended after the block so
+    /// `linkDefinitions` (`[label]: url` lines — the editor passes the ones the
+    /// block references, `LinkDefinitionState.definitions(for:)`; export
+    /// passes the whole `defsText`) is appended after the block so
     /// swift-markdown can resolve GFM reference links whose definition lives in
     /// another block; spans landing in the appended region are dropped. Empty
     /// (the common case) means no append and no cost.

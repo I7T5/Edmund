@@ -56,7 +56,7 @@ extension EditorTextView {
               // the row, newline excluded, so a caret at the row's end is
               // checked one character back). The layout below walks every
               // fragment above the caret even when nothing is invalid —
-              // ~5ms at 300k, ~15ms at 1 MB, per draw — so a caret in an
+              // ~5 ms at 300 KB, ~15 ms at 1 MB, per draw — so a caret in an
               // ordinary table must not reach it.
               rowWraps(at: range.location, in: storage),
               let location = tlm.location(tlm.documentRange.location,

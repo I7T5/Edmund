@@ -81,16 +81,7 @@ extension EditorTextView {
         return kept
     }
 
-    /// Re-checks spelling (and grammar, when on) over the given blocks and
-    /// redraws their marks, one check per contiguous run so a caret jump from
-    /// the top of the document to the bottom doesn't check everything between.
-    /// `sparingCaret` is for the edit path: leave the word being typed alone.
-    ///
-    /// Synchronous and marks set directly, rather than `checkText(in:)`: that
-    /// delivers on a later run-loop pass (too late to spare the caret's word by
-    /// the caret position it was checked at), and `super.handleTextCheckingResults`
-    /// was measured not to mark anything for results handed to it directly.
-    /// Checks the whole document at once: on open, and when spelling or
+    /// Checks the whole document: on open, and when spelling or
     /// grammar checking is switched in either direction. Off clears every mark.
     ///
     /// Asynchronous: the spell server takes ~12 ms per KB, so one synchronous
@@ -187,6 +178,15 @@ extension EditorTextView {
         }
     }
 
+    /// Re-checks spelling (and grammar, when on) over the given blocks and
+    /// redraws their marks, one check per contiguous run so a caret jump from
+    /// the top of the document to the bottom doesn't check everything between.
+    /// `sparingCaret` is for the edit path: leave the word being typed alone.
+    ///
+    /// Synchronous and marks set directly, rather than `checkText(in:)`: that
+    /// delivers on a later run-loop pass (too late to spare the caret's word by
+    /// the caret position it was checked at), and `super.handleTextCheckingResults`
+    /// was measured not to mark anything for results handed to it directly.
     func recheckSpelling(blocks indices: IndexSet, sparingCaret: Bool = false, lineCap: Int = 2_000) {
         guard isContinuousSpellCheckingEnabled, !hasMarkedText(), let ts = textStorage else { return }
         var types = NSTextCheckingResult.CheckingType.spelling.rawValue
