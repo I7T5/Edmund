@@ -1,5 +1,5 @@
 ---
-description: Test (zero warnings), review docs and writing, offer a live check, then branch, commit, push, open a PR, and enable auto-merge for the current working-tree changes
+description: Test (zero warnings), review docs, writing and performance, offer a live check, then branch, commit, push, open a PR, and enable auto-merge for the current working-tree changes
 argument-hint: [short description of the change]
 allowed-tools: Bash, Read, Edit, Agent
 ---
@@ -57,6 +57,12 @@ stopping and reporting if any step fails:
       line: stop, show the findings, and ask before continuing. `write` lines
       on the drafts: apply them to the drafts. Other `write` lines and
       `should`/`nit` lines: list them in the step 8 report and carry on.
+   4. **Performance.** Spawn the `perf-reviewer` subagent on the same diff
+      range as doc drift. Skip for a change with no `.swift` files under
+      `Sources/`. Any `blocker` line: stop, show the findings, and ask
+      whether to fix, measure, or ship anyway with the finding in the PR
+      body's Notes. `should` and `measure` lines: list them and ask whether
+      to act on them before committing. `nit` lines: step 8 report only.
 
 2c. **Live risk class.** Classify the change by its changed paths (the
    `edmund-change-control` table; paths relative to `Sources/EdmundCore/`
