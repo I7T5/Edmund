@@ -51,6 +51,19 @@ measures, which keeps build and launch noise out of this session.
      Describe these steps in `$EV/expect.md`, since they are not `.repro`
      files.
 
+3b. **Long document** (edit-pipeline and drawing). Small fixtures stay
+   under `fullLayoutMaxLength` (100k UTF-16), where layout is exact; the
+   long-document bugs (height estimates, viewport drift, whole-document
+   loops, `docs/architecture/performance.md`) only show above it. Add one
+   scenario that repeats the main check on a long fixture,
+   `$EV/scenarios/fixtures/long.md`: copy the maintainer's
+   `test-files/long-1mb.md` from the main checkout when it exists, otherwise
+   concatenate the change's own fixture until it passes 300 KB. Put a needle
+   for the check about two thirds down, open with `# timeout: 40` and
+   `sleep 1500`, reach it with `caret <needle>` and `scroll`, and `logstate`
+   before asserting. A timeout here is a finding, not a flake: report it as
+   a hang.
+
 4. **Spawn `live-verifier`** with: the absolute `$EV` path, the class, the
    branch, and optionally a base ref. By default it uses the fork point from
    `origin/main`, never local `main`, which can be stale. Wait for its report.
