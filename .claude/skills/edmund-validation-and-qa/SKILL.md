@@ -175,6 +175,9 @@ geometry numbers but **cannot** confirm the pixels are right.
 
 - **`PerfHarnessTests`** measures the hot paths; `makeLargeMarkdown` builds big
   fixtures. Use it (don't hand-time) for any perf claim.
+- **`docs/architecture/performance.md`** owns the hot-path rules (§2), the
+  probe-test recipe for what the harness doesn't time (§3), and the measured
+  history. `/ship` runs the `perf-reviewer` agent against §2.
 - The README claim "handles ~1–2MB files" and `fullLayoutMaxLength = 100_000`
   UTF-16 (`EditorTextView.swift:80`) mark the boundary between the **full-layout**
   regime (≤100k, geometry is real) and the **estimate** regime (>100k, viewport

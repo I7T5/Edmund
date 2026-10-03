@@ -88,6 +88,8 @@ write-ups:
 - [`hard-wrap.md`](hard-wrap.md) — hard wrap as a property of the *file*:
   unwrap on open, re-wrap on save, and how the column is derived from the
   file's own existing breaks.
+- [`performance.md`](performance.md) — where long-document time went, the
+  rules that keep hot paths bounded, and how to measure a change.
 - Planned, not yet written: `edit-flow-and-undo.md`,
   `app-shell-and-settings.md`.
 
