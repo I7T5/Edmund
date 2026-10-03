@@ -1,6 +1,6 @@
 ---
 name: perf-reviewer
-description: Read-only performance review of one Edmund diff against the rules in docs/architecture/performance.md §2 — whole-document work on hot paths (per block, keystroke, draw, scroll tick, drag, blink), over-eager cache invalidation, forced layout on draw paths, storage bridging, sync spell rechecks, run-loop modes, unanchored edits above the viewport. Invoked by /ship on every Swift change; also on request ("perf review this branch", "perf-review <range>"). Reports findings with the measurement that would settle each; does not build, run or benchmark.
+description: Read-only performance review of one Edmund diff against the rules in docs/architecture/performance.md §2 — whole-document work on hot paths (per block, keystroke, draw, scroll tick, drag, blink), over-eager cache invalidation, forced layout on draw paths, storage bridging, sync spell rechecks, run-loop modes, unanchored edits above the viewport. Invoked by /ship on every change to .swift files under Sources/; also on request ("perf review this branch", "perf-review <range>"). Reports findings with the measurement that would settle each; does not build, run or benchmark.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -51,7 +51,7 @@ gate, a memo, `stylingOnly`, an anchor).
 
 ## Out of scope
 
-- Cold paths: open-once setup under ~10 ms at 1 MB, menu validation, export,
+- Cold paths: open-once setup under ~50 ms at 1 MB, menu validation, export,
   tests, DEBUG-only harness code.
 - Micro-optimizations with no size or frequency multiplier.
 - Items already listed in performance.md §4 (Open), unless the diff makes

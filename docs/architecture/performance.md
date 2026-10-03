@@ -105,8 +105,8 @@ measurement showing the cost is bounded, or a comment naming the ceiling.
   loads a 1 MB document (`PerfCorpus.document("mixed", bytes: 1_000_000)`, or
   a real file), runs `drainAllStyling`, and times the call with
   `ContinuousClock`. Synthetic corpora miss density effects: the 61 s restyle
-  only showed on a file with ~1,400 definitions. Keep probe files out of `Tests/` when running the
-  full suite: a 1 MB probe makes it time out.
+  only showed on a file with ~1,400 definitions. Keep probe files out of
+  `Tests/` when running the full suite: a 1 MB probe makes it time out.
 - **Model real scrolling.** Programmatic scroll skips #355's live-scroll gate;
   post `NSScrollView.willStartLiveScrollNotification` first. Pace frames at
   16 ms to see stalls rather than throughput.
