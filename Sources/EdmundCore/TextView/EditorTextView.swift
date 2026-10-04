@@ -631,9 +631,11 @@ public class EditorTextView: NSTextView {
     var codeCopyButtonElements: [Int: CodeCopyButtonElement] = [:]
 
     /// Whether each wiki-link path resolved to a note, so styling never walks
-    /// the folder twice for one link. Cleared when the app regains focus (the
-    /// note may have been created meanwhile). See `wikiNoteIsMissing`.
+    /// the folder twice for one link. Valid for `wikiNoteExistsDir` only (a
+    /// Save As or rename starts over); entries stored as missing are re-checked
+    /// when the app regains focus. See `wikiNoteIsMissing`.
     var wikiNoteExists: [String: Bool] = [:]
+    var wikiNoteExistsDir: URL?
 
     /// The row/column handle under the pointer, and the bands the handles were
     /// last drawn in — the handles follow the caret, so a caret move has to
@@ -971,12 +973,10 @@ public class EditorTextView: NSTextView {
         )
     }
 
-    /// Notes are created outside the app: forget which wiki links were missing
-    /// and restyle so a link to a note that now exists stops looking broken.
+    /// Notes are created outside the app: re-check the wiki links that were
+    /// missing and restyle only if one now exists.
     @objc private func appDidBecomeActive(_ note: Notification) {
-        guard !wikiNoteExists.isEmpty else { return }
-        wikiNoteExists.removeAll()
-        recomposeAllDirty()
+        if refreshMissingWikiNotes() { recomposeAllDirty() }
     }
 
     deinit {

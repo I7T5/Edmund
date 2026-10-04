@@ -37,11 +37,29 @@ extension EditorTextView {
         let path = Self.splitHeading(target).path
         guard !path.isEmpty, let docDir = document?.fileURL?.deletingLastPathComponent(),
               FolderAccess.covers(docDir) else { return false }
+        if docDir != wikiNoteExistsDir {
+            wikiNoteExists.removeAll()
+            wikiNoteExistsDir = docDir
+        }
         if let known = wikiNoteExists[path] { return !known }
-        let url = resolveLinkedFile(path)
-        let exists = url.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let exists = wikiNoteResolves(path)
         wikiNoteExists[path] = exists
         return !exists
+    }
+
+    private func wikiNoteResolves(_ path: String) -> Bool {
+        resolveLinkedFile(path).map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+    }
+
+    /// Re-checks the cached missing notes; true when any now exists (its cache
+    /// entry is flipped, so the caller restyles).
+    func refreshMissingWikiNotes() -> Bool {
+        var flipped = false
+        for (path, exists) in wikiNoteExists where !exists && wikiNoteResolves(path) {
+            wikiNoteExists[path] = true
+            flipped = true
+        }
+        return flipped
     }
 
     // MARK: Following
@@ -212,7 +230,8 @@ extension EditorTextView {
 
         // Recursive search by the link's filename (Obsidian resolves by name).
         let wantName = (rel as NSString).lastPathComponent.lowercased()
-        if let walker = fm.enumerator(at: docDir, includingPropertiesForKeys: nil) {
+        if let walker = fm.enumerator(at: docDir, includingPropertiesForKeys: nil,
+                                       options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
             for case let url as URL in walker where url.lastPathComponent.lowercased() == wantName {
                 return url
             }

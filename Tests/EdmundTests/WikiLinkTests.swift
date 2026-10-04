@@ -78,6 +78,17 @@ struct WikiLinkTests {
         #expect(look("Gone").1 == NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue)
         // A same-document heading link never names a note.
         #expect(look("Heading").0 == editor.linkColor)
+
+        // With the caret inside, the raw link shows and no search runs.
+        let active = editor.styleBlock("[[Gone]]", cursorPosition: 3)
+        #expect(active.attribute(.underlineStyle, at: 2, effectiveRange: nil) as? Int
+                == NSUnderlineStyle.single.rawValue)
+
+        // A note created later is picked up by the focus refresh.
+        #expect(!editor.refreshMissingWikiNotes())
+        try "x".write(to: dir.appendingPathComponent("Gone.md"), atomically: true, encoding: .utf8)
+        #expect(editor.refreshMissingWikiNotes())
+        #expect(!editor.wikiNoteIsMissing("Gone"))
     }
 
     @Test("Active wikilink reveals the raw brackets (dimmed, not hidden)")
