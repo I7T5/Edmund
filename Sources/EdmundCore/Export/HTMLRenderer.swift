@@ -51,6 +51,7 @@ struct HTMLRenderer: MarkupVisitor {
     /// made the walk quadratic, ~40% of a 1 MB document's render.
     private let lineUTF8Starts: [Int]
     private let options: ReadRenderOptions
+    private let defersCodeHighlighting: Bool
 
     /// Footnote definitions collected while walking the document (see
     /// `visitParagraph`), rendered as a section at the bottom of the page
@@ -68,7 +69,7 @@ struct HTMLRenderer: MarkupVisitor {
     private let removedLineRuns: [(afterLine: Int, count: Int)]
 
     private init(source: String, removedLineRuns: [(afterLine: Int, count: Int)],
-                 options: ReadRenderOptions) {
+                 options: ReadRenderOptions, defersCodeHighlighting: Bool) {
         self.source = source
         self.sourceLines = source.components(separatedBy: "\n")
         var starts = [0]
@@ -77,6 +78,7 @@ struct HTMLRenderer: MarkupVisitor {
         self.lineUTF8Starts = starts
         self.removedLineRuns = removedLineRuns
         self.options = options
+        self.defersCodeHighlighting = defersCodeHighlighting
     }
 
     /// The source line a stripped-text line came from.
@@ -86,12 +88,14 @@ struct HTMLRenderer: MarkupVisitor {
 
     /// Parses `markdown` and returns the rendered HTML body (no `<html>`/`<head>`
     /// wrapper — `DocumentHTML` adds that).
-    static func render(markdown: String, options: ReadRenderOptions = .default) -> String {
+    static func render(markdown: String, options: ReadRenderOptions = .default,
+                       defersCodeHighlighting: Bool = false) -> String {
         // Strip block constructs swift-markdown can't hide for us before it
         // parses (front matter, block-spanning `%%…%%`). `source` and `doc`
         // must see the same text so range-based raw-text recovery stays aligned.
         let (prepared, removed) = preprocess(markdown, options: options)
-        var r = HTMLRenderer(source: prepared, removedLineRuns: removed, options: options)
+        var r = HTMLRenderer(source: prepared, removedLineRuns: removed, options: options,
+                             defersCodeHighlighting: defersCodeHighlighting)
         let doc = Document(parsing: prepared, options: [.disableSmartOpts])
         let body = r.visit(doc)
         return body + r.renderFootnotesSection()
@@ -410,7 +414,18 @@ struct HTMLRenderer: MarkupVisitor {
             .replacingOccurrences(of: "\u{2029}", with: "\n")
         // swift-markdown includes a trailing newline on the block's code.
         let code = raw.hasSuffix("\n") ? String(raw.dropLast()) : raw
-        let pre = "<pre><code\(lang)>\(Self.highlightCode(code, language: codeBlock.language))</code></pre>"
+        let contents: String
+        if defersCodeHighlighting {
+            // The configured tokenizer and syntax store are main-thread-only.
+            // Carry an escaped, base64 placeholder through background parsing;
+            // DocumentHTML fills it before the page is ever handed to WebKit.
+            let source = Data(code.utf8).base64EncodedString()
+            let language = Data((codeBlock.language ?? "").utf8).base64EncodedString()
+            contents = "<code\(lang) data-edmund-code=\"\(source)\" data-edmund-language=\"\(language)\"></code>"
+        } else {
+            contents = "<code\(lang)>\(Self.highlightCode(code, language: codeBlock.language))</code>"
+        }
+        let pre = "<pre>\(contents)</pre>"
         let block = "<div class=\"code-block-wrap\">\(Self.copyButtonHTML(code: code))\(pre)</div>"
         guard MermaidSyntax.matches(language: codeBlock.language) else { return block }
         // This visitor is pure and non-isolated, so it can't reach the
@@ -834,7 +849,8 @@ struct HTMLRenderer: MarkupVisitor {
             .map(Self.deQuoteLine).joined(separator: "\n")
         let bodyHTML = body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ""
-            : HTMLRenderer.render(markdown: body, options: options)
+            : HTMLRenderer.render(markdown: body, options: options,
+                                  defersCodeHighlighting: defersCodeHighlighting)
 
         // Inline the Lucide icon directly (vector, sharp in PDF). It strokes in
         // `currentColor`, so the `.callout-title` accent color tints it — no
@@ -860,7 +876,8 @@ struct HTMLRenderer: MarkupVisitor {
         let tail = rawLines[quotedCount...].joined(separator: "\n")
         let tailHTML = tail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ""
-            : HTMLRenderer.render(markdown: tail, options: options)
+            : HTMLRenderer.render(markdown: tail, options: options,
+                                  defersCodeHighlighting: defersCodeHighlighting)
         return calloutHTML + tailHTML
     }
 

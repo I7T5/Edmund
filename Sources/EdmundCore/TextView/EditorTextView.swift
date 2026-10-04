@@ -120,8 +120,15 @@ public class EditorTextView: NSTextView {
     /// always LF; this is remembered so saves preserve the file's style.
     public var originalLineEnding: LineEnding = .lf
     var blocks: [Block] = [] {
-        didSet { listDepthsCache = nil }
+        didSet {
+            guard !isChangingStyledFlag else { return }
+            listDepthsCache = nil
+            unstyledBlockIndexes = IndexSet(blocks.indices.filter { !blocks[$0].isStyled })
+        }
     }
+    private var isChangingStyledFlag = false
+    private(set) var unstyledBlockIndexes = IndexSet()
+    var unstyledBlockCount: Int { unstyledBlockIndexes.count }
     var listDepthsCache: [Int]?
     /// Whole-document `ListDepthMap` builds so far; tests assert styling
     /// doesn't rebuild it per block.
@@ -132,9 +139,12 @@ public class EditorTextView: NSTextView {
     /// and indent, never its styling. Dropping it here made every restyle
     /// rebuild the map over the whole document — O(blocks²) across a drain.
     func setStyled(_ index: Int, _ styled: Bool) {
-        let depths = listDepthsCache
+        guard blocks[index].isStyled != styled else { return }
+        isChangingStyledFlag = true
         blocks[index].isStyled = styled
-        listDepthsCache = depths
+        isChangingStyledFlag = false
+        if styled { unstyledBlockIndexes.remove(index) }
+        else { unstyledBlockIndexes.insert(index) }
     }
 
     /// Nesting depth of each block's list line, or `ListDepthMap.notAList`.
@@ -210,6 +220,21 @@ public class EditorTextView: NSTextView {
     var pendingRecompose = false
     /// Coalesces idle-drain scheduling (see EditorTextView+LazyStyling).
     var progressiveStylingScheduled = false
+    /// Read mode hides this editor but keeps it alive. Queued work must check
+    /// this flag too, so the hidden editor cannot compete with the reader.
+    public var isEditorPresentationActive = true {
+        didSet {
+            guard isEditorPresentationActive != oldValue,
+                  isEditorPresentationActive else { return }
+            scheduleScrollPromotion()
+            scheduleProgressiveStyling()
+        }
+    }
+    var scrollPrefetchScheduled = false
+    /// Includes editing, invalidation, viewport layout and anchor compensation.
+    var lastStylingSliceDuration: Duration = .zero
+    var stylingSlicePreparationEstimate: Duration = .zero
+    var stylingSliceCompletionEstimate: Duration = .milliseconds(1)
     /// Bumped by every whole-document spell scan, so a scan's remaining
     /// chunks stop once a newer one (or a newly loaded document) starts.
     var spellScanGeneration = 0
@@ -246,9 +271,6 @@ public class EditorTextView: NSTextView {
     public override var isGrammarCheckingEnabled: Bool {
         didSet { if isGrammarCheckingEnabled != oldValue { rescanSpelling() } }
     }
-    /// Where the idle drain resumes scanning for unstyled blocks (a hint;
-    /// it wraps around and self-corrects after edits shift indices).
-    var drainCursor = 0
     /// Coalesces the deferred full-document layout settle for small documents
     /// (see EditorTextView+LazyStyling `scheduleFullLayoutSettle`).
     var fullLayoutSettleScheduled = false

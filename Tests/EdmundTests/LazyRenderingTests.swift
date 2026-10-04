@@ -150,4 +150,38 @@ struct LazyRenderingTests {
         #expect(editor.rawSource == bigDocument())
         assertMatchesFullRecomposeOracle(editor, "after undo + drain")
     }
+    @Test("Pending-block index stays correct across styling, edits, undo and reload")
+    @MainActor func pendingIndexTracksChanges() {
+        let (editor, _) = windowedEditor()
+        func checkIndex() {
+            let expected = IndexSet(editor.blocks.indices.filter { !editor.blocks[$0].isStyled })
+            #expect(editor.unstyledBlockIndexes == expected)
+            #expect(editor.unstyledBlockCount == expected.count)
+        }
+        editor.loadContent(bigDocument())
+        checkIndex()
+        let last = editor.blocks.count - 1
+        let before = editor.unstyledBlockCount
+        let depths = editor.listDepths
+        let builds = editor.listDepthsBuildCount
+        editor.setStyled(last, true)
+        editor.setStyled(last, true)
+        #expect(editor.unstyledBlockCount == before - 1)
+        editor.setStyled(last, false)
+        #expect(editor.unstyledBlockCount == before)
+        #expect(editor.listDepths == depths)
+        #expect(editor.listDepthsBuildCount == builds)
+        checkIndex()
+        type("x", into: editor)
+        checkIndex()
+        editor.performUndo()
+        checkIndex()
+        drainAllStyling(editor)
+        checkIndex()
+        #expect(editor.unstyledBlockCount == 0)
+        editor.loadContent("replacement")
+        checkIndex()
+        #expect(editor.unstyledBlockCount == 0)
+    }
+
 }

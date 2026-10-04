@@ -218,7 +218,7 @@ extension EditorTextView {
     /// plus a margin, or — before any layout exists (fresh load) — a window
     /// around the active block. Returns nil without a scroll view (headless):
     /// callers then style everything synchronously.
-    func syncStylingBlockRange() -> ClosedRange<Int>? {
+    func syncStylingBlockRange(includingMargin: Bool = true) -> ClosedRange<Int>? {
         guard enclosingScrollView != nil, !blocks.isEmpty,
               let tlm = textLayoutManager else { return nil }
 
@@ -228,7 +228,7 @@ extension EditorTextView {
             let end = tlm.offset(from: docStart, to: viewport.endLocation)
             if let s = blockIndexForRawOffset(start),
                let e = blockIndexForRawOffset(max(start, end)) {
-                let margin = max(16, e - s + 1)
+                let margin = includingMargin ? max(16, e - s + 1) : 0
                 return max(0, s - margin) ... min(blocks.count - 1, e + margin)
             }
         }
