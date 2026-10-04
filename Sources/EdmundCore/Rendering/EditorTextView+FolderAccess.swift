@@ -9,11 +9,12 @@ extension NSAttributedString.Key {
 // MARK: - Folder grants (App Sandbox)
 //
 // The one UI surface of `FolderAccess`: an open panel preset to the document's
-// folder (or a link target's). Raised automatically, once per folder per
-// launch, when a render meets a sibling image it can't read or a wiki link
-// in an ungranted document folder; again from a followed wiki link that can't
-// be read (a target outside the document's folder asks for its own folder);
-// and on cmd+click of a placeholder (the retry after Cancel).
+// folder (or a link target's). Raised in three cases:
+//   - automatically, once per folder per launch, when a render meets an
+//     unreadable sibling image or a wiki link in an ungranted folder;
+//   - from a followed wiki link that can't be read (a target outside the
+//     document's folder asks for its own folder);
+//   - on cmd+click of a placeholder, as the retry after Cancel.
 
 extension EditorTextView {
 

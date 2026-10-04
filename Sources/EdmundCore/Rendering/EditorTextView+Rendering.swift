@@ -396,8 +396,8 @@ extension EditorTextView {
                                     range: span.contentRange)
                 if !target.isEmpty {
                     result.addAttribute(.editorWikiTarget, value: target, range: span.contentRange)
-                    // No such note: recede with a dashed underline, so a typo
-                    // or a not-yet-written note is visible before the click.
+                    // No such note: draw it dimmed with a dashed underline, so a
+                    // typo or an unwritten note shows before the click.
                     // Not while the caret is inside: the raw brackets show, and
                     // every keystroke would be a new, uncached path to search.
                     if !cursorInToken, wikiNoteIsMissing(target) {

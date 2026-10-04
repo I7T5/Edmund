@@ -31,8 +31,8 @@ extension EditorTextView {
 
     /// True when `target` names a note that isn't there, so it can be drawn as
     /// a placeholder. Never true for `#heading` links, or while the sandbox
-    /// hasn't granted the folder (a stat there lies; the folder prompt owns
-    /// that case).
+    /// hasn't granted the folder, because `fileExists` returns true for
+    /// ungranted files; the folder prompt handles that case.
     func wikiNoteIsMissing(_ target: String) -> Bool {
         let path = Self.splitHeading(target).path
         guard !path.isEmpty, let docDir = document?.fileURL?.deletingLastPathComponent(),
