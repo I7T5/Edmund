@@ -52,6 +52,45 @@ struct WikiLinkTests {
         #expect(target == "Target")
     }
 
+    @Test("A wikilink to a missing note recedes with a dashed underline; an existing note keeps link style")
+    func missingNote() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wiki-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try "x".write(to: dir.appendingPathComponent("Here.md"), atomically: true, encoding: .utf8)
+
+        let doc = NSDocument()
+        doc.fileURL = dir.appendingPathComponent("doc.md")
+        let editor = makeEditor()
+        editor.document = doc
+
+        let st = editor.styleBlock("[[Here]] [[Gone]] [[#Heading]]", cursorPosition: nil)
+        let s = st.string as NSString
+        func look(_ word: String) -> (NSColor?, Int?) {
+            let at = s.range(of: word).location
+            return (st.attribute(.foregroundColor, at: at, effectiveRange: nil) as? NSColor,
+                    st.attribute(.underlineStyle, at: at, effectiveRange: nil) as? Int)
+        }
+        #expect(look("Here").0 == editor.linkColor)
+        #expect(look("Here").1 == NSUnderlineStyle.single.rawValue)
+        #expect(look("Gone").0 == editor.syntaxDimColor)
+        #expect(look("Gone").1 == NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue)
+        // A same-document heading link never names a note.
+        #expect(look("Heading").0 == editor.linkColor)
+
+        // With the caret inside, the raw link shows and no search runs.
+        let active = editor.styleBlock("[[Gone]]", cursorPosition: 3)
+        #expect(active.attribute(.underlineStyle, at: 2, effectiveRange: nil) as? Int
+                == NSUnderlineStyle.single.rawValue)
+
+        // A note created later is picked up by the focus refresh.
+        #expect(!editor.refreshMissingWikiNotes())
+        try "x".write(to: dir.appendingPathComponent("Gone.md"), atomically: true, encoding: .utf8)
+        #expect(editor.refreshMissingWikiNotes())
+        #expect(!editor.wikiNoteIsMissing("Gone"))
+    }
+
     @Test("Active wikilink reveals the raw brackets (dimmed, not hidden)")
     func active() {
         let editor = makeEditor()

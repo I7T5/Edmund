@@ -396,7 +396,21 @@ extension EditorTextView {
                                     range: span.contentRange)
                 if !target.isEmpty {
                     result.addAttribute(.editorWikiTarget, value: target, range: span.contentRange)
+                    // No such note: draw it dimmed with a dashed underline, so a
+                    // typo or an unwritten note shows before the click.
+                    // Not while the caret is inside: the raw brackets show, and
+                    // every keystroke would be a new, uncached path to search.
+                    if !cursorInToken, wikiNoteIsMissing(target) {
+                        result.addAttribute(.foregroundColor, value: syntaxDimColor, range: span.contentRange)
+                        result.addAttribute(.underlineStyle,
+                                            value: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue,
+                                            range: span.contentRange)
+                    }
                 }
+                // Sandboxed and the document's folder isn't granted: offer it
+                // now, like a sibling image, so following the link never fails
+                // silently. The click path re-prompts after a Cancel.
+                if ungrantedDocumentFolder != nil { promptForFolderAccessOnce() }
 
             case .image(let destination, let width, let height):
                 guard span.fullRange.upperBound <= result.length else { continue }

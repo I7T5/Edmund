@@ -9,9 +9,12 @@ extension NSAttributedString.Key {
 // MARK: - Folder grants (App Sandbox)
 //
 // The one UI surface of `FolderAccess`: an open panel preset to the document's
-// folder. Raised automatically, once per folder per launch, when a render
-// meets a sibling image it can't read; again from a wiki link whose target
-// can't be read; and on cmd+click of a placeholder (the retry after Cancel).
+// folder (or a link target's). Raised in three cases:
+//   - automatically, once per folder per launch, when a render meets an
+//     unreadable sibling image or a wiki link in an ungranted folder;
+//   - from a followed wiki link that can't be read (a target outside the
+//     document's folder asks for its own folder);
+//   - on cmd+click of a placeholder, as the retry after Cancel.
 
 extension EditorTextView {
 
@@ -47,10 +50,12 @@ extension EditorTextView {
         }
     }
 
-    /// Asks for the document's folder; on OK stores the grant, restyles so
-    /// placeholders become images, then runs `then` (a retried link follow).
-    func requestFolderAccess(then: (() -> Void)? = nil) {
-        guard let window, let dir = document?.fileURL?.deletingLastPathComponent() else { return }
+    /// Asks for `folder` (default: the document's); on OK stores the grant,
+    /// restyles so placeholders become images, then runs `then` (a retried
+    /// link follow).
+    func requestFolderAccess(for folder: URL? = nil, then: (() -> Void)? = nil) {
+        guard let window,
+              let dir = folder ?? document?.fileURL?.deletingLastPathComponent() else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true

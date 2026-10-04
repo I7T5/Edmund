@@ -29,6 +29,39 @@ extension EditorTextView {
         return storage.attribute(.editorWikiTarget, at: i, effectiveRange: nil) as? String
     }
 
+    /// True when `target` names a note that isn't there, so it can be drawn as
+    /// a placeholder. Never true for `#heading` links, or while the sandbox
+    /// hasn't granted the folder, because `fileExists` returns true for
+    /// ungranted files; the folder prompt handles that case.
+    func wikiNoteIsMissing(_ target: String) -> Bool {
+        let path = Self.splitHeading(target).path
+        guard !path.isEmpty, let docDir = document?.fileURL?.deletingLastPathComponent(),
+              FolderAccess.covers(docDir) else { return false }
+        if docDir != wikiNoteExistsDir {
+            wikiNoteExists.removeAll()
+            wikiNoteExistsDir = docDir
+        }
+        if let known = wikiNoteExists[path] { return !known }
+        let exists = wikiNoteResolves(path)
+        wikiNoteExists[path] = exists
+        return !exists
+    }
+
+    private func wikiNoteResolves(_ path: String) -> Bool {
+        resolveLinkedFile(path).map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+    }
+
+    /// Re-checks the cached missing notes; true when any now exists (its cache
+    /// entry is flipped, so the caller restyles).
+    func refreshMissingWikiNotes() -> Bool {
+        var flipped = false
+        for (path, exists) in wikiNoteExists where !exists && wikiNoteResolves(path) {
+            wikiNoteExists[path] = true
+            flipped = true
+        }
+        return flipped
+    }
+
     // MARK: Following
 
     /// Follows a `[[wikilink]]` target (`path#heading`, no scheme, `.md` implied).
@@ -69,9 +102,13 @@ extension EditorTextView {
         guard let fileURL = resolved, FolderAccess.covers(fileURL) else {
             // Sandboxed and the folder isn't granted: the recursive search
             // can't run and `openDocument` would fail with a permission alert.
-            // Offer the grant, then retry (once granted, `covers` is true).
-            if ungrantedDocumentFolder != nil {
-                requestFolderAccess { [weak self] in self?.openLinkedFile(path: path, heading: heading) }
+            // Offer the grant, then retry (once granted, `covers` is true). A
+            // resolved target outside the document's folder (absolute, `~`,
+            // `file:`) needs its own folder granted; an unresolved one means
+            // the search itself was blocked, so ask for the document's.
+            let folder = resolved?.deletingLastPathComponent() ?? ungrantedDocumentFolder
+            if FolderAccess.isSandboxed, let folder {
+                requestFolderAccess(for: folder) { [weak self] in self?.openLinkedFile(path: path, heading: heading) }
             } else {
                 NSSound.beep()
             }
@@ -193,7 +230,8 @@ extension EditorTextView {
 
         // Recursive search by the link's filename (Obsidian resolves by name).
         let wantName = (rel as NSString).lastPathComponent.lowercased()
-        if let walker = fm.enumerator(at: docDir, includingPropertiesForKeys: nil) {
+        if let walker = fm.enumerator(at: docDir, includingPropertiesForKeys: nil,
+                                       options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
             for case let url as URL in walker where url.lastPathComponent.lowercased() == wantName {
                 return url
             }
