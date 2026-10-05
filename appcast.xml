@@ -521,5 +521,37 @@
                        length="6719066"
                        type="application/x-apple-diskimage"/>
         </item>
+        <item>
+            <title>Edmund 0.8.2</title>
+            <pubDate>Mon, 05 Oct 2026 15:30:15 +0000</pubDate>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,system-ui;color:#111;margin:8px}h3{font-size:13px;margin:12px 0 4px}ul{margin:0 0 8px;padding-left:20px}li{margin:2px 0}code{font-family:ui-monospace,monospace;background:rgba(127,127,127,.15);padding:1px 4px;border-radius:3px}@media(prefers-color-scheme:dark){body{color:#eee}}</style>
+<h3>Added</h3>
+<ul>
+<li>Remember window position from last opening (#382)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Various performance improvements for long documents; Edmund now handles 1 MB files with ease (#383)</li>
+<li>Opening a long document is much faster</li>
+<li>Scrolling is smoother</li>
+<li>Edit/Read switching is faster</li>
+<li>Zoom, font size, light/dark switching is faster</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Editor: IME input on line above a table no longer cuts off mid-composition, and the table keeps its borders (#381)</li>
+<li>Editor: Dragging across table cells no longer lags in long documents (#383)</li>
+<li>Editor: Zooming in a long document no longer drifts viewport(#383)</li>
+<li>Editor: Viewport no longer creeps up with Edit/Read switch (#383)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/I7T5/Edmund/releases/download/v0.8.2/Edmund-0.8.2.dmg"
+                       sparkle:version="19"
+                       sparkle:shortVersionString="0.8.2"
+                       sparkle:edSignature="ll70PN6GyVh/ZmkjWrSAnqTtoJ8hrxPBQ6rTVfFUx4XOtKqAXddazFrr71kJ8c9z5bP/KdFCy9NCGFPWicITBw=="
+                       length="6730962"
+                       type="application/x-apple-diskimage"/>
+        </item>
     </channel>
 </rss>
