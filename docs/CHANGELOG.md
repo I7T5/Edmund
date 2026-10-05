@@ -3,6 +3,24 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-10-05
+
+### Added
+- Remember window position from last opening (#382)
+
+### Changed
+- Various performance improvements for long documents; Edmund now handles 1 MB files with ease (#383)
+  - Opening a long document is much faster
+  - Scrolling is smoother
+  - Edit/Read switching is faster
+  - Zoom, font size, light/dark switching is faster
+
+### Fixed
+- Editor: IME input on line above a table no longer cuts off mid-composition, and the table keeps its borders (#381)
+- Editor: Dragging across table cells no longer lags in long documents (#383)
+- Editor: Zooming in a long document no longer drifts viewport(#383)
+- Editor: Viewport no longer creeps up with Edit/Read switch (#383)
+
 ## [0.8.1] - 2026-09-28
 
 Minor bug fixes and UI and performance improvements. Thanks to @robince for their first contribution!
