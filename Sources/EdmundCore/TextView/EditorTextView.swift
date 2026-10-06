@@ -1372,8 +1372,12 @@ public class EditorTextView: NSTextView {
     public override func copy(_ sender: Any?) {
         traceEdit("copy")
         // A table's storage is its markdown, so an ordinary copy hands the next
-        // app a row of pipes. See EditorTextView+TableCopy for the two cases
-        // that are worth more than that.
+        // app a row of pipes. See EditorTextView+TableCopy for the cases that
+        // are worth more than that.
+        if let block = tableClipBlock {
+            writeTableCells(block, to: .general)
+            return
+        }
         if let text = tableCopyText() {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)

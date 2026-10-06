@@ -323,3 +323,133 @@ func paddedTableRow(_ line: String, toColumns count: Int, separator: Bool) -> St
     let closed = base.hasSuffix("|") && !base.hasSuffix("\\|")
     return base + String(repeating: closed ? cell + "|" : "|" + cell, count: count - have)
 }
+
+// MARK: - Pasting a grid of cells
+
+/// Tab-separated text, as Numbers, Excel and Sheets put a block of cells on
+/// the pasteboard, split into rows of fields.
+///
+/// A field that holds a tab, a newline or a quote comes quoted, with its
+/// quotes doubled — the CSV convention (RFC 4180, §2), which spreadsheets
+/// follow for tab-separated text too. A final line break ends the last row
+/// rather than starting an empty one. Rows come back as long as the longest,
+/// short ones filled with empty fields.
+func parseTSV(_ text: String) -> [[String]] {
+    var rows: [[String]] = []
+    var row: [String] = []
+    var field = ""
+    var quoted = false
+    var chars = text.makeIterator()
+    var pending = chars.next()
+    while let ch = pending {
+        pending = chars.next()
+        if quoted {
+            if ch == "\"" {
+                if pending == "\"" {
+                    field.append("\"")
+                    pending = chars.next()
+                } else {
+                    quoted = false
+                }
+            } else {
+                field.append(ch)
+            }
+            continue
+        }
+        switch ch {
+        case "\"" where field.isEmpty:
+            quoted = true
+        case "\t":
+            row.append(field)
+            field = ""
+        // "\r\n" is one Character in Swift, so it needs its own case.
+        case "\n", "\r", "\r\n":
+            row.append(field)
+            rows.append(row)
+            row = []
+            field = ""
+        default:
+            field.append(ch)
+        }
+    }
+    if !field.isEmpty || !row.isEmpty {
+        row.append(field)
+        rows.append(row)
+    }
+    let width = rows.map(\.count).max() ?? 0
+    return rows.map { $0 + Array(repeating: "", count: width - $0.count) }
+}
+
+/// Text from outside made safe for one markdown table cell: a cell cannot
+/// hold a line break, and a bare `|` would end it.
+func tableCellEscaped(_ text: String) -> String {
+    var out = ""
+    var previous: Character?
+    for ch in text {
+        switch ch {
+        case "\n", "\r", "\r\n":
+            out.append(" ")
+        case "|" where previous != "\\":
+            out.append("\\|")
+        default:
+            out.append(ch)
+        }
+        previous = ch
+    }
+    return out.trimmingCharacters(in: .whitespaces)
+}
+
+/// A table's lines with `grid` written over its cells from line `row`,
+/// column `column` on, as a spreadsheet pastes: each value replaces a cell
+/// whole, and the table grows the rows and columns the grid runs past.
+///
+/// Rows run down the table skipping the separator, so a grid pasted at the
+/// header carries on into the first body row. Columns are counted as
+/// `columnSpans` counts them. Cells the grid does not reach keep their bytes.
+func pastedTableLines(_ lines: [String], grid: [[String]], row: Int, column: Int) -> [String] {
+    guard let header = lines.first, lines.count >= 2, row != 1, row >= 0,
+          row < lines.count, column >= 0 else { return lines }
+    let gridWidth = grid.map(\.count).max() ?? 0
+    let width = max(columnSpans(in: header as NSString).count, column + gridWidth)
+    var edited = lines.enumerated().map { index, line in
+        paddedTableRow(line, toColumns: width, separator: index == 1)
+    }
+    let outer = header.trimmingCharacters(in: .whitespaces).hasPrefix("|")
+    let emptyRow = outer
+        ? "|" + String(repeating: "  |", count: width)
+        : Array(repeating: "  ", count: width).joined(separator: "|")
+    let firstLogical = row == 0 ? 0 : row - 1
+    for (offset, values) in grid.enumerated() {
+        let logical = firstLogical + offset
+        let line = logical == 0 ? 0 : logical + 1
+        while edited.count <= line { edited.append(emptyRow) }
+        edited[line] = writingCells(edited[line], values, from: column)
+    }
+    return edited
+}
+
+/// A table's lines with every cell of a block set to one value — a single
+/// copied cell pasted over a selected block, which a spreadsheet fills.
+func filledTableLines(_ lines: [String], block: TableCellBlock, with value: String) -> [String] {
+    lines.enumerated().map { index, line in
+        guard index != 1, block.rows.contains(index) else { return line }
+        return writingCells(line, Array(repeating: value, count: block.columns.count),
+                            from: block.columns.lowerBound)
+    }
+}
+
+/// One row with `values` written into its cells from `column` on, each cell
+/// padded by a space either side (an empty one as two spaces, the way the
+/// editor writes an empty cell). Right to left, so earlier offsets hold.
+private func writingCells(_ line: String, _ values: [String], from column: Int) -> String {
+    let row = NSMutableString(string: line)
+    let spans = columnSpans(in: row)
+    for (i, value) in values.enumerated().reversed() {
+        let index = column + i
+        guard index < spans.count else { continue }
+        let span = spans[index]
+        row.replaceCharacters(in: NSRange(location: span.start, length: span.end - span.start),
+                              with: value.isEmpty ? "  " : " \(value) ")
+    }
+    return row as String
+}
