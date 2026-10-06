@@ -171,11 +171,14 @@ func prettyAlignedTableLines(_ lines: [String]) -> [String] {
         }
     }
     // Column widths from every row but the separator, floored at three so the
-    // separator stays valid GFM.
+    // separator stays valid GFM. In display columns, so a column of CJK lines
+    // up in a monospace view (see `displayColumns`).
     var widths = [Int](repeating: 3, count: cols)
     for (i, line) in lines.enumerated() where i != 1 {
         let c = cells(line)
-        for col in 0..<min(c.count, cols) { widths[col] = max(widths[col], c[col].count) }
+        for col in 0..<min(c.count, cols) {
+            widths[col] = max(widths[col], displayColumns(c[col]))
+        }
     }
     let markers: [String] = lines.count > 1 ? cells(lines[1]) : []
 
@@ -186,7 +189,7 @@ func prettyAlignedTableLines(_ lines: [String]) -> [String] {
     func bodyRow(_ texts: [String]) -> String {
         join((0..<cols).map { col in
             let t = col < texts.count ? texts[col] : ""
-            return t + String(repeating: " ", count: max(0, widths[col] - t.count))
+            return t + String(repeating: " ", count: max(0, widths[col] - displayColumns(t)))
         })
     }
     func separatorRow() -> String {
@@ -452,4 +455,69 @@ private func writingCells(_ line: String, _ values: [String], from column: Int) 
                               with: value.isEmpty ? "  " : " \(value) ")
     }
     return row as String
+}
+
+// MARK: - Formatting a table's source
+
+/// A table's lines in the canonical aligned form, for formatting a table once
+/// the caret leaves it, or nil when there is nothing to do: the table is
+/// already aligned, or aligning it would lose text.
+///
+/// `prettyAlignedTableLines` keeps the header's column count and drops any
+/// cell past it. GFM ignores such a cell too (spec example 204), but it is
+/// still text the author typed, and a format must never delete it — so a
+/// table with one is left as it is. Empty cells past the header go quietly.
+func formattedTableLines(_ lines: [String]) -> [String]? {
+    guard let header = lines.first, lines.count >= 2 else { return nil }
+    let columns = columnSpans(in: header as NSString).count
+    guard columns > 0 else { return nil }
+    for (index, line) in lines.enumerated() where index != 1 {
+        let ns = line as NSString
+        let spans = columnSpans(in: ns)
+        guard spans.count > columns else { continue }
+        for span in spans[columns...] {
+            let text = ns.substring(with: NSRange(location: span.start,
+                                                  length: span.end - span.start))
+            if !text.trimmingCharacters(in: .whitespaces).isEmpty { return nil }
+        }
+    }
+    let formatted = prettyAlignedTableLines(lines)
+    return formatted == lines ? nil : formatted
+}
+
+/// How many columns `text` takes in a monospace font: two for an East Asian
+/// Wide or Fullwidth character and for an emoji drawn as one, one for
+/// anything else. A close reading of Unicode's East Asian Width property
+/// (UAX #11, https://www.unicode.org/reports/tr11/) by code-point block, the
+/// same approach as Markus Kuhn's `wcwidth`; exact for CJK, Hangul and kana,
+/// which is what a table's alignment needs.
+func displayColumns(_ text: String) -> Int {
+    text.reduce(0) { $0 + (characterIsWide($1) ? 2 : 1) }
+}
+
+private func characterIsWide(_ character: Character) -> Bool {
+    guard let first = character.unicodeScalars.first else { return false }
+    if first.properties.isEmojiPresentation { return true }
+    // A text-style emoji asked to draw as an emoji (U+FE0F) is wide too.
+    if first.properties.isEmoji, character.unicodeScalars.contains(where: { $0.value == 0xFE0F }) {
+        return true
+    }
+    switch first.value {
+    case 0x1100...0x115F,   // Hangul Jamo initials
+         0x2E80...0x303E,   // CJK radicals, punctuation
+         0x3041...0x33FF,   // kana, CJK symbols
+         0x3400...0x4DBF,   // CJK Extension A
+         0x4E00...0x9FFF,   // CJK Unified Ideographs
+         0xA000...0xA4CF,   // Yi
+         0xAC00...0xD7A3,   // Hangul syllables
+         0xF900...0xFAFF,   // CJK Compatibility Ideographs
+         0xFE30...0xFE4F,   // CJK Compatibility Forms
+         0xFF00...0xFF60,   // Fullwidth forms
+         0xFFE0...0xFFE6,
+         0x20000...0x2FFFD, // CJK Extensions B–F
+         0x30000...0x3FFFD:
+        return true
+    default:
+        return false
+    }
 }

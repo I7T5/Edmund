@@ -154,6 +154,7 @@ extension EditorTextView {
         }
         recordDeferredMarkedTextUndoIfNeeded()
         syncRawSourceFromDisplay()
+        noteTableEdit()
         document?.updateChangeCount(.changeDone)
         scrollCursorToCenter()
     }

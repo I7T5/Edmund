@@ -303,6 +303,78 @@ extension EditorTextView {
         return true
     }
 
+    // MARK: - Formatting the source
+
+    /// Records that the caret's table was edited, so it is aligned once the
+    /// caret leaves it. Called after every edit the user types.
+    func noteTableEdit() {
+        guard let index = blockIndexForRawOffset(selectedRange().location),
+              index < blocks.count, blocks[index].kind == .table else { return }
+        tableFormatPending = true
+    }
+
+    /// Aligns the source of a table the caret has just left, if it was edited
+    /// (pipes lined up, cells space-padded, the separator's dashes filling
+    /// each column — `formattedTableLines`).
+    ///
+    /// Never while the caret is inside it: the cells would shift under the
+    /// typing. And invisible once done — the renderer draws no padding past
+    /// one space (`hideSurplusCellPadding`) — so it is folded into the undo
+    /// step of the last edit rather than given one of its own, where the first
+    /// ⌘Z would appear to do nothing.
+    func formatTableOnLeaving(_ blockIndex: Int) {
+        guard !hasMarkedText(), blockIndex < blocks.count,
+              blocks[blockIndex].kind == .table else { return }
+        let range = blocks[blockIndex].range
+        let selection = selectedRange()
+        // The caret has to be outside the table, not on its edge either.
+        guard selection.location > range.upperBound || selection.upperBound < range.location
+        else { return }
+        let lastEdit = undoStack.last
+        let before = rawSource
+        guard alignTableSource(blockIndex: blockIndex) else { return }
+        guard let lastEdit, undoStack.count >= 2,
+              lastEdit.location + lastEdit.laterLength <= (before as NSString).length
+        else { return }
+        // Fold the format into the edit before it: one entry from the
+        // formatted text straight back to before that edit.
+        let original = (before as NSString).replacingCharacters(
+            in: NSRange(location: lastEdit.location, length: lastEdit.laterLength),
+            with: lastEdit.earlierText)
+        guard let diff = Self.textDiff(old: rawSource, new: original) else { return }
+        undoStack.removeLast(2)
+        undoStack.append(UndoEntry(location: diff.oldRange.location,
+                                   laterLength: diff.oldRange.length,
+                                   earlierText: diff.replacement,
+                                   cursorInRaw: lastEdit.cursorInRaw))
+    }
+
+    /// Format ▸ Table ▸ Format Table: aligns the source of the table the caret
+    /// is in, as an undo step of its own.
+    @objc public func formatTableSource(_ sender: Any?) {
+        guard let index = blockIndexForRawOffset(selectedRange().location),
+              index < blocks.count, blocks[index].kind == .table else { return }
+        let caretCell = activeTableCell
+        guard alignTableSource(blockIndex: index) else { return }
+        if let cell = caretCell { landInCell(blockIndex: index, row: cell.row, column: cell.column) }
+    }
+
+    /// Rewrites one table in the aligned form, keeping the selection where it
+    /// was relative to the text around the table. False when there was nothing
+    /// to change (or nothing safe to change).
+    @discardableResult
+    func alignTableSource(blockIndex: Int) -> Bool {
+        guard let lines = tableLines(blockIndex: blockIndex),
+              let formatted = formattedTableLines(lines) else { return false }
+        let range = blocks[blockIndex].range
+        let text = formatted.joined(separator: "\n")
+        let delta = (text as NSString).length - range.length
+        var selection = selectedRange()
+        if selection.location >= range.upperBound { selection.location += delta }
+        applyFormattingEdit(rawRange: range, replacement: text, select: selection)
+        return true
+    }
+
     // MARK: - Shared
 
     /// Character offset of line `row` within the table's own content.
@@ -318,6 +390,7 @@ extension EditorTextView {
         applyFormattingEdit(rawRange: block.range,
                             replacement: lines.joined(separator: "\n"),
                             select: NSRange(location: block.range.location, length: 0))
+        tableFormatPending = true
     }
 
     /// Selects a cell by position *after* an edit, when the ranges captured

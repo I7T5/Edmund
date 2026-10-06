@@ -177,6 +177,13 @@ extension EditorTextView {
     // Formatting actions are disabled in Reading mode (the editor is read-only).
 
     public override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        // Format Table acts on the table the caret is in, so it needs one.
+        if menuItem.action == #selector(formatTableSource(_:)) {
+            guard viewMode != .reading,
+                  let index = blockIndexForRawOffset(selectedRange().location),
+                  index < blocks.count else { return false }
+            return blocks[index].kind == .table
+        }
         if let action = menuItem.action, Self.formattingActions.contains(action) {
             return isFormattingActionEnabled(action, representedObject: menuItem.representedObject)
         }

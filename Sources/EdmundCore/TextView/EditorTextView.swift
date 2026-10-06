@@ -687,6 +687,11 @@ public class EditorTextView: NSTextView {
     /// is in flight. See EditorTextView+TableReorder.
     var tableReorderDrag: TableReorderDrag?
 
+    /// Whether the table the caret is in has been edited since the caret came
+    /// into it, so its source is aligned once the caret leaves.
+    /// See `formatTableOnLeaving`.
+    var tableFormatPending = false
+
     /// Set while `activateRawTableEditing` is placing the caret at a table's
     /// first character. That character is a pipe, and the rules below move a
     /// caret off a pipe — but this one is deliberate, and the table is about to

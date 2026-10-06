@@ -98,6 +98,11 @@ extension EditorTextView {
                 // autoscroll-to-selection on stale layout).
                 let loc = self.selectedRange().location
                 let newIdx = self.blockIndexForRawOffset(loc)
+                // The table being left, if it was edited: aligned below, once
+                // the blocks are restyled for where the caret now is.
+                let leftTable = self.tableFormatPending
+                    ? self.activeBlockIndex.flatMap { $0 != newIdx ? $0 : nil } : nil
+                if self.activeBlockIndex != newIdx { self.tableFormatPending = false }
                 var dirty = IndexSet()
                 if let n = newIdx { dirty.insert(n) }
                 var deferred = false
@@ -121,6 +126,7 @@ extension EditorTextView {
                     }
                 }
                 if deferred { self.scheduleProgressiveStyling() }
+                if let leftTable { self.formatTableOnLeaving(leftTable) }
             }
             return
         } else if newActiveIndex == activeBlockIndex {
