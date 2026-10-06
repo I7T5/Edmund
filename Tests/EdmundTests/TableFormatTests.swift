@@ -18,15 +18,6 @@ struct TableFormatTests {
         return editor
     }
 
-    /// Puts the caret at `needle` and lets the block switch it causes land.
-    private func move(_ editor: EditorTextView, to needle: String) {
-        let offset = (editor.rawSource as NSString).range(of: needle).location
-        editor.setSelectedRange(NSRange(location: offset, length: 0))
-        settleContentWidth()
-        ensureFullLayout(editor)
-        layOutViewport(editor)
-    }
-
     // MARK: - The formatter
 
     @Test("Columns align in display columns, CJK counting double")
@@ -73,40 +64,68 @@ struct TableFormatTests {
     }
 
     // MARK: - Leaving the table
+    //
+    // The format runs from the block-switch hop `selectionDidChange` queues on
+    // the main queue, which a synchronous test never drains — so these drive
+    // its two halves directly: the edit marks the table, and leaving formats
+    // what was marked.
+
+    private func tableIndex(_ editor: EditorTextView) -> Int {
+        editor.blocks.firstIndex { $0.kind == .table } ?? -1
+    }
+
+    /// Types `text` just after the first `needle` in the document.
+    private func typeText(_ text: String, after needle: String, in editor: EditorTextView) {
+        let found = (editor.rawSource as NSString).range(of: needle)
+        editor.setSelectedRange(NSRange(location: found.upperBound, length: 0))
+        type(text, into: editor)
+    }
 
     @Test("Leaving an edited table aligns it; one undo takes back both")
     func leavingFormats() {
         let doc = "Intro.\n\n| a | bb |\n| --- | --- |\n| ccc | d |\n"
         let editor = loadEditor(doc)
-        move(editor, to: "d |")
-        let caret = editor.selectedRange().location
-        editor.setSelectedRange(NSRange(location: caret + 1, length: 0))
-        type("x", into: editor)
+        typeText("x", after: "| ccc | d", in: editor)
         #expect(editor.rawSource == "Intro.\n\n| a | bb |\n| --- | --- |\n| ccc | dx |\n")
-        move(editor, to: "Intro")
+        #expect(editor.tableFormatPending)
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.formatTableOnLeaving(tableIndex(editor))
         #expect(editor.rawSource
                 == "Intro.\n\n| a   | bb  |\n| --- | --- |\n| ccc | dx  |\n")
         editor.undo(nil)
         #expect(editor.rawSource == doc)
     }
 
-    @Test("Leaving a table that was only visited changes nothing")
-    func visitingDoesNotFormat() {
+    @Test("Only an edit marks a table for formatting")
+    func visitingDoesNotMark() {
         let doc = "Intro.\n\n| a | bb |\n| --- | --- |\n| ccc | d |\n"
         let editor = loadEditor(doc)
-        move(editor, to: "ccc")
-        move(editor, to: "Intro")
-        #expect(editor.rawSource == doc)
+        editor.setSelectedRange(NSRange(location: (doc as NSString).range(of: "ccc").location,
+                                        length: 0))
+        #expect(!editor.tableFormatPending)
+        typeText("x", after: "Intro", in: editor)   // an edit outside any table
+        #expect(!editor.tableFormatPending)
+    }
+
+    @Test("Never while the caret is in the table")
+    func neverUnderTheCaret() {
+        let doc = "Intro.\n\n| a | bb |\n| --- | --- |\n| ccc | d |\n"
+        let editor = loadEditor(doc)
+        typeText("x", after: "| ccc | d", in: editor)
+        editor.formatTableOnLeaving(tableIndex(editor))
+        #expect(editor.rawSource == "Intro.\n\n| a | bb |\n| --- | --- |\n| ccc | dx |\n")
     }
 
     @Test("The text after a table keeps its caret when the table is aligned")
     func caretBelowFollowsTheShift() {
         let doc = "| a | bb |\n| --- | --- |\n| ccc | d |\n\nAfter\n"
         let editor = loadEditor(doc)
-        move(editor, to: "d |")
-        type("x", into: editor)
-        move(editor, to: "After")
+        typeText("x", after: "| ccc | d", in: editor)
+        let after = (editor.rawSource as NSString).range(of: "After").location
+        editor.setSelectedRange(NSRange(location: after, length: 0))
+        editor.formatTableOnLeaving(tableIndex(editor))
         let ns = editor.rawSource as NSString
+        #expect(ns.range(of: "| ccc | dx  |").location != NSNotFound)
         #expect(editor.selectedRange().location == ns.range(of: "After").location)
     }
 }

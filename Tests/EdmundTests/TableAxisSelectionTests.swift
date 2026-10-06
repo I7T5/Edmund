@@ -43,7 +43,7 @@ struct TableAxisSelectionTests {
     @Test("A row pill selects its whole row")
     func rowPillSelectsTheRow() throws {
         let editor = loadEditor(doc)
-        caret(editor, to: "| c")
+        caret(editor, to: "| c |")
         let pill = try #require(handle(editor, .row))
         editor.selectTableAxis(for: pill)
         let selection = try #require(editor.tableAxisSelection)
@@ -76,7 +76,7 @@ struct TableAxisSelectionTests {
     @Test("A selected row wears a tab, and the column pill stays")
     func selectedRowShowsATabAndTheOtherPill() throws {
         let editor = loadEditor(doc)
-        caret(editor, to: "| c")
+        caret(editor, to: "| c |")
         editor.selectTableAxis(for: try #require(handle(editor, .row)))
         let handles = editor.tableHandles()
         let tab = try #require(handles.first { $0.selected })
@@ -111,7 +111,7 @@ struct TableAxisSelectionTests {
     @Test("Any other selection retires the picked row")
     func anotherSelectionEndsIt() throws {
         let editor = loadEditor(doc)
-        caret(editor, to: "| c")
+        caret(editor, to: "| c |")
         editor.selectTableAxis(for: try #require(handle(editor, .row)))
         #expect(editor.tableAxisSelection != nil)
         caret(editor, to: "a")
