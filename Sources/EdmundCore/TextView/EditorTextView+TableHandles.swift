@@ -281,7 +281,8 @@ extension EditorTextView {
         // it when the pill is genuinely gone (caret out of a cell, raw mode, or
         // a cell block selected — all of which resolve without needing a grid).
         let gridUnavailable = handles.isEmpty && !rawTableEditing
-            && tableCellSelection == nil && activeTableCell != nil
+            && (tableAxisSelection != nil
+                || (tableCellSelection == nil && activeTableCell != nil))
         if !gridUnavailable {
             lastTableHandleBands = handles.map { handleHitBox($0) }
         }

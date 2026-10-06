@@ -29,7 +29,9 @@ struct TableCellsClip: Codable, Equatable {
     /// made from the clip aligns its columns as the source did.
     let aligns: [String]
 
-    static let pasteboardType = NSPasteboard.PasteboardType("com.i7t5.edmund.table-cells")
+    /// Computed rather than stored: a stored static of an AppKit type is a
+    /// shared global that Swift 6's concurrency checking will not vouch for.
+    static var pasteboardType: NSPasteboard.PasteboardType { .init("com.i7t5.edmund.table-cells") }
 }
 
 extension EditorTextView {
