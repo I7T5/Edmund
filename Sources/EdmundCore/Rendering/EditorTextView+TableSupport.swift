@@ -253,3 +253,73 @@ private func pipeEdges(in line: NSString) -> [Int] {
 func cellRanges(in line: NSString) -> [(start: Int, end: Int)] {
     columnSpans(in: line).filter { $0.end > $0.start }
 }
+
+// MARK: - Moving rows and columns
+
+/// A table's lines with a run of rows moved, for dragging a row by its pill.
+///
+/// Rows here are counted *without* the separator line: 0 is the header, 1 the
+/// first body row. `gap` is the row the run lands in front of, counted the
+/// same way before the move (the row count lands it after the last). The
+/// separator stays on line 1 whatever moves, so a body row moved to the top
+/// becomes the header and the old header drops into the body — the same
+/// convention as adding a row above the header. Each row's text, padding
+/// included, moves byte for byte. Nil when the move changes nothing.
+func movedTableRows(_ lines: [String], from rows: ClosedRange<Int>, to gap: Int) -> [String]? {
+    guard lines.count >= 2 else { return nil }
+    var logical = [lines[0]] + lines.dropFirst(2)
+    guard rows.lowerBound >= 0, rows.upperBound < logical.count,
+          gap >= 0, gap <= logical.count,
+          gap < rows.lowerBound || gap > rows.upperBound + 1 else { return nil }
+    let run = Array(logical[rows])
+    logical.removeSubrange(rows)
+    logical.insert(contentsOf: run, at: gap > rows.upperBound ? gap - run.count : gap)
+    return [logical[0], lines[1]] + logical.dropFirst()
+}
+
+/// A table's lines with a run of columns moved, for dragging a column by its
+/// pill. Columns are counted as `columnSpans` counts them, off the header;
+/// `gap` is the column the run lands in front of, before the move.
+///
+/// Every line moves the same cells, the separator's included, so a column's
+/// alignment colons travel with it. A row short of the header's columns is
+/// first given the empty cells it lacks — otherwise there would be nothing in
+/// it to move. Cells move byte for byte, padding and all. Nil when the move
+/// changes nothing.
+func movedTableColumns(_ lines: [String], from columns: ClosedRange<Int>,
+                       to gap: Int) -> [String]? {
+    guard let header = lines.first else { return nil }
+    let count = columnSpans(in: header as NSString).count
+    guard columns.lowerBound >= 0, columns.upperBound < count,
+          gap >= 0, gap <= count,
+          gap < columns.lowerBound || gap > columns.upperBound + 1 else { return nil }
+    return lines.enumerated().map { index, line in
+        let ns = paddedTableRow(line, toColumns: count, separator: index == 1) as NSString
+        let spans = columnSpans(in: ns)
+        guard spans.count >= count else { return line }
+        var cells = spans.map {
+            ns.substring(with: NSRange(location: $0.start, length: $0.end - $0.start))
+        }
+        let run = Array(cells[columns])
+        cells.removeSubrange(columns)
+        cells.insert(contentsOf: run, at: gap > columns.upperBound ? gap - run.count : gap)
+        // Spans sit between single pipes, so joining on one rebuilds the row;
+        // whatever stands before the first and after the last (the outer
+        // pipes, or nothing) is kept as it was.
+        return ns.substring(to: spans[0].start) + cells.joined(separator: "|")
+            + ns.substring(from: spans[spans.count - 1].end)
+    }
+}
+
+/// A row given the empty cells it lacks to reach `count` columns, in its own
+/// pipe style; the separator row's are dashes, or the table stops parsing.
+/// A row that already has them comes back untouched.
+func paddedTableRow(_ line: String, toColumns count: Int, separator: Bool) -> String {
+    let have = columnSpans(in: line as NSString).count
+    guard have > 0, have < count else { return line }
+    var base = line
+    while base.last == " " || base.last == "\t" { base.removeLast() }
+    let cell = separator ? " --- " : "  "
+    let closed = base.hasSuffix("|") && !base.hasSuffix("\\|")
+    return base + String(repeating: closed ? cell + "|" : "|" + cell, count: count - have)
+}

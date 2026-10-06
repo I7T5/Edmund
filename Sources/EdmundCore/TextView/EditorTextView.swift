@@ -678,6 +678,15 @@ public class EditorTextView: NSTextView {
     /// reverting to a character selection. Reset at every `mouseDown`.
     var tableDragCrossedCells = false
 
+    /// The whole row(s) or column(s) a pill click selected, with the ranges it
+    /// installed. Only trusted while the selection still equals those ranges,
+    /// so any other selection change retires it. See EditorTextView+TableHandles.
+    var tableAxisSelectionState: TableAxisSelection?
+
+    /// A row or column being dragged by its pill to a new place, while the drag
+    /// is in flight. See EditorTextView+TableReorder.
+    var tableReorderDrag: TableReorderDrag?
+
     /// Set while `activateRawTableEditing` is placing the caret at a table's
     /// first character. That character is a pipe, and the rules below move a
     /// caret off a pipe — but this one is deliberate, and the table is about to
@@ -1129,9 +1138,11 @@ public class EditorTextView: NSTextView {
         }
         // A row/column handle hangs in the same margin, and in the band above
         // the table. Same reasoning: nothing there to select, so it takes the
-        // click whole. See EditorTextView+TableHandles.
+        // gesture whole — a click selects the row or column (or, on the
+        // selected tab, opens its menu) and a drag moves it. See
+        // EditorTextView+TableHandles and EditorTextView+TableReorder.
         if let handle = tableHandleHit(at: event) {
-            showTableHandleMenu(handle, with: event)
+            trackTablePill(handle, with: event)
             return
         }
         // A dot on a cell selection's corner drags the selection wider. AppKit's

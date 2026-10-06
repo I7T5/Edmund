@@ -17,6 +17,12 @@ extension EditorTextView {
         updateWrappedCaret()
         // The row and column handles hang off the caret's cell, so they move
         // with it and nothing else invalidates them.
+        // A row or column picked by its pill stays picked only as long as the
+        // selection is still exactly that row or column.
+        if let state = tableAxisSelectionState,
+           selectedRanges.map(\.rangeValue) != state.ranges {
+            tableAxisSelectionState = nil
+        }
         invalidateTableHandles()
         // The `</>` button steps aside for the row pill when the header row
         // becomes active, so a caret move relocates it — repaint old and new.

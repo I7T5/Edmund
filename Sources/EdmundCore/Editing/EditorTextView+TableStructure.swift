@@ -313,7 +313,7 @@ extension EditorTextView {
     /// Writes a whole table back as one undoable edit. Columns need this: their
     /// change lands on every line, and a table block is contiguous, so the whole
     /// block is the smallest range that covers it.
-    private func replaceTable(blockIndex: Int, lines: [String]) {
+    func replaceTable(blockIndex: Int, lines: [String]) {
         let block = blocks[blockIndex]
         applyFormattingEdit(rawRange: block.range,
                             replacement: lines.joined(separator: "\n"),
@@ -323,7 +323,7 @@ extension EditorTextView {
     /// Selects a cell by position *after* an edit, when the ranges captured
     /// before it are all stale. Silently does nothing if the cell no longer
     /// exists — a delete can leave fewer rows or columns than the caller hoped.
-    private func landInCell(blockIndex: Int, row: Int, column: Int) {
+    func landInCell(blockIndex: Int, row: Int, column: Int) {
         guard let cell = tableCell(blockIndex: blockIndex, row: row, column: column)
                 ?? tableCell(blockIndex: blockIndex, row: row, column: 0) else { return }
         selectCellText(cell)
