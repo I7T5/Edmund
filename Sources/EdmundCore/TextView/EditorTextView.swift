@@ -233,7 +233,6 @@ public class EditorTextView: NSTextView {
     var scrollPrefetchScheduled = false
     /// Includes editing, invalidation, viewport layout and anchor compensation.
     var lastStylingSliceDuration: Duration = .zero
-    var stylingSlicePreparationEstimate: Duration = .zero
     var stylingSliceCompletionEstimate: Duration = .milliseconds(1)
     /// Bumped by every whole-document spell scan, so a scan's remaining
     /// chunks stop once a newer one (or a newly loaded document) starts.

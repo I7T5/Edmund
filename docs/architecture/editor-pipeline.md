@@ -61,9 +61,15 @@ stall the main thread. So:
 ```mermaid
 flowchart TD
     D["Large dirty set"] --> V["Style viewport + active block now<br/>(syncStylingBlockRange)"]
-    V --> I["Idle drain: ~6 ms main-thread slices<br/>(drainStylingSlice)"]
+    V --> I["Idle drain: ~6 ms styling-work slices<br/>(drainStylingSlice)"]
     V --> S["Scroll promotion: style blocks as they<br/>enter the viewport (promoteVisibleUnstyledBlocks)"]
 ```
+
+The idle budget covers styling work; transaction completion, layout and anchor
+compensation run afterward. Live scrolling pauses the idle drain, while scroll
+promotion styles the exact viewport first and schedules optional margin work
+with a separate 3 ms whole-callback target. A hidden editor pauses both paths
+until it becomes visible again.
 
 A **small** dirty set (ordinary interaction) is styled in full — visible
 state transitions are never deferred. Headless (no scroll view), everything

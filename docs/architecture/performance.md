@@ -90,16 +90,16 @@ measurement showing the cost is bounded, or a comment naming the ceiling.
     prefetch and full-layout settle pause while the reader owns the screen.
     Returning to Edit resumes them. Live editor scrolling still promotes the
     exact viewport first; optional margin styling gets a separate 3 ms slice.
-14. **Budget the whole callback.** Idle/margin styling measures anchoring,
-    attribute changes, `endEditing`, invalidation and viewport layout together,
-    reserving the previous completion cost before admitting more blocks. The
-    margin target is 3 ms; the non-scrolling idle drain adapts from 3 to 6 ms
-    when TextKit completion needs amortizing. A fixed 3 ms idle target reduced
-    a 1 MB drain to one block per transaction (22 s vs the base's 1.7 s).
-    Both targets are cooperative: one block or a TextKit layout can overrun them.
-    `unstyledBlockIndexes` tracks pending work; styling flags do not rescan the
-    document or invalidate list-depth caches. Structural block changes rebuild
-    the index once.
+14. **Keep idle throughput separate from scroll-prefetch latency.** The idle
+    drain allows 6 ms of styling work, with `endEditing`, invalidation, viewport
+    layout and anchor compensation outside that budget. Live scrolling pauses
+    the drain. Optional scroll-margin prefetch instead targets 3 ms for the whole
+    callback, reserving the previous completion cost before admitting more
+    blocks. Both budgets are cooperative: a block or TextKit completion can
+    overrun them. `unstyledBlockIndexes` tracks pending work; each slice starts
+    at the first unstyled block rather than resuming a `drainCursor` scan.
+    Styling flags do not rescan the document or invalidate list-depth caches;
+    structural block changes rebuild the index once.
 15. **Prepare reader HTML off the main actor.** `ReadHTMLRenderer` serializes
     Markdown parsing and HTML traversal. CSS is snapshotted on the main actor;
     mutable syntax/math/Mermaid engines and AppKit image handling finish there.

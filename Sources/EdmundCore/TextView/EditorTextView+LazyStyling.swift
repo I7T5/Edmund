@@ -36,44 +36,49 @@ extension EditorTextView {
         }
     }
 
-    /// A cooperative target, not a hard deadline: one block and TextKit's
-    /// transaction completion cannot be interrupted. Reserve the previous
-    /// completion cost before admitting another block; measure the whole call.
+    /// A cooperative whole-callback target for optional scroll-margin work.
+    /// One block and TextKit's transaction completion cannot be interrupted.
     static let backgroundStylingBudget: Duration = .milliseconds(3)
 
-    /// Idle work can amortize expensive, indivisible TextKit completion up to
-    /// 6 ms. A fixed 3 ms target collapsed to one block per transaction on a
-    /// 1 MB document (22 s vs 1.7 s). Live scrolling never schedules this drain;
-    /// its optional margin prefetch still uses the fixed 3 ms target.
-    var idleStylingBudget: Duration {
-        min(.milliseconds(6), max(Self.backgroundStylingBudget,
-                                 stylingSlicePreparationEstimate
-                                 + stylingSliceCompletionEstimate + .milliseconds(2)))
-    }
-
-    func drainStylingSlice(budget: Duration? = nil) {
+    /// Preserve the idle drain's 6 ms styling-work budget; transaction/layout
+    /// completion remains outside it. Live scrolling pauses this drain.
+    func drainStylingSlice(budget: Duration = .milliseconds(6)) {
         guard isEditorPresentationActive else { return }
         guard !isUpdating, !hasMarkedText() else { scheduleProgressiveStyling(); return }
-        stylePendingBlocks(in: nil, budget: budget ?? idleStylingBudget)
+        stylePendingBlocks(in: nil, budget: budget, reservingCompletionCost: false)
         if unstyledBlockCount > 0 { scheduleProgressiveStyling() }
         else { scheduleFullLayoutSettle() }
     }
 
     /// `candidates == nil` drains the document. Scroll prefetch supplies only
     /// the viewport margin; neither path scans already-styled paragraphs.
-    private func stylePendingBlocks(in candidates: IndexSet?, budget: Duration) {
+    private func stylePendingBlocks(in candidates: IndexSet?, budget: Duration,
+                                    reservingCompletionCost: Bool) {
         guard let ts = textStorage, unstyledBlockCount > 0 else { return }
         var pending = candidates.map { unstyledBlockIndexes.intersection($0) }
         guard pending?.isEmpty != true else { return }
         let start = ContinuousClock.now
-        let workBudget = max(.zero, budget - stylingSliceCompletionEstimate)
+        let workBudget = reservingCompletionCost
+            ? max(.zero, budget - stylingSliceCompletionEstimate) : budget
         var processingEnd = start
-        var preparationEnd = start
+        // Blocks restyled this slice need their TextKit 2 layout invalidated
+        // afterward: restyling is attribute-only, and TextKit 2 doesn't
+        // re-measure a fragment's geometry (height, first-line indent) for an
+        // attribute-only change — so a deferred block whose styled height differs
+        // from its base/estimated height would otherwise keep a stale fragment,
+        // leaving an empty band on screen. `recomposeDirty` invalidates its
+        // synchronously-styled blocks for the same reason.
         var restyled = IndexSet()
         let cursor = selectedRange().location
         isUpdating = true
+        // Anchored, edits included: restyled blocks above the viewport change
+        // height (after a zoom or appearance change everything off screen is
+        // restyled here), and TextKit re-estimates them as soon as the edit is
+        // processed — nothing else compensates the clip, so the text under a
+        // still viewport slid by hundreds of lines as the drain caught up.
         preservingViewportAnchor {
-            preparationEnd = ContinuousClock.now
+            // Explicit pool: styling churns through transient images/attributed
+            // strings, and a caller may run many slices without a run-loop turn.
             autoreleasepool {
                 ts.beginEditing()
                 while let idx = pending == nil ? unstyledBlockIndexes.first : pending?.first {
@@ -95,13 +100,16 @@ extension EditorTextView {
                         tlm.invalidateLayout(for: range)
                     }
                 }
+                // Measure the "after" through the same viewport layout the
+                // anchor's "before" went through: a lone fragment layout can
+                // place the anchor a few points off it, and once per slice
+                // that error compounded into a line.
                 tlm.textViewportLayoutController.layoutViewport()
             }
         }
         isUpdating = false
         let end = ContinuousClock.now
         lastStylingSliceDuration = end - start
-        stylingSlicePreparationEstimate = preparationEnd - start
         stylingSliceCompletionEstimate = end - processingEnd
     }
 
@@ -325,7 +333,8 @@ extension EditorTextView {
                 self.isPromotingVisibleBlocks = true
                 defer { self.isPromotingVisibleBlocks = false }
                 self.stylePendingBlocks(in: IndexSet(integersIn: bounds),
-                                        budget: Self.backgroundStylingBudget)
+                                        budget: Self.backgroundStylingBudget,
+                                        reservingCompletionCost: true)
             }
         }
     }
