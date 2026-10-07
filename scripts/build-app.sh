@@ -185,10 +185,8 @@ fi
 # Assemble the Quick Look preview extension as an .appex in Contents/PlugIns.
 # It's an executable target (SwiftPM has no app-extension product); its entry
 # point is Foundation's NSExtensionMain via the linker flag in Package.swift.
-# Unlike the app's own SwiftMath bundle (copied to the .app root *after* the
-# seal), the appex's resource bundles go inside Contents/Resources *before* it
-# is signed, so they're sealed legally: an appex's Bundle.module resolves via
-# Bundle.main.resourceURL, which for an .appex is Contents/Resources.
+# Its SwiftPM resource bundles are copied in below, after it is signed (see
+# "Copying SwiftPM resource bundles").
 echo "Assembling Quick Look extension..."
 QL_NAME="EdmundQuickLook"
 APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
@@ -196,10 +194,6 @@ mkdir -p "${APPEX}/Contents/MacOS" "${APPEX}/Contents/Resources"
 cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
 strip_binary "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
-for bundle in .build/release/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/Contents/Resources/"
-done
-prune_math_fonts "${APPEX}/Contents/Resources"
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
 #
@@ -230,6 +224,19 @@ echo "Code signing..."
 [ "$VARIANT" != "mas" ] && codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
     --identifier "com.i7t5.edmund.quicklook" "$APPEX"
+# The appex has the same constraint as the app (below): the `swift build`
+# Bundle.module accessor only looks at Bundle.main.bundleURL/<name>.bundle —
+# for an .appex that is its root, not Contents/Resources, where these used to
+# go — and calls fatalError otherwise, so every preview crashed in
+# ThemeStore.reload() (#388). Copy after signing the appex, since codesign
+# refuses to seal a bundle with extra items at its root. The outer app seal and
+# Sparkle's non-strict validity check are unaffected (verified with
+# SecStaticCodeCheckValidityWithErrors + kSecCSCheckAllArchitectures, with and
+# without kSecCSCheckNestedCode).
+for bundle in .build/release/*.bundle; do
+    [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/"
+done
+prune_math_fonts "$APPEX"
 # The sandboxed variants sign with no --identifier override: the signing id
 # names the container (~/Library/Containers/<id>) and keys the automatic
 # preferences migration, so it must equal the Info.plist bundle id. The ad-hoc
