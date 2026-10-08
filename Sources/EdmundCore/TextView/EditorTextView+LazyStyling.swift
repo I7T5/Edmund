@@ -20,38 +20,47 @@ extension EditorTextView {
     /// Schedules the idle drain (coalesced; safe to call repeatedly). Paused
     /// while the user is actively scrolling — the drain reschedules every
     /// run-loop pass and competes with the scroll for the main thread; the
-    /// scroll-quiescence flip resumes it. `drainStylingSlice()` itself is
-    /// never gated, so tests can still drive the drain synchronously.
+    /// scroll-quiescence flip resumes it. Explicit `drainStylingSlice()` calls
+    /// bypass the live-scroll gate for tests, but still pause while hidden.
     func scheduleProgressiveStyling() {
         guard !progressiveStylingScheduled else { return }
-        guard !isScrollingActive else { return }
+        guard isEditorPresentationActive, !isScrollingActive else { return }
         progressiveStylingScheduled = true
         RunLoop.main.perform { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.progressiveStylingScheduled = false
-                guard !self.isScrollingActive else { return }
+                guard self.isEditorPresentationActive, !self.isScrollingActive else { return }
                 self.drainStylingSlice()
             }
         }
     }
 
-    /// Restyles unstyled blocks for ~6 ms, then reschedules itself if any
-    /// remain. Reads current state each slice, so edits/undo/load between
-    /// slices are naturally accommodated. Internal so tests can drive the
-    /// drain synchronously.
-    func drainStylingSlice() {
-        guard let ts = textStorage else { return }
-        guard !isUpdating else { scheduleProgressiveStyling(); return }
-        // Restyling marked text aborts IME composition — wait it out.
-        guard !hasMarkedText() else { scheduleProgressiveStyling(); return }
+    /// A cooperative whole-callback target for optional scroll-margin work.
+    /// One block and TextKit's transaction completion cannot be interrupted.
+    static let backgroundStylingBudget: Duration = .milliseconds(3)
 
+    /// Preserve the idle drain's 6 ms styling-work budget; transaction/layout
+    /// completion remains outside it. Live scrolling pauses this drain.
+    func drainStylingSlice(budget: Duration = .milliseconds(6)) {
+        guard isEditorPresentationActive else { return }
+        guard !isUpdating, !hasMarkedText() else { scheduleProgressiveStyling(); return }
+        stylePendingBlocks(in: nil, budget: budget, reservingCompletionCost: false)
+        if unstyledBlockCount > 0 { scheduleProgressiveStyling() }
+        else { scheduleFullLayoutSettle() }
+    }
+
+    /// `candidates == nil` drains the document. Scroll prefetch supplies only
+    /// the viewport margin; neither path scans already-styled paragraphs.
+    private func stylePendingBlocks(in candidates: IndexSet?, budget: Duration,
+                                    reservingCompletionCost: Bool) {
+        guard let ts = textStorage, unstyledBlockCount > 0 else { return }
+        var pending = candidates.map { unstyledBlockIndexes.intersection($0) }
+        guard pending?.isEmpty != true else { return }
         let start = ContinuousClock.now
-        let budget = Duration.milliseconds(6)
-
-        isUpdating = true
-        let cursor = selectedRange().location
-        var remaining = false
+        let workBudget = reservingCompletionCost
+            ? max(.zero, budget - stylingSliceCompletionEstimate) : budget
+        var processingEnd = start
         // Blocks restyled this slice need their TextKit 2 layout invalidated
         // afterward: restyling is attribute-only, and TextKit 2 doesn't
         // re-measure a fragment's geometry (height, first-line indent) for an
@@ -60,6 +69,8 @@ extension EditorTextView {
         // leaving an empty band on screen. `recomposeDirty` invalidates its
         // synchronously-styled blocks for the same reason.
         var restyled = IndexSet()
+        let cursor = selectedRange().location
+        isUpdating = true
         // Anchored, edits included: restyled blocks above the viewport change
         // height (after a zoom or appearance change everything off screen is
         // restyled here), and TextKit re-estimates them as soon as the edit is
@@ -70,34 +81,19 @@ extension EditorTextView {
             // strings, and a caller may run many slices without a run-loop turn.
             autoreleasepool {
                 ts.beginEditing()
-                // Resume the scan where the last slice stopped (`drainCursor` is a
-                // hint — edits shift indices, the wrap-around pass self-corrects).
-                // Rescanning from 0 each slice made the drain quadratic: deep
-                // slices burned their whole budget skipping styled blocks.
-                let count = blocks.count
-                var scanned = 0
-                var idx = min(drainCursor, max(0, count - 1))
-                while scanned < count {
-                    if idx >= count { idx = 0 }
-                    if !blocks[idx].isStyled {
-                        let cursorInBlock: Int? = (idx == activeBlockIndex)
-                            ? max(0, cursor - blocks[idx].range.location) : nil
-                        restyleBlock(idx, cursorInBlock: cursorInBlock)
-                        setStyled(idx, true)
-                        restyled.insert(idx)
-                        if ContinuousClock.now - start > budget {
-                            remaining = true
-                            idx += 1
-                            break
-                        }
-                    }
-                    idx += 1
-                    scanned += 1
+                while let idx = pending == nil ? unstyledBlockIndexes.first : pending?.first {
+                    // Always make progress, even if anchoring used the budget.
+                    guard restyled.isEmpty || ContinuousClock.now - start < workBudget else { break }
+                    let cursorInBlock: Int? = (idx == activeBlockIndex)
+                        ? max(0, cursor - blocks[idx].range.location) : nil
+                    restyleBlock(idx, cursorInBlock: cursorInBlock)
+                    setStyled(idx, true)
+                    pending?.remove(idx)
+                    restyled.insert(idx)
                 }
-                drainCursor = idx
+                processingEnd = ContinuousClock.now
                 ts.endEditing()
             }
-
             if let tlm = textLayoutManager {
                 for idx in restyled where idx < blocks.count {
                     if let range = blockTextRange(blocks[idx].range, tlm) {
@@ -112,12 +108,9 @@ extension EditorTextView {
             }
         }
         isUpdating = false
-
-        if remaining {
-            scheduleProgressiveStyling()
-        } else {
-            scheduleFullLayoutSettle()
-        }
+        let end = ContinuousClock.now
+        lastStylingSliceDuration = end - start
+        stylingSliceCompletionEstimate = end - processingEnd
     }
 
     /// TextKit 2 only gives a fragment a real frame once it's laid out;
@@ -142,7 +135,7 @@ extension EditorTextView {
     /// anchored restyle would poison that caller's before/after measurement.
     func scheduleFullLayoutSettle() {
         guard !fullLayoutSettleScheduled else { return }
-        guard !isScrollingActive else { return }
+        guard isEditorPresentationActive, !isScrollingActive else { return }
         fullLayoutSettleScheduled = true
         // RunLoop.perform, not DispatchQueue.main.async, so tests can drain it
         // with `RunLoop.main.run(until:)`.
@@ -150,11 +143,11 @@ extension EditorTextView {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.fullLayoutSettleScheduled = false
-                guard !self.isUpdating, !self.hasMarkedText(), !self.isScrollingActive,
+                guard !self.isUpdating, !self.hasMarkedText(), self.isEditorPresentationActive, !self.isScrollingActive,
                       let tlm = self.textLayoutManager else { return }
                 self.repairContentAboveOrigin()
                 guard (self.textStorage?.length ?? 0) <= Self.fullLayoutMaxLength,
-                      self.blocks.allSatisfy({ $0.isStyled }) else { return }
+                      self.unstyledBlockCount == 0 else { return }
                 self.preservingViewportAnchor {
                     tlm.ensureLayout(for: tlm.documentRange)
                 }
@@ -206,16 +199,17 @@ extension EditorTextView {
         // state after the first seconds. Skip the forced viewport layout then:
         // each one re-estimates the height of every unlaid-out paragraph, a
         // quarter of a large document's per-tick scroll cost.
-        guard blocks.contains(where: { !$0.isStyled }) else { return }
+        guard isEditorPresentationActive, unstyledBlockCount > 0 else { return }
         textLayoutManager?.textViewportLayoutController.layoutViewport()
-        guard let bounds = syncStylingBlockRange() else { return }
-        let unstyled = IndexSet(bounds.filter { !blocks[$0].isStyled })
-        guard !unstyled.isEmpty else { return }
+        guard let bounds = syncStylingBlockRange(includingMargin: false) else { return }
+        let unstyled = unstyledBlockIndexes.intersection(IndexSet(integersIn: bounds))
+        guard !unstyled.isEmpty else { scheduleScrollPrefetch(); return }
         // Styling only: the text is unchanged, and the whole-document scan
         // covers its spelling. A synchronous recheck here queued behind the
         // scan's chunk in flight — 100–150 ms stalls in the first scroll
         // after opening a long file.
         stylingOnly { recomposeDirty(unstyled, cursorInRaw: selectedRange().location) }
+        scheduleScrollPrefetch()
     }
 
     /// Synchronously styles every unstyled block from the document start
@@ -323,7 +317,30 @@ extension EditorTextView {
         }
     }
 
-    private func scheduleScrollPromotion() {
+    /// One budgeted margin pass per promotion. Visible blocks were styled
+    /// first; the rest is optional and never holds up that first paint.
+    private func scheduleScrollPrefetch() {
+        guard isEditorPresentationActive, !scrollPrefetchScheduled,
+              unstyledBlockCount > 0 else { return }
+        scrollPrefetchScheduled = true
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.scrollPrefetchScheduled = false
+                guard self.isEditorPresentationActive, !self.isUpdating, !self.hasMarkedText(),
+                      self.unstyledBlockCount > 0,
+                      let bounds = self.syncStylingBlockRange() else { return }
+                self.isPromotingVisibleBlocks = true
+                defer { self.isPromotingVisibleBlocks = false }
+                self.stylePendingBlocks(in: IndexSet(integersIn: bounds),
+                                        budget: Self.backgroundStylingBudget,
+                                        reservingCompletionCost: true)
+            }
+        }
+    }
+
+    func scheduleScrollPromotion() {
+        guard isEditorPresentationActive else { return }
         guard !scrollPromotionScheduled else { return }
         scrollPromotionScheduled = true
         // Common modes, not the default: dragging the scroller knob tracks the
@@ -333,6 +350,7 @@ extension EditorTextView {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.scrollPromotionScheduled = false
+                guard self.isEditorPresentationActive else { return }
                 if self.isUpdating {
                     self.scheduleScrollPromotion()
                     return

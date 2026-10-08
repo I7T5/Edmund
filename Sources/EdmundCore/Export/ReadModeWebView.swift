@@ -42,7 +42,12 @@ public final class ReadModeWebView: WKWebView {
         NotificationCenter.default.addObserver(
             forName: .renderEngineChanged, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.reloadHTML() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.lastLoadedInputs = nil
+                if !self.isHidden || self.isRenderPending { self.reloadHTML() }
+                else { self.cancelPendingRender() }
+            }
         }
     }
 
@@ -114,6 +119,8 @@ public final class ReadModeWebView: WKWebView {
     /// document as it now reads, kept so a later appearance-driven re-render
     /// starts from the toggled state rather than reverting it.
     public func setTaskChecked(line: Int, checked: Bool, markdown: String) {
+        let wasPreparing = isRenderPending
+        cancelPendingRender()
         pending?.markdown = markdown
         let svg = Data(LucideIcons.checkboxSVG(checked: checked).utf8).base64EncodedString()
         let js = """
@@ -128,6 +135,8 @@ public final class ReadModeWebView: WKWebView {
         })()
         """
         evaluateJavaScript(js, completionHandler: nil)
+        // An appearance/settings render in flight must use the toggled source.
+        if wasPreparing { reloadHTML() }
     }
 
     /// The most recent render inputs, so the view can re-render itself when the
@@ -146,6 +155,9 @@ public final class ReadModeWebView: WKWebView {
     /// `reloadHTML()` racing ahead of it — the completion only acts if this
     /// hasn't moved on since it was captured.
     private var loadGeneration = 0
+    /// Includes the asynchronous scroll capture before HTML preparation starts.
+    private var isRenderPending = false
+    private let htmlPreparation = ReadHTMLPreparation()
 
     /// True once the first `loadHTMLString` has been issued. The very first
     /// load has nothing on-screen to capture a scroll position from, so
@@ -186,9 +198,13 @@ public final class ReadModeWebView: WKWebView {
 
     func reloadHTML() {
         guard let p = pending else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
+        htmlPreparation.cancel()
+        isRenderPending = true
         guard hasLoadedOnce else {
             hasLoadedOnce = true
-            performLoad(p)
+            performLoad(p, generation: generation)
             return
         }
         // Externally-set restores (e.g. Edit→Read entry via
@@ -196,24 +212,22 @@ public final class ReadModeWebView: WKWebView {
         // load rather than clobbering the caller's position with the current
         // (pre-switch) scroll offset.
         guard pendingScrollRestore == nil else {
-            performLoad(p)
+            performLoad(p, generation: generation)
             return
         }
         // Capture the current scroll position before we blow it away with a
         // fresh `loadHTMLString`, so the re-render (appearance flip, settings
         // change) can restore it once the new document finishes loading.
-        let generation = loadGeneration
         readScrollPosition { [weak self] restored in
             guard let self, self.loadGeneration == generation else { return }
             self.pendingScrollRestore = restored
-            self.loadGeneration += 1
-            self.performLoad(p)
+            self.performLoad(p, generation: generation)
         }
     }
 
     private func performLoad(_ p: (markdown: String, theme: EditorTheme,
                                    callouts: [String: CalloutStyle], baseURL: URL?,
-                                   options: ReadRenderOptions)) {
+                                   options: ReadRenderOptions), generation: Int) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         // Kills the white flash between `loadHTMLString` and first paint (most
         // visible in dark mode): the page background shows immediately instead
@@ -227,20 +241,35 @@ public final class ReadModeWebView: WKWebView {
                                 baseURL: p.baseURL, options: p.options, dark: dark)
         if inputs == lastLoadedInputs,
            !p.markdown.contains("!["), !p.markdown.contains("<img") {
+            isRenderPending = false
             applyPendingScrollRestoreAndNotify()
             return
         }
-        lastLoadedInputs = inputs
-        let html = DocumentHTML.full(markdown: p.markdown, theme: p.theme,
-                                     callouts: p.callouts, dark: dark,
-                                     baseURL: p.baseURL, options: p.options)
-        guard html != lastLoadedHTML else {
-            // Nothing changed — the document on screen is already correct.
-            applyPendingScrollRestoreAndNotify()
-            return
+        // Resolve fonts, colors and theme-store state once on the main actor.
+        // Parsing and the HTML walk run on a separate, serial actor; the
+        // mutable code/math/diagram engines are used only in the finish pass.
+        let css = HTMLTheme.css(p.theme, callouts: p.callouts, dark: dark,
+                                maxContentWidthPoints: p.options.maxContentWidthPoints)
+        htmlPreparation.prepare(markdown: p.markdown, options: p.options) { [weak self] body in
+            guard let self, self.loadGeneration == generation else { return }
+            let html = DocumentHTML.finish(body: body, css: css, theme: p.theme,
+                                           dark: dark, baseURL: p.baseURL, options: p.options)
+            self.isRenderPending = false
+            self.lastLoadedInputs = inputs
+            guard html != self.lastLoadedHTML else {
+                self.applyPendingScrollRestoreAndNotify()
+                return
+            }
+            self.lastLoadedHTML = html
+            self.loadHTMLString(html, baseURL: ReadModeNavigationPolicy.trustedBaseURL)
         }
-        lastLoadedHTML = html
-        loadHTMLString(html, baseURL: ReadModeNavigationPolicy.trustedBaseURL)
+    }
+
+    /// Leaving Read mode should not finish a page nobody will see.
+    public func cancelPendingRender() {
+        loadGeneration += 1
+        htmlPreparation.cancel()
+        isRenderPending = false
     }
 
     public override func viewDidChangeEffectiveAppearance() {
@@ -248,7 +277,7 @@ public final class ReadModeWebView: WKWebView {
         // Hidden in Edit mode: rebuilding a page nobody sees cost a full
         // render on every light/dark flip. Entering Read mode renders again,
         // and the changed appearance makes that a real rebuild.
-        guard !isHidden else { return }
+        guard !isHidden || isRenderPending else { return }
         reloadHTML()
     }
 

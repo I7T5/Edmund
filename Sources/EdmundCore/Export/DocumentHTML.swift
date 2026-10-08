@@ -26,13 +26,23 @@ enum DocumentHTML {
                      baseURL: URL? = nil,
                      options: ReadRenderOptions = .default,
                      forAttributedString: Bool = false) -> String {
-        var body = HTMLRenderer.render(markdown: markdown, options: options)
+        let body = HTMLRenderer.render(markdown: markdown, options: options)
+        let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
+                                maxContentWidthPoints: options.maxContentWidthPoints)
+        return finish(body: body, css: css, theme: theme, dark: dark, baseURL: baseURL,
+                      options: options, forAttributedString: forAttributedString)
+    }
+
+    /// Finishes an independently prepared body. Shared by synchronous exports
+    /// and the reader's background parse; AppKit and mutable engines stay here.
+    static func finish(body: String, css: String, theme: EditorTheme, dark: Bool,
+                       baseURL: URL? = nil, options: ReadRenderOptions = .default,
+                       forAttributedString: Bool = false) -> String {
+        var body = fillCode(body)
         body = fillMermaid(body, dark: dark, rasterize: forAttributedString)
         body = fillMath(body, theme: theme, dark: dark)
         body = fillImages(body, baseURL: baseURL, options: options)
         if forAttributedString { body = preparedForAttributedString(body) }
-        let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
-                                maxContentWidthPoints: options.maxContentWidthPoints)
         return """
         <!DOCTYPE html>
         <html><head><meta charset="utf-8">
@@ -43,6 +53,18 @@ enum DocumentHTML {
         </style></head>
         <body><div class="page">\(body)</div></body></html>
         """
+    }
+
+    private static func fillCode(_ html: String) -> String {
+        guard html.contains("data-edmund-code=") else { return html }
+        return replaceMatches(html, pattern:
+            "(<code(?: class=\"[^\"]*\")?) data-edmund-code=\"([^\"]*)\" data-edmund-language=\"([^\"]*)\"></code>") { groups in
+            guard let codeData = Data(base64Encoded: groups[2]),
+                  let code = String(data: codeData, encoding: .utf8),
+                  let languageData = Data(base64Encoded: groups[3]),
+                  let language = String(data: languageData, encoding: .utf8) else { return groups[0] }
+            return groups[1] + ">" + HTMLRenderer.highlightCode(code, language: language) + "</code>"
+        }
     }
 
     // MARK: Mermaid (diagram source → inline SVG)

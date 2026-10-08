@@ -86,6 +86,26 @@ measurement showing the cost is bounded, or a comment naming the ceiling.
 12. **Cheap prefilters before regexes.** The autolink regex runs only on text
     containing `@`, `://` or `www.`. `String.contains("\r\n")` is a Unicode
     (Character) search; scan UTF-8 bytes instead.
+13. **Presentation gates background work.** A hidden editor's drain, promotion,
+    prefetch and full-layout settle pause while the reader owns the screen.
+    Returning to Edit resumes them. Live editor scrolling still promotes the
+    exact viewport first; optional margin styling gets a separate 3 ms slice.
+14. **Keep idle throughput separate from scroll-prefetch latency.** The idle
+    drain allows 6 ms of styling work, with `endEditing`, invalidation, viewport
+    layout and anchor compensation outside that budget. Live scrolling pauses
+    the drain. Optional scroll-margin prefetch instead targets 3 ms for the whole
+    callback, reserving the previous completion cost before admitting more
+    blocks. Both budgets are cooperative: a block or TextKit completion can
+    overrun them. `unstyledBlockIndexes` tracks pending work; each slice starts
+    at the first unstyled block rather than resuming a `drainCursor` scan.
+    Styling flags do not rescan the document or invalidate list-depth caches;
+    structural block changes rebuild the index once.
+15. **Prepare reader HTML off the main actor.** `ReadHTMLRenderer` serializes
+    Markdown parsing and HTML traversal. CSS is snapshotted on the main actor;
+    mutable syntax/math/Mermaid engines and AppKit image handling finish there.
+    Superseded requests and mode exit cancel publication; the synchronous parser
+    checks cancellation before and after parsing, not inside its traversal.
+    Exports and reader output share `DocumentHTML.finish`.
 
 ## 3. Measuring
 
@@ -113,6 +133,11 @@ measurement showing the cost is bounded, or a comment naming the ceiling.
 - **Live.** `sample <pid>` on the release app catches main-thread waits a
   headless run can't (spell-server locks, WebKit). WKWebView never finishes
   loading in the test process, so Read mode's WebKit time needs a live trace.
+- **Reader phases without WebKit.** `MD_PERF=1 swift test -c release
+  -Xswiftc -enable-testing --filter ReadHTMLPreparationTests/phaseTimings`
+  reports worker preparation plus actor handoff, main-actor CSS/asset finishing,
+  and the equivalent synchronous build for a synthetic 1 MB document. It
+  asserts identical HTML; it does not measure WebKit paint or trackpad frames.
 - **Regime.** State whether a number is ≤100k (full layout, real geometry) or
   above it (estimates). Use a 1 MB document for anything on a hot path.
 
@@ -127,7 +152,8 @@ measurement showing the cost is bounded, or a comment naming the ceiling.
   very large fence.
 - Line numbers on: `layout()` dirties the whole strip; the find pop and copy
   flash dirty the whole view per frame.
-- HTML build off the main thread (math and Mermaid renderers aren't known to
-  be thread-safe); dynamic colors to avoid restyling on appearance flips.
+- Reader's main-actor finish pass (code highlighting, math, Mermaid and images)
+  remains unbudgeted; trace asset-heavy pages separately from WebKit scrolling.
+  Dynamic colors could avoid editor restyling on appearance flips.
 - Pinch-to-zoom: scale with scroll-view magnification during the gesture and
   commit the font size once at the end.

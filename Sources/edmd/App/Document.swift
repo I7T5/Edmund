@@ -777,6 +777,9 @@ class Document: NSDocument, HeadingNavigable {
                 let v = ReadModeWebView()
                 v.frame = scrollView.frame
                 v.autoresizingMask = [.width, .height]
+                // Background preparation can span several frames. Keep the
+                // editor visible until WebKit finishes the first page.
+                v.isHidden = true
                 // Below the floating status bar so counts stay visible.
                 containerView.addSubview(v, positioned: .below, relativeTo: statusBar)
                 // Route internal navigation through the editor's link resolver
@@ -802,6 +805,7 @@ class Document: NSDocument, HeadingNavigable {
                     guard let self, self.editor.viewMode == .reading, let read = self.readView else { return }
                     read.isHidden = false
                     self.scrollView.isHidden = true
+                    self.editor.isEditorPresentationActive = false
                     self.editor.window?.makeFirstResponder(read)
                 }
                 readView = v
@@ -873,8 +877,10 @@ class Document: NSDocument, HeadingNavigable {
         // The inspector inspects the read view; leaving it up over the editor
         // would show a document that is no longer on screen.
         readView?.hideWebInspector(nil)
+        readView?.cancelPendingRender()
         readView?.isHidden = true
         scrollView.isHidden = false
+        editor.isEditorPresentationActive = true
         editor.window?.makeFirstResponder(editor)
         editor.textLayoutManager?.textViewportLayoutController.layoutViewport()
         editor.needsDisplay = true

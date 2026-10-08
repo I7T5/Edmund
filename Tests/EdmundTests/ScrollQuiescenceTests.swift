@@ -38,7 +38,7 @@ struct ScrollQuiescenceTests {
     }
 
     private func expectVisibleStyling(_ editor: EditorTextView) throws {
-        let visible = try #require(editor.syncStylingBlockRange())
+        let visible = try #require(editor.syncStylingBlockRange(includingMargin: false))
         #expect(!visible.isEmpty)
         #expect(visible.allSatisfy { editor.blocks[$0].isStyled })
         #expect(editor.blocks.last?.isStyled == true)
@@ -147,4 +147,64 @@ struct ScrollQuiescenceTests {
         }
         #expect(!editor.isScrollingActive)
     }
+    @Test("Read presentation pauses queued styling and resumes when the editor returns")
+    func readerPausesQueuedStyling() {
+        let (editor, scroll, window) = windowedEditor()
+        defer { withExtendedLifetime(window) {} }
+        loadDocument(editor)
+        let before = editor.unstyledBlockCount
+        #expect(before > 0)
+        editor.isEditorPresentationActive = false
+        scrollToBottom(editor, scroll)
+        // Both the already queued drain and bounds-driven promotion must stop.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+        editor.drainStylingSlice()
+        #expect(editor.unstyledBlockCount == before)
+        #expect(!editor.progressiveStylingScheduled)
+        #expect(!editor.fullLayoutSettleScheduled)
+
+        editor.isEditorPresentationActive = true
+        let deadline = Date().addingTimeInterval(3)
+        while editor.unstyledBlockCount > 0, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        #expect(editor.unstyledBlockCount == 0)
+        assertMatchesFullRecomposeOracle(editor)
+    }
+
+    @Test("Promotion styles visible content before spending time on its margin")
+    func visibleContentBeforePrefetch() throws {
+        let (editor, scroll, window) = windowedEditor()
+        defer { withExtendedLifetime(window) {} }
+        loadDocument(editor)
+        scrollToBottom(editor, scroll)
+        editor.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        let visible = try #require(editor.syncStylingBlockRange(includingMargin: false))
+        let margin = try #require(editor.syncStylingBlockRange())
+        let outside = IndexSet(integersIn: margin).subtracting(IndexSet(integersIn: visible))
+            .intersection(editor.unstyledBlockIndexes)
+        #expect(!outside.isEmpty)
+
+        editor.promoteVisibleUnstyledBlocks()
+        #expect(visible.allSatisfy { editor.blocks[$0].isStyled })
+        #expect(outside.allSatisfy { !editor.blocks[$0].isStyled },
+                "optional prefetch must not run inside the visible-content callback")
+        #expect(editor.scrollPrefetchScheduled)
+    }
+
+    @Test("An exhausted styling budget makes progress and still converges")
+    func exhaustedBudgetConverges() {
+        let (editor, _, window) = windowedEditor()
+        defer { withExtendedLifetime(window) {} }
+        loadDocument(editor)
+        let before = editor.unstyledBlockCount
+        editor.drainStylingSlice(budget: .zero)
+        #expect(editor.unstyledBlockCount == before - 1)
+        #expect(editor.lastStylingSliceDuration > .zero)
+        #expect(editor.stylingSliceCompletionEstimate <= editor.lastStylingSliceDuration)
+        drainAllStyling(editor)
+        #expect(editor.unstyledBlockCount == 0)
+        assertMatchesFullRecomposeOracle(editor)
+    }
+
 }
