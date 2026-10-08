@@ -144,6 +144,40 @@ struct TableAxisSelectionTests {
         let delete = try #require(editor.tableHandleMenu(tab).items.last)
         editor.performTableOperation(delete)
         #expect(editor.rawSource == "Intro.\n\n| c1 | c2 |\n| --- | --- |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == doc)
+    }
+
+    @Test("A run of rows taking the header promotes the first row left, in one undo step")
+    func deleteRunWithHeader() {
+        let editor = loadEditor(doc)
+        editor.deleteTableRows(blockIndex: tableIndex(editor), rows: 0...2)
+        #expect(editor.rawSource == "Intro.\n\n| c | d |\n| --- | --- |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == doc)
+    }
+
+    @Test("A run of columns goes in one undo step, from the tab or by Delete")
+    func deleteColumnRunIsOneUndoStep() throws {
+        let wide = "Intro.\n\n| c1 | c2 | c3 |\n| --- | --- | --- |\n| a | b | c |\n"
+        let editor = loadEditor(wide)
+        let item = NSMenuItem()
+        item.representedObject = TableOperation(.deleteColumn, tableIndex(editor), 2, 1,
+                                                through: 2)
+        editor.performTableOperation(item)
+        #expect(editor.rawSource == "Intro.\n\n| c1 |\n| --- |\n| a |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == wide)
+
+        // Delete on the same columns, once emptied, removes them the same way.
+        editor.selectTableCells(blockIndex: tableIndex(editor), from: (0, 1), to: (2, 2))
+        editor.clearTableCells(try #require(editor.tableCellSelection))
+        let cleared = editor.rawSource
+        editor.selectTableCells(blockIndex: tableIndex(editor), from: (0, 1), to: (2, 2))
+        #expect(editor.handleTableCellSelectionDelete())
+        #expect(editor.rawSource == "Intro.\n\n| c1 |\n| --- |\n| a |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == cleared)
     }
 
     @Test("Every column of a table cannot be deleted from its tab")

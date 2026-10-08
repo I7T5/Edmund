@@ -129,6 +129,31 @@ extension EditorTextView {
         landInCell(blockIndex: blockIndex, row: last ? row - 1 : row, column: column)
     }
 
+    /// Deletes a run of lines as one undoable edit, by `deleteTableRow`'s rules
+    /// applied bottom up: the separator stays, and the header goes only while
+    /// a body row is left to promote into its place. Puts the caret in the row
+    /// that takes the run's place.
+    func deleteTableRows(blockIndex: Int, rows: ClosedRange<Int>, column: Int = 0) {
+        guard rows.count > 1 else {
+            deleteTableRow(blockIndex: blockIndex, row: rows.lowerBound, column: column)
+            return
+        }
+        guard var lines = tableLines(blockIndex: blockIndex) else { return }
+        let before = lines.count
+        for row in rows.reversed() where row != 1 && lines.indices.contains(row) {
+            if row > 0 {
+                lines.remove(at: row)
+            } else if lines.count > 2 {
+                lines[0] = lines.remove(at: 2)
+            }
+        }
+        guard lines.count < before else { return }
+        replaceTable(blockIndex: blockIndex, lines: lines)
+        let land = min(rows.lowerBound, lines.count - 1)
+        landInCell(blockIndex: blockIndex, row: land == 1 ? (lines.count > 2 ? 2 : 0) : land,
+                   column: column)
+    }
+
     // MARK: - Columns
 
     /// Inserts an empty column at index `column` in every row, and puts the
@@ -159,27 +184,42 @@ extension EditorTextView {
     /// Removes column `column` from every row, and puts the caret in the cell
     /// that takes its place in `row`.
     func deleteTableColumn(blockIndex: Int, column: Int, row: Int = 0) {
-        guard canDeleteTableColumn(blockIndex: blockIndex, column: column),
+        deleteTableColumns(blockIndex: blockIndex, columns: column...column, row: row)
+    }
+
+    /// Removes a run of columns from every row as one undoable edit, and puts
+    /// the caret in the cell that takes the run's place in `row`. At least one
+    /// column has to survive, so a run covering them all keeps its first.
+    func deleteTableColumns(blockIndex: Int, columns: ClosedRange<Int>, row: Int = 0) {
+        let count = tableColumnCount(blockIndex: blockIndex)
+        guard canDeleteTableColumn(blockIndex: blockIndex, column: columns.lowerBound),
               let lines = tableLines(blockIndex: blockIndex) else { return }
-        let edited = lines.map { line -> String in
-            let ns = line as NSString
-            let spans = columnSpans(in: ns)
-            guard column < spans.count else { return line }   // ragged: nothing to cut
-            let span = spans[column]
-            // A cell goes with one of the pipes beside it: the one before,
-            // unless it is the first cell, which takes the one after.
-            let cut: NSRange
-            if column > 0 {
-                cut = NSRange(location: span.start - 1, length: span.end - span.start + 1)
-            } else {
-                let trailing = span.end < ns.length && ns.character(at: span.end) == 0x7C
-                cut = NSRange(location: span.start,
-                              length: span.end - span.start + (trailing ? 1 : 0))
-            }
-            return ns.replacingCharacters(in: cut, with: "")
+        let last = min(columns.upperBound, count - 1)
+        let first = max(columns.lowerBound, last - (count - 2))
+        let edited = lines.map { line in
+            // Right to left, so each cut leaves the columns still to go in place.
+            (first...last).reversed().reduce(line) { removingTableCell($1, from: $0) }
         }
         replaceTable(blockIndex: blockIndex, lines: edited)
-        landInCell(blockIndex: blockIndex, row: row, column: max(0, column - 1))
+        landInCell(blockIndex: blockIndex, row: row, column: max(0, first - 1))
+    }
+
+    private func removingTableCell(_ column: Int, from line: String) -> String {
+        let ns = line as NSString
+        let spans = columnSpans(in: ns)
+        guard column < spans.count else { return line }   // ragged: nothing to cut
+        let span = spans[column]
+        // A cell goes with one of the pipes beside it: the one before,
+        // unless it is the first cell, which takes the one after.
+        let cut: NSRange
+        if column > 0 {
+            cut = NSRange(location: span.start - 1, length: span.end - span.start + 1)
+        } else {
+            let trailing = span.end < ns.length && ns.character(at: span.end) == 0x7C
+            cut = NSRange(location: span.start,
+                          length: span.end - span.start + (trailing ? 1 : 0))
+        }
+        return ns.replacingCharacters(in: cut, with: "")
     }
 
     // MARK: - Delete on a cell selection
@@ -203,17 +243,13 @@ extension EditorTextView {
 
         if tableCellsAreEmpty(block) {
             if allCols && !allRows {            // complete, empty row(s) → delete them
-                for row in block.rows.reversed() where row != 1 {
-                    deleteTableRow(blockIndex: block.blockIndex, row: row,
-                                   column: block.columns.lowerBound)
-                }
+                deleteTableRows(blockIndex: block.blockIndex, rows: block.rows,
+                                column: block.columns.lowerBound)
                 return true
             }
             if allRows && !allCols {            // complete, empty column(s) → delete them
-                for column in block.columns.reversed() {
-                    deleteTableColumn(blockIndex: block.blockIndex, column: column,
-                                      row: block.rows.lowerBound)
-                }
+                deleteTableColumns(blockIndex: block.blockIndex, columns: block.columns,
+                                   row: block.rows.lowerBound)
                 return true
             }
         }

@@ -1066,20 +1066,14 @@ extension EditorTextView {
         case .insertRow:
             insertTableRow(blockIndex: op.blockIndex, at: op.row, column: op.column)
         case .deleteRow:
-            // Bottom up, so each delete leaves the rows still to go where they
-            // were. A row that refuses (the header with no body left to promote)
-            // is simply kept.
-            for row in (op.row...max(op.row, op.through ?? op.row)).reversed()
-            where canDeleteTableRow(blockIndex: op.blockIndex, row: row) {
-                deleteTableRow(blockIndex: op.blockIndex, row: row, column: op.column)
-            }
+            deleteTableRows(blockIndex: op.blockIndex,
+                            rows: op.row...max(op.row, op.through ?? op.row), column: op.column)
         case .insertColumn:
             insertTableColumn(blockIndex: op.blockIndex, at: op.column, row: op.row)
         case .deleteColumn:
-            for column in (op.column...max(op.column, op.through ?? op.column)).reversed()
-            where canDeleteTableColumn(blockIndex: op.blockIndex, column: column) {
-                deleteTableColumn(blockIndex: op.blockIndex, column: column, row: op.row)
-            }
+            deleteTableColumns(blockIndex: op.blockIndex,
+                               columns: op.column...max(op.column, op.through ?? op.column),
+                               row: op.row)
         }
     }
 
