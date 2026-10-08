@@ -101,6 +101,22 @@ struct TableCellPasteTests {
         #expect(editor.rawSource == doc)
     }
 
+    @Test("Cells pasted over text selected in one cell fill from that cell")
+    func clipOverInCellSelection() {
+        let editor = loadEditor(doc)
+        caret(editor, to: "d")
+        let offset = (editor.rawSource as NSString).range(of: "| c |").location + 2
+        editor.setSelectedRange(NSRange(location: offset, length: 1))
+        let pasteboard = scratchPasteboard()
+        pasteboard.declareTypes([TableCellsClip.pasteboardType], owner: nil)
+        let clip = TableCellsClip(cells: [["x", "y"]], aligns: ["---", "---"])
+        pasteboard.setData(try? JSONEncoder().encode(clip), forType: TableCellsClip.pasteboardType)
+        #expect(editor.pasteTableCells(from: pasteboard))
+        #expect(editor.rawSource
+                == "Intro.\n\n| h1 | h2 |\n| --- | :-: |\n| a | b |\n| x | y |\n")
+        #expect(editor.blocks.filter { $0.kind == .table }.count == 1)
+    }
+
     @Test("A spreadsheet's grid fills cells; a word without a tab is just a word")
     func tabularTextFillsCells() {
         let editor = loadEditor(doc)

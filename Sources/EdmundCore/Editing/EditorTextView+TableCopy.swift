@@ -155,9 +155,9 @@ extension EditorTextView {
 
     /// Pastes a grid of cells, or returns false for an ordinary paste.
     ///
-    /// Into a table — the caret in a cell, or a block of cells selected — a
-    /// grid fills the cells from the selection's top-left one, adding the
-    /// rows and columns it needs, as one undoable edit. A single value over a
+    /// Into a table — the caret or a selection in one cell, or a block of
+    /// cells selected — a grid fills the cells from the selection's top-left
+    /// one, adding the rows and columns it needs, as one undoable edit. A single value over a
     /// selected block fills every cell of it. Anywhere else, only Edmund's own
     /// cells paste specially, as a new table; a spreadsheet's tab-separated
     /// text pastes as the text it is.
@@ -172,7 +172,11 @@ extension EditorTextView {
         let target: (blockIndex: Int, row: Int, column: Int, block: TableCellBlock?)?
         if let block = tableClipBlock {
             target = (block.blockIndex, block.rows.lowerBound, block.columns.lowerBound, block)
-        } else if selectedRange().length == 0, let cell = activeTableCell {
+        } else if let cell = activeTableCell,
+                  selectedRange().upperBound <= cell.contentRange.upperBound {
+            // A caret, or text selected inside the one cell: either way the
+            // grid starts at that cell. Left to `insertTableFromClip`, a
+            // selection here would get a new table spliced into the row.
             target = (cell.blockIndex, cell.row, cell.column, nil)
         } else {
             target = nil
