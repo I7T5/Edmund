@@ -369,23 +369,33 @@ extension EditorTextView {
         let lastEdit = undoStack.last
         let before = rawSource
         guard alignTableSource(blockIndex: blockIndex) else { return }
-        guard let lastEdit, undoStack.count >= 2,
-              lastEdit.location + lastEdit.laterLength <= (before as NSString).length
+        let beforeNS = before as NSString
+        guard let lastEdit, undoStack.count >= 2, let format = undoStack.last,
+              lastEdit.location + lastEdit.laterLength <= beforeNS.length
         else { return }
         // Fold the format into the edit before it: one entry from the
-        // formatted text straight back to before that edit.
-        let original = (before as NSString).replacingCharacters(
-            in: NSRange(location: lastEdit.location, length: lastEdit.laterLength),
-            with: lastEdit.earlierText)
-        guard let diff = Self.textDiff(old: rawSource, new: original) else { return }
+        // formatted text straight back to before that edit. Both entries are
+        // spans of `before`, so only the text from the first to the end of the
+        // last needs looking at — a table's worth, not the document twice.
+        let formatEnd = format.location + (format.earlierText as NSString).length
+        let start = min(format.location, lastEdit.location)
+        let end = max(formatEnd, lastEdit.location + lastEdit.laterLength)
+        let grew = format.laterLength - (format.earlierText as NSString).length
+        let original = (beforeNS.substring(with: NSRange(location: start, length: end - start))
+            as NSString).replacingCharacters(
+                in: NSRange(location: lastEdit.location - start, length: lastEdit.laterLength),
+                with: lastEdit.earlierText)
+        let now = (rawSource as NSString).substring(
+            with: NSRange(location: start, length: end - start + grew))
+        guard let diff = Self.textDiff(old: now, new: original) else { return }
         undoStack.removeLast(2)
-        undoStack.append(UndoEntry(location: diff.oldRange.location,
+        undoStack.append(UndoEntry(location: start + diff.oldRange.location,
                                    laterLength: diff.oldRange.length,
                                    earlierText: diff.replacement,
                                    cursorInRaw: lastEdit.cursorInRaw))
     }
 
-    /// Format ▸ Format Table: aligns the source of the table the caret
+    /// Edit ▸ Format Table: aligns the source of the table the caret
     /// is in, as an undo step of its own.
     @objc public func formatTableSource(_ sender: Any?) {
         guard let index = blockIndexForRawOffset(selectedRange().location),
