@@ -385,7 +385,7 @@ extension EditorTextView {
                                    cursorInRaw: lastEdit.cursorInRaw))
     }
 
-    /// Format ▸ Table ▸ Format Table: aligns the source of the table the caret
+    /// Format ▸ Format Table: aligns the source of the table the caret
     /// is in, as an undo step of its own.
     @objc public func formatTableSource(_ sender: Any?) {
         guard let index = blockIndexForRawOffset(selectedRange().location),
@@ -426,6 +426,8 @@ extension EditorTextView {
         applyFormattingEdit(rawRange: block.range,
                             replacement: lines.joined(separator: "\n"),
                             select: NSRange(location: block.range.location, length: 0))
+        // A structural edit goes through applyFormattingEdit, not the typing
+        // path that calls noteTableEdit, so it marks the table for alignment.
         tableFormatPending = true
     }
 

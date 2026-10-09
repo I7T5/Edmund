@@ -526,11 +526,11 @@ extension EditorTextView {
     /// selected cell to its last — never over the newline that ends the row.
     /// The separator row holds no cells and simply contributes none.
     func tableCellSelectionRanges(_ block: TableCellBlock) -> [NSValue] {
-        block.rows.compactMap { row in
-            guard let first = tableCell(blockIndex: block.blockIndex, row: row,
-                                        column: block.columns.lowerBound),
-                  let last = tableCell(blockIndex: block.blockIndex, row: row,
-                                       column: block.columns.upperBound) else { return nil }
+        let cells = tableCellRows(blockIndex: block.blockIndex, rows: block.rows)
+        return block.rows.compactMap { row in
+            guard block.columns.lowerBound >= 0, let line = cells[row],
+                  block.columns.upperBound < line.count else { return nil }
+            let first = line[block.columns.lowerBound], last = line[block.columns.upperBound]
             return NSValue(range: NSRange(
                 location: first.contentRange.location,
                 length: last.contentRange.upperBound - first.contentRange.location))
@@ -626,10 +626,15 @@ extension EditorTextView {
     func trackTableCellSelection(from anchor: (row: Int, column: Int), blockIndex: Int) {
         guard let window else { return }
         let axisSelection = tableAxisSelection
+        var previous: (row: Int, column: Int)?
         while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if event.type == .leftMouseUp { break }
             let point = convert(event.locationInWindow, from: nil)
             guard let now = tableCellPosition(at: point, blockIndex: blockIndex) else { continue }
+            // Most drag events stay in the same cell; reinstalling an
+            // unchanged selection costs a pass over every selected row.
+            if let previous, previous == now { continue }
+            previous = now
             if let axisSelection {
                 let from = axisSelection.axis == .row ? anchor.row : anchor.column
                 let to = axisSelection.axis == .row ? now.row : now.column
@@ -979,8 +984,9 @@ extension EditorTextView {
     /// costs nothing — except on the side facing the table, where it would
     /// cost a click. The pill sits `tableHandleGap` clear of the table, so
     /// slack wider than the gap reaches into the first column (or the header
-    /// row), and a click a couple of points inside a narrow column would open
-    /// the pill's menu instead of putting the caret in the cell it landed in.
+    /// row), and a click a couple of points inside a narrow column would select
+    /// the pill's row or column instead of putting the caret in the cell it
+    /// landed in.
     func handleHitBox(_ handle: TableHandle) -> NSRect {
         var box = handle.rect.insetBy(dx: -6, dy: -6)
         // A selected tab stands right on the table's edge, with no gap to
@@ -1014,8 +1020,9 @@ extension EditorTextView {
     }
 
     /// Repaints the bands the handles live in — where they are going and where
-    /// they have been. Called on every caret move, since the handles follow the
-    /// active cell and nothing else invalidates them.
+    /// they have been. Called on every caret move and whenever a pill picks a
+    /// row or column, since the handles follow the active cell or the picked
+    /// row or column.
     ///
     /// It does not record anything: `drawTableHandles` is the one writer of
     /// `lastTableHandleBands`, because only a draw knows what actually reached

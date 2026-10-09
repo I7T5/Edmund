@@ -131,11 +131,11 @@ extension EditorTextView {
 
     /// The block's cells as markdown, and its columns' separator markers.
     func tableCellsClip(_ block: TableCellBlock) -> TableCellsClip {
+        let rows = tableCellRows(blockIndex: block.blockIndex, rows: block.rows)
         let cells = block.rows.compactMap { row -> [String]? in
-            guard row != 1 else { return nil }
+            guard let line = rows[row] else { return nil }
             let texts = block.columns.compactMap { column in
-                tableCell(blockIndex: block.blockIndex, row: row, column: column)
-                    .map { tableCellText($0) }
+                column >= 0 && column < line.count ? tableCellText(line[column]) : nil
             }
             return texts.isEmpty ? nil : texts
         }

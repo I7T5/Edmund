@@ -78,24 +78,34 @@ extension EditorTextView {
     /// one cell to the next has to name the target by where it sits in the
     /// table, not by the offsets that were valid before the write.
     func tableCell(blockIndex: Int, row: Int, column: Int) -> TableCellRef? {
-        guard blockIndex < blocks.count, blocks[blockIndex].kind == .table else { return nil }
+        guard row >= 0, column >= 0,
+              let cells = tableCellRows(blockIndex: blockIndex, rows: row...row)[row],
+              column < cells.count else { return nil }
+        return cells[column]
+    }
+
+    /// Every cell of the lines in `rows`, keyed by line (never the separator),
+    /// from one split of the table. For callers that walk many rows: calling
+    /// `tableCell` per cell splits the whole table each time, which makes a
+    /// picked column of a long table quadratic in its length.
+    func tableCellRows(blockIndex: Int, rows: ClosedRange<Int>) -> [Int: [TableCellRef]] {
+        guard blockIndex < blocks.count, blocks[blockIndex].kind == .table else { return [:] }
         let block = blocks[blockIndex]
-        let lines = block.content.components(separatedBy: "\n")
-        guard row >= 0, row < lines.count, row != 1 else { return nil }
+        var out: [Int: [TableCellRef]] = [:]
         var lineStart = 0
-        for (i, line) in lines.enumerated() {
+        for (i, line) in block.content.components(separatedBy: "\n").enumerated() {
+            if i > rows.upperBound { break }
             let lineNS = line as NSString
-            if i == row {
-                let cells = cellRanges(in: lineNS)
-                guard column >= 0, column < cells.count else { return nil }
-                let cell = cells[column]
-                return TableCellRef(
-                    blockIndex: blockIndex, row: row, column: column,
-                    contentRange: NSRange(location: block.range.location + lineStart + cell.start,
-                                          length: cell.end - cell.start))
+            if i != 1, rows.contains(i) {
+                out[i] = cellRanges(in: lineNS).enumerated().map { column, cell in
+                    TableCellRef(
+                        blockIndex: blockIndex, row: i, column: column,
+                        contentRange: NSRange(location: block.range.location + lineStart + cell.start,
+                                              length: cell.end - cell.start))
+                }
             }
             lineStart += lineNS.length + 1
         }
-        return nil
+        return out
     }
 }

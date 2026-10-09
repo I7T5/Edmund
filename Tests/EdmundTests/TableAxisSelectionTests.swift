@@ -243,6 +243,21 @@ struct TableAxisSelectionTests {
                 == [" h2|h1 ", " ---|--- ", " b|a "])
     }
 
+    @Test("One split of the table finds the same cells as asking cell by cell")
+    func cellRowsMatchSingleLookups() throws {
+        let editor = loadEditor(doc)
+        let t = tableIndex(editor)
+        let rows = editor.tableCellRows(blockIndex: t, rows: 0...3)
+        #expect(rows[1] == nil)                     // the separator holds no cells
+        for row in [0, 2, 3] {
+            let line = try #require(rows[row])
+            #expect(line.count == 2)
+            for column in 0..<2 {
+                #expect(line[column] == editor.tableCell(blockIndex: t, row: row, column: column))
+            }
+        }
+    }
+
     @Test("No insertion bar where the drop would leave the row or column in place")
     func noBarInPlace() throws {
         let editor = loadEditor(doc)
