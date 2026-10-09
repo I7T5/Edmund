@@ -88,8 +88,10 @@ struct TableAxisSelectionTests {
 
         let box = try #require(editor.tableCellSelectionBox())
         #expect(abs(tab.rect.maxX - box.minX) < 0.5)        // flush on the box
-        #expect(abs(tab.rect.minY - box.minY) < 0.5)
-        #expect(abs(tab.rect.height - box.height) < 0.5)   // as tall as the row
+        // As tall as the row, out to the outer edge of the box's stroke.
+        let stroke = EditorTextView.tableCellSelectionLineWidth
+        #expect(abs(tab.rect.minY - (box.minY - stroke / 2)) < 0.5)
+        #expect(abs(tab.rect.height - (box.height + stroke)) < 0.5)
         // Its full thickness unless the view's edge clips it.
         #expect(tab.rect.width > 0)
         #expect(tab.rect.width <= editor.tableHandleSelectedThickness + 0.5)
@@ -104,8 +106,16 @@ struct TableAxisSelectionTests {
         let grid = try #require(editor.tableGrid(blockIndex: tableIndex(editor)))
         let box = try #require(editor.tableCellSelectionBox())
         #expect(abs(tab.rect.maxY - grid.rows[0].minY) < 0.5)
-        #expect(abs(tab.rect.width - box.width) < 0.5)
+        // Out to the outer edge of the box's stroke on either side.
+        let stroke = EditorTextView.tableCellSelectionLineWidth
+        #expect(abs(tab.rect.minX - (box.minX - stroke / 2)) < 0.5)
+        #expect(abs(tab.rect.width - (box.width + stroke)) < 0.5)
         #expect(editor.tableHandleBand >= editor.tableHandleSelectedThickness)
+        // Only the chevron's end of the tab opens the menu on a single click.
+        let chevron = editor.selectedTabChevronBox(tab)
+        #expect(tab.rect.contains(chevron))
+        #expect(abs(chevron.maxX - tab.rect.maxX) < 0.5)
+        #expect(!chevron.contains(NSPoint(x: tab.rect.midX, y: tab.rect.midY)))
     }
 
     @Test("Any other selection retires the picked row")

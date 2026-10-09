@@ -8,8 +8,8 @@ import AppKit
 //
 // The pill's whole gesture is taken here, click included, because a press on a
 // pill can turn out to be either: under a few points of movement it is a click
-// (select the row or column, or open the menu once it is selected), past that
-// it is a drag. AppKit's tracking loop has nothing to select in the margin.
+// (select the row or column, or, on a selected tab's chevron, open the menu),
+// past that it is a drag. AppKit's tracking loop has nothing to select in the margin.
 //
 // Nothing is restyled while the drag is in flight. The table's grid is read
 // once when it starts and every tick only repaints the lifted box and the bar,
@@ -47,8 +47,9 @@ extension EditorTextView {
     static func tableLine(logicalRow: Int) -> Int { logicalRow == 0 ? 0 : logicalRow + 1 }
 
     /// Runs the whole gesture that starts on a pill. A click on a plain pill
-    /// selects its row or column; a click on a selected tab opens its menu;
-    /// a drag on either moves the row or column.
+    /// selects its row or column; a click on a selected tab's chevron, or a
+    /// double click anywhere on it, opens its menu; a drag on either moves the
+    /// row or column.
     func trackTablePill(_ handle: TableHandle, with event: NSEvent) {
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         guard let window else { return }
@@ -71,7 +72,17 @@ extension EditorTextView {
         if dragging {
             finishTableReorder()
         } else if handle.selected {
-            showTableHandleMenu(handle, with: event)
+            // A double click opens the menu wherever it lands; a single click
+            // only on the chevron, with the menu hanging just under it.
+            if event.clickCount >= 2 {
+                showTableHandleMenu(handle, with: event)
+            } else {
+                let chevron = selectedTabChevronBox(handle)
+                if chevron.contains(start) {
+                    showTableHandleMenu(handle, with: event,
+                                        at: NSPoint(x: chevron.minX, y: handle.rect.maxY))
+                }
+            }
         } else {
             selectTableAxis(for: handle)
         }

@@ -6,9 +6,9 @@ import AppKit
 // one lying above the active column, one standing to the left of the active row.
 // Clicking either selects that whole row or column (notes-table-row-selection-
 // by-pill.png, notes-table-col-selection-by-pill.png): the pill grows into a
-// filled tab flush against the selection box, and clicking the tab opens the
-// menu of add/delete operations. Dragging either one moves its row or column
-// (EditorTextView+TableReorder).
+// filled tab flush against the selection box, and clicking its chevron (or
+// double-clicking the tab) opens the menu of add/delete operations. Dragging
+// either one moves its row or column (EditorTextView+TableReorder).
 //
 // "Active" means the caret's cell, not the pointer's. A handle you can only see
 // while hovering is one you have to already know about; a handle that appears
@@ -87,6 +87,8 @@ extension EditorTextView {
     /// at 2×, twice the plain pill, and flush against the selection box.
     static let tableHandleBaseSelectedThickness: CGFloat = 16
     static let tableHandleBaseSelectedRadius: CGFloat = 3
+    /// The selection box's stroke, centred on the box's edge.
+    static let tableCellSelectionLineWidth: CGFloat = 2
 
     /// How much bigger than the default body size the text is — what View ▸
     /// Zoom changes — so the table's chrome (pills, their gap and band, the
@@ -183,17 +185,21 @@ extension EditorTextView {
         guard let grid = tableGrid(blockIndex: block.blockIndex),
               let box = tableCellBlockBox(block, grid: grid) else { return [] }
         let thickness = tableHandleSelectedThickness
+        // The box's stroke straddles its edge, so the tab reaches half a
+        // stroke past either end to cover the stroke's outer half too.
+        let overhang = Self.tableCellSelectionLineWidth / 2
         let rect: NSRect
         switch selection.axis {
         case .row:
             // Flush against the box's left edge, as tall as the rows it
             // selects. Clamped at the view's edge like the plain pill.
             let x = max(0, box.minX - thickness)
-            rect = NSRect(x: x, y: box.minY, width: box.minX - x, height: box.height)
+            rect = NSRect(x: x, y: box.minY - overhang, width: box.minX - x,
+                          height: box.height + 2 * overhang)
         case .column:
             // Flush on the box's top edge, in the band the header reserves.
-            rect = NSRect(x: box.minX, y: box.minY - thickness,
-                          width: box.width, height: thickness)
+            rect = NSRect(x: box.minX - overhang, y: box.minY - thickness,
+                          width: box.width + 2 * overhang, height: thickness)
         }
         let tab = TableHandle(axis: selection.axis, blockIndex: block.blockIndex,
                               row: block.rows.lowerBound, column: block.columns.lowerBound,
@@ -357,26 +363,25 @@ extension EditorTextView {
         let scale = tableChromeScale
         let thickness = tableHandleSelectedThickness
         let dot: CGFloat = 2 * scale
-        let spacing: CGFloat = 4.5 * scale
-        // The chevron's centre sits this far in from the tab's far end.
-        let chevronInset = 0.55 * thickness
+        // As measured on the Notes references at 2x: 12 px apart on a column's
+        // tab, 11 on a row's, where a single-line row leaves less room.
+        let spacing: CGFloat = (handle.axis == .column ? 6 : 5.5) * scale
+        let chevronInset = Self.tableTabChevronInset * thickness
         let chevronWidth = 0.5 * thickness
         let chevronHeight = 0.25 * thickness
         NSColor.white.setFill()
         NSColor.white.setStroke()
 
         let dotCenters: [CGPoint]
-        let chevronCenter: CGPoint
+        let chevronCenter = selectedTabChevronCenter(handle)
         switch handle.axis {
         case .column:
             dotCenters = (-1...1).map {
                 CGPoint(x: rect.midX + CGFloat($0) * spacing, y: rect.midY)
             }
-            chevronCenter = CGPoint(x: rect.maxX - chevronInset, y: rect.midY)
         case .row:
             // A row is often barely taller than the tab is wide, so the dots
             // centre in what the chevron leaves of it rather than on the row.
-            chevronCenter = CGPoint(x: rect.midX, y: rect.maxY - chevronInset)
             let dotsMid = (rect.minY + chevronCenter.y - chevronHeight) / 2
             dotCenters = (-1...1).map {
                 CGPoint(x: rect.midX, y: dotsMid + CGFloat($0) * spacing)
@@ -384,9 +389,11 @@ extension EditorTextView {
         }
         // Only what fits: a tab too short for both keeps the chevron, which is
         // the part that says "click here".
+        // A row tab measures what the chevron leaves above it, the way Notes
+        // fits both in a single-line row.
         let roomForDots = handle.axis == .column
             ? rect.width >= 2 * chevronInset + 4 * spacing
-            : rect.height >= 2 * chevronInset + 3 * spacing
+            : chevronCenter.y - chevronHeight - rect.minY >= 2 * spacing + dot
         if roomForDots {
             for center in dotCenters {
                 NSBezierPath(ovalIn: NSRect(x: center.x - dot / 2, y: center.y - dot / 2,
@@ -404,6 +411,30 @@ extension EditorTextView {
         chevron.lineCapStyle = .round
         chevron.lineJoinStyle = .round
         chevron.stroke()
+    }
+
+    /// How far in from a selected tab's far end its chevron's centre sits, as a
+    /// fraction of the tab's thickness.
+    static let tableTabChevronInset: CGFloat = 0.55
+
+    /// A selected tab's chevron centre: at the row tab's foot, the column
+    /// tab's right end.
+    func selectedTabChevronCenter(_ handle: TableHandle) -> CGPoint {
+        let rect = handle.rect
+        let inset = Self.tableTabChevronInset * tableHandleSelectedThickness
+        return handle.axis == .column
+            ? CGPoint(x: rect.maxX - inset, y: rect.midY)
+            : CGPoint(x: rect.midX, y: rect.maxY - inset)
+    }
+
+    /// Where a single click opens a selected tab's menu: the square end of the
+    /// tab the chevron sits in, and nowhere else on it.
+    func selectedTabChevronBox(_ handle: TableHandle) -> NSRect {
+        let rect = handle.rect
+        let side = min(tableHandleSelectedThickness, handle.axis == .column ? rect.width : rect.height)
+        return handle.axis == .column
+            ? NSRect(x: rect.maxX - side, y: rect.minY, width: side, height: rect.height)
+            : NSRect(x: rect.minX, y: rect.maxY - side, width: rect.width, height: side)
     }
 
     /// `chromeLineColor` lives on the fragment's extension and is private there;
@@ -535,7 +566,7 @@ extension EditorTextView {
         // shares with them.
         accentColor.setStroke()
         let path = NSBezierPath(rect: box)
-        path.lineWidth = 2
+        path.lineWidth = Self.tableCellSelectionLineWidth
         path.stroke()
         accentColor.setFill()
         for point in tableCellSelectionDots(box) {
@@ -1078,14 +1109,17 @@ extension EditorTextView {
     }
 
     /// Opens a handle's menu at the pill.
-    func showTableHandleMenu(_ handle: TableHandle, with event: NSEvent) {
+    /// `corner`, in view coordinates, is where the menu's top-left goes; by
+    /// default the handle's bottom-left.
+    func showTableHandleMenu(_ handle: TableHandle, with event: NSEvent,
+                             at corner: NSPoint? = nil) {
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         // Popped with no view, in screen coordinates. A menu shown *in* a text
         // view is handed to the text system on its way to the screen, which
         // adds AutoFill and Shortcuts entries of its own — reasonable in a text
         // field's context menu, meaningless in a list of table operations. With
         // no view there is nothing in the chain left to contribute them.
-        let corner = NSPoint(x: handle.rect.minX, y: handle.rect.maxY)
+        let corner = corner ?? NSPoint(x: handle.rect.minX, y: handle.rect.maxY)
         let onScreen = window?.convertPoint(toScreen: convert(corner, to: nil)) ?? corner
         tableHandleMenu(handle).popUp(positioning: nil, at: onScreen, in: nil)
     }
@@ -1159,6 +1193,22 @@ extension EditorTextView {
         let report = "rect=\(hit.rect) row=\(hit.row) col=\(hit.column)"
         showTableHandleMenu(hit, with: event)
         return report
+    }
+
+    /// Clicks a row or column handle through the real `mouseDown` — at its
+    /// centre, or at a selected tab's chevron — so a script picks a row or
+    /// column, or opens the tab's menu, as a pointer would. A menu that opens
+    /// is modal: nothing after this runs until it is dismissed.
+    public func debugClickTableHandle(column wantsColumn: Bool, chevron: Bool,
+                                      clicks: Int) -> String {
+        let axis: TableHandle.Axis = wantsColumn ? .column : .row
+        guard let handle = tableHandles().first(where: { $0.axis == axis }) else {
+            return "no \(wantsColumn ? "column" : "row") handle"
+        }
+        let target = chevron && handle.selected ? selectedTabChevronBox(handle) : handle.rect
+        let point = NSPoint(x: target.midX, y: target.midY)
+        return "rect=\(handle.rect) selected=\(handle.selected) "
+            + debugClickProbe(x: point.x, y: point.y, clicks: clicks)
     }
 
     public func debugOpenTableCellMenu(needle: String) -> String {
