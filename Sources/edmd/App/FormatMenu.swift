@@ -70,11 +70,7 @@ enum FormatMenu {
         for cmd in linkCommands { menu.addItem(cmd.makeItem()) }
         menu.addItem(.separator())
 
-        for cmd in blockCommands {
-            menu.addItem(cmd.makeItem())
-            // Beside the command that makes a table, the one that tidies one.
-            if cmd.id == "format.table" { menu.addItem(formatTableSourceCommand.makeItem()) }
-        }
+        for cmd in blockCommands { menu.addItem(cmd.makeItem()) }
         menu.addItem(calloutSubmenuItem())
         menu.addItem(footnoteCommand.makeItem())
         menu.addItem(.separator())
@@ -116,12 +112,6 @@ enum FormatMenu {
 
     static let thematicBreakCommand = MenuCommand(id: "format.thematicBreak", title: "Thematic Break",
                     action: #selector(EditorTextView.formatThematicBreak(_:)))
-
-    /// Aligns the source of the table the caret is in. Kept out of
-    /// `blockCommands`, which the format bar's popover lists: it inserts
-    /// nothing, so it has no place among the things the popover inserts.
-    static let formatTableSourceCommand = MenuCommand(id: "format.formatTable", title: "Format Table",
-                    action: #selector(EditorTextView.formatTableSource(_:)))
 
     static let footnoteCommand = MenuCommand(id: "format.footnote", title: "Footnote",
                     action: #selector(EditorTextView.formatFootnote(_:)))
