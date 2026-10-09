@@ -300,6 +300,9 @@ extension EditorTextView {
         isUndoRedoing = false
         lastEditType = .other
         lastEditBlockIndex = nil
+        // An undo that lands in a table must not be formatted away on the way
+        // out — least of all the undo of a format.
+        tableFormatPending = false
         return true
     }
 

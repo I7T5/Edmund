@@ -270,6 +270,39 @@ extension EditorTextView {
         }
     }
 
+    /// Draws a cell's source padding past one space either side as nothing.
+    ///
+    /// The column's own padding is drawn by kern, so the source's spaces only
+    /// ever added to it: `| a |` and `| a      |` are the same cell, but
+    /// measured with its spaces the second was wider, and the column with it.
+    /// Aligning a table's source (`formattedTableLines`) pads every cell out to
+    /// its column's widest — in characters, which in a proportional font is
+    /// not width — so without this, formatting the source would change the
+    /// table on screen. One space each side stays drawn, which is exactly the
+    /// cell the editor writes, so a table written that way looks as it always
+    /// did. An empty cell keeps the two spaces of `|  |`.
+    private func hideSurplusCellPadding(_ styled: NSMutableAttributedString) {
+        let ns = styled.string as NSString
+        let length = ns.length
+        var lead = 0
+        while lead < length, ns.character(at: lead) == 0x20 { lead += 1 }
+        func hide(_ range: NSRange) {
+            guard range.length > 0 else { return }
+            styled.addAttributes([.font: hiddenFont, .foregroundColor: NSColor.clear],
+                                 range: range)
+        }
+        guard lead < length else {
+            hide(NSRange(location: 2, length: max(0, length - 2)))
+            return
+        }
+        var trail = 0
+        while trail < length - lead, ns.character(at: length - 1 - trail) == 0x20 { trail += 1 }
+        // The outer ones go — those against the pipes — so the space beside
+        // the text stays where it was.
+        hide(NSRange(location: 0, length: max(0, lead - 1)))
+        hide(NSRange(location: length - trail + 1, length: max(0, trail - 1)))
+    }
+
     /// Styles every cell of one table and computes its column geometry — the
     /// expensive half of `styleTableSpan`, pure in (table source, styling
     /// environment) and cached as a whole by the caller. Returns nil for a
@@ -315,6 +348,7 @@ extension EditorTextView {
                             range: r)
                     }
                 }
+                hideSurplusCellPadding(styled)
                 cells.append(TableLayoutCacheEntry.Cell(start: cr.start, end: cr.end,
                                                         styled: styled,
                                                         width: styled.size().width,

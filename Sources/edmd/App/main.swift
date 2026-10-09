@@ -518,6 +518,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenu.addItem(MenuCommand(id: "edit.hardWrapParagraphs", group: "Edit",
                                      title: "Hard Wrap Paragraphs",
                                      action: #selector(EditorTextView.hardWrapParagraphs(_:))).makeItem())
+        // Beside it, the other command that tidies source in place: aligns the
+        // pipes and padding of the table the caret is in.
+        editMenu.addItem(MenuCommand(id: "edit.formatTable", group: "Edit",
+                                     title: "Format Table",
+                                     action: #selector(EditorTextView.formatTableSource(_:))).makeItem())
 
         editMenu.addItem(NSMenuItem.separator())
 

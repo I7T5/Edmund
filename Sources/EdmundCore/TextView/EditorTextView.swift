@@ -650,6 +650,9 @@ public class EditorTextView: NSTextView {
     /// The copy buttons' accessibility elements, by block index, kept so
     /// VoiceOver's focus survives a redraw. See EditorTextView+CodeCopyButton.
     var codeCopyButtonElements: [Int: CodeCopyButtonElement] = [:]
+    /// The table pills' and tab's accessibility buttons, by axis. See
+    /// `tableHandleAccessibilityButtons`.
+    var tableHandleElements: [TableHandle.Axis: TableHandleElement] = [:]
 
     /// Whether each wiki-link path resolved to a note, so styling never walks
     /// the folder twice for one link. Valid for `wikiNoteExistsDir` only (a
@@ -698,6 +701,20 @@ public class EditorTextView: NSTextView {
     /// has, coming back to a single cell selects that cell whole rather than
     /// reverting to a character selection. Reset at every `mouseDown`.
     var tableDragCrossedCells = false
+
+    /// The whole row(s) or column(s) a pill click selected, with the ranges it
+    /// installed. Only trusted while the selection still equals those ranges,
+    /// so any other selection change retires it. See EditorTextView+TableHandles.
+    var tableAxisSelectionState: TableAxisSelection?
+
+    /// A row or column being dragged by its pill to a new place, while the drag
+    /// is in flight. See EditorTextView+TableReorder.
+    var tableReorderDrag: TableReorderDrag?
+
+    /// Whether the table the caret is in has been edited since the caret came
+    /// into it, so its source is aligned once the caret leaves.
+    /// See `formatTableOnLeaving`.
+    var tableFormatPending = false
 
     /// Set while `activateRawTableEditing` is placing the caret at a table's
     /// first character. That character is a pipe, and the rules below move a
@@ -1150,9 +1167,11 @@ public class EditorTextView: NSTextView {
         }
         // A row/column handle hangs in the same margin, and in the band above
         // the table. Same reasoning: nothing there to select, so it takes the
-        // click whole. See EditorTextView+TableHandles.
+        // gesture whole — a click selects the row or column (or, on the
+        // selected tab, opens its menu) and a drag moves it. See
+        // EditorTextView+TableHandles and EditorTextView+TableReorder.
         if let handle = tableHandleHit(at: event) {
-            showTableHandleMenu(handle, with: event)
+            trackTablePill(handle, with: event)
             return
         }
         // A dot on a cell selection's corner drags the selection wider. AppKit's
@@ -1382,8 +1401,12 @@ public class EditorTextView: NSTextView {
     public override func copy(_ sender: Any?) {
         traceEdit("copy")
         // A table's storage is its markdown, so an ordinary copy hands the next
-        // app a row of pipes. See EditorTextView+TableCopy for the two cases
-        // that are worth more than that.
+        // app a row of pipes. See EditorTextView+TableCopy for the cases that
+        // are worth more than that.
+        if let block = tableClipBlock {
+            writeTableCells(block, to: .general)
+            return
+        }
         if let text = tableCopyText() {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)

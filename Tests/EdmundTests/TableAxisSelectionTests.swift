@@ -1,0 +1,311 @@
+import Testing
+import AppKit
+@testable import EdmundCore
+
+/// Picking a whole row or column through its pill, and moving one by dragging
+/// it, after Notes (misc/frontend-refs/notes-table-*-selection-by-pill.png).
+
+@Suite("Table row and column selection")
+@MainActor
+struct TableAxisSelectionTests {
+
+    private let doc = "Intro.\n\n| c1 | c2 |\n| --- | --- |\n| a | b |\n| c | d |\n"
+
+    private func loadEditor(_ text: String) -> EditorTextView {
+        let editor = makeEditor()
+        editor.updateContentInset()
+        editor.loadContent(text)
+        ensureFullLayout(editor)
+        layOutViewport(editor)
+        return editor
+    }
+
+    private func caret(_ editor: EditorTextView, to needle: String) {
+        let offset = (editor.rawSource as NSString).range(of: needle).location
+        editor.setSelectedRange(NSRange(location: offset, length: 0))
+        if let block = editor.blockIndexForRawOffset(offset) {
+            editor.restyleBlock(block, cursorInBlock: offset - editor.blocks[block].range.location)
+        }
+        ensureFullLayout(editor)
+        layOutViewport(editor)
+    }
+
+    private func tableIndex(_ editor: EditorTextView) -> Int {
+        editor.blocks.firstIndex { $0.kind == .table } ?? -1
+    }
+
+    private func handle(_ editor: EditorTextView, _ axis: TableHandle.Axis) -> TableHandle? {
+        editor.tableHandles().first { $0.axis == axis }
+    }
+
+    // MARK: - Selecting
+
+    @Test("A row pill selects its whole row")
+    func rowPillSelectsTheRow() throws {
+        let editor = loadEditor(doc)
+        caret(editor, to: "| c |")
+        let pill = try #require(handle(editor, .row))
+        editor.selectTableAxis(for: pill)
+        let selection = try #require(editor.tableAxisSelection)
+        #expect(selection.axis == .row)
+        #expect(selection.block.rows == 3...3)
+        #expect(selection.block.columns == 0...1)
+        let ns = editor.rawSource as NSString
+        let picked = editor.selectedRanges.map { ns.substring(with: $0.rangeValue) }
+        #expect(picked == [" c | d "])   // cell to cell, never over a pipe at the ends
+    }
+
+    @Test("A column pill selects its whole column, header included")
+    func columnPillSelectsTheColumn() throws {
+        let editor = loadEditor(doc)
+        caret(editor, to: "b")
+        let pill = try #require(handle(editor, .column))
+        editor.selectTableAxis(for: pill)
+        let selection = try #require(editor.tableAxisSelection)
+        #expect(selection.axis == .column)
+        #expect(selection.block.columns == 1...1)
+        let ns = editor.rawSource as NSString
+        let picked = editor.selectedRanges.map {
+            ns.substring(with: $0.rangeValue).trimmingCharacters(in: .whitespaces)
+        }
+        #expect(picked == ["c2", "b", "d"])
+    }
+
+    /// Notes turns the clicked pill into a tab standing on the selection box
+    /// and keeps the other axis's pill where the caret was.
+    @Test("A selected row wears a tab, and the column pill stays")
+    func selectedRowShowsATabAndTheOtherPill() throws {
+        let editor = loadEditor(doc)
+        caret(editor, to: "| c |")
+        editor.selectTableAxis(for: try #require(handle(editor, .row)))
+        let handles = editor.tableHandles()
+        let tab = try #require(handles.first { $0.selected })
+        #expect(tab.axis == .row)
+        #expect(tab.span == 3...3)
+        let column = try #require(handles.first { !$0.selected })
+        #expect(column.axis == .column)
+        #expect(column.column == 0)
+
+        let box = try #require(editor.tableCellSelectionBox())
+        #expect(abs(tab.rect.maxX - box.minX) < 0.5)        // flush on the box
+        // As tall as the row, out to the outer edge of the box's stroke.
+        let stroke = EditorTextView.tableCellSelectionLineWidth
+        #expect(abs(tab.rect.minY - (box.minY - stroke / 2)) < 0.5)
+        #expect(abs(tab.rect.height - (box.height + stroke)) < 0.5)
+        // Its full thickness unless the view's edge clips it.
+        #expect(tab.rect.width > 0)
+        #expect(tab.rect.width <= editor.tableHandleSelectedThickness + 0.5)
+    }
+
+    @Test("A selected column's tab sits on top of it, inside the reserved band")
+    func selectedColumnTabSitsInTheBand() throws {
+        let editor = loadEditor(doc)
+        caret(editor, to: "b")
+        editor.selectTableAxis(for: try #require(handle(editor, .column)))
+        let tab = try #require(editor.tableHandles().first { $0.selected })
+        let grid = try #require(editor.tableGrid(blockIndex: tableIndex(editor)))
+        let box = try #require(editor.tableCellSelectionBox())
+        #expect(abs(tab.rect.maxY - grid.rows[0].minY) < 0.5)
+        // Out to the outer edge of the box's stroke on either side.
+        let stroke = EditorTextView.tableCellSelectionLineWidth
+        #expect(abs(tab.rect.minX - (box.minX - stroke / 2)) < 0.5)
+        #expect(abs(tab.rect.width - (box.width + stroke)) < 0.5)
+        #expect(editor.tableHandleBand >= editor.tableHandleSelectedThickness)
+        // Only the chevron's end of the tab opens the menu on a single click.
+        let chevron = editor.selectedTabChevronBox(tab)
+        #expect(tab.rect.contains(chevron))
+        #expect(abs(chevron.maxX - tab.rect.maxX) < 0.5)
+        #expect(!chevron.contains(NSPoint(x: tab.rect.midX, y: tab.rect.midY)))
+    }
+
+    @Test("Any other selection retires the picked row")
+    func anotherSelectionEndsIt() throws {
+        let editor = loadEditor(doc)
+        caret(editor, to: "| c |")
+        editor.selectTableAxis(for: try #require(handle(editor, .row)))
+        #expect(editor.tableAxisSelection != nil)
+        caret(editor, to: "a")
+        #expect(editor.tableAxisSelection == nil)
+        #expect(editor.tableHandles().allSatisfy { !$0.selected })
+    }
+
+    /// A drag across a full row is a block of cells, not a picked row: the
+    /// tab is the pill's, and the pills stay off screen as before.
+    @Test("A drag-selected full row has no tab")
+    func dragSelectedRowIsNotPicked() {
+        let editor = loadEditor(doc)
+        caret(editor, to: "a")
+        let ns = editor.rawSource as NSString
+        let from = ns.range(of: "c |").location
+        editor.setSelectedRange(NSRange(location: from,
+                                        length: ns.range(of: "d").location + 1 - from))
+        #expect(editor.tableAxisSelection == nil)
+        #expect(editor.tableHandles().isEmpty)
+    }
+
+    @Test("A selected row's tab menu deletes every row it stands for")
+    func tabMenuDeletesTheRun() throws {
+        let editor = loadEditor(doc)
+        editor.selectTableAxis(.row, blockIndex: tableIndex(editor), span: 2...3,
+                               anchor: (2, 0))
+        let tab = try #require(editor.tableHandles().first { $0.selected })
+        let titles = editor.tableHandleMenu(tab).items.map(\.title)
+        #expect(titles == ["Add Row Above", "Add Row Below", "", "Delete Rows"])
+        let delete = try #require(editor.tableHandleMenu(tab).items.last)
+        editor.performTableOperation(delete)
+        #expect(editor.rawSource == "Intro.\n\n| c1 | c2 |\n| --- | --- |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == doc)
+    }
+
+    @Test("A run of rows taking the header promotes the first row left, in one undo step")
+    func deleteRunWithHeader() {
+        let editor = loadEditor(doc)
+        editor.deleteTableRows(blockIndex: tableIndex(editor), rows: 0...2)
+        #expect(editor.rawSource == "Intro.\n\n| c | d |\n| --- | --- |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == doc)
+    }
+
+    @Test("A run of columns goes in one undo step, from the tab or by Delete")
+    func deleteColumnRunIsOneUndoStep() throws {
+        let wide = "Intro.\n\n| c1 | c2 | c3 |\n| --- | --- | --- |\n| a | b | c |\n"
+        let editor = loadEditor(wide)
+        let item = NSMenuItem()
+        item.representedObject = TableOperation(.deleteColumn, tableIndex(editor), 2, 1,
+                                                through: 2)
+        editor.performTableOperation(item)
+        #expect(editor.rawSource == "Intro.\n\n| c1 |\n| --- |\n| a |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == wide)
+
+        // Delete on the same columns, once emptied, removes them the same way.
+        editor.selectTableCells(blockIndex: tableIndex(editor), from: (0, 1), to: (2, 2))
+        editor.clearTableCells(try #require(editor.tableCellSelection))
+        let cleared = editor.rawSource
+        editor.selectTableCells(blockIndex: tableIndex(editor), from: (0, 1), to: (2, 2))
+        #expect(editor.handleTableCellSelectionDelete())
+        #expect(editor.rawSource == "Intro.\n\n| c1 |\n| --- |\n| a |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == cleared)
+    }
+
+    @Test("Every column of a table cannot be deleted from its tab")
+    func cannotDeleteEveryColumn() throws {
+        let editor = loadEditor(doc)
+        editor.selectTableAxis(.column, blockIndex: tableIndex(editor), span: 0...1,
+                               anchor: (2, 0))
+        let tab = try #require(editor.tableHandles().first { $0.selected })
+        let delete = editor.tableHandleMenu(tab).items.first { $0.title == "Delete Columns" }
+        #expect(delete?.isEnabled == false)
+    }
+
+    // MARK: - Moving
+
+    @Test("Rows move byte for byte, the separator staying on line 1")
+    func movedRows() {
+        let lines = ["| h1 | h2 |", "| :-- | --: |", "| a | b |", "| c  | d |", "| e | f |"]
+        // Last body row to the top of the body.
+        #expect(movedTableRows(lines, from: 3...3, to: 1)
+                == ["| h1 | h2 |", "| :-- | --: |", "| e | f |", "| a | b |", "| c  | d |"])
+        // A body row to the top becomes the header.
+        #expect(movedTableRows(lines, from: 2...2, to: 0)
+                == ["| c  | d |", "| :-- | --: |", "| h1 | h2 |", "| a | b |", "| e | f |"])
+        // The header to the end.
+        #expect(movedTableRows(lines, from: 0...0, to: 4)
+                == ["| a | b |", "| :-- | --: |", "| c  | d |", "| e | f |", "| h1 | h2 |"])
+        // Dropped where it started: nothing to do.
+        #expect(movedTableRows(lines, from: 1...2, to: 1) == nil)
+        #expect(movedTableRows(lines, from: 1...2, to: 3) == nil)
+    }
+
+    @Test("Columns move with their alignment, ragged rows filled first")
+    func movedColumns() {
+        let lines = ["| h1 | h2 | h3 |", "| :-- | :-: | --: |", "| a | b | c |", "| x |"]
+        #expect(movedTableColumns(lines, from: 2...2, to: 0)
+                == ["| h3 | h1 | h2 |", "| --: | :-- | :-: |", "| c | a | b |", "|  | x |  |"])
+        #expect(movedTableColumns(lines, from: 0...0, to: 3)
+                == ["| h2 | h3 | h1 |", "| :-: | --: | :-- |", "| b | c | a |", "|  |  | x |"])
+        #expect(movedTableColumns(lines, from: 1...1, to: 2) == nil)
+    }
+
+    @Test("An escaped pipe stays inside the column it belongs to")
+    func movedColumnKeepsEscapedPipe() {
+        let lines = ["| h1 | h2 |", "| --- | --- |", "| a \\| b | c |"]
+        #expect(movedTableColumns(lines, from: 1...1, to: 0)
+                == ["| h2 | h1 |", "| --- | --- |", "| c | a \\| b |"])
+    }
+
+    @Test("A table without outer pipes keeps none")
+    func movedColumnWithoutOuterPipes() {
+        let lines = ["h1 | h2", "--- | ---", "a | b"]
+        #expect(movedTableColumns(lines, from: 1...1, to: 0)
+                == [" h2|h1 ", " ---|--- ", " b|a "])
+    }
+
+    @Test("VoiceOver reaches the pills: a press picks the row, and its tab is labelled for the menu")
+    func pillsAreAccessibilityButtons() throws {
+        let editor = loadEditor(doc)
+        caret(editor, to: "d")                      // line 3, the second body row
+        let buttons = editor.tableHandleAccessibilityButtons()
+        #expect(Set(buttons.map { $0.accessibilityLabel() ?? "" })
+                == ["Select Row 3", "Select Column 2"])
+        let row = try #require(buttons.first { $0.accessibilityLabel() == "Select Row 3" })
+        #expect(row.accessibilityRole() == .button)
+        #expect(row.accessibilityPerformPress())
+        #expect(editor.tableAxisSelection?.axis == .row)
+        #expect(editor.tableAxisSelection?.block.rows == 3...3)
+        let after = editor.tableHandleAccessibilityButtons().map { $0.accessibilityLabel() ?? "" }
+        #expect(after.contains("Row 3 Options"))
+        // The same element, so VoiceOver's focus stays put across the change.
+        #expect(editor.tableHandleAccessibilityButtons().contains { $0 === row })
+    }
+
+    @Test("One split of the table finds the same cells as asking cell by cell")
+    func cellRowsMatchSingleLookups() throws {
+        let editor = loadEditor(doc)
+        let t = tableIndex(editor)
+        let rows = editor.tableCellRows(blockIndex: t, rows: 0...3)
+        #expect(rows[1] == nil)                     // the separator holds no cells
+        for row in [0, 2, 3] {
+            let line = try #require(rows[row])
+            #expect(line.count == 2)
+            for column in 0..<2 {
+                #expect(line[column] == editor.tableCell(blockIndex: t, row: row, column: column))
+            }
+        }
+    }
+
+    @Test("No insertion bar where the drop would leave the row or column in place")
+    func noBarInPlace() throws {
+        let editor = loadEditor(doc)
+        let t = tableIndex(editor)
+        let grid = try #require(editor.tableGrid(blockIndex: t, ensuringLayout: true))
+        func bar(_ axis: TableHandle.Axis, _ span: ClosedRange<Int>, gap: Int) -> NSRect? {
+            editor.tableReorderBar(TableReorderDrag(
+                axis: axis, blockIndex: t, span: span, anchor: (0, 0), grid: grid,
+                box: .zero, gap: gap))
+        }
+        // Line 2 is logical row 1: gaps 1 and 2 sit either side of it.
+        #expect(bar(.row, 2...2, gap: 1) == nil)
+        #expect(bar(.row, 2...2, gap: 2) == nil)
+        #expect(bar(.row, 2...2, gap: 0) != nil)
+        #expect(bar(.row, 2...2, gap: 3) != nil)
+        #expect(bar(.column, 0...0, gap: 0) == nil)
+        #expect(bar(.column, 0...0, gap: 1) == nil)
+        #expect(bar(.column, 0...0, gap: 2) != nil)
+    }
+
+    @Test("Dropping a moved row is one undo step")
+    func moveIsOneUndoStep() throws {
+        let editor = loadEditor(doc)
+        let t = tableIndex(editor)
+        let lines = try #require(editor.tableLines(blockIndex: t))
+        editor.replaceTable(blockIndex: t,
+                            lines: try #require(movedTableRows(lines, from: 2...2, to: 1)))
+        #expect(editor.rawSource
+                == "Intro.\n\n| c1 | c2 |\n| --- | --- |\n| c | d |\n| a | b |\n")
+        editor.undo(nil)
+        #expect(editor.rawSource == doc)
+    }
+}

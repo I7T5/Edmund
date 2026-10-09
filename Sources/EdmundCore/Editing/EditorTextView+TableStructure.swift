@@ -129,6 +129,31 @@ extension EditorTextView {
         landInCell(blockIndex: blockIndex, row: last ? row - 1 : row, column: column)
     }
 
+    /// Deletes a run of lines as one undoable edit, by `deleteTableRow`'s rules
+    /// applied bottom up: the separator stays, and the header goes only while
+    /// a body row is left to promote into its place. Puts the caret in the row
+    /// that takes the run's place.
+    func deleteTableRows(blockIndex: Int, rows: ClosedRange<Int>, column: Int = 0) {
+        guard rows.count > 1 else {
+            deleteTableRow(blockIndex: blockIndex, row: rows.lowerBound, column: column)
+            return
+        }
+        guard var lines = tableLines(blockIndex: blockIndex) else { return }
+        let before = lines.count
+        for row in rows.reversed() where row != 1 && lines.indices.contains(row) {
+            if row > 0 {
+                lines.remove(at: row)
+            } else if lines.count > 2 {
+                lines[0] = lines.remove(at: 2)
+            }
+        }
+        guard lines.count < before else { return }
+        replaceTable(blockIndex: blockIndex, lines: lines)
+        let land = min(rows.lowerBound, lines.count - 1)
+        landInCell(blockIndex: blockIndex, row: land == 1 ? (lines.count > 2 ? 2 : 0) : land,
+                   column: column)
+    }
+
     // MARK: - Columns
 
     /// Inserts an empty column at index `column` in every row, and puts the
@@ -159,27 +184,42 @@ extension EditorTextView {
     /// Removes column `column` from every row, and puts the caret in the cell
     /// that takes its place in `row`.
     func deleteTableColumn(blockIndex: Int, column: Int, row: Int = 0) {
-        guard canDeleteTableColumn(blockIndex: blockIndex, column: column),
+        deleteTableColumns(blockIndex: blockIndex, columns: column...column, row: row)
+    }
+
+    /// Removes a run of columns from every row as one undoable edit, and puts
+    /// the caret in the cell that takes the run's place in `row`. At least one
+    /// column has to survive, so a run covering them all keeps its first.
+    func deleteTableColumns(blockIndex: Int, columns: ClosedRange<Int>, row: Int = 0) {
+        let count = tableColumnCount(blockIndex: blockIndex)
+        guard canDeleteTableColumn(blockIndex: blockIndex, column: columns.lowerBound),
               let lines = tableLines(blockIndex: blockIndex) else { return }
-        let edited = lines.map { line -> String in
-            let ns = line as NSString
-            let spans = columnSpans(in: ns)
-            guard column < spans.count else { return line }   // ragged: nothing to cut
-            let span = spans[column]
-            // A cell goes with one of the pipes beside it: the one before,
-            // unless it is the first cell, which takes the one after.
-            let cut: NSRange
-            if column > 0 {
-                cut = NSRange(location: span.start - 1, length: span.end - span.start + 1)
-            } else {
-                let trailing = span.end < ns.length && ns.character(at: span.end) == 0x7C
-                cut = NSRange(location: span.start,
-                              length: span.end - span.start + (trailing ? 1 : 0))
-            }
-            return ns.replacingCharacters(in: cut, with: "")
+        let last = min(columns.upperBound, count - 1)
+        let first = max(columns.lowerBound, last - (count - 2))
+        let edited = lines.map { line in
+            // Right to left, so each cut leaves the columns still to go in place.
+            (first...last).reversed().reduce(line) { removingTableCell($1, from: $0) }
         }
         replaceTable(blockIndex: blockIndex, lines: edited)
-        landInCell(blockIndex: blockIndex, row: row, column: max(0, column - 1))
+        landInCell(blockIndex: blockIndex, row: row, column: max(0, first - 1))
+    }
+
+    private func removingTableCell(_ column: Int, from line: String) -> String {
+        let ns = line as NSString
+        let spans = columnSpans(in: ns)
+        guard column < spans.count else { return line }   // ragged: nothing to cut
+        let span = spans[column]
+        // A cell goes with one of the pipes beside it: the one before,
+        // unless it is the first cell, which takes the one after.
+        let cut: NSRange
+        if column > 0 {
+            cut = NSRange(location: span.start - 1, length: span.end - span.start + 1)
+        } else {
+            let trailing = span.end < ns.length && ns.character(at: span.end) == 0x7C
+            cut = NSRange(location: span.start,
+                          length: span.end - span.start + (trailing ? 1 : 0))
+        }
+        return ns.replacingCharacters(in: cut, with: "")
     }
 
     // MARK: - Delete on a cell selection
@@ -203,17 +243,13 @@ extension EditorTextView {
 
         if tableCellsAreEmpty(block) {
             if allCols && !allRows {            // complete, empty row(s) → delete them
-                for row in block.rows.reversed() where row != 1 {
-                    deleteTableRow(blockIndex: block.blockIndex, row: row,
-                                   column: block.columns.lowerBound)
-                }
+                deleteTableRows(blockIndex: block.blockIndex, rows: block.rows,
+                                column: block.columns.lowerBound)
                 return true
             }
             if allRows && !allCols {            // complete, empty column(s) → delete them
-                for column in block.columns.reversed() {
-                    deleteTableColumn(blockIndex: block.blockIndex, column: column,
-                                      row: block.rows.lowerBound)
-                }
+                deleteTableColumns(blockIndex: block.blockIndex, columns: block.columns,
+                                   row: block.rows.lowerBound)
                 return true
             }
         }
@@ -303,6 +339,88 @@ extension EditorTextView {
         return true
     }
 
+    // MARK: - Formatting the source
+
+    /// Records that the caret's table was edited, so it is aligned once the
+    /// caret leaves it. Called after every edit the user types.
+    func noteTableEdit() {
+        guard let index = blockIndexForRawOffset(selectedRange().location),
+              index < blocks.count, blocks[index].kind == .table else { return }
+        tableFormatPending = true
+    }
+
+    /// Aligns the source of a table the caret has just left, if it was edited
+    /// (pipes lined up, cells space-padded, the separator's dashes filling
+    /// each column — `formattedTableLines`).
+    ///
+    /// Never while the caret is inside it: the cells would shift under the
+    /// typing. And invisible once done — the renderer draws no padding past
+    /// one space (`hideSurplusCellPadding`) — so it is folded into the undo
+    /// step of the last edit rather than given one of its own, where the first
+    /// ⌘Z would appear to do nothing.
+    func formatTableOnLeaving(_ blockIndex: Int) {
+        guard !hasMarkedText(), blockIndex < blocks.count,
+              blocks[blockIndex].kind == .table else { return }
+        let range = blocks[blockIndex].range
+        let selection = selectedRange()
+        // The caret has to be outside the table, not on its edge either.
+        guard selection.location > range.upperBound || selection.upperBound < range.location
+        else { return }
+        let lastEdit = undoStack.last
+        let before = rawSource
+        guard alignTableSource(blockIndex: blockIndex) else { return }
+        let beforeNS = before as NSString
+        guard let lastEdit, undoStack.count >= 2, let format = undoStack.last,
+              lastEdit.location + lastEdit.laterLength <= beforeNS.length
+        else { return }
+        // Fold the format into the edit before it: one entry from the
+        // formatted text straight back to before that edit. Both entries are
+        // spans of `before`, so only the text from the first to the end of the
+        // last needs looking at — a table's worth, not the document twice.
+        let formatEnd = format.location + (format.earlierText as NSString).length
+        let start = min(format.location, lastEdit.location)
+        let end = max(formatEnd, lastEdit.location + lastEdit.laterLength)
+        let grew = format.laterLength - (format.earlierText as NSString).length
+        let original = (beforeNS.substring(with: NSRange(location: start, length: end - start))
+            as NSString).replacingCharacters(
+                in: NSRange(location: lastEdit.location - start, length: lastEdit.laterLength),
+                with: lastEdit.earlierText)
+        let now = (rawSource as NSString).substring(
+            with: NSRange(location: start, length: end - start + grew))
+        guard let diff = Self.textDiff(old: now, new: original) else { return }
+        undoStack.removeLast(2)
+        undoStack.append(UndoEntry(location: start + diff.oldRange.location,
+                                   laterLength: diff.oldRange.length,
+                                   earlierText: diff.replacement,
+                                   cursorInRaw: lastEdit.cursorInRaw))
+    }
+
+    /// Edit ▸ Format Table: aligns the source of the table the caret
+    /// is in, as an undo step of its own.
+    @objc public func formatTableSource(_ sender: Any?) {
+        guard let index = blockIndexForRawOffset(selectedRange().location),
+              index < blocks.count, blocks[index].kind == .table else { return }
+        let caretCell = activeTableCell
+        guard alignTableSource(blockIndex: index) else { return }
+        if let cell = caretCell { landInCell(blockIndex: index, row: cell.row, column: cell.column) }
+    }
+
+    /// Rewrites one table in the aligned form, keeping the selection where it
+    /// was relative to the text around the table. False when there was nothing
+    /// to change (or nothing safe to change).
+    @discardableResult
+    func alignTableSource(blockIndex: Int) -> Bool {
+        guard let lines = tableLines(blockIndex: blockIndex),
+              let formatted = formattedTableLines(lines) else { return false }
+        let range = blocks[blockIndex].range
+        let text = formatted.joined(separator: "\n")
+        let delta = (text as NSString).length - range.length
+        var selection = selectedRange()
+        if selection.location >= range.upperBound { selection.location += delta }
+        applyFormattingEdit(rawRange: range, replacement: text, select: selection)
+        return true
+    }
+
     // MARK: - Shared
 
     /// Character offset of line `row` within the table's own content.
@@ -313,17 +431,20 @@ extension EditorTextView {
     /// Writes a whole table back as one undoable edit. Columns need this: their
     /// change lands on every line, and a table block is contiguous, so the whole
     /// block is the smallest range that covers it.
-    private func replaceTable(blockIndex: Int, lines: [String]) {
+    func replaceTable(blockIndex: Int, lines: [String]) {
         let block = blocks[blockIndex]
         applyFormattingEdit(rawRange: block.range,
                             replacement: lines.joined(separator: "\n"),
                             select: NSRange(location: block.range.location, length: 0))
+        // A structural edit goes through applyFormattingEdit, not the typing
+        // path that calls noteTableEdit, so it marks the table for alignment.
+        tableFormatPending = true
     }
 
     /// Selects a cell by position *after* an edit, when the ranges captured
     /// before it are all stale. Silently does nothing if the cell no longer
     /// exists — a delete can leave fewer rows or columns than the caller hoped.
-    private func landInCell(blockIndex: Int, row: Int, column: Int) {
+    func landInCell(blockIndex: Int, row: Int, column: Int) {
         guard let cell = tableCell(blockIndex: blockIndex, row: row, column: column)
                 ?? tableCell(blockIndex: blockIndex, row: row, column: 0) else { return }
         selectCellText(cell)

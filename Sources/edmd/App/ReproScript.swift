@@ -41,6 +41,8 @@ import ScreenCaptureKit
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
 ///   handlemenu row|column  open a table handle's menu via its real hit test
+///   clickhandle row|column [center|chevron] [clicks]  click a table handle
+///                     through mouseDown (a menu it opens is modal)
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
 ///   selectcells r0,c0,r1,c1  select that block of table cells
 ///   ime <text>        compose <text> as marked text (NSTextInputClient)
@@ -476,6 +478,16 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     report("repro handlemenu \(arg) "
                         + editor.debugOpenTableHandleMenu(column: arg == "column"))
+                }
+            case "clickhandle":
+                // "clickhandle row|column [center|chevron] [clicks]" — a real
+                // click on a table handle; see `debugClickTableHandle`.
+                schedule(after: delay) { editor in
+                    let words = arg.split(separator: " ").map(String.init)
+                    let clicks = words.count > 2 ? Int(words[2]) ?? 1 : 1
+                    report("repro clickhandle \(arg) " + editor.debugClickTableHandle(
+                        column: words.first == "column",
+                        chevron: words.count > 1 && words[1] == "chevron", clicks: clicks))
                 }
             case "cellmenu":
                 // The right-click menu for the cell holding <needle>, through
