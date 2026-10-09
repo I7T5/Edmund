@@ -76,17 +76,19 @@ extension EditorTextView {
     /// itself for the column pill to have somewhere to be.
     ///
     /// Measured off the Notes reference at 2×: a 32×16 px pill, 8 px clear of
-    /// the table, with a 3 px corner — a rounded rectangle, not a capsule.
+    /// the table, its corner curving over ~5 px — a rounded rectangle, not a
+    /// capsule. The radius is the stroke's centreline, half a pixel inside.
     /// All at the default body size; the instance values below scale them.
     static let tableHandleBaseThickness: CGFloat = 8
     static let tableHandleBaseLength: CGFloat = 16
     static let tableHandleBaseGap: CGFloat = 4
-    static let tableHandleBaseRadius: CGFloat = 1.5
+    static let tableHandleBaseRadius: CGFloat = 2.5
     static let tableCellDotBaseRadius: CGFloat = 3.75
     /// A selected row's or column's tab: 32 px thick on the Notes references
     /// at 2×, twice the plain pill, and flush against the selection box.
     static let tableHandleBaseSelectedThickness: CGFloat = 16
-    static let tableHandleBaseSelectedRadius: CGFloat = 3
+    /// Its outer corners: an 8 px radius on the column reference at 2×.
+    static let tableHandleBaseSelectedRadius: CGFloat = 4
     /// The selection box's stroke, centred on the box's edge.
     static let tableCellSelectionLineWidth: CGFloat = 2
 
@@ -366,9 +368,9 @@ extension EditorTextView {
         // As measured on the Notes references at 2x: 12 px apart on a column's
         // tab, 11 on a row's, where a single-line row leaves less room.
         let spacing: CGFloat = (handle.axis == .column ? 6 : 5.5) * scale
-        let chevronInset = Self.tableTabChevronInset * thickness
+        // 16 px across its stroke ends and 9 px tall on the reference at 2×.
         let chevronWidth = 0.5 * thickness
-        let chevronHeight = 0.25 * thickness
+        let chevronHeight = 0.28 * thickness
         NSColor.white.setFill()
         NSColor.white.setStroke()
 
@@ -392,7 +394,7 @@ extension EditorTextView {
         // A row tab measures what the chevron leaves above it, the way Notes
         // fits both in a single-line row.
         let roomForDots = handle.axis == .column
-            ? rect.width >= 2 * chevronInset + 4 * spacing
+            ? rect.width >= 2 * (rect.maxX - chevronCenter.x) + 4 * spacing
             : chevronCenter.y - chevronHeight - rect.minY >= 2 * spacing + dot
         if roomForDots {
             for center in dotCenters {
@@ -414,14 +416,17 @@ extension EditorTextView {
     }
 
     /// How far in from a selected tab's far end its chevron's centre sits, as a
-    /// fraction of the tab's thickness.
-    static let tableTabChevronInset: CGFloat = 0.55
+    /// fraction of the tab's thickness: 22.5 px from a column tab's right end
+    /// and 14.5 px from a row tab's foot on the Notes references at 2×.
+    static func tableTabChevronInset(_ axis: TableHandle.Axis) -> CGFloat {
+        axis == .column ? 0.7 : 0.45
+    }
 
     /// A selected tab's chevron centre: at the row tab's foot, the column
     /// tab's right end.
     func selectedTabChevronCenter(_ handle: TableHandle) -> CGPoint {
         let rect = handle.rect
-        let inset = Self.tableTabChevronInset * tableHandleSelectedThickness
+        let inset = Self.tableTabChevronInset(handle.axis) * tableHandleSelectedThickness
         return handle.axis == .column
             ? CGPoint(x: rect.maxX - inset, y: rect.midY)
             : CGPoint(x: rect.midX, y: rect.maxY - inset)

@@ -243,6 +243,26 @@ struct TableAxisSelectionTests {
                 == [" h2|h1 ", " ---|--- ", " b|a "])
     }
 
+    @Test("No insertion bar where the drop would leave the row or column in place")
+    func noBarInPlace() throws {
+        let editor = loadEditor(doc)
+        let t = tableIndex(editor)
+        let grid = try #require(editor.tableGrid(blockIndex: t, ensuringLayout: true))
+        func bar(_ axis: TableHandle.Axis, _ span: ClosedRange<Int>, gap: Int) -> NSRect? {
+            editor.tableReorderBar(TableReorderDrag(
+                axis: axis, blockIndex: t, span: span, anchor: (0, 0), grid: grid,
+                box: .zero, gap: gap))
+        }
+        // Line 2 is logical row 1: gaps 1 and 2 sit either side of it.
+        #expect(bar(.row, 2...2, gap: 1) == nil)
+        #expect(bar(.row, 2...2, gap: 2) == nil)
+        #expect(bar(.row, 2...2, gap: 0) != nil)
+        #expect(bar(.row, 2...2, gap: 3) != nil)
+        #expect(bar(.column, 0...0, gap: 0) == nil)
+        #expect(bar(.column, 0...0, gap: 1) == nil)
+        #expect(bar(.column, 0...0, gap: 2) != nil)
+    }
+
     @Test("Dropping a moved row is one undo step")
     func moveIsOneUndoStep() throws {
         let editor = loadEditor(doc)

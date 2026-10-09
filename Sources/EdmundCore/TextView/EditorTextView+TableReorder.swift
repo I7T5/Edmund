@@ -168,7 +168,13 @@ extension EditorTextView {
     /// down it between two columns.
     func tableReorderBar(_ drag: TableReorderDrag) -> NSRect? {
         let grid = drag.grid
-        guard let bounds = grid.bounds else { return nil }
+        // No bar where a drop would change nothing: either side of the run.
+        let moving = drag.axis == .row
+            ? Self.tableLogicalRow(line: drag.span.lowerBound)
+                ... Self.tableLogicalRow(line: drag.span.upperBound)
+            : drag.span
+        guard drag.gap < moving.lowerBound || drag.gap > moving.upperBound + 1,
+              let bounds = grid.bounds else { return nil }
         let thickness = 3 * tableChromeScale
         switch drag.axis {
         case .row:
