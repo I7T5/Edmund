@@ -75,11 +75,11 @@ extension EditorTextView {
             // A double click opens the menu wherever it lands; a single click
             // only on the chevron, with the menu hanging just under it.
             if event.clickCount >= 2 {
-                showTableHandleMenu(handle, with: event)
+                showTableHandleMenu(handle)
             } else {
                 let chevron = selectedTabChevronBox(handle)
                 if chevron.contains(start) {
-                    showTableHandleMenu(handle, with: event,
+                    showTableHandleMenu(handle,
                                         at: NSPoint(x: chevron.minX, y: handle.rect.maxY))
                 }
             }

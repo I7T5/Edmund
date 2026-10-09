@@ -629,6 +629,9 @@ public class EditorTextView: NSTextView {
     /// The copy buttons' accessibility elements, by block index, kept so
     /// VoiceOver's focus survives a redraw. See EditorTextView+CodeCopyButton.
     var codeCopyButtonElements: [Int: CodeCopyButtonElement] = [:]
+    /// The table pills' and tab's accessibility buttons, by axis. See
+    /// `tableHandleAccessibilityButtons`.
+    var tableHandleElements: [TableHandle.Axis: TableHandleElement] = [:]
 
     /// Whether each wiki-link path resolved to a note, so styling never walks
     /// the folder twice for one link. Valid for `wikiNoteExistsDir` only (a

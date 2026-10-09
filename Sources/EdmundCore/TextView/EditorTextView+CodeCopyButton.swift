@@ -270,6 +270,7 @@ extension EditorTextView {
 
     public override func accessibilityChildren() -> [Any]? {
         (super.accessibilityChildren() ?? []) + codeCopyAccessibilityButtons()
+            + tableHandleAccessibilityButtons()
     }
 
     /// One element per visible button, reused by block index so VoiceOver's

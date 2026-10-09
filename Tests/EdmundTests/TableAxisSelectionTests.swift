@@ -243,6 +243,24 @@ struct TableAxisSelectionTests {
                 == [" h2|h1 ", " ---|--- ", " b|a "])
     }
 
+    @Test("VoiceOver reaches the pills: a press picks the row, and its tab is labelled for the menu")
+    func pillsAreAccessibilityButtons() throws {
+        let editor = loadEditor(doc)
+        caret(editor, to: "d")                      // line 3, the second body row
+        let buttons = editor.tableHandleAccessibilityButtons()
+        #expect(Set(buttons.map { $0.accessibilityLabel() ?? "" })
+                == ["Select Row 3", "Select Column 2"])
+        let row = try #require(buttons.first { $0.accessibilityLabel() == "Select Row 3" })
+        #expect(row.accessibilityRole() == .button)
+        #expect(row.accessibilityPerformPress())
+        #expect(editor.tableAxisSelection?.axis == .row)
+        #expect(editor.tableAxisSelection?.block.rows == 3...3)
+        let after = editor.tableHandleAccessibilityButtons().map { $0.accessibilityLabel() ?? "" }
+        #expect(after.contains("Row 3 Options"))
+        // The same element, so VoiceOver's focus stays put across the change.
+        #expect(editor.tableHandleAccessibilityButtons().contains { $0 === row })
+    }
+
     @Test("One split of the table finds the same cells as asking cell by cell")
     func cellRowsMatchSingleLookups() throws {
         let editor = loadEditor(doc)

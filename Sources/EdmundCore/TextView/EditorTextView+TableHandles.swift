@@ -1123,8 +1123,7 @@ extension EditorTextView {
     /// Opens a handle's menu at the pill.
     /// `corner`, in view coordinates, is where the menu's top-left goes; by
     /// default the handle's bottom-left.
-    func showTableHandleMenu(_ handle: TableHandle, with event: NSEvent,
-                             at corner: NSPoint? = nil) {
+    func showTableHandleMenu(_ handle: TableHandle, at corner: NSPoint? = nil) {
         if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         // Popped with no view, in screen coordinates. A menu shown *in* a text
         // view is handed to the text system on its way to the screen, which
@@ -1153,6 +1152,91 @@ final class TableOperation: NSObject {
         self.row = row
         self.column = column
         self.through = through
+    }
+}
+
+// MARK: - Accessibility
+//
+// The pills and the selected tab are drawn, not views, so VoiceOver has
+// nothing to land on. Each visible one gets a button element among the text
+// view's children (see `accessibilityChildren`), as the code copy button does:
+// a pill's press picks its row or column, a tab's opens its menu. Reordering
+// stays pointer-only; the menu's adds and deletes do not.
+
+extension EditorTextView {
+
+    /// One element per visible handle, reused by axis so VoiceOver's focus
+    /// survives a redraw; its label and frame follow the handle.
+    func tableHandleAccessibilityButtons() -> [TableHandleElement] {
+        let handles = tableHandles()
+        tableHandleElements = tableHandleElements.filter { axis, _ in
+            handles.contains { $0.axis == axis }
+        }
+        return handles.map { handle in
+            let element = tableHandleElements[handle.axis] ?? TableHandleElement(editor: self)
+            tableHandleElements[handle.axis] = element
+            element.handle = handle
+            return element
+        }
+    }
+
+    /// What an accessibility press on `handle` does, while it is still the
+    /// handle on screen: pick the row or column, or open the tab's menu at
+    /// its chevron.
+    func pressTableHandle(_ handle: TableHandle) -> Bool {
+        guard let current = tableHandles().first(where: { $0.axis == handle.axis }) else {
+            return false
+        }
+        if current.selected {
+            let chevron = selectedTabChevronBox(current)
+            showTableHandleMenu(current, at: NSPoint(x: chevron.minX, y: current.rect.maxY))
+        } else {
+            selectTableAxis(for: current)
+        }
+        return true
+    }
+}
+
+/// A row or column pill, or a selected tab, as VoiceOver sees it.
+public final class TableHandleElement: NSAccessibilityElement {
+    private weak var editor: EditorTextView?
+    var handle: TableHandle? {
+        didSet {
+            guard let handle else { return }
+            let axis = handle.axis == .row ? "Row" : "Column"
+            // Numbered as a reader counts them: the header (line 0) is row 1,
+            // and the separator (line 1) is not a row, so line n is row n.
+            let number = handle.axis == .row ? max(1, handle.row) : handle.column + 1
+            setAccessibilityLabel(handle.selected ? "\(axis) \(number) Options"
+                                                  : "Select \(axis) \(number)")
+        }
+    }
+
+    init(editor: EditorTextView) {
+        self.editor = editor
+        super.init()
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityParent(editor)
+    }
+
+    // AppKit calls accessibility on the main thread; the class isn't annotated.
+
+    /// In screen coordinates, from the view each time (see
+    /// `CodeCopyButtonElement.accessibilityFrame`).
+    public override func accessibilityFrame() -> NSRect {
+        let editor = editor, rect = handle?.rect ?? .zero
+        return MainActor.assumeIsolated {
+            editor.map { NSAccessibility.screenRect(fromView: $0, rect: rect) } ?? .zero
+        }
+    }
+
+    public override func accessibilityPerformPress() -> Bool {
+        let editor = editor, handle = handle
+        return MainActor.assumeIsolated {
+            guard let editor, let handle else { return false }
+            return editor.pressTableHandle(handle)
+        }
     }
 }
 
@@ -1203,7 +1287,7 @@ extension EditorTextView {
             return "handle missed its own hit box at \(handle.rect)"
         }
         let report = "rect=\(hit.rect) row=\(hit.row) col=\(hit.column)"
-        showTableHandleMenu(hit, with: event)
+        showTableHandleMenu(hit)
         return report
     }
 
