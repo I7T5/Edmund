@@ -395,9 +395,9 @@ extension EditorTextView {
                                    cursorInRaw: lastEdit.cursorInRaw))
     }
 
-    /// Edit ▸ Format Table: aligns the source of the table the caret
+    /// Edit ▸ Align Table Source: aligns the source of the table the caret
     /// is in, as an undo step of its own.
-    @objc public func formatTableSource(_ sender: Any?) {
+    @objc public func alignTable(_ sender: Any?) {
         guard let index = blockIndexForRawOffset(selectedRange().location),
               index < blocks.count, blocks[index].kind == .table else { return }
         let caretCell = activeTableCell

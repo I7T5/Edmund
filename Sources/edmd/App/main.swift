@@ -511,6 +511,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         editMenu.addItem(NSMenuItem.separator())
 
+        // Lines up the pipes and padding of the table the caret is in. Above
+        // Hard Wrap Paragraphs, the other command that tidies source in place,
+        // as it touches less: one table, not every paragraph.
+        editMenu.addItem(MenuCommand(id: "edit.alignTableSource", group: "Edit",
+                                     title: "Align Table Source",
+                                     action: #selector(EditorTextView.alignTable(_:))).makeItem())
         // Reflows the selected paragraphs, or the whole document when nothing
         // is selected. The manual counterpart to Settings ▸ Edit ▸ Document,
         // which only wraps files that already arrived wrapped. First-responder
@@ -518,11 +524,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenu.addItem(MenuCommand(id: "edit.hardWrapParagraphs", group: "Edit",
                                      title: "Hard Wrap Paragraphs",
                                      action: #selector(EditorTextView.hardWrapParagraphs(_:))).makeItem())
-        // Beside it, the other command that tidies source in place: aligns the
-        // pipes and padding of the table the caret is in.
-        editMenu.addItem(MenuCommand(id: "edit.formatTable", group: "Edit",
-                                     title: "Format Table",
-                                     action: #selector(EditorTextView.formatTableSource(_:))).makeItem())
 
         editMenu.addItem(NSMenuItem.separator())
 
