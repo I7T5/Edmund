@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Write Markdown</title>
+<meta name="description" content="Format text with Markdown syntax or the Format menu, and see the result as you type.">
+<link rel="stylesheet" href="../shared/help.css">
+</head>
+<body>
+<a name="write-markdown"></a>
+<h1>Write Markdown</h1>
+<p>Type Markdown and Edmund formats it in place: <code>**bold**</code> shows as bold, <code># Title</code> as a heading. The Markdown characters stay in the file. They show when the insertion point is inside the formatted text, and hide when it moves away.</p>
+<p>To see the plain Markdown everywhere, choose View &gt; Show Source in Editor.</p>
+
+<h2>Format text without typing the syntax</h2>
+<p>Select text, then choose an item from the Format menu. For example, choose Format &gt; Font &gt; Bold, or press Command-B. Format &gt; Heading, Format &gt; Alert / Callout, and the list items insert the matching Markdown for you.</p>
+<p>To show these commands above the text, choose View &gt; Show Format Bar.</p>
+
+<h2>What Edmund supports</h2>
+<dl>
+<dt>Standard Markdown</dt>
+<dd>Headings, emphasis, lists, checklists, links, images, block quotes, code blocks, tables, and GitHub alerts such as <code>&gt; [!NOTE]</code>.</dd>
+<dt>Extended syntax</dt>
+<dd>Front matter, <code>==highlight==</code>, math in <code>$…$</code> and <code>$$…$$</code>, <code>%%comments%%</code>, <code>[[wikilinks]]</code>, <code>#tags</code>, footnotes, block IDs, and Obsidian callouts. Turn each one on or off in <a href="settings-syntax.html">Syntax settings</a>.</dd>
+<dt>Diagrams and advanced math</dt>
+<dd>Mermaid diagrams and fuller math support are extensions you download. See <a href="settings-extensions.html">Extensions settings</a>.</dd>
+</dl>
+
+<h2>Add an image</h2>
+<p>Drag an image file into the document, or paste one. Edmund copies the image into a folder named after the document (for <code>notes.md</code>, <code>notes.assets</code>) and inserts a link to it. An untitled document asks you to save first, so the image has a folder to go in.</p>
+<p>To link to an image where it is instead of copying it, hold Option as you drag it in, or choose Format &gt; Image &gt; Attach File.</p>
+<p>To set an image’s width, add it after the alt text: <code>![photo|300](photo.png)</code>.</p>
+
+<h2>Work with tables</h2>
+<p>Choose Format &gt; Table to insert one. Click a cell to edit it, and press Tab to move to the next cell. To add or delete a row or column, click the ⋯ button beside it, then click the arrow that appears. To move a row or column, drag its ⋯ button. To line up the columns in the Markdown source, choose Edit &gt; Align Table Source.</p>
+
+<p class="home"><a href="index.html">Edmund Help</a></p>
+</body>
+</html>

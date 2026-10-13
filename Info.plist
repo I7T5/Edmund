@@ -12,6 +12,10 @@
     <string>edmd</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>CFBundleHelpBookFolder</key>
+    <string>Edmund.help</string>
+    <key>CFBundleHelpBookName</key>
+    <string>com.i7t5.edmund.help</string>
     <key>NSAccentColorName</key>
     <string>AccentColor</string>
     <key>CFBundlePackageType</key>

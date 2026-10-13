@@ -1,0 +1,15 @@
+:root { color-scheme: light dark; }
+body {
+    font: 13px/1.5 -apple-system, sans-serif;
+    max-width: 40em;
+    margin: 1.5em auto;
+    padding: 0 1.5em;
+}
+h1 { font-size: 22px; font-weight: 600; margin-bottom: 0.4em; }
+h2 { font-size: 15px; font-weight: 600; margin-top: 1.8em; }
+code, kbd { font: 12px ui-monospace, monospace; }
+dt { font-weight: 600; margin-top: 0.8em; }
+dd { margin-left: 1.2em; }
+table { border-collapse: collapse; }
+td, th { text-align: left; padding: 2px 16px 2px 0; vertical-align: top; }
+.home { margin-top: 2.5em; font-size: 12px; }
