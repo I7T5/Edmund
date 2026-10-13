@@ -45,6 +45,7 @@ struct ExtensionsSettingsView: View {
                     // STUB: link to GitHub extensions repo for now.
                     // Extensions marketplace comes later.
                 }
+                HelpLink(anchor: HelpAnchor.extensions)
             }
         }
         // Even margins all round, as the pane originally had them: the

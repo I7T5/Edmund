@@ -128,6 +128,7 @@ struct VersionHistoryView: View {
                 Spacer()
             }
             HStack {
+                HelpLink(anchor: HelpAnchor.versionHistory)
                 Text("Selected: \(byteString(selectedSize))").foregroundStyle(.secondary)
                 Text("·").foregroundStyle(.tertiary)
                 Text("Total: \(byteString(totalSize))").foregroundStyle(.secondary)

@@ -224,7 +224,35 @@ struct SettingsSectionHeader: View {
     }
 }
 
+/// Anchors in Resources/Edmund.help that the Settings Help buttons open.
+/// `HelpBookTests` checks each one exists in the book.
+enum HelpAnchor {
+    static let general = "settings-general"
+    static let warnings = "dialog-warnings"
+    static let appearance = "settings-appearance"
+    static let themes = "settings-themes"
+    static let edit = "settings-edit"
+    static let syntax = "settings-syntax"
+    static let keyBindings = "settings-key-bindings"
+    static let extensions = "settings-extensions"
+    static let advanced = "settings-advanced"
+    static let versionHistory = "version-history"
+
+    static let all = [general, warnings, appearance, themes, edit, syntax,
+                      keyBindings, extensions, advanced, versionHistory]
+}
+
 extension View {
+    /// The pane's Help button on its own row under the content, in the
+    /// bottom-trailing corner, where System Settings puts its own.
+    func settingsHelpButton(_ anchor: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            self
+            HelpLink(anchor: anchor)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
     /// Consistent pane padding: CotEditor-style breathing room (scene padding at
     /// the top, a little more on the sides and bottom).
     func settingsPanePadding() -> some View {

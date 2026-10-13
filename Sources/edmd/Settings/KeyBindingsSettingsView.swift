@@ -71,6 +71,8 @@ struct KeyBindingsSettingsView: View {
                         .controlSize(.small)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer()
+                HelpLink(anchor: HelpAnchor.keyBindings)
             }
         }
         .padding(20)

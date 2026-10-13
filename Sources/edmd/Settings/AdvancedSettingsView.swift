@@ -100,6 +100,7 @@ struct AdvancedSettingsView: View {
                 }
             }
         }
+        .settingsHelpButton(HelpAnchor.advanced)
         .settingsPanePadding()
     }
 

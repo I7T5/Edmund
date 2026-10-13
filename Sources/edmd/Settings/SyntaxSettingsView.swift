@@ -84,6 +84,7 @@ struct SyntaxSettingsView: View {
                     .padding(.top, -10)
             }
         }
+        .settingsHelpButton(HelpAnchor.syntax)
         .settingsPanePadding()
     }
 

@@ -176,6 +176,7 @@ struct EditSettingsView: View {
                 }
             }
         }
+        .settingsHelpButton(HelpAnchor.edit)
         .settingsPanePadding()
     }
 
