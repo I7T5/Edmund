@@ -60,40 +60,8 @@ ul.topics { list-style: none; padding: 0; }
 ul.topics a:link, ul.topics a:visited { color: -apple-system-label; }
 ul.topics a::after { content: " ›"; content: " ›" / ""; color: -apple-system-tertiary-label; }  /* "" = VoiceOver skips it */
 
-/* Contents sidebar (toc.js). The selected page gets a row background and
-   label-colored text, as an AppKit sidebar. */
-body.has-toc {
-    display: grid;
-    grid-template-columns: 15rem minmax(0, 46rem);
-    max-width: none;
-    margin: 0;
-    padding: 0;
-}
-nav.toc {
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    overflow-y: auto;
-    box-sizing: border-box;
-    padding: 2.5rem 1rem 2rem 1.5rem;
-    border-right: 1px solid -apple-system-separator;
-    font-size: 0.85rem;
-}
-nav.toc ul { list-style: none; margin: 0; padding: 0; }
-nav.toc li + li { margin-top: 0.1rem; }
-nav.toc li > span { display: block; margin: 1.1rem 0 0.2rem; font-weight: 600; color: -apple-system-secondary-label; }
-nav.toc a { display: block; padding: 0.2rem 0.5rem; margin: 0 -0.5rem; border-radius: 5px; }
-nav.toc a:link, nav.toc a:visited { color: -apple-system-label; }
-nav.toc a:hover { text-decoration: none; }
-nav.toc a[aria-current="page"] {
-    font-weight: 600;
-    background: rgb(128 128 128 / 0.18);
-    background: -apple-system-unemphasized-selected-content-background;
-}
-body.has-toc main { padding: 2.5rem 2.75rem; }
-body.toc-hidden { grid-template-columns: minmax(0, 46rem); justify-content: center; }
-body.toc-hidden nav.toc { display: none; }
-@media (max-width: 640px) {
-    body.has-toc { grid-template-columns: minmax(0, 1fr); }
-    nav.toc { display: none; }
-}
+/* "Table of Contents" link above each page's title (toc.js), quiet like
+   CotEditor's: secondary label color, smaller than body. */
+a.toc { display: inline-block; margin-bottom: 1.25rem; font-size: 0.85rem; }
+a.toc:link, a.toc:visited { color: -apple-system-secondary-label; }
+

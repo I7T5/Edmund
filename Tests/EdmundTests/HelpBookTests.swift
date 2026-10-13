@@ -51,12 +51,13 @@ struct HelpBookTests {
         }
     }
 
-    /// The sidebar is built from the list in toc.js, so a page missing from it
-    /// can only be reached by search.
-    @Test func contentsSidebarListsEveryPage() throws {
-        let toc = try String(contentsOf: Self.book.appendingPathComponent("Resources/shared/toc.js"), encoding: .utf8)
-        let listed = Set(try Self.matches(#""([a-z-]+\.html)""#, in: toc))
-        let pages = Set(try Self.pageFiles().map(\.lastPathComponent))
+    /// index.html is the table of contents (Tips' contents button and every
+    /// page's "Table of Contents" link open it), so a page it doesn't list can
+    /// only be reached by search.
+    @Test func indexListsEveryPage() throws {
+        let index = try String(contentsOf: Self.pages.appendingPathComponent("index.html"), encoding: .utf8)
+        let listed = Set(try Self.matches(#"href="([a-z-]+\.html)""#, in: index))
+        let pages = Set(try Self.pageFiles().map(\.lastPathComponent)).subtracting(["index.html"])
         #expect(listed == pages)
     }
 
