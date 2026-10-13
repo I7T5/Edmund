@@ -75,7 +75,7 @@ struct KeyBindingsSettingsView: View {
                 HelpLink(anchor: HelpAnchor.keyBindings)
             }
         }
-        .padding(20)
+        .padding(SettingsPaneInsets.sidebar)
         // Every settings pane is 600 wide, so switching tabs only ever resizes
         // the window vertically.
         .frame(width: 600)

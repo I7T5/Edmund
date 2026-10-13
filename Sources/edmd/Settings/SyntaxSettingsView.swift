@@ -33,6 +33,8 @@ struct SyntaxSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Enable extended Markdown syntax (non-GFM)", isOn: $enableNonGFM)
                         .onChange(of: enableNonGFM) { applyFeatures() }
+                        // Deliberate (ca96727, tuned in d75f6ab): lifts the
+                        // toggle off the row's top edge. Visual tuning; keep.
                         .padding(.top, -8)
                     // Parsed rather than left to `Text`'s own literal markdown
                     // handling, so `settingsLinkTinted()` can bring the link in
@@ -54,7 +56,9 @@ struct SyntaxSettingsView: View {
                 // further in, so the toggles read as its children.
                 featureGrid
                     .padding(.leading, 20)
-                    .padding(.top, -4)   // tighten the gap under the compat note
+                    // Deliberate (e3542ec): tightens the gap under the compat
+                    // note. Visual tuning; keep.
+                    .padding(.top, -4)
                     .disabled(!enableNonGFM)
             }
 
@@ -76,7 +80,8 @@ struct SyntaxSettingsView: View {
                 }
             }
             // Pull the box up toward its popup (the outer 18-pt row spacing is
-            // too wide a gap here — see the CotEditor Format ref).
+            // too wide a gap here — see the CotEditor Format ref). Deliberate
+            // (d3fbee4): the two -10s below are visual tuning; keep.
             GridRow(alignment: .top) {
                 Text("Available syntaxes:").gridColumnAlignment(.trailing)
                     .padding(.top, -10)

@@ -51,7 +51,7 @@ struct ExtensionsSettingsView: View {
         // Even margins all round, as the pane originally had them: the
         // sidebar/detail boxes are the content, and a box wants the same air
         // under it as beside it.
-        .padding(20)
+        .padding(SettingsPaneInsets.sidebar)
         // Every settings pane is 600 wide, so switching tabs only ever resizes
         // the window vertically.
         .frame(width: 600)

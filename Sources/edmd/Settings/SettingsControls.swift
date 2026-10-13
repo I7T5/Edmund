@@ -242,19 +242,36 @@ enum HelpAnchor {
                       keyBindings, extensions, advanced, versionHistory]
 }
 
+/// Insets every Settings pane shares, so switching tabs never moves the
+/// content's top edge or the Help button. The top is tighter than the bottom,
+/// as in CotEditor: the toolbar above already separates the content.
+enum SettingsPaneInsets {
+    static let top: CGFloat = 14
+    /// From the Help button to the window's bottom and trailing edges.
+    static let help: CGFloat = 20
+    /// Content inset of the sidebar panes (Themes, Key Bindings, Extensions),
+    /// whose Help button sits in their bottom row.
+    static let sidebar = EdgeInsets(top: top, leading: help, bottom: help, trailing: help)
+}
+
 extension View {
-    /// Consistent pane padding: CotEditor-style breathing room (scene padding at
-    /// the top, a little more on the sides), then the pane's Help button on
-    /// its own row. The button keeps scene padding (20pt) to the bottom-trailing
-    /// corner, as in CotEditor and the sidebar panes, not the content's 28pt.
+    /// Consistent pane padding for the form-style panes: content pinned to the
+    /// top, a little more room on the sides, and the Help button pinned to the
+    /// bottom-trailing corner. Pinning rather than stacking: Edit and Syntax lay
+    /// out a few points taller than SwiftUI reports, and in a stack that
+    /// overflow came out of the top and bottom insets, so they differed by pane.
     func settingsPanePadding(help anchor: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            self.padding(EdgeInsets(top: 20, leading: 28, bottom: 0, trailing: 28))
-            HelpLink(anchor: anchor)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding([.trailing, .bottom], 20)
+        self.padding(EdgeInsets(top: SettingsPaneInsets.top, leading: 28,
+                                // the Help button's row: gap, button, inset
+                                bottom: SettingsPaneInsets.help * 2 + 22, trailing: 28))
+        .frame(width: 600, alignment: .topLeading)
+        // minHeight 0: without it the frame grows to the content's laid-out
+        // height, which in Edit is 7.5pt more than it reports, and the Help
+        // button pinned to the frame's bottom slid below the window edge.
+        .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .bottomTrailing) {
+            HelpLink(anchor: anchor).padding(SettingsPaneInsets.help)
         }
-        .frame(width: 600, alignment: .leading)
         // Don't auto-focus (and draw a focus ring around) the first control
         // when a pane opens — Settings has no use for keyboard-focus rings.
         .focusEffectDisabled()

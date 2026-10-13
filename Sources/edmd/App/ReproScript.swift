@@ -39,6 +39,10 @@ import ScreenCaptureKit
 ///   logwindows        log each visible window's id, for `screencapture -l`
 ///   helpbutton <pane> open Settings on the pane with that toolbar label and
 ///                     click its Help (?) button; PASS when the button exists
+///                     (opens Tips, which takes focus)
+///   settingspane <png> <pane>  open Settings on that pane, log its Help
+///                     button's insets, render the content view to <png>;
+///                     takes no focus
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
@@ -403,17 +407,28 @@ enum ReproScript {
             case "helpbutton":
                 // Settings opened on the pane with this toolbar label, then its
                 // HelpLink clicked — the page then opens in Tips, outside this
-                // process, so check it with `screencapture -l` on Tips' window.
+                // process (and Tips takes focus), so check it with
+                // `screencapture -l` on Tips' window.
                 schedule(after: delay) { _ in
-                    guard let app = NSApp?.delegate as? AppDelegate else { return }
-                    app.showSettings(nil)
-                    app.settingsWindowController?.selectPane(label: arg)
-                    // SwiftUI builds the newly selected pane on a later pass.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        let button = app.settingsWindowController?.window?.contentView
-                            .flatMap { helpButton(in: $0) }
+                    openSettingsPane(arg) { _, button in
                         verdict("helpbutton \(arg)", button != nil, "Help button found")
                         button?.performClick(nil)
+                    }
+                }
+            case "settingspane":
+                // <png> <pane label>: Settings opened on that pane, its Help
+                // button's insets logged, and the content view rendered to <png>
+                // in-process — no click, so nothing takes focus.
+                let parts = arg.split(separator: " ", maxSplits: 1).map(String.init)
+                schedule(after: delay) { _ in
+                    guard parts.count == 2 else { report("repro settingspane: <png> <pane>"); return }
+                    openSettingsPane(parts[1]) { window, _ in
+                        guard let view = window.contentView,
+                              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+                        view.cacheDisplay(in: view.bounds, to: rep)
+                        try? rep.representation(using: .png, properties: [:])?
+                            .write(to: URL(fileURLWithPath: parts[0]))
+                        report("repro settingspane \(parts[1]) wrote \(parts[0])")
                     }
                 }
             case "logtoolbar":
@@ -1128,6 +1143,28 @@ enum ReproScript {
             if let content = window.contentView, let hit = search(content) { return hit }
         }
         return nil
+    }
+
+    /// Shows Settings on the pane with this toolbar label, then — once SwiftUI
+    /// has built the pane — logs where its Help button sits (bottom and
+    /// trailing insets from the visible content area, in points) and hands
+    /// over the window and button.
+    private static func openSettingsPane(_ label: String,
+                                         then body: @escaping @MainActor (NSWindow, NSButton?) -> Void) {
+        guard let app = NSApp?.delegate as? AppDelegate else { return }
+        app.showSettings(nil)
+        app.settingsWindowController?.selectPane(label: label)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard let window = app.settingsWindowController?.window else { return }
+            let button = window.contentView.flatMap { helpButton(in: $0) }
+            if let button {
+                let r = button.convert(button.bounds, to: nil)
+                let c = window.contentLayoutRect
+                report("repro pane \(label) help inset bottom=\(r.minY - c.minY) " +
+                       "trailing=\(c.maxX - r.maxX) content=\(c.size)")
+            }
+            body(window, button)
+        }
     }
 
     /// SwiftUI's HelpLink draws as an AppKit help-bezel button.
