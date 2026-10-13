@@ -15,7 +15,8 @@ The caller gives a diff range (default: `git diff main...HEAD` plus
 `git diff HEAD` for uncommitted work, plus untracked files; a range the
 caller names wins) and may add: a PR body draft, sample
 CHANGELOG lines, `ui: yes|no` (whether to run the HIG pass; if absent, run it
-when the diff touches `Sources/edmd/` or `Sources/EdmundQuickLook/`), and PNG
+when the diff touches `Sources/edmd/`, `Sources/EdmundQuickLook/` or
+`Resources/Edmund.help/`), and PNG
 screenshot paths. Read the diff first; open surrounding code only where a
 finding depends on it. If screenshots are given, Read them and judge what you
 see, not just the code.
@@ -24,7 +25,13 @@ see, not just the code.
 
 Review, in this order: the PR body draft, the sample CHANGELOG lines, then
 prose the diff adds or rewrites (Markdown docs, skills, agent and command
-files, code comments, user-visible strings).
+files, code comments, user-visible strings, help book pages).
+
+- **Help book pages** are for users, not engineers: Apple's help register —
+  second person, present tense, sentence-case task titles ("Change a
+  shortcut"), numbered steps for procedures, menu paths as
+  `Edmund > Settings`, no code symbols, internal names, or claims the code
+  doesn't back. Each page keeps its `<meta name="description">`.
 
 - **Register**: `edmund-docs-and-writing` §3 — for PR text, "PR descriptions
   and review comments" (no courtesy; claim → evidence → consequence;
@@ -76,6 +83,16 @@ files, code comments, user-visible strings).
   text.
 - **Copy**: plain, specific, no jargon, consistent terms with the rest of the
   app.
+- **Help book** (`Resources/Edmund.help/Contents/Resources/en.lproj/`): a
+  user-visible change to a setting, menu item, shortcut, sheet or workflow
+  updates the page that describes it — label text quoted exactly as the UI
+  now reads, defaults and steps still true. A new Settings pane or
+  explanatory sheet gets a page section with an `<a name>` anchor, a
+  `HelpAnchor` constant (`Settings/SettingsControls.swift`) and a
+  `HelpLink` — bottom-trailing in a pane, bottom-leading opposite the
+  dismiss buttons in a sheet. A removed control's text leaves the book.
+  Flag a stale or missing page as **should**; a `HelpLink` to an anchor the
+  book lacks as **blocker**.
 
 ## House idioms — deliberate, do not flag
 
