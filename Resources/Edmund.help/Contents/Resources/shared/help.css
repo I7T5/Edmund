@@ -1,7 +1,8 @@
 /* Sizes follow CotEditor's help book (17px body, 820px column): Tips shows
-   help at 1:1, and 13px read as small print there. */
+   help at 1:1, and 13px read as small print there. The face is the editor's
+   default (Themes/Font/iowan.json), falling back to the system font. */
 :root {
-    font: 400 17px/1.5 -apple-system, sans-serif;
+    font: 400 17px/1.5 "Iowan Old Style", -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     color-scheme: light dark;
 }
