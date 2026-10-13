@@ -104,8 +104,8 @@ HTML
 
 # Help ▸ Edmund Help and the Settings (?) buttons open this book
 # (Info.plist CFBundleHelpBookFolder/Name). The search index is generated,
-# not committed; Help Viewer caches books, so after editing pages run
-# `killall helpd; rm -rf ~/Library/Caches/com.apple.helpd` to see them.
+# not committed. Tips caches the book per app version; to see edited pages,
+# see ARCHITECTURE §6 "Help book".
 cp -R Resources/Edmund.help "${BUNDLE}/Contents/Resources/"
 # The index lives inside the .lproj, named by HPDBookCSIndexPath, as in
 # CotEditor's book; helpd resolves HelpLink anchors through it.

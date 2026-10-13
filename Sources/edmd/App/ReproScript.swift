@@ -37,6 +37,8 @@ import ScreenCaptureKit
 ///                     webview scrollTop) for mode-switch harness debugging
 ///   logtoolbar        log every toolbar item's identifier and enabled state
 ///   logwindows        log each visible window's id, for `screencapture -l`
+///   helpbutton <pane> open Settings on the pane with that toolbar label and
+///                     click its Help (?) button; PASS when the button exists
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
@@ -396,6 +398,22 @@ enum ReproScript {
                     for window in NSApp?.windows ?? [] where window.isVisible {
                         report("repro window \(window.windowNumber) " +
                                "\(type(of: window)) frame=\(window.frame)")
+                    }
+                }
+            case "helpbutton":
+                // Settings opened on the pane with this toolbar label, then its
+                // HelpLink clicked — the page then opens in Tips, outside this
+                // process, so check it with `screencapture -l` on Tips' window.
+                schedule(after: delay) { _ in
+                    guard let app = NSApp?.delegate as? AppDelegate else { return }
+                    app.showSettings(nil)
+                    app.settingsWindowController?.selectPane(label: arg)
+                    // SwiftUI builds the newly selected pane on a later pass.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        let button = app.settingsWindowController?.window?.contentView
+                            .flatMap { helpButton(in: $0) }
+                        verdict("helpbutton \(arg)", button != nil, "Help button found")
+                        button?.performClick(nil)
                     }
                 }
             case "logtoolbar":
@@ -1108,6 +1126,15 @@ enum ReproScript {
         }
         for window in NSApp?.windows ?? [] {
             if let content = window.contentView, let hit = search(content) { return hit }
+        }
+        return nil
+    }
+
+    /// SwiftUI's HelpLink draws as an AppKit help-bezel button.
+    private static func helpButton(in view: NSView) -> NSButton? {
+        if let button = view as? NSButton, button.bezelStyle == .helpButton { return button }
+        for sub in view.subviews {
+            if let hit = helpButton(in: sub) { return hit }
         }
         return nil
     }
