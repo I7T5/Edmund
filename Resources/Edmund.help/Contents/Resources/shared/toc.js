@@ -8,9 +8,10 @@ const contents = [
         ["Write Markdown", "write-markdown.html"],
         ["Switch between Edit and Read", "view-modes.html"],
         ["Find and replace text", "find-and-replace.html"],
+    ]],
+    ["Share and manage documents", [
         ["Export, copy, and print", "export-and-print.html"],
         ["Restore and delete past versions", "version-history.html"],
-        ["Keyboard shortcuts", "keyboard-shortcuts.html"],
     ]],
     ["Settings", [
         ["General", "settings-general.html"],
@@ -22,6 +23,7 @@ const contents = [
         ["Extensions", "settings-extensions.html"],
         ["Advanced", "settings-advanced.html"],
     ]],
+    ["Keyboard shortcuts", "keyboard-shortcuts.html"],
 ];
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -47,6 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const heading = document.createElement("span");
         heading.textContent = entry[0];
         const items = document.createElement("ul");
+        items.setAttribute("aria-label", entry[0]);
         entry[1].forEach(item => items.append(link(item)));
         group.append(heading, items);
         list.append(group);

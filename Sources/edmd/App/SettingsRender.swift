@@ -115,6 +115,9 @@ enum SettingsRender {
             config.width = Int(scWindow.frame.width * scale)
             config.height = Int(scWindow.frame.height * scale)
             config.ignoreShadowsSingleWindow = true
+            // The pointer otherwise lands in the PNG when it's over the
+            // window — a beach ball in a help-book screenshot.
+            config.showsCursor = false
             box.image = try? await SCScreenshotManager.captureImage(
                 contentFilter: SCContentFilter(desktopIndependentWindow: scWindow),
                 configuration: config)

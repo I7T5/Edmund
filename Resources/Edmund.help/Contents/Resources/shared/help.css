@@ -1,39 +1,71 @@
-/* Sizes follow CotEditor's help book (17px body, 820px column): Tips shows
-   help at 1:1, and 13px read as small print there. The face is the editor's
-   default (Themes/Font/iowan.json), falling back to the system font. */
+/* Edmund Help. System font, as Apple's own guides in Tips; 17px/1.47 is
+   Apple's body size and leading. Colors are semantic so dark mode follows. */
 :root {
-    font: 400 17px/1.5 "Iowan Old Style", -apple-system, sans-serif;
+    font: 400 17px/1.47 -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     color-scheme: light dark;
 }
 body {
-    max-width: 820px;
+    max-width: 40rem;
     margin: 2.5rem auto;
     padding: 0 2.75rem;
 }
-h1 { font-size: 1.75rem; font-weight: 700; line-height: 1.2; margin-bottom: 1rem; }
-h2 { font-size: 1rem; font-weight: 700; line-height: 1.4; margin: 2rem 0 0.75rem; }
+
+/* Headings: Read mode's weight and leading, with a real size step so a
+   group heading never reads as a setting name (dt). */
+h1, h2 { font-weight: 600; line-height: 1.25; }
+h1 { font-size: 1.75rem; margin: 0 0 1rem; }
+h2 { font-size: 1.25rem; margin: 2rem 0 0.5rem; }
+
+/* In-text links: link blue (NSColor.linkColor), not the accent — with the
+   Graphite accent a link would match the text. No underline until hover. */
 a { text-decoration: none; }
 a:link, a:visited { color: -apple-system-blue; }
 a:hover { text-decoration: underline; }
-code { font-family: ui-monospace, monospace; font-size: 95%; }
+
+/* Read mode's dimmed bullets; step numbers carry meaning, so one step less dim. */
 ol, ul { padding-left: 1.5rem; }
 li + li { margin-top: 0.25rem; }
-/* Chrome and the names of on-screen controls are in the system font, so they
-   read as the app's UI; prose stays in the editor's face. */
-nav.toc, .home, dt { font-family: -apple-system, sans-serif; }
-dt { font-weight: 600; }
-dd { margin: 0 0 0 1.5rem; }
-dd + dt { margin-top: 0.75rem; }
-table { font-size: 0.95rem; border-collapse: collapse; margin: 1rem 0; }
-tr { border-top: 1px solid -apple-system-quaternary-label; border-bottom: 1px solid -apple-system-quaternary-label; }
-td { padding: 0.5rem 1.2rem 0.5rem 0; text-align: left; vertical-align: baseline; }
-.home { margin-top: 3rem; font-size: 0.9rem; }
+ul > li::marker { color: -apple-system-tertiary-label; font-size: 0.85em; }
+ol > li::marker { color: -apple-system-secondary-label; font-variant-numeric: tabular-nums; }
 
-/* Contents sidebar (toc.js). The page column keeps its 820px measure. */
+/* One setting per entry. */
+dt { font-weight: 600; }
+dd { margin: 0.15rem 0 0; }
+dd + dt { margin-top: 1rem; }
+
+/* Literal syntax and file names: the editor's default monospace (Input Mono
+   Narrow when installed, as EditorTheme.monospaceFont) on Read mode's chip.
+   A media query, not light-dark(): that needs macOS 14.5. */
+code { font-family: "Input Mono Narrow", "InputMonoNarrow-Regular", ui-monospace, monospace;
+       font-size: 0.92em; padding: 0.1em 0.3em; border-radius: 0.25em; background: rgb(0 0 0 / 0.05); }
+@media (prefers-color-scheme: dark) { code { background: rgb(255 255 255 / 0.1); } }
+
+/* Keys are part of the sentence, as in Apple's guides: no keycaps. */
+kbd { font: inherit; }
+
+/* Reference tables: horizontal rules only; fixed first column so stacked
+   tables line up. */
+table { width: 100%; font-size: 0.95rem; border-collapse: collapse; margin: 1rem 0; }
+tr { border-top: 1px solid -apple-system-quaternary-label; border-bottom: 1px solid -apple-system-quaternary-label; }
+th, td { padding: 0.5rem 1.2rem 0.5rem 0; text-align: start; vertical-align: baseline; font-weight: normal; }
+th[scope="row"] { width: 40%; }
+
+/* Screenshots. */
+figure { margin: 1.25rem 0; }
+figure img { display: block; max-width: 100%; height: auto;
+             border: 0.5px solid -apple-system-tertiary-label; border-radius: 10px; }
+
+/* Index topic lists: label color with a chevron, as CotEditor's top page. */
+ul.topics { list-style: none; padding: 0; }
+ul.topics a:link, ul.topics a:visited { color: -apple-system-label; }
+ul.topics a::after { content: " ›"; color: -apple-system-tertiary-label; }
+
+/* Contents sidebar (toc.js). The selected page gets a row background and
+   label-colored text, as an AppKit sidebar. */
 body.has-toc {
     display: grid;
-    grid-template-columns: 15rem minmax(0, 820px);
+    grid-template-columns: 15rem minmax(0, 46rem);
     max-width: none;
     margin: 0;
     padding: 0;
@@ -49,14 +81,18 @@ nav.toc {
     font-size: 0.85rem;
 }
 nav.toc ul { list-style: none; margin: 0; padding: 0; }
-nav.toc li + li { margin-top: 0.35rem; }
-nav.toc li > span { display: block; margin-top: 1.1rem; font-weight: 600; color: -apple-system-secondary-label; }
-nav.toc li > ul { margin-top: 0.35rem; }
+nav.toc li + li { margin-top: 0.1rem; }
+nav.toc li > span { display: block; margin: 1.1rem 0 0.2rem; font-weight: 600; color: -apple-system-secondary-label; }
+nav.toc a { display: block; padding: 0.2rem 0.5rem; margin: 0 -0.5rem; border-radius: 5px; }
 nav.toc a:link, nav.toc a:visited { color: -apple-system-label; }
-nav.toc a[aria-current="page"] { color: -apple-system-blue; font-weight: 600; }
+nav.toc a:hover { text-decoration: none; }
+nav.toc a[aria-current="page"] {
+    font-weight: 600;
+    background: rgb(128 128 128 / 0.18);
+    background: -apple-system-unemphasized-selected-content-background;
+}
 body.has-toc main { padding: 2.5rem 2.75rem; }
-body.has-toc main .home { display: none; }
-body.toc-hidden { grid-template-columns: minmax(0, 820px); justify-content: center; }
+body.toc-hidden { grid-template-columns: minmax(0, 46rem); justify-content: center; }
 body.toc-hidden nav.toc { display: none; }
 @media (max-width: 640px) {
     body.has-toc { grid-template-columns: minmax(0, 1fr); }

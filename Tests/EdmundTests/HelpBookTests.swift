@@ -42,7 +42,8 @@ struct HelpBookTests {
     @Test func everyLinkBetweenPagesResolves() throws {
         for page in try Self.pageFiles() {
             let html = try String(contentsOf: page, encoding: .utf8)
-            for href in try Self.matches(##"href="([^"#:]+)"##, in: html) {
+            // src too: a renamed screenshot otherwise shows as a broken image.
+            for href in try Self.matches(##"(?:href|src)="([^"#:]+)"##, in: html) {
                 let target = page.deletingLastPathComponent().appendingPathComponent(href)
                 #expect(FileManager.default.fileExists(atPath: target.path),
                         "\(page.lastPathComponent) links to missing \(href)")
