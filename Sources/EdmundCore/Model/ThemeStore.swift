@@ -357,6 +357,13 @@ public final class ThemeStore {
     /// the app to load.
     // ponytail: single-thread (main) use, same as the store itself.
     nonisolated(unsafe) public static var userThemesRoot: URL = {
+        #if DEBUG
+        // `-debug.themesRoot <dir>`: an empty dir shows the shipped themes, for
+        // help-book screenshots taken on a Mac with edited built-ins.
+        if let root = UserDefaults.standard.string(forKey: "debug.themesRoot") {
+            return URL(fileURLWithPath: root, isDirectory: true)
+        }
+        #endif
         let base = (try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: false))
