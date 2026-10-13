@@ -59,7 +59,7 @@ figure img { display: block; max-width: 100%; height: auto;
 /* Index topic lists: label color with a chevron, as CotEditor's top page. */
 ul.topics { list-style: none; padding: 0; }
 ul.topics a:link, ul.topics a:visited { color: -apple-system-label; }
-ul.topics a::after { content: " ›"; color: -apple-system-tertiary-label; }
+ul.topics a::after { content: " ›"; content: " ›" / ""; color: -apple-system-tertiary-label; }  /* "" = VoiceOver skips it */
 
 /* Contents sidebar (toc.js). The selected page gets a row background and
    label-colored text, as an AppKit sidebar. */
