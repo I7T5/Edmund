@@ -160,7 +160,9 @@ when the old script signed only the bare binary.
 
 1. `codesign --force --deep --sign - Sparkle.framework` (nested XPC helpers
    must be signed before macOS will launch them),
-2. sign the Quick Look appex with `Resources/QuickLook.entitlements`, then
+2. sign the Quick Look appex with `Resources/QuickLook.entitlements`, copy
+   the SwiftPM resource bundles into the appex root (same accessor rule as
+   step 3; in `Contents/Resources` every preview crashed, #388), then
    seal the outer `.app` **without `--deep`** (entitlements and identifier vary
    by variant: sparkle, mas, adhoc; `--deep` would re-sign the appex and strip
    its sandbox entitlements) **while its root holds only `Contents/`** —
@@ -170,7 +172,7 @@ when the old script signed only the bare binary.
    the app crashes on the first LaTeX render).
 
 Consequence: `codesign --verify` (CLI) and `--strict` **will complain** about
-that one unsealed root item. That is expected and fine — Sparkle's actual
+those unsealed root items. That is expected and fine — Sparkle's actual
 check is non-strict (`SecStaticCodeCheckValidityWithErrors` with
 `kSecCSCheckAllArchitectures`) and tolerates it; verified end-to-end against
 that API. Do not "fix" the verify warning by moving the SwiftMath bundle or

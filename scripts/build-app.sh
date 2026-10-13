@@ -185,8 +185,8 @@ fi
 # Assemble the Quick Look preview extension as an .appex in Contents/PlugIns.
 # It's an executable target (SwiftPM has no app-extension product); its entry
 # point is Foundation's NSExtensionMain via the linker flag in Package.swift.
-# Its SwiftPM resource bundles are copied in below, after it is signed (see
-# "Copying SwiftPM resource bundles").
+# Its SwiftPM resource bundles are copied in after it is signed (see "Code
+# signing" below).
 echo "Assembling Quick Look extension..."
 QL_NAME="EdmundQuickLook"
 APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
