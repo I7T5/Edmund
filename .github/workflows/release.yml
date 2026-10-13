@@ -133,3 +133,19 @@ jobs:
           git add appcast.xml
           git commit -m "appcast: add Edmund ${VERSION}"
           git push origin HEAD:main
+
+      # Last so a tap failure can't block the release or appcast. RELEASE_TOKEN
+      # must have write access to I7T5/homebrew-tap as well as this repo.
+      - name: Bump Homebrew cask
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          SHA="$(shasum -a 256 "build/Edmund-${VERSION}.dmg" | cut -d' ' -f1)"
+          git clone --depth 1 "https://x-access-token:${RELEASE_TOKEN}@github.com/I7T5/homebrew-tap.git" tap
+          cd tap
+          sed -i '' -e "s/^  version \".*\"/  version \"${VERSION}\"/" \
+                    -e "s/^  sha256 \".*\"/  sha256 \"${SHA}\"/" Casks/edmund.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "edmund ${VERSION}"
+          git push

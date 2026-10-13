@@ -49,6 +49,13 @@ Get `Edmund.dmg` from the [latest release](https://github.com/I7T5/Edmund/releas
 
 <img src="./docs/assets/installation.png" width="540" alt="Window for drag and drop to install">
 
+Alternatively, install with Homebrew: 
+
+```sh
+brew install --cask i7t5/tap/edmund
+```
+
+
 > [!WARNING]
 > If macOS reports that the app is `🚧DAMAGED🚧` when you're trying to open it for the first time, fear not. 
 > The app is not damaged. It's just not signed properly because I am not a $99/yr-certified Apple Developer. 
