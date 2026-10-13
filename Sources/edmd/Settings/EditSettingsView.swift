@@ -176,8 +176,7 @@ struct EditSettingsView: View {
                 }
             }
         }
-        .settingsHelpButton(HelpAnchor.edit)
-        .settingsPanePadding()
+        .settingsPanePadding(help: HelpAnchor.edit)
     }
 
     private var invisibleCharacterGrid: some View {

@@ -50,6 +50,15 @@ struct HelpBookTests {
         }
     }
 
+    /// The sidebar is built from the list in toc.js, so a page missing from it
+    /// can only be reached by search.
+    @Test func contentsSidebarListsEveryPage() throws {
+        let toc = try String(contentsOf: Self.book.appendingPathComponent("Resources/shared/toc.js"), encoding: .utf8)
+        let listed = Set(try Self.matches(#""([a-z-]+\.html)""#, in: toc))
+        let pages = Set(try Self.pageFiles().map(\.lastPathComponent))
+        #expect(listed == pages)
+    }
+
     @Test func appInfoPlistNamesTheBook() throws {
         let app = try Self.plist(Self.root.appendingPathComponent("Info.plist"))
         let book = try Self.plist(Self.book.appendingPathComponent("Info.plist"))

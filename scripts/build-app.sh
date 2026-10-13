@@ -107,8 +107,10 @@ HTML
 # not committed; Help Viewer caches books, so after editing pages run
 # `killall helpd; rm -rf ~/Library/Caches/com.apple.helpd` to see them.
 cp -R Resources/Edmund.help "${BUNDLE}/Contents/Resources/"
-HELP_RES="${BUNDLE}/Contents/Resources/Edmund.help/Contents/Resources"
-hiutil -I corespotlight -Caf "${HELP_RES}/Edmund.cshelpindex" "${HELP_RES}/en.lproj"
+# The index lives inside the .lproj, named by HPDBookCSIndexPath, as in
+# CotEditor's book; helpd resolves HelpLink anchors through it.
+HELP_LPROJ="${BUNDLE}/Contents/Resources/Edmund.help/Contents/Resources/en.lproj"
+hiutil -I corespotlight -Caf "${HELP_LPROJ}/Edmund.cshelpindex" "${HELP_LPROJ}"
 
 # Compile the asset catalog so the app's AccentColor (our brown) is available.
 # macOS uses it only when the user's system accent is "Multicolor"; a specific

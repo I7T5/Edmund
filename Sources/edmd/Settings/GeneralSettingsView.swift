@@ -76,8 +76,7 @@ struct GeneralSettingsView: View {
                 Button("Manage Warnings…") { showingWarnings = true }
             }
         }
-        .settingsHelpButton(HelpAnchor.general)
-        .settingsPanePadding()
+        .settingsPanePadding(help: HelpAnchor.general)
         .sheet(isPresented: $showingWarnings) { ManageWarningsView() }
         .sheet(isPresented: $showingVersionHistory) { VersionHistoryView() }
     }

@@ -235,8 +235,7 @@ struct AppearanceSettingsView: View {
         // The tab is wider than this grid, and all of the slack was landing on
         // the right. Nudged so the block sits nearer the middle of it.
         .padding(.leading, 20)
-        .settingsHelpButton(HelpAnchor.appearance)
-        .settingsPanePadding()
+        .settingsPanePadding(help: HelpAnchor.appearance)
         .onAppear {
             fontThemes = ThemeStore.shared.fontThemes()
             // Told, not applied: the values are already live, and re-applying

@@ -20,7 +20,7 @@
     <string>1</string>
     <key>HPDBookAccessPath</key>
     <string>index.html</string>
-    <key>HPDBookIndexPath</key>
+    <key>HPDBookCSIndexPath</key>
     <string>Edmund.cshelpindex</string>
     <key>HPDBookTitle</key>
     <string>Edmund Help</string>

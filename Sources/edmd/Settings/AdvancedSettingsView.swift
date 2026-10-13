@@ -100,8 +100,7 @@ struct AdvancedSettingsView: View {
                 }
             }
         }
-        .settingsHelpButton(HelpAnchor.advanced)
-        .settingsPanePadding()
+        .settingsPanePadding(help: HelpAnchor.advanced)
     }
 
     /// Pushes the toggle to every open document's editor (Edit mode's inline

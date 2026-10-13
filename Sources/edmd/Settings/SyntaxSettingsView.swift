@@ -84,8 +84,7 @@ struct SyntaxSettingsView: View {
                     .padding(.top, -10)
             }
         }
-        .settingsHelpButton(HelpAnchor.syntax)
-        .settingsPanePadding()
+        .settingsPanePadding(help: HelpAnchor.syntax)
     }
 
     /// The installed languages, "Plain Text" first. `defsVersion` is read so an

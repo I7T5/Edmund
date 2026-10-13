@@ -243,23 +243,20 @@ enum HelpAnchor {
 }
 
 extension View {
-    /// The pane's Help button on its own row under the content, in the
-    /// bottom-trailing corner, where System Settings puts its own.
-    func settingsHelpButton(_ anchor: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            self
+    /// Consistent pane padding: CotEditor-style breathing room (scene padding at
+    /// the top, a little more on the sides), then the pane's Help button on
+    /// its own row. The button keeps scene padding (20pt) to the bottom-trailing
+    /// corner, as in CotEditor and the sidebar panes, not the content's 28pt.
+    func settingsPanePadding(help anchor: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            self.padding(EdgeInsets(top: 20, leading: 28, bottom: 0, trailing: 28))
             HelpLink(anchor: anchor)
                 .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding([.trailing, .bottom], 20)
         }
-    }
-
-    /// Consistent pane padding: CotEditor-style breathing room (scene padding at
-    /// the top, a little more on the sides and bottom).
-    func settingsPanePadding() -> some View {
-        self.padding(EdgeInsets(top: 20, leading: 28, bottom: 28, trailing: 28))
-            .frame(width: 600, alignment: .leading)
-            // Don't auto-focus (and draw a focus ring around) the first control
-            // when a pane opens — Settings has no use for keyboard-focus rings.
-            .focusEffectDisabled()
+        .frame(width: 600, alignment: .leading)
+        // Don't auto-focus (and draw a focus ring around) the first control
+        // when a pane opens — Settings has no use for keyboard-focus rings.
+        .focusEffectDisabled()
     }
 }

@@ -26,3 +26,36 @@ table { font-size: 0.95rem; border-collapse: collapse; margin: 1rem 0; }
 tr { border-top: 1px solid -apple-system-quaternary-label; border-bottom: 1px solid -apple-system-quaternary-label; }
 td { padding: 0.5rem 1.2rem 0.5rem 0; text-align: left; vertical-align: baseline; }
 .home { margin-top: 3rem; font-size: 0.9rem; }
+
+/* Contents sidebar (toc.js). The page column keeps its 820px measure. */
+body.has-toc {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 820px);
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+nav.toc {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 2.5rem 1rem 2rem 1.5rem;
+    border-right: 1px solid -apple-system-separator;
+    font-size: 0.85rem;
+}
+nav.toc ul { list-style: none; margin: 0; padding: 0; }
+nav.toc li + li { margin-top: 0.35rem; }
+nav.toc li > span { display: block; margin-top: 1.1rem; font-weight: 600; color: -apple-system-secondary-label; }
+nav.toc li > ul { margin-top: 0.35rem; }
+nav.toc a:link, nav.toc a:visited { color: -apple-system-label; }
+nav.toc a[aria-current="page"] { color: -apple-system-blue; font-weight: 600; }
+body.has-toc main { padding: 2.5rem 2.75rem; }
+body.has-toc main .home { display: none; }
+body.toc-hidden { grid-template-columns: minmax(0, 820px); justify-content: center; }
+body.toc-hidden nav.toc { display: none; }
+@media (max-width: 640px) {
+    body.has-toc { grid-template-columns: minmax(0, 1fr); }
+    nav.toc { display: none; }
+}
