@@ -32,6 +32,7 @@ extension EditorTextView {
             + "marked=\(markedDesc) up=\(isUpdating ? "Y" : "N") undo=\(isUndoRedoing ? "Y" : "N") "
             + "blocks=\(blocks.count) storLen=\(storLen) rawLen=\(rawLen)"
             + (storLen == rawLen ? "" : " ⚠︎LEN-MISMATCH")
+            + (enclosingScrollView.map { " clipY=\($0.contentView.bounds.origin.y)" } ?? "")
     }
 
     /// One verbose trace line: `<event> | <live state>`. No-op (and the message
@@ -59,7 +60,7 @@ extension EditorTextView {
         }.joined(separator: "\n    ")
     }
 
-    /// Under verbose tracing, logs any single clip-view move of 60pt or more
+    /// Under verbose tracing, logs any single clip-view move of 2pt or more
     /// that is not the user scrolling, with the stack that made it: the viewport
     /// jumps that nothing else names (a restyle's anchor, an autoscroll, a
     /// centering pass). Called from the clip view's bounds-change observer.
@@ -67,7 +68,7 @@ extension EditorTextView {
         guard Log.shouldTrace, let clip = enclosingScrollView?.contentView else { return }
         let y = clip.bounds.origin.y
         defer { traceLastClipY = y }
-        guard abs(y - traceLastClipY) >= 60, !userScrollInProgress else { return }
+        guard abs(y - traceLastClipY) >= 2, !userScrollInProgress else { return }
         traceEdit("clip jump \(traceLastClipY)→\(y) (Δ\(y - traceLastClipY)) stack:\n    "
                   + condensedCallStack())
     }
