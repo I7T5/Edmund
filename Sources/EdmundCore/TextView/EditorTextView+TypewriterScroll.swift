@@ -29,6 +29,8 @@ extension EditorTextView {
 
         guard let beforeY, let afterY = lineRect(forCharacterAt: anchorOffset)?.minY else { return }
         let delta = afterY - beforeY
+        traceEdit("viewport anchor off=\(anchorOffset) beforeY=\(beforeY) afterY=\(afterY) "
+                  + "Δ=\(delta) clipY=\(visible.origin.y)")
         guard abs(delta) > 0.5 else { return }
         // Floor only, and deliberately not `clampedScrollY`: this runs while a
         // restyle is resizing the text view, when the clip view's idea of the
@@ -354,6 +356,8 @@ extension EditorTextView {
             return  // already visible
         }
         let clampedY = clampedScrollY(targetY)
+        traceEdit("scrollRangeToVisible \(range) top=\(top) bottom=\(bottom) "
+                  + "visible=\(visible.minY)..\(visible.maxY) → \(clampedY)")
         scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }

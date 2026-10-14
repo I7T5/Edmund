@@ -47,13 +47,29 @@ extension EditorTextView {
     /// moved the caret.
     func traceSelectionOrigin() {
         guard Log.shouldTrace else { return }
-        let frames = Thread.callStackSymbols.dropFirst(2).prefix(14).map { frame in
+        Log.trace("selection origin:\n    " + condensedCallStack(), category: .edit)
+    }
+
+    /// The caller's stack, one frame per line, without index/module/address.
+    private func condensedCallStack() -> String {
+        Thread.callStackSymbols.dropFirst(3).prefix(14).map { frame in
             // "3  AppKit  0x00: -[NSTextView foo] + 12" → drop index/module/addr.
             let parts = frame.split(separator: " ", omittingEmptySubsequences: true)
             return parts.count > 3 ? parts[3...].joined(separator: " ") : frame
-        }
-        Log.trace("selection origin:\n    " + frames.joined(separator: "\n    "),
-                  category: .edit)
+        }.joined(separator: "\n    ")
+    }
+
+    /// Under verbose tracing, logs any single clip-view move of 60pt or more
+    /// that is not the user scrolling, with the stack that made it: the viewport
+    /// jumps that nothing else names (a restyle's anchor, an autoscroll, a
+    /// centering pass). Called from the clip view's bounds-change observer.
+    func traceClipJump() {
+        guard Log.shouldTrace, let clip = enclosingScrollView?.contentView else { return }
+        let y = clip.bounds.origin.y
+        defer { traceLastClipY = y }
+        guard abs(y - traceLastClipY) >= 60, !userScrollInProgress else { return }
+        traceEdit("clip jump \(traceLastClipY)→\(y) (Δ\(y - traceLastClipY)) stack:\n    "
+                  + condensedCallStack())
     }
 
     /// A short, newline-escaped, length-capped rendering of edit text for traces.

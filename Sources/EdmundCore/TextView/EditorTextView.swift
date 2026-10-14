@@ -494,6 +494,10 @@ public class EditorTextView: NSTextView {
     /// would be jarring and is the root cause of the "glitchy" feeling.
     var suppressTypewriterCentering = false
 
+    /// Clip-view origin at the last bounds change; only read under verbose
+    /// tracing, to log a one-step jump with the stack that caused it.
+    var traceLastClipY: CGFloat = 0
+
     /// Physical maximum text-column width in points. Windows wider than this
     /// cap get symmetric side margins; narrower windows fill edge-to-edge.
     /// `.greatestFiniteMagnitude` means no cap (fill always). Set from the

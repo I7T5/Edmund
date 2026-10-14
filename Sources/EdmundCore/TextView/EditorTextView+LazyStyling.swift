@@ -280,6 +280,7 @@ extension EditorTextView {
     @objc private func clipViewBoundsDidChange(_ note: Notification) {
         // Bounds also change for caret centering, outline jumps, and viewport
         // compensation. Those must promote promptly without pausing styling.
+        traceClipJump()
         guard !isPromotingVisibleBlocks else { return }
         scheduleScrollPromotion()
     }
