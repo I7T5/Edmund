@@ -466,12 +466,24 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     func codeBlockLabelRect() -> CGRect? {
         guard let label = codeBlockLabelAnchor, !label.isEmpty,
               let line = textLineFragments.first else { return nil }
-        let size = (label as NSString).size(withAttributes: [.font: codeBlockLabelFont])
-        let inset: CGFloat = 10
         // Box top, in this fragment's coords: one fence row above, i.e. the
         // fence row's glyph-row height less the shave's ink-gap part. The
         // fence row shares this row's mono metrics, so its own line stands in.
         let boxTop = -(line.typographicBounds.height - codeRowInkGapExcess)
+        return labelRect(label, boxTop: boxTop)
+    }
+
+    /// The same label rect in the *fence row's* coordinates (positive y, box
+    /// top at `codeBoxTopShave`). Nil when this fragment isn't the fence row
+    /// of a block that names a language.
+    func codeBlockFenceLabelRect() -> CGRect? {
+        guard let label = codeBlockLabel, !label.isEmpty else { return nil }
+        return labelRect(label, boxTop: codeBoxTopShave)
+    }
+
+    private func labelRect(_ label: String, boxTop: CGFloat) -> CGRect {
+        let size = (label as NSString).size(withAttributes: [.font: codeBlockLabelFont])
+        let inset: CGFloat = 10
         // Align the label's ink top (not its line-box top) to the 10pt gap.
         let inkTopBearing = max(0, codeBlockLabelFont.ascender - codeBlockLabelFont.capHeight)
         return CGRect(x: containerLeft + containerWidth - ceil(size.width) - inset,
@@ -479,13 +491,24 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                       width: ceil(size.width), height: ceil(size.height))
     }
 
-    /// Paints the language label at `codeBlockLabelRect()` — direct
+    /// Paints this row's share of the language label — direct
     /// `NSAttributedString` drawing, not an `NSImage`, so this stays outside
     /// the proven image-wedge mechanism (an image on a wrapping fragment
     /// wedges its layout to one line; see FragmentOverlay).
+    ///
+    /// The label straddles the fence row and the row under it, and each row
+    /// paints in its own view. Each draws the whole label clipped to its own
+    /// frame, so together they cover it without either relying on a view
+    /// sized for an overhang: a view kept from an earlier, plainer fragment is
+    /// not, and clipped the label's top off after fast scrolling until the
+    /// block was re-vended.
     private func drawCodeBlockLabel(at point: CGPoint, in context: CGContext) {
-        guard let label = codeBlockLabelAnchor, let rect = codeBlockLabelRect() else { return }
+        guard let label = codeBlockLabelAnchor ?? codeBlockLabel,
+              let rect = codeBlockLabelRect() ?? codeBlockFenceLabelRect() else { return }
         let drawRect = rect.offsetBy(dx: point.x, dy: point.y)
+        context.saveGState()
+        context.clip(to: CGRect(x: point.x + containerLeft - 4, y: point.y,
+                                width: containerWidth + 8, height: layoutFragmentFrame.height))
         let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = nsContext
@@ -493,6 +516,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             .font: codeBlockLabelFont, .foregroundColor: NSColor.secondaryLabelColor,
         ]).draw(at: drawRect.origin)
         NSGraphicsContext.restoreGraphicsState()
+        context.restoreGState()
     }
 
     /// `rect` with its origin moved to the nearest whole device pixel, leaving
