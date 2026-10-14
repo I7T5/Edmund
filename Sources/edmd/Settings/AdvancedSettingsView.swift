@@ -6,8 +6,8 @@ struct AdvancedSettingsView: View {
     @AppStorage(AppSettings.Key.automaticallyChecksForUpdates)
     private var autoCheckUpdates = true
     @AppStorage(AppSettings.Key.blockExternalImages) private var blockExternalImages = true
-    @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = false
-    @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = false
+    @AppStorage(AppSettings.Key.diagnosticLogging) private var diagnosticLogging = AppSettings.diagnosticsDefault
+    @AppStorage(AppSettings.Key.verboseEditorDiagnostics) private var verboseEditorDiagnostics = AppSettings.diagnosticsDefault
     @AppStorage(AppSettings.Key.logRetention) private var logRetention = AppSettings.LogRetention.twoWeeks
     @AppStorage(AppSettings.Key.offerCrashReports) private var offerCrashReports = true
 

@@ -165,6 +165,35 @@ enum ReproScript {
                     try? png.write(to: URL(fileURLWithPath: arg))
                     report("repro snapshot \(arg)")
                 }
+            case "layersnapshot":
+                // Like `snapshot`, but renders the CALayer tree as it stands
+                // (`CALayer.render(in:)`) instead of forcing every view to
+                // redraw (`cacheDisplay`). Shows what the compositor would: a
+                // stale or clipped TextKit 2 fragment tile survives here, and
+                // is repainted away by `snapshot`.
+                schedule(after: delay) { editor in
+                    guard let view = editor.window?.contentView, let layer = view.layer else {
+                        report("repro layersnapshot: no layer"); return
+                    }
+                    let scale = editor.window?.backingScaleFactor ?? 2
+                    let w = Int(view.bounds.width * scale), h = Int(view.bounds.height * scale)
+                    guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
+                                              bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                    else { return }
+                    ctx.scaleBy(x: scale, y: scale)
+                    if !layer.isGeometryFlipped {   // layer space is y-up unless flipped
+                        // CGContext is y-up already; nothing to do.
+                    } else {
+                        ctx.translateBy(x: 0, y: view.bounds.height); ctx.scaleBy(x: 1, y: -1)
+                    }
+                    layer.render(in: ctx)
+                    guard let image = ctx.makeImage() else { return }
+                    let rep = NSBitmapImageRep(cgImage: image)
+                    guard let png = rep.representation(using: .png, properties: [:]) else { return }
+                    try? png.write(to: URL(fileURLWithPath: arg))
+                    report("repro layersnapshot \(arg)")
+                }
             case "hovercopy":
                 // Pointer on the copy button of the code block at an absolute
                 // offset: the button's own hover fill, not just the reveal.
