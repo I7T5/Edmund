@@ -50,18 +50,27 @@ tr { border-top: 1px solid -apple-system-quaternary-label; border-bottom: 1px so
 th, td { padding: 0.5rem 1.2rem 0.5rem 0; text-align: start; vertical-align: baseline; font-weight: normal; }
 th[scope="row"] { width: 40%; }
 
-/* Screenshots. */
-figure { margin: 1.25rem 0; }
-figure img { display: block; max-width: 100%; height: auto;
-             border: 0.5px solid -apple-system-tertiary-label; border-radius: 10px; }
-
-/* Index topic lists: label color with a chevron, as CotEditor's top page. */
+/* Index topic lists: plain link blue, no chevron (a chevron reads as a menu
+   or disclosure). */
 ul.topics { list-style: none; padding: 0; }
-ul.topics a:link, ul.topics a:visited { color: -apple-system-label; }
-ul.topics a::after { content: " ›"; content: " ›" / ""; color: -apple-system-tertiary-label; }  /* "" = VoiceOver skips it */
 
 /* "Table of Contents" link above each page's title (toc.js), quiet like
    CotEditor's: secondary label color, smaller than body. */
 a.toc { display: inline-block; margin-bottom: 1.25rem; font-size: 0.85rem; }
 a.toc:link, a.toc:visited { color: -apple-system-secondary-label; }
+a.toc::before { content: url(toc.svg); display: inline-block; vertical-align: -0.1em; padding-right: 0.35rem; }
+
+/* The app icon before each page title, the height of the title's text, as
+   CotEditor sizes its inline app icon to the text it sits in. */
+h1 { display: flex; align-items: center; gap: 0.4em; }
+h1::before { content: ""; flex: none; width: 1.15em; height: 1.15em;
+             background: url(appicon-32@2x.png) center / contain no-repeat; }
+
+/* Index header: the app icon at CotEditor's 150pt, then the book's title. */
+header.book { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 2rem;
+              padding-bottom: 1.5rem; border-bottom: 1px solid -apple-system-separator; }
+header.book img { width: 150px; height: 150px; flex: none; }
+header.book h1 { font-size: 2.35rem; font-weight: 500; margin: 0; }
+header.book h1::before { content: none; }
+header.book a.toc { margin: 0.6rem 0 0; font-size: 1rem; }
 
