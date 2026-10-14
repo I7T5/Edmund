@@ -50,15 +50,23 @@ tr { border-top: 1px solid -apple-system-quaternary-label; border-bottom: 1px so
 th, td { padding: 0.5rem 1.2rem 0.5rem 0; text-align: start; vertical-align: baseline; font-weight: normal; }
 th[scope="row"] { width: 40%; }
 
-/* Index topic lists: plain link blue, no chevron (a chevron reads as a menu
-   or disclosure). */
+/* Index topic lists (the table of contents): plain label-colored links, as
+   CotEditor's contents page; no chevron (it reads as a menu or disclosure). */
 ul.topics { list-style: none; padding: 0; }
+ul.topics a:link, ul.topics a:visited { color: -apple-system-label; }
 
 /* "Table of Contents" link above each page's title (toc.js), quiet like
    CotEditor's: secondary label color, smaller than body. */
 a.toc { display: inline-block; margin-bottom: 1.25rem; font-size: 0.85rem; }
 a.toc:link, a.toc:visited { color: -apple-system-secondary-label; }
-a.toc::before { content: url(toc.svg); display: inline-block; vertical-align: -0.1em; padding-right: 0.35rem; }
+/* The icon, after SF Symbols' list.bullet.rectangle, is a mask painted with a
+   system color: an SVG drawn as an image can't see the page's dark mode, so a
+   color inside it stayed light. Inline, because WebKit won't load a mask
+   from a file: URL. */
+a.toc::before { content: ""; display: inline-block; width: 16px; height: 13px;
+                vertical-align: -0.1em; margin-right: 0.35rem;
+                background-color: -apple-system-tertiary-label;
+                -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 13'%3E%3Cg fill='none' stroke='%23000' stroke-linecap='round'%3E%3Crect x='.5' y='.5' width='15' height='12' rx='2'/%3E%3Cpath d='M6.5 4h6M6.5 6.5h6M6.5 9h6'/%3E%3C/g%3E%3Cg fill='%23000'%3E%3Ccircle cx='4' cy='4' r='.9'/%3E%3Ccircle cx='4' cy='6.5' r='.9'/%3E%3Ccircle cx='4' cy='9' r='.9'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; }
 
 /* The app icon before each page title, the height of the title's text, as
    CotEditor sizes its inline app icon to the text it sits in. */
