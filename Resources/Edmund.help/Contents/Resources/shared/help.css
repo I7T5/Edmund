@@ -23,12 +23,12 @@ a { text-decoration: none; }
 a:link, a:visited { color: -apple-system-blue; }
 a:hover { text-decoration: underline; }
 
-/* List markers dimmed as Edmund's editor and Read mode dim them, numbers
-   included (HTMLTheme: li::marker in the tertiary label color). */
+/* Bullets dimmed as Edmund's editor and Read mode dim them (tertiary label);
+   step numbers one step brighter, since the reader follows them. */
 ol, ul { padding-left: 1.5rem; }
 li + li { margin-top: 0.25rem; }
 ul > li::marker { color: -apple-system-tertiary-label; font-size: 0.85em; }
-ol > li::marker { color: -apple-system-tertiary-label; font-variant-numeric: tabular-nums; }
+ol > li::marker { color: -apple-system-secondary-label; font-variant-numeric: tabular-nums; }
 
 /* One setting per entry. */
 dt { font-weight: 600; }
