@@ -17,13 +17,12 @@ public extension NSAttributedString.Key {
     /// tests' structural comparison of independent `styleBlock` runs
     /// compares by value for free).
     static let codeBlockLabel = NSAttributedString.Key("MarkdownEditor.codeBlockLabel")
-    /// Marks the block's *second* line (the row under the opening fence) as
-    /// the one whose fragment paints the language label, reaching *up* into
-    /// the fence row's area. Drawing from the fence fragment itself would
-    /// clip: with a 10pt top gap the label's ink extends past the short
-    /// fence fragment's bottom, and the next row's box fill paints over it.
-    /// The second row draws after that fill, so nothing overpaints the
-    /// label. Value: the non-empty display language `String`.
+    /// Marks the block's *second* line (the row under the opening fence).
+    /// The label straddles that row and the fence row, so both draw it
+    /// (`codeBlockLabelRect` / `codeBlockFenceLabelRect`), each clipped to its
+    /// own frame. A view kept from an earlier, plainer fragment may not be
+    /// sized for an overhang, so neither row may rely on drawing outside its
+    /// own frame. Value: the non-empty display language `String`.
     static let codeBlockLabelAnchor = NSAttributedString.Key("MarkdownEditor.codeBlockLabelAnchor")
     /// A nested list item's indent-guide columns — one x per *ancestor* level,
     /// measured from the text container's left edge (the same space the

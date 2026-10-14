@@ -16,6 +16,8 @@ import ScreenCaptureKit
 ///   hovercopy <n>     put the pointer on the copy button of the code block at n
 ///   copycode <n>      press the copy button of the code block at offset n
 ///   snapshot <path>   render the window content to a PNG in-process
+///   layersnapshot <path>  render the CALayer tree as it stands (shows stale or
+///                     clipped TextKit 2 tiles that `snapshot` repaints away)
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
@@ -164,6 +166,34 @@ enum ReproScript {
                     guard let png = rep.representation(using: .png, properties: [:]) else { return }
                     try? png.write(to: URL(fileURLWithPath: arg))
                     report("repro snapshot \(arg)")
+                }
+            case "layersnapshot":
+                // Like `snapshot`, but renders the CALayer tree as it stands
+                // (`CALayer.render(in:)`) instead of forcing every view to
+                // redraw (`cacheDisplay`). Shows what the compositor would: a
+                // stale or clipped TextKit 2 fragment tile survives here, and
+                // is repainted away by `snapshot`.
+                schedule(after: delay) { editor in
+                    guard let view = editor.window?.contentView, let layer = view.layer else {
+                        report("repro layersnapshot: no layer"); return
+                    }
+                    let scale = editor.window?.backingScaleFactor ?? 2
+                    let w = Int(view.bounds.width * scale), h = Int(view.bounds.height * scale)
+                    guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
+                                              bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                    else { return }
+                    ctx.scaleBy(x: scale, y: scale)
+                    // Layer space is y-up like the CGContext, unless flipped.
+                    if layer.isGeometryFlipped {
+                        ctx.translateBy(x: 0, y: view.bounds.height); ctx.scaleBy(x: 1, y: -1)
+                    }
+                    layer.render(in: ctx)
+                    guard let image = ctx.makeImage() else { return }
+                    let rep = NSBitmapImageRep(cgImage: image)
+                    guard let png = rep.representation(using: .png, properties: [:]) else { return }
+                    try? png.write(to: URL(fileURLWithPath: arg))
+                    report("repro layersnapshot \(arg)")
                 }
             case "hovercopy":
                 // Pointer on the copy button of the code block at an absolute

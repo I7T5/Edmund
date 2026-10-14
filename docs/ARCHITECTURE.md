@@ -540,8 +540,9 @@ Notable subsystems:
   across atomic replaces and calls `revert` when the modification date no
   longer matches and the document is clean. Our own save also fires it, but
   the dates match by then, so it is a no-op.
-- **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): always-on
-  (opt-out) file logger. `Log.{debug,info,error}(_:category:)` and
+- **Diagnostic logging** (`EdmundCore/Diagnostics/Log.swift`): file logger,
+  off by default in release and on by default in DEBUG builds
+  (`AppSettings.diagnosticsDefault`). `Log.{debug,info,error}(_:category:)` and
   `Log.measure(_:) { … }` (single-line durations) write to
   `Log.defaultDirectory/edmund-YYYY-MM-DD.log`
   (`~/Library/Application Support/Edmund/Logs`, container-relative when

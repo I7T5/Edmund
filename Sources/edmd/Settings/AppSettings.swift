@@ -412,18 +412,29 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: Key.suppressInconsistentLineEndingWarning) }
     }
 
-    /// Whether diagnostic logging is on. Defaults to off; the user can opt in.
+    /// Default for `diagnosticLogging` and `verboseEditorDiagnostics`: on in
+    /// DEBUG builds, so a glitch hit while developing is already in the log;
+    /// off in release. An explicit stored value (or launch flag) wins.
+    #if DEBUG
+    static let diagnosticsDefault = true
+    #else
+    static let diagnosticsDefault = false
+    #endif
+
+    /// Whether diagnostic logging is on. Defaults to off (on in DEBUG builds);
+    /// the user can opt in.
     static var diagnosticLogging: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.diagnosticLogging) }
+        get { UserDefaults.standard.object(forKey: Key.diagnosticLogging) as? Bool ?? diagnosticsDefault }
         set { UserDefaults.standard.set(newValue, forKey: Key.diagnosticLogging) }
     }
 
     /// Verbose editor tracing: high-volume per-edit / per-caret-move trace lines
     /// for diagnosing live-NSTextView / TextKit 2 editor bugs (caret drift, sync
-    /// desyncs) that can't be reproduced headlessly. Off by default — turned on
-    /// only when capturing a reproduction. Requires diagnostic logging to be on.
+    /// desyncs) that can't be reproduced headlessly. Off by default (on in
+    /// DEBUG builds) — turn it on only when capturing a reproduction.
+    /// Requires diagnostic logging to be on.
     static var verboseEditorDiagnostics: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.verboseEditorDiagnostics) }
+        get { UserDefaults.standard.object(forKey: Key.verboseEditorDiagnostics) as? Bool ?? diagnosticsDefault }
         set { UserDefaults.standard.set(newValue, forKey: Key.verboseEditorDiagnostics) }
     }
 

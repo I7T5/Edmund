@@ -43,8 +43,8 @@ extension EditorTextView {
 
         // Label plumbing: the opening fence line carries the display language
         // ("" when the fence names none) and shaves the box's top padding;
-        // the second row paints the actual label, reaching up over the fence
-        // row (see `.codeBlockLabelAnchor` for why the fence fragment can't).
+        // the fence row and the second row each paint their share of the
+        // label, clipped to their own frames (see `.codeBlockLabelAnchor`).
         let ns = result.string as NSString
         let trimmed = language?.trimmingCharacters(in: .whitespaces) ?? ""
         let firstLine = ns.lineRange(for: NSRange(location: span.fullRange.location, length: 0))

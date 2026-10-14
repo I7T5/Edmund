@@ -103,6 +103,67 @@ struct CodeCopyButtonTests {
         #expect(source.visibleCodeCopyButtons().isEmpty)
     }
 
+    /// The language label straddles the fence row and the row under it, and
+    /// each row paints its own share (a view sized only for its own frame
+    /// can't clip the other's). Both rows must place the label at the same
+    /// spot: the fence row's rect, moved down one fence-row height, is the
+    /// second row's.
+    @Test("The fence row and the row below place the language label identically")
+    func labelRowsAgree() {
+        let editor = loadEditor("lead\n\n\(fence)\n\ntrailing\n")
+        guard let tlm = editor.textLayoutManager,
+              let index = editor.visibleCodeCopyButtons().first?.blockIndex,
+              let start = editor.blockTextRange(editor.blocks[index].range, tlm)?.location,
+              let fenceFragment = tlm.textLayoutFragment(for: start) as? DecoratedTextLayoutFragment,
+              let next = tlm.location(start, offsetBy: "```swift\n".utf16.count),
+              let rowFragment = tlm.textLayoutFragment(for: next) as? DecoratedTextLayoutFragment,
+              let fenceRect = fenceFragment.codeBlockFenceLabelRect(),
+              let rowRect = rowFragment.codeBlockLabelRect()
+        else { Issue.record("no label fragments"); return }
+        #expect(fenceRect.minX == rowRect.minX)
+        #expect(fenceRect.size == rowRect.size)
+        let fenceHeight = fenceFragment.layoutFragmentFrame.height
+        #expect(abs((fenceRect.minY - fenceHeight) - rowRect.minY) < 0.5)
+        #expect(fenceFragment.codeBlockLabelRect() == nil && rowFragment.codeBlockFenceLabelRect() == nil)
+    }
+
+    /// Painted, both halves of the label have ink: the part inside the fence
+    /// row and the part inside the row below.
+    @Test("The language label paints across the fence row and the row below")
+    func labelPaintsBothHalves() throws {
+        let editor = loadEditor("lead\n\n```python\nlet x = 1\nlet y = 2\n```\n\ntrailing\n")
+        let tlm = try #require(editor.textLayoutManager)
+        let index = try #require(editor.visibleCodeCopyButtons().first?.blockIndex)
+        let start = try #require(editor.blockTextRange(editor.blocks[index].range, tlm)?.location)
+        let fence = try #require(tlm.textLayoutFragment(for: start) as? DecoratedTextLayoutFragment)
+        let fenceRect = try #require(fence.codeBlockFenceLabelRect())
+        let fenceFrame = fence.layoutFragmentFrame
+        let origin = editor.textContainerOrigin
+        let bounds = NSRect(x: 0, y: 0, width: editor.bounds.width, height: fenceFrame.maxY + origin.y + 80)
+        let rep = try #require(editor.bitmapImageRepForCachingDisplay(in: bounds))
+        editor.cacheDisplay(in: bounds, to: rep)
+
+        let scale = CGFloat(rep.pixelsWide) / bounds.width
+        func ink(fromY top: CGFloat, toY bottom: CGFloat) -> Int {
+            let x0 = Int((origin.x + fenceFrame.minX + fenceRect.minX) * scale)
+            let x1 = Int((origin.x + fenceFrame.minX + fenceRect.maxX) * scale)
+            var count = 0
+            for y in Int(top * scale)..<Int(bottom * scale) {
+                for x in x0..<x1 {
+                    // The box fill is near-white grey; label ink is clearly darker.
+                    if let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceGray), c.whiteComponent < 0.7 { count += 1 }
+                }
+            }
+            return count
+        }
+        let top = origin.y + fenceFrame.minY + fenceRect.minY
+        let seam = origin.y + fenceFrame.maxY
+        let bottom = origin.y + fenceFrame.minY + fenceRect.maxY
+        #expect(top < seam && seam < bottom)   // the label does straddle the rows
+        #expect(ink(fromY: top, toY: seam) > 0)
+        #expect(ink(fromY: seam, toY: bottom) > 0)
+    }
+
     @Test("Hover is the only reveal")
     func revealedByHover() {
         let editor = loadEditor(fence)
