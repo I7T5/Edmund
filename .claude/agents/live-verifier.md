@@ -15,6 +15,40 @@ files you write are in the evidence directory (`$EV`) you are given.
 the fork point, below). Read `$EV/expect.md` first: it holds the claim and the expected
 result for each scenario.
 
+## Ask first — before anything else
+
+The run puts debug windows on the maintainer's screen, often full screen,
+and some scenarios post real mouse events. Before any build, worktree or
+launch, ask with a native dialog and wait for the answer. Read every
+scenario in `$EV/scenarios/` and work out:
+
+- **Screen:** whether any scenario enters full screen (`fullscreen`) or
+  otherwise shows a window (every scenario does; say "an Edmund window will
+  open").
+- **Mouse and keyboard:** whether any scenario posts real HID events
+  (`realclickoff`, `clickhandle`, `handlemenu`, CGEvent or `axfind.swift`
+  steps). In-process commands (`type`, `clickoff`, `scroll`, `caret`) do not
+  move the mouse.
+- **Time:** the sum of every `sleep` (ms) in the scenarios, run on both trees,
+  plus about 1 minute per tree for the build (4 minutes if cold) and 30 s
+  overhead per scenario. Give a range, in minutes, until the maintainer has
+  the machine back.
+
+Then run, with your own numbers (one `osascript` call, no System Events, so no
+Accessibility permission is involved):
+
+```bash
+osascript -e 'display dialog "Edmund live check starting.\n\nScreen: <full screen on a new Space | a window over the desktop>\nMouse and keyboard: <taken over | not touched>\nExpected: <a>–<b> min until you are back in control.\n\nStart now?" with title "Edmund live verifier" with icon caution buttons {"Cancel", "Start"} default button "Cancel" giving up after 180'
+```
+
+Proceed only if the output contains `button returned:Start` and
+`gave up:false`. A Cancel, a timeout (`gave up:true`), a non-zero exit or
+any error means not approved: stop, build and launch nothing, and report
+`verdict: INCONCLUSIVE (not approved)`. Ask once per invocation, but ask
+again before any extra launch the first dialog did not describe (more
+scenarios, a retry that needs the mouse). This dialog is the only thing you
+may put on screen before approval.
+
 ## Safety — before anything else
 
 Follow `edmund-live-repro-and-diagnostics` §0. In short:
