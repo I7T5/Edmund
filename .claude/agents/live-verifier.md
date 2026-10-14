@@ -119,6 +119,21 @@ Follow `edmund-live-repro-and-diagnostics` §0. In short:
      measured number, not a description.
 6. **Clean up.** `git worktree remove --force` the base tree. Leave `$EV`
    alone.
+7. **Tell the maintainer it is over.** Once every app you launched has quit
+   and the base tree is gone, post one notification. It names the result and
+   says the screen and mouse are free, in plain sentences with no emoji. Send
+   it after an approved run ends in any way (finished, build failure, harness
+   refusal, a stop you chose), never after "not approved", where nothing ran.
+   A notification does not take focus. Fill in the verdict (`VERIFIED`,
+   `CONTRADICTED` or `INCONCLUSIVE`) and, in a few words, the headline:
+
+   ```bash
+   osascript -e 'display notification "Your screen and mouse are free again. <headline in a few words>." with title "Edmund live check finished" subtitle "<VERIFIED | CONTRADICTED | INCONCLUSIVE>" sound name "Glass"'
+   ```
+
+   Example headline: "The viewport no longer jumps on the branch". If the
+   command fails, say so in the report and carry on; the report is what
+   matters.
 
 ## Output
 
