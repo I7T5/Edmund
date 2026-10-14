@@ -17,8 +17,8 @@ h1, h2 { font-weight: 600; line-height: 1.25; }
 h1 { font-size: 1.75rem; margin: 0 0 1rem; }
 h2 { font-size: 1.25rem; margin: 2rem 0 0.5rem; }
 
-/* In-text links: link blue (NSColor.linkColor), not the accent — with the
-   Graphite accent a link would match the text. No underline until hover. */
+/* In-text links: system blue, not the accent — with the Graphite accent a
+   link would match the text. No underline until hover. */
 a { text-decoration: none; }
 a:link, a:visited { color: -apple-system-blue; }
 a:hover { text-decoration: underline; }
@@ -80,7 +80,7 @@ header.book { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2
               padding-bottom: 1.5rem; border-bottom: 1px solid -apple-system-separator; }
 /* Taller than the title's text, so the icon leads the book's title. */
 header.book img { width: 1.4em; height: 1.4em; flex: none; font-size: 2.35rem; }
-header.book h1 { font-size: 2.35rem; font-weight: 500; margin: 0; }
+header.book h1 { font-size: 2.35rem; font-weight: 600; margin: 0; }
 header.book h1::before { content: none; }
 header.book a.toc { margin: 0.6rem 0 0; font-size: 1rem; }
 

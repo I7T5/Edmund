@@ -664,7 +664,12 @@ Notable subsystems:
   `screencapture` has never worked for these panes; use this, don't
   hand-build a scaffold. It captures through ScreenCaptureKit, which needs
   Screen Recording granted to the launching process; without it the render
-  exits with `could not capture window <id>`.
+  exits with `could not capture window <id>`. `-debug.themesRoot <dir>` points
+  `ThemeStore.userThemesRoot` elsewhere; an empty dir shows only the shipped
+  themes (help-book screenshots on a Mac with edited built-ins). The other way
+  in: ReproScript `settingspane <png> <pane>` renders a live pane's content
+  view with `cacheDisplay`, logs its Help button's bottom and trailing insets,
+  and takes no focus.
 - **Counting an app's windows is the flakiest measurement in this repo — don't
   trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
   `winid.swift` uses) lists windows the app has already *closed*, so a stale
