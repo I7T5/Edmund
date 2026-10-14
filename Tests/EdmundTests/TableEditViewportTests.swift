@@ -1,0 +1,57 @@
+import Testing
+import AppKit
+@testable import EdmundCore
+
+/// Typing in a table cell near the top or bottom edge of the window must not
+/// move the viewport. A keystroke restyles the whole table block; the caret
+/// autoscroll that follows measured the caret's row from a partly invalid
+/// layout (the table's top rather than the row) and scrolled to it.
+@Suite("Table editing viewport")
+struct TableEditViewportTests {
+    @MainActor private func windowedEditor() -> (EditorTextView, NSScrollView) {
+        let editor = makeEditor()
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 400),
+                           styleMask: [.titled], backing: .buffered, defer: false)
+        let scroll = NSScrollView(frame: win.contentLayoutRect)
+        scroll.documentView = editor
+        win.contentView = scroll
+        win.makeFirstResponder(editor)
+        editor.typewriterModeEnabled = false
+        editor.isVerticallyResizable = true
+        editor.minSize = NSSize(width: 0, height: 0)
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                height: CGFloat.greatestFiniteMagnitude)
+        editor.autoresizingMask = [.width]
+        return (editor, scroll)
+    }
+
+    /// `caretOffset`: distance from the viewport top to the caret line's top.
+    @Test(arguments: [4.0, 10.0, 30.0, 340.0, 360.0])
+    @MainActor func typingHoldsViewport(caretOffset: Double) throws {
+        let (editor, scroll) = windowedEditor()
+        let table = "| one | two | three |\n| --- | --- | --- |\n| a | b | c |\n| d | e | f |\n| g | h | i |"
+        let doc = ((0..<40).map { "paragraph \($0) words" } + [table] + (0..<40).map { "after \($0)" })
+            .joined(separator: "\n\n")
+        editor.loadContent(doc)
+        drainAllStyling(editor)
+        let tlm = try #require(editor.textLayoutManager)
+        tlm.ensureLayout(for: tlm.documentRange)
+        // The headless view is never sized to its content; without a real
+        // height every scroll target clamps to 0.
+        editor.setFrameSize(NSSize(width: 500, height: 4000))
+        let cell = (editor.rawSource as NSString).range(of: "| e |").location + 2
+        editor.setSelectedRange(NSRange(location: cell, length: 0))
+        editor.recomposeIncremental(cursorInRaw: cell)
+        tlm.ensureLayout(for: tlm.documentRange)
+        let caretY = try #require(editor.lineRect(forCharacterAt: cell)).minY
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: caretY - caretOffset))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        let y0 = scroll.contentView.bounds.origin.y
+        var deltas: [CGFloat] = []
+        for ch in "xyz" {
+            editor.insertText(String(ch), replacementRange: editor.selectedRange())
+            deltas.append(scroll.contentView.bounds.origin.y - y0)
+        }
+        #expect(deltas.allSatisfy { abs($0) < 1 }, "offset \(caretOffset) y0=\(y0) deltas \(deltas)")
+    }
+}

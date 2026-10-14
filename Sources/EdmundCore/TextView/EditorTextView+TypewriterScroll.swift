@@ -265,6 +265,21 @@ extension EditorTextView {
         guard let tlm = textLayoutManager else { return nil }
         guard let loc = tlm.location(tlm.documentRange.location, offsetBy: offset)
         else { return nil }
+        // A table row mid-edit: the keystroke restyled the whole block, so its
+        // fragments (and the newline before it) are invalid, and ensuring only
+        // the caret's own range stacks that fragment straight after the last
+        // *valid* one — the table's top, not the row. AppKit's caret autoscroll
+        // read that and scrolled the viewport on every keystroke in a cell near
+        // an edge. Lay out from the document start, as `wrappedCellRects` does
+        // (a no-op when already laid out); only while the document is small
+        // enough to be fully laid out, so a deep caret in a huge file keeps the
+        // cheap path.
+        if (rawSource as NSString).length <= Self.fullLayoutMaxLength,
+           let block = blockIndexForRawOffset(offset), block < blocks.count,
+           blocks[block].kind == .table,
+           let through = NSTextRange(location: tlm.documentRange.location, end: loc) {
+            tlm.ensureLayout(for: through)
+        }
         tlm.ensureLayout(for: NSTextRange(location: loc))
         // TextKit 2 has no fragment *at* `documentRange.endLocation` — the caret
         // there belongs to the last fragment (whose final line fragment is the
