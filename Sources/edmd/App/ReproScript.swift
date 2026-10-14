@@ -27,6 +27,8 @@ import ScreenCaptureKit
 ///                     recentering, so a block can be driven off-screen)
 ///   logsel            log the current selection
 ///   viewmode          toggle Edit ↔ Read via the same action as ⌘E
+///   fullscreen        enter full screen (its own Space, so a run doesn't sit over
+///                     the desktop); `sleep` ~3000 after it for the animation
 ///   find on|off|replace  open/close the find bar (⌘F's own handler) without
 ///                     activating the app the way an AX-driven ⌘F would
 ///   readscroll <y>    raw-scroll the Read-mode webview to y
@@ -276,6 +278,13 @@ enum ReproScript {
                     clipView.scroll(to: clamped.origin)
                     editor.enclosingScrollView?.reflectScrolledClipView(clipView)
                     Log.info("repro scroll y=\(y) clamped=\(clamped.origin.y)", category: .app)
+                }
+            case "fullscreen":
+                schedule(after: delay) { editor in
+                    guard let window = editor.window,
+                          !window.styleMask.contains(.fullScreen) else { return }
+                    window.toggleFullScreen(nil)
+                    Log.info("repro fullscreen", category: .app)
                 }
             case "viewmode":
                 // Toggles Edit ↔ Read through the same @objc action the ⌘E
