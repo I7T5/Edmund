@@ -293,8 +293,8 @@ stale-build / screencapture mechanics: `edmund-build-and-env`.
   (categories: app, document, io, render, compose, selection, lazy, callout,
   edit — grep by concern).
 - Controlled by **Settings ▸ Advanced ▸ Diagnostics** ("Save diagnostic
-  logs"). The toggle **defaults OFF** (`AppSettings.diagnosticLogging`
-  defaults false) — i.e. opt-in in the shipped app, despite `Log.swift`'s
+  logs"). The toggle **defaults OFF in release, ON in DEBUG builds**
+  (`AppSettings.diagnosticsDefault`) — i.e. opt-in in the shipped app, despite `Log.swift`'s
   header comment calling it "always-on (opt-out)"; the code is the truth.
   (The UserDefaults keys are named `settings.general.*` for legacy reasons;
   the UI lives in Advanced.)

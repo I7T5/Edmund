@@ -430,8 +430,8 @@ enum AppSettings {
 
     /// Verbose editor tracing: high-volume per-edit / per-caret-move trace lines
     /// for diagnosing live-NSTextView / TextKit 2 editor bugs (caret drift, sync
-    /// desyncs) that can't be reproduced headlessly. Off by default in release
-    /// (on in DEBUG builds) — turned on only when capturing a reproduction.
+    /// desyncs) that can't be reproduced headlessly. Off by default (on in
+    /// DEBUG builds) — turn it on only when capturing a reproduction.
     /// Requires diagnostic logging to be on.
     static var verboseEditorDiagnostics: Bool {
         get { UserDefaults.standard.object(forKey: Key.verboseEditorDiagnostics) as? Bool ?? diagnosticsDefault }

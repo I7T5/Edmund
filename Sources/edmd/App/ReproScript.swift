@@ -16,6 +16,8 @@ import ScreenCaptureKit
 ///   hovercopy <n>     put the pointer on the copy button of the code block at n
 ///   copycode <n>      press the copy button of the code block at offset n
 ///   snapshot <path>   render the window content to a PNG in-process
+///   layersnapshot <path>  render the CALayer tree as it stands (shows stale or
+///                     clipped TextKit 2 tiles that `snapshot` repaints away)
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
@@ -182,9 +184,8 @@ enum ReproScript {
                                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
                     else { return }
                     ctx.scaleBy(x: scale, y: scale)
-                    if !layer.isGeometryFlipped {   // layer space is y-up unless flipped
-                        // CGContext is y-up already; nothing to do.
-                    } else {
+                    // Layer space is y-up like the CGContext, unless flipped.
+                    if layer.isGeometryFlipped {
                         ctx.translateBy(x: 0, y: view.bounds.height); ctx.scaleBy(x: 1, y: -1)
                     }
                     layer.render(in: ctx)

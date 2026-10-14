@@ -21,8 +21,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// this as a code box's top fragment — drives the top-padding shave.
     let codeBlockLabel: String?
     /// The non-empty display language on the block's second row — the
-    /// fragment that paints the label, reaching up over the fence row
-    /// (see `.codeBlockLabelAnchor`).
+    /// fragment that paints the label's lower part; the fence row paints the
+    /// upper part (see `.codeBlockLabelAnchor`).
     let codeBlockLabelAnchor: String?
     /// The label's font — a smaller cut of the editor's monospace font,
     /// handed over at vend time (the fragment has no theme access).
@@ -335,7 +335,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             }
         }
         // The language label sits at the container's right edge, far outside
-        // this (short, invisible) fence line's own text frame.
+        // this (short, invisible) row's own text frame. Only the second row's
+        // rect is unioned: the fence row's share is clipped to its own frame,
+        // so it needs no overdraw.
         if let rect = codeBlockLabelRect() {
             bounds = bounds.union(rect.insetBy(dx: -2, dy: -2))
         }
@@ -459,10 +461,9 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
     /// Fragment-local rect (y-down, origin at this fragment's top-left) for
     /// the language label: pinned to the code box's top-right corner with the
     /// same 10pt gap on top as on the right — mirroring Read mode's
-    /// absolutely-positioned label. Computed on the block's *second* row
-    /// (negative y, reaching up over the fence row; see
-    /// `.codeBlockLabelAnchor` for why the fence fragment can't draw it).
-    /// Nil when this fragment isn't the label row.
+    /// absolutely-positioned label. This is the block's *second* row's rect
+    /// (negative y, reaching up over the fence row); the fence row has its own,
+    /// `codeBlockFenceLabelRect()`. Nil when this fragment isn't the second row.
     func codeBlockLabelRect() -> CGRect? {
         guard let label = codeBlockLabelAnchor, !label.isEmpty,
               let line = textLineFragments.first else { return nil }

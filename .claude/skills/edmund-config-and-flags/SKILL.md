@@ -38,7 +38,7 @@ Swift name) is what you pass as a launch arg.
 | `autoSaveWithVersions` | `settings.general.autoSaveWithVersions` | NSDocument autosave-in-place vs versions |
 | `conflictResolution` | `settings.general.conflictResolution` | File-changed-on-disk handling |
 | `suppressInconsistentLineEndingWarning` | `settings.general.suppressInconsistentLineEndingWarning` | Silence mixed-line-ending warning |
-| `diagnosticLogging` | `settings.general.diagnosticLogging` | **On/off for file logging** (opt-out; see §4) |
+| `diagnosticLogging` | `settings.general.diagnosticLogging` | **On/off for file logging** (default off in release, on in DEBUG builds via `AppSettings.diagnosticsDefault`; a stored value or launch flag wins; see §4) |
 | `logRetention` | `settings.general.logRetention` | Days of logs to keep (pruned on configure) |
 | `appearanceMode` | `settings.appearance.mode` | Light / dark / system |
 | `maxContentWidthCm` | `settings.appearance.maxContentWidthCm` | **Max column width, stored in CENTIMETRES** (see note) |
@@ -46,7 +46,7 @@ Swift name) is what you pass as a launch arg.
 | `renderBlankLinesAsBreaks` | `settings.reading.renderBlankLinesAsBreaks` | Read-mode blank-line handling |
 | `sourceMode` | `settings.view.sourceMode` | When on, **Source replaces Edit** in the ⌘E toggle; honored on open |
 | `showFormatBar` | `settings.edit.showFormatBar` | **Show the format bar** (View ▸ Show Format Bar, no shortcut; default on, off in Reading mode) |
-| `verboseEditorDiagnostics` | `settings.advanced.verboseEditorDiagnostics` | **Verbose editor trace** (see §4; pairs with diagnosticLogging) |
+| `verboseEditorDiagnostics` | `settings.advanced.verboseEditorDiagnostics` | **Verbose editor trace** (default off in release, on in DEBUG; requires diagnosticLogging; see §4) |
 | `offerCrashReports` | `settings.advanced.offerCrashReports` | **Ask to report crashes on GitHub** (default on; the alert's "Don't ask again" clears it) |
 | `lastWindowHeight` | `settings.window.lastHeight` | Persisted window sizing (see the frame-not-content trap) |
 | `lastWindowOriginX` / `lastWindowOriginY` | `settings.window.lastOriginX` / `lastOriginY` | Persisted window origin; absent until the first move/resize; saved on resize/move, never in full screen |
@@ -144,7 +144,7 @@ Read `Sources/EdmundCore/Diagnostics/Log.swift` and
   `verboseEditorDiagnostics` (adds the per-event editor trace). For a live
   repro you almost always want **both** on. Verbose lines are gated behind
   `Log.shouldTrace`.
-- The log is **opt-out** (on by default), retention-pruned; the user only
+- The log is off by default in release and on by default in DEBUG builds (`AppSettings.diagnosticsDefault`), retention-pruned; the user only
   toggles it and picks a retention window in Settings ▸ General ▸ Diagnostics.
 
 Trace-field decoding (`sel/active/marked/up/undo/blocks/storLen/rawLen`,
