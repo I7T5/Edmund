@@ -14,8 +14,8 @@ final class HelpMenu: NSObject {
         let helpMenuItem = NSMenuItem()
         let helpMenu = NSMenu(title: "Help")
 
-        // No help book yet: showHelp: puts up AppKit's own "Help isn't
-        // available for Edmund." alert.
+        // Opens Resources/Edmund.help in Help Viewer. Under `swift run`
+        // there is no bundle, so AppKit shows "Help isn't available".
         helpMenu.addItem(withTitle: "Edmund Help",
                          action: #selector(NSApplication.showHelp(_:)),
                          keyEquivalent: "?")

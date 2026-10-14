@@ -127,7 +127,9 @@ struct EditSettingsView: View {
                     // }
                     invisibleCharacterGrid
                         .padding(.leading, 20)
-                        .padding(.bottom, -15)  // hardcoded
+                        // Deliberate (cea007a, tuned in d75f6ab): pulls the
+                        // Lines row up under this grid. Visual tuning; keep.
+                        .padding(.bottom, -15)
                         .disabled(!showInvisibles)
                 }
                 .onChange(of: showInvisibles) { AppSettings.applyEditSettingsToOpenDocuments() }
@@ -176,7 +178,7 @@ struct EditSettingsView: View {
                 }
             }
         }
-        .settingsPanePadding()
+        .settingsPanePadding(help: HelpAnchor.edit)
     }
 
     private var invisibleCharacterGrid: some View {

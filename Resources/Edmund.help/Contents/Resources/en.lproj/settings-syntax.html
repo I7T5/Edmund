@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Syntax settings</title>
+<meta name="description" content="Turn extended Markdown syntax such as math, wikilinks, and callouts on or off, and add languages for code highlighting.">
+<meta name="keywords" content="Obsidian, GFM, CommonMark, front matter, YAML, math, wikilink, tag, footnote, callout, syntax highlighting, language">
+<link rel="stylesheet" href="../shared/help.css">
+<script defer src="../shared/toc.js"></script>
+</head>
+<body>
+<a name="settings-syntax"></a>
+<h1>Syntax settings</h1>
+<p>To open these settings, choose Edmund &gt; Settings, then click Syntax.</p>
+
+<h2>Markdown syntax</h2>
+<p>Edmund always supports standard Markdown, GitHub tables, checklists, and GitHub alerts. Select Enable extended Markdown syntax (non-GFM) to add syntax from Obsidian and other editors. Deselect it to show only standard Markdown; the extended syntax then shows as plain text.</p>
+<p>When it’s on, select or deselect each kind:</p>
+<table>
+<tr><th scope="row">Front matter (YAML)</th><td>A block of settings between <code>---</code> lines at the top of the file.</td></tr>
+<tr><th scope="row">==Highlight==</th><td>Highlighted text.</td></tr>
+<tr><th scope="row">Math ($ &amp; $$)</th><td>Math in <code>$…$</code> within a line, or <code>$$…$$</code> on its own lines.</td></tr>
+<tr><th scope="row">%%Comment%%</th><td>Text that shows while you edit but not in Read or exports.</td></tr>
+<tr><th scope="row">[[Wikilink]]</th><td>Links to other notes by name, and <code>![[embeds]]</code>.</td></tr>
+<tr><th scope="row">#tag</th><td>Tags.</td></tr>
+<tr><th scope="row">Footnote [^1]</th><td>Footnotes.</td></tr>
+<tr><th scope="row">Block ^1</th><td>IDs at the end of a paragraph that other notes can link to.</td></tr>
+<tr><th scope="row">Obsidian callout &gt; [!note]</th><td>Callout types beyond GitHub’s five, and callouts that fold open and closed.</td></tr>
+</table>
+
+<h2>Code highlighting</h2>
+<dl>
+<dt>Default code syntax</dt>
+<dd>The language used to color a code block that doesn’t name one after its opening <code>```</code>.</dd>
+<dt>Available syntaxes</dt>
+<dd>The languages Edmund can color. To add one, click the Add button (+) and choose a language definition file (<code>.json</code>). A definition with the same name as a built-in language replaces it. To remove a language you added, select it and click the Remove button (−). You can’t remove built-in languages.</dd>
+</dl>
+
+</body>
+</html>

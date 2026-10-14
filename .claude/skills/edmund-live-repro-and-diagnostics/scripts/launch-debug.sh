@@ -14,6 +14,7 @@
 # Steps (from docs/dev-guides/live-repro-guide.md §4):
 #   1. swift build (debug).
 #   2. Assemble EdmundDbg.app: Info.plist copy + debug edmd + Sparkle.framework
+#      + the help book (copied and indexed with hiutil, as in build-app.sh)
 #      (dyld aborts without the framework; a bare .build/debug/edmd never makes
 #      a window).
 #   3. Refuse to run if a non-ours edmd is live (check-live-instance.sh).
@@ -61,6 +62,13 @@ if [[ -d "$BUILD_DIR/Sparkle.framework" ]]; then
 else
   echo "WARNING: $BUILD_DIR/Sparkle.framework not found; dyld may abort." >&2
 fi
+# The help book, so Help ▸ Edmund Help and ReproScript `helpbutton` open pages
+# (same copy + index as build-app.sh).
+mkdir -p "$APP/Contents/Resources"
+rm -rf "$APP/Contents/Resources/Edmund.help"
+cp -R Resources/Edmund.help "$APP/Contents/Resources/"
+hiutil -I corespotlight -Caf "$APP/Contents/Resources/Edmund.help/Contents/Resources/en.lproj/Edmund.cshelpindex" \
+  "$APP/Contents/Resources/Edmund.help/Contents/Resources/en.lproj"
 
 # 3. Launch by direct exec, background, with diagnostics on.
 args=( "$doc"

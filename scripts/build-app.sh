@@ -102,6 +102,16 @@ HTML
     echo "</body></html>"
 } > "${BUNDLE}/Contents/Resources/Acknowledgments.html"
 
+# Help ▸ Edmund Help and the Settings (?) buttons open this book
+# (Info.plist CFBundleHelpBookFolder/Name). The search index is generated,
+# not committed. Tips caches the book per app version; to see edited pages,
+# see ARCHITECTURE §6 "Help book".
+cp -R Resources/Edmund.help "${BUNDLE}/Contents/Resources/"
+# The index lives inside the .lproj, named by HPDBookCSIndexPath, as in
+# CotEditor's book; helpd resolves HelpLink anchors through it.
+HELP_LPROJ="${BUNDLE}/Contents/Resources/Edmund.help/Contents/Resources/en.lproj"
+hiutil -I corespotlight -Caf "${HELP_LPROJ}/Edmund.cshelpindex" "${HELP_LPROJ}"
+
 # Compile the asset catalog so the app's AccentColor (our brown) is available.
 # macOS uses it only when the user's system accent is "Multicolor"; a specific
 # system accent still wins, which is the behavior we want.

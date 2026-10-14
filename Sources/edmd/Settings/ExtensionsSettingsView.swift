@@ -45,12 +45,12 @@ struct ExtensionsSettingsView: View {
                     // STUB: link to GitHub extensions repo for now.
                     // Extensions marketplace comes later.
                 }
+                HelpLink(anchor: HelpAnchor.extensions)
             }
         }
-        // Even margins all round, as the pane originally had them: the
-        // sidebar/detail boxes are the content, and a box wants the same air
-        // under it as beside it.
-        .padding(20)
+        // Shared sidebar-pane insets: a tighter top under the toolbar, 20 on
+        // the sides and bottom so the Help button sits where every pane has it.
+        .padding(SettingsPaneInsets.sidebar)
         // Every settings pane is 600 wide, so switching tabs only ever resizes
         // the window vertically.
         .frame(width: 600)

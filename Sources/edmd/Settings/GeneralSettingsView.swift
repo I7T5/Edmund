@@ -76,7 +76,7 @@ struct GeneralSettingsView: View {
                 Button("Manage Warnings…") { showingWarnings = true }
             }
         }
-        .settingsPanePadding()
+        .settingsPanePadding(help: HelpAnchor.general)
         .sheet(isPresented: $showingWarnings) { ManageWarningsView() }
         .sheet(isPresented: $showingVersionHistory) { VersionHistoryView() }
     }
@@ -94,6 +94,7 @@ private struct ManageWarningsView: View {
             Text("Suppress the following warnings:")
             Toggle("Inconsistent line endings", isOn: $suppressLineEnding)
             HStack {
+                HelpLink(anchor: HelpAnchor.warnings)
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)

@@ -85,10 +85,14 @@ struct ThemesSettingsView: View {
             // Outside both boxes, like the Key Bindings pane's: it acts on the
             // whole pane — the General row and any built-in that has been
             // edited — not on whichever box has focus.
-            Button("Restore Defaults…") { confirmingRestore = true }
-                .disabled(!hasAnythingToRestore)
+            HStack {
+                Button("Restore Defaults…") { confirmingRestore = true }
+                    .disabled(!hasAnythingToRestore)
+                Spacer()
+                HelpLink(anchor: HelpAnchor.themes)
+            }
         }
-        .padding(20)
+        .padding(SettingsPaneInsets.sidebar)
         // Every settings pane is 600 wide, so switching tabs only ever resizes
         // the window vertically.
         .frame(width: 600)

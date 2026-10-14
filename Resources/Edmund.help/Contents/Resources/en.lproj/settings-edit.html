@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Edit settings</title>
+<meta name="description" content="Set indentation, spelling and grammar checking, list behavior, invisible characters, line numbers, and line breaks.">
+<meta name="keywords" content="tabs, spaces, indent, spelling, spell check, grammar, autocomplete, brackets, whitespace, line numbers, soft wrap, hard wrap">
+<link rel="stylesheet" href="../shared/help.css">
+<script defer src="../shared/toc.js"></script>
+</head>
+<body>
+<a name="settings-edit"></a>
+<h1>Edit settings</h1>
+<p>To open these settings, choose Edmund &gt; Settings, then click Edit.</p>
+
+<h2>Indentation</h2>
+<dl>
+<dt>Prefer using</dt>
+<dd>Whether pressing <kbd>Tab</kbd> inserts spaces or a tab character.</dd>
+<dt>Indent width</dt>
+<dd>How many spaces make one level of indentation. The default is 2.</dd>
+<dt>Detect indent style on document opening</dt>
+<dd>When you open a document, Edmund uses the indentation the document already has, instead of the settings above. This changes only that document.</dd>
+</dl>
+
+<h2>Words</h2>
+<dl>
+<dt>Automatically close parentheses and quotes</dt>
+<dd>Typing an opening bracket or quote also types the closing one.</dd>
+<dt>Check spelling while typing</dt>
+<dd>Underlines misspelled words. Code, links, math, and other Markdown that isn’t prose are skipped.</dd>
+<dt>Check grammar while typing</dt>
+<dd>Also marks grammar problems. Available when spell checking is on.</dd>
+</dl>
+
+<h2>Lists</h2>
+<dl>
+<dt>Show list indent guides</dt>
+<dd>Draws a faint vertical line beside each level of a nested list.</dd>
+<dt>Automatically continue lists</dt>
+<dd>Pressing <kbd>Return</kbd> in a list starts the next item. Pressing <kbd>Return</kbd> on an empty item moves it out one level, or ends the list if it isn’t indented.</dd>
+</dl>
+
+<h2>Characters</h2>
+<dl>
+<dt>Show invisible characters upon selection</dt>
+<dd>When you select text, faint marks show the spaces, tabs, line endings, and other hidden characters in it. Choose which kinds to show with the checkboxes below.</dd>
+</dl>
+
+<h2>Lines</h2>
+<dl>
+<dt>Show line numbers</dt>
+<dd>Shows a line number beside each line of the Markdown source. Line numbers aren’t printed or exported.</dd>
+<dt>Strict line breaks</dt>
+<dd>On (the default): a single line break inside a paragraph doesn’t start a new line in Read, export, or print, as in standard Markdown. Off: every line break shows as a new line.</dd>
+</dl>
+
+<h2>Document</h2>
+<dl>
+<dt>Detect hard wrap pattern for lines on document opening</dt>
+<dd>For documents whose paragraphs are broken into short lines at a fixed width: Edmund joins the lines when it opens the document, so paragraphs wrap to the window, and breaks them again at the same width when it saves. Requires Strict line breaks.</dd>
+</dl>
+
+</body>
+</html>
