@@ -120,19 +120,34 @@ Follow `edmund-live-repro-and-diagnostics` §0. In short:
 6. **Clean up.** `git worktree remove --force` the base tree. Leave `$EV`
    alone.
 7. **Tell the maintainer it is over.** Once every app you launched has quit
-   and the base tree is gone, post one notification. It names the result and
-   says the screen and mouse are free, in plain sentences with no emoji. Send
-   it after an approved run ends in any way (finished, build failure, harness
-   refusal, a stop you chose), never after "not approved", where nothing ran.
-   A notification does not take focus. Fill in the verdict (`VERIFIED`,
-   `CONTRADICTED` or `INCONCLUSIVE`) and, in a few words, the headline:
+   and the base tree is gone, post one notification. It follows Apple's
+   notification guidelines: the title states the outcome in a few words and
+   makes sense alone; the body adds what the title does not (what was found,
+   then that the screen and mouse are free) in one or two short sentences,
+   without repeating the title; no app name (the system shows it), no
+   subtitle, no emoji, no exclamation mark, no "please". Send it after an
+   approved run ends in any way (finished, build failure, harness refusal, a
+   stop you chose), never after "not approved", where nothing ran. A
+   notification does not take focus.
+
+   Title by verdict, sentence case:
+
+   - `VERIFIED`: "Live check passed"
+   - `CONTRADICTED`: "Live check found a problem"
+   - `INCONCLUSIVE`: "Live check was inconclusive"
+
+   Body: the headline in under about 60 characters, a full stop, then
+   "Your screen and mouse are free." Examples: "The viewport no longer jumps
+   on the branch. Your screen and mouse are free." / "The base build failed to
+   compile. Your screen and mouse are free." Keep the whole body under about
+   110 characters. Use the system default sound only, so the maintainer's
+   notification settings stay in charge:
 
    ```bash
-   osascript -e 'display notification "Your screen and mouse are free again. <headline in a few words>." with title "Edmund live check finished" subtitle "<VERIFIED | CONTRADICTED | INCONCLUSIVE>" sound name "Glass"'
+   osascript -e 'display notification "<headline>. Your screen and mouse are free." with title "<title for the verdict>" sound name "default"'
    ```
 
-   Example headline: "The viewport no longer jumps on the branch". If the
-   command fails, say so in the report and carry on; the report is what
+   If the command fails, say so in the report and carry on; the report is what
    matters.
 
 ## Output
