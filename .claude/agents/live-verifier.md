@@ -34,16 +34,32 @@ scenario in `$EV/scenarios/` and work out:
   overhead per scenario. Give a range, in minutes, until the maintainer has
   the machine back.
 
-Then run, with your own numbers (one `osascript` call, no System Events, so no
-Accessibility permission is involved):
+Then show the alert below, filling in `<…>` from the facts above. It follows
+Apple's alert guidelines: the title is a question in sentence case, the
+message says what will happen and for how long in plain words, the buttons
+name their action ("Start Check", never "OK" or "Yes"), and the icon is the
+plain note icon, not the caution triangle (nothing here is destructive). The
+safe button, Cancel, is the default so a stray Return while typing starts
+nothing. One `osascript` call, no System Events, so no Accessibility
+permission is involved:
 
 ```bash
-osascript -e 'display dialog "Edmund live check starting.\n\nScreen: <full screen on a new Space | a window over the desktop>\nMouse and keyboard: <taken over | not touched>\nExpected: <a>–<b> min until you are back in control.\n\nStart now?" with title "Edmund live verifier" with icon caution buttons {"Cancel", "Start"} default button "Cancel" giving up after 180'
+osascript -e 'display dialog "<one sentence on the screen, then one on the mouse>\n\nThis takes about <a> to <b> minutes. Edmund opens only for the check and quits afterwards." with title "Start the Edmund live check?" with icon note buttons {"Cancel", "Start Check"} default button "Cancel" cancel button "Cancel" giving up after 180'
 ```
 
-Proceed only if the output contains `button returned:Start` and
-`gave up:false`. A Cancel, a timeout (`gave up:true`), a non-zero exit or
-any error means not approved: stop, build and launch nothing, and report
+Sentences to choose from (use exactly one of each pair):
+
+- Screen: "Edmund will fill your screen in full screen on a new Space." or
+  "An Edmund window will open on your desktop."
+- Mouse: "Your mouse and keyboard stay yours." or "Your mouse and keyboard
+  will be controlled until it finishes, so please don't touch them."
+
+`<a>` and `<b>` are whole minutes, rounded up, and `<a>` is never 0. Keep the
+message under about 280 characters.
+
+Proceed only if the output contains `button returned:Start Check` and
+`gave up:false`. A Cancel (osascript exits non-zero with "User canceled"), a timeout
+(`gave up:true`), a non-zero exit or any error means not approved: stop, build and launch nothing, and report
 `verdict: INCONCLUSIVE (not approved)`. Ask once per invocation, but ask
 again before any extra launch the first dialog did not describe (more
 scenarios, a retry that needs the mouse). This dialog is the only thing you
