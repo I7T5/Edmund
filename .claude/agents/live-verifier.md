@@ -108,6 +108,28 @@ Follow `edmund-live-repro-and-diagnostics` §0. In short:
 4. **Chrome steps.** Run the steps `$EV/expect.md` lists (`-debug.render`,
    `axfind.swift`, `ui-harness.sh`) against each tree's own
    `.build/debug/edmd`. Save outputs to `$EV/base/` and `$EV/branch/`.
+4b. **Tell the maintainer the live part is over.** Steps 2 to 4 are the only
+   ones that use the screen and mouse. The moment the last app you launched
+   has quit (check with `pgrep` for your own PIDs), and before you measure,
+   parse logs or write anything, post one notification, because the work
+   after this point does not take over the computer and the maintainer should
+   not wait on it. Send it after an approved run ends in any way (finished,
+   build failure, harness refusal, a stop you chose), never after "not
+   approved", where nothing ran. It follows Apple's notification guidelines:
+   the title states what happened in a few words and makes sense alone; the
+   body adds what the title does not, in one short sentence; no app name (the
+   system shows it), no subtitle, no emoji, no exclamation mark, no "please".
+   A notification does not take focus. Use the system default sound only, so
+   the maintainer's notification settings stay in charge:
+
+   ```bash
+   osascript -e 'display notification "Your screen and mouse are free. The results are being summarized." with title "Live check finished running" sound name "default"'
+   ```
+
+   If the run stopped early, say what happened in the title instead
+   ("Live check stopped early") and keep the body's first sentence. If the
+   command fails, say so in the report and carry on.
+
 5. **Measure; don't eyeball.** For each PNG pair:
    - Same size: the pixel-difference bounding box and the count of changed
      pixels (PIL `ImageChops.difference(a, b).getbbox()`, or
@@ -119,36 +141,22 @@ Follow `edmund-live-repro-and-diagnostics` §0. In short:
      measured number, not a description.
 6. **Clean up.** `git worktree remove --force` the base tree. Leave `$EV`
    alone.
-7. **Tell the maintainer it is over.** Once every app you launched has quit
-   and the base tree is gone, post one notification. It follows Apple's
-   notification guidelines: the title states the outcome in a few words and
-   makes sense alone; the body adds what the title does not (what was found,
-   then that the screen and mouse are free) in one or two short sentences,
-   without repeating the title; no app name (the system shows it), no
-   subtitle, no emoji, no exclamation mark, no "please". Send it after an
-   approved run ends in any way (finished, build failure, harness refusal, a
-   stop you chose), never after "not approved", where nothing ran. A
-   notification does not take focus.
 
-   Title by verdict, sentence case:
-
-   - `VERIFIED`: "Live check passed"
-   - `CONTRADICTED`: "Live check found a problem"
-   - `INCONCLUSIVE`: "Live check was inconclusive"
-
-   Body: the headline in under about 60 characters, a full stop, then
-   "Your screen and mouse are free." Examples: "The viewport no longer jumps
-   on the branch. Your screen and mouse are free." / "The base build failed to
-   compile. Your screen and mouse are free." Keep the whole body under about
-   110 characters. Use the system default sound only, so the maintainer's
-   notification settings stay in charge:
+7. **Tell the maintainer the result is ready.** After clean-up, post a second
+   notification (not after "not approved"). Same guidelines. The title is the
+   outcome, by verdict, in sentence case: "Live check passed" (`VERIFIED`),
+   "Live check found a problem" (`CONTRADICTED`), "Live check was
+   inconclusive" (`INCONCLUSIVE`). The body is the headline alone, under about
+   80 characters, and does not repeat that the screen is free (the earlier
+   notification said so). Default sound off, since the maintainer already
+   knows a notification is coming:
 
    ```bash
-   osascript -e 'display notification "<headline>. Your screen and mouse are free." with title "<title for the verdict>" sound name "default"'
+   osascript -e 'display notification "<headline>." with title "<title for the verdict>"'
    ```
 
-   If the command fails, say so in the report and carry on; the report is what
-   matters.
+   Example body: "The viewport no longer jumps on the branch." If the command
+   fails, say so in the report.
 
 ## Output
 
