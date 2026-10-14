@@ -77,8 +77,8 @@ h1::before { content: ""; flex: none; width: 1.15em; height: 1.15em;
 /* Index header: the app icon, then the book's title. */
 header.book { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem;
               padding-bottom: 1.5rem; border-bottom: 1px solid -apple-system-separator; }
-/* A little taller than the title's text, as on the other pages' titles. */
-header.book img { width: 1.15em; height: 1.15em; flex: none; font-size: 2.35rem; }
+/* Taller than the title's text, so the icon leads the book's title. */
+header.book img { width: 1.4em; height: 1.4em; flex: none; font-size: 2.35rem; }
 header.book h1 { font-size: 2.35rem; font-weight: 500; margin: 0; }
 header.book h1::before { content: none; }
 header.book a.toc { margin: 0.6rem 0 0; font-size: 1rem; }
