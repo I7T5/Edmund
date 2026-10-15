@@ -306,6 +306,9 @@ first releases. **STATUS: all settled**, with one time bomb (PAT expiry).
    AFTER sealing**. The lone unsealed root item trips strict
    `codesign --verify` but not Sparkle's non-strict check (verified against
    that exact API). Do not "fix" the ordering or the failing strict verify.
+   The Quick Look appex later needed the same rule: its bundles sat in
+   `Contents/Resources` to stay sealed, and every preview crashed in
+   `ThemeStore.reload()` from v0.7.0 (#388, PR #390). Do not move them back.
 3. **Appcast push to protected `main` rejected, `GH006`** (`e56a4dd`,
    2026-06-28, PR #140). `GITHUB_TOKEN` isn't admin; `enforce_admins: false`
    means an admin PAT bypasses the required check. Fix: fine-grained admin PAT
