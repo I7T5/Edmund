@@ -54,4 +54,39 @@ struct TableEditViewportTests {
         }
         #expect(deltas.allSatisfy { abs($0) < 1 }, "offset \(caretOffset) y0=\(y0) deltas \(deltas)")
     }
+
+    /// A click restyles the table block, which invalidates its rows' layout. The
+    /// full-layout settle that follows runs inside `preservingViewportAnchor`,
+    /// and with the rows still invalid (zero height) its "before" reading put
+    /// the anchor line hundreds of points too high, so the "correction" scrolled
+    /// the viewport by about a table's height.
+    @Test(arguments: [0.0, 20.0, 60.0])
+    @MainActor func settleAfterTableRestyleHoldsViewport(anchorOffset: Double) throws {
+        let (editor, scroll) = windowedEditor()
+        let rows = (1...21).map { "| \($0) | a\($0) | b\($0) |" }
+        let table = (["| id | x | y |", "| --- | --- | --- |"] + rows).joined(separator: "\n")
+        let doc = ((0..<6).map { "lead \($0) words" } + [table]
+                   + (0..<40).map { "after \($0) with some words" }).joined(separator: "\n\n")
+        editor.loadContent(doc)
+        drainAllStyling(editor)
+        let tlm = try #require(editor.textLayoutManager)
+        editor.setFrameSize(NSSize(width: 500, height: 6000))
+        tlm.ensureLayout(for: tlm.documentRange)
+        // Viewport top on the first paragraph below the table.
+        let below = (editor.rawSource as NSString).range(of: "after 0 ").location
+        let belowY = try #require(editor.lineRect(forCharacterAt: below)).minY
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: belowY - anchorOffset))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        tlm.textViewportLayoutController.layoutViewport()
+        let y0 = scroll.contentView.bounds.origin.y
+
+        // What a click's restyle leaves behind: the table's layout invalidated.
+        let tableIndex = try #require(editor.blocks.firstIndex { $0.kind == .table })
+        let cell = (editor.rawSource as NSString).range(of: "| 5 |").location + 2
+        editor.recomposeDirty(IndexSet(integer: tableIndex), cursorInRaw: cell)
+        editor.scheduleFullLayoutSettle()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        let delta = scroll.contentView.bounds.origin.y - y0
+        #expect(abs(delta) < 1, "anchor offset \(anchorOffset): clip y moved \(delta)")
+    }
 }

@@ -128,6 +128,9 @@ extension EditorTextView {
             for idx in syncSet where idx < blocks.count {
                 if let range = blockTextRange(blocks[idx].range, tlm) {
                     tlm.invalidateLayout(for: range)
+                    // A table's rows are a fragment each, and all of them lose
+                    // their frames at once (see `validateInvalidatedLayout`).
+                    if blocks[idx].kind == .table { layoutInvalidatedByRestyle = true }
                 }
             }
         }

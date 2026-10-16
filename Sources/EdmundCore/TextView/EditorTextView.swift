@@ -273,6 +273,12 @@ public class EditorTextView: NSTextView {
     /// Coalesces the deferred full-document layout settle for small documents
     /// (see EditorTextView+LazyStyling `scheduleFullLayoutSettle`).
     var fullLayoutSettleScheduled = false
+    /// A restyle invalidated a table's rows and nothing has laid them out
+    /// again yet. Until then TextKit 2's frames for them are wrong (zero
+    /// height, stacked at the wrong y) while the screen still shows the old
+    /// ones, so a position read from the model is a position that was never on
+    /// screen. See `validateInvalidatedLayout`.
+    var layoutInvalidatedByRestyle = false
     /// Documents at or below this UTF-16 length are laid out in full once
     /// styling converges, eliminating TextKit 2 height estimates (and the
     /// scroll jumps they cause). See `scheduleFullLayoutSettle`.

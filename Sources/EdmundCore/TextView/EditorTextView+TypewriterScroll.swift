@@ -21,12 +21,19 @@ extension EditorTextView {
     /// yank or a jump to the document start.
     func preservingViewportAnchor(_ body: () -> Void) {
         guard let scrollView = enclosingScrollView else { body(); return }
+        // Before reading the anchor, not after: an invalid layout would pick and
+        // place it wrongly. Not compensated, since nothing on screen moves.
+        validateInvalidatedLayout()
         let visible = scrollView.contentView.bounds
         guard let anchorOffset = topmostVisibleCharacterOffset() else { body(); return }
         let beforeY = lineRect(forCharacterAt: anchorOffset)?.minY
         let framesBefore = Log.shouldTrace ? traceFragmentFrames(upTo: anchorOffset) : ""
 
         body()
+        // The body's own restyle invalidated fragments; read the anchor's new
+        // position from a valid layout, so a genuine height change is
+        // compensated and a stale one is not.
+        validateInvalidatedLayout()
 
         guard let beforeY, let afterY = lineRect(forCharacterAt: anchorOffset)?.minY else { return }
         let delta = afterY - beforeY
