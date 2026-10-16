@@ -52,8 +52,13 @@ extension EditorTextView {
     }
 
     /// The caller's stack, one frame per line, without index/module/address.
+    /// For a clip-view move the interesting frames are the ones *after*
+    /// `-[NSClipView scrollToPoint:]` (who asked), not the notification-centre
+    /// frames before it, so start there when it is on the stack.
     private func condensedCallStack() -> String {
-        Thread.callStackSymbols.dropFirst(3).prefix(14).map { frame in
+        let symbols = Thread.callStackSymbols
+        let start = symbols.firstIndex { $0.contains("scrollToPoint:") }.map { $0 + 1 } ?? 3
+        return symbols.dropFirst(start).prefix(16).map { frame in
             // "3  AppKit  0x00: -[NSTextView foo] + 12" → drop index/module/addr.
             let parts = frame.split(separator: " ", omittingEmptySubsequences: true)
             return parts.count > 3 ? parts[3...].joined(separator: " ") : frame
@@ -69,7 +74,8 @@ extension EditorTextView {
         let y = clip.bounds.origin.y
         defer { traceLastClipY = y }
         guard abs(y - traceLastClipY) >= 2, !userScrollInProgress else { return }
-        traceEdit("clip jump \(traceLastClipY)→\(y) (Δ\(y - traceLastClipY)) stack:\n    "
+        traceEdit("clip jump \(traceLastClipY)→\(y) (Δ\(y - traceLastClipY)) "
+                  + "scrollingActive=\(isScrollingActive) stack:\n    "
                   + condensedCallStack())
     }
 
