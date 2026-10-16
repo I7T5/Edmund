@@ -89,4 +89,39 @@ struct TableEditViewportTests {
         let delta = scroll.contentView.bounds.origin.y - y0
         #expect(abs(delta) < 1, "anchor offset \(anchorOffset): clip y moved \(delta)")
     }
+
+    /// The same, for a caret that moves between cells of a table that is already
+    /// the active block: that restyle (`applyBlockStyle`) never goes through
+    /// `recomposeDirty`, and invalidates the rows all the same.
+    @Test @MainActor func settleAfterMovingBetweenCellsHoldsViewport() throws {
+        let (editor, scroll) = windowedEditor()
+        let rows = (1...21).map { "| \($0) | a\($0) | b\($0) |" }
+        let table = (["| id | x | y |", "| --- | --- | --- |"] + rows).joined(separator: "\n")
+        let doc = ((0..<6).map { "lead \($0) words" } + [table]
+                   + (0..<40).map { "after \($0) with some words" }).joined(separator: "\n\n")
+        editor.loadContent(doc)
+        drainAllStyling(editor)
+        let tlm = try #require(editor.textLayoutManager)
+        editor.setFrameSize(NSSize(width: 500, height: 6000))
+        let first = (editor.rawSource as NSString).range(of: "| 5 |").location + 2
+        editor.setSelectedRange(NSRange(location: first, length: 0))
+        editor.recomposeIncremental(cursorInRaw: first)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        tlm.ensureLayout(for: tlm.documentRange)
+        let below = (editor.rawSource as NSString).range(of: "after 0 ").location
+        let belowY = try #require(editor.lineRect(forCharacterAt: below)).minY
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: belowY - 20))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        tlm.textViewportLayoutController.layoutViewport()
+        let y0 = scroll.contentView.bounds.origin.y
+
+        let second = (editor.rawSource as NSString).range(of: "| 9 |").location + 2
+        editor.suppressTypewriterCentering = true
+        editor.setSelectedRange(NSRange(location: second, length: 0))
+        editor.suppressTypewriterCentering = false
+        editor.scheduleFullLayoutSettle()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let delta = scroll.contentView.bounds.origin.y - y0
+        #expect(abs(delta) < 1, "clip y moved \(delta)")
+    }
 }

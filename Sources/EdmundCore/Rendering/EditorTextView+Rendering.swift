@@ -1099,6 +1099,10 @@ extension EditorTextView {
 
         let block = blocks[blockIndex]
         guard block.range.upperBound <= ts.length else { return }
+        // Rewriting a table's attributes invalidates every row's fragment at
+        // once, whichever path restyled it (a click into it, a caret move
+        // between its cells, typing); see `validateInvalidatedLayout`.
+        if block.kind == .table { layoutInvalidatedByRestyle = true }
 
         let styled: NSAttributedString
         if case .frontMatter = block.kind, viewMode != .source {
