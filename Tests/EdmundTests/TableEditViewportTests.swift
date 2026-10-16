@@ -124,4 +124,42 @@ struct TableEditViewportTests {
         let delta = scroll.contentView.bounds.origin.y - y0
         #expect(abs(delta) < 1, "clip y moved \(delta)")
     }
+
+    /// Clicking into a table, out of it and back in restyles it each time, which
+    /// invalidates its rows. The last restyle of a click is the caret's own, with
+    /// no recompose and so no settle; if nothing then lays the rows out again they
+    /// stay at zero height and the table vanishes from the screen (and the text
+    /// below moves up by its height) until the next click elsewhere.
+    @Test(arguments: [0.0, 200.0])
+    @MainActor func tableRowsAreLaidOutAfterClickingBackIn(rowOffset: Double) throws {
+        let (editor, scroll) = windowedEditor()
+        let rows = (1...21).map { "| \($0) | a\($0) | b\($0) |" }
+        let table = (["| id | x | y |", "| --- | --- | --- |"] + rows).joined(separator: "\n")
+        let doc = ((0..<6).map { "lead \($0) words" } + [table]
+                   + (0..<40).map { "after \($0) with some words" }).joined(separator: "\n\n")
+        editor.loadContent(doc)
+        drainAllStyling(editor)
+        let tlm = try #require(editor.textLayoutManager)
+        editor.setFrameSize(NSSize(width: 900, height: 6000))
+        tlm.ensureLayout(for: tlm.documentRange)
+        let cell = (editor.rawSource as NSString).range(of: "| 9 |").location + 2
+        let outside = (editor.rawSource as NSString).range(of: "after 1 ").location
+        let cellY = try #require(editor.lineRect(forCharacterAt: cell)).minY
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, cellY - rowOffset)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        tlm.textViewportLayoutController.layoutViewport()
+        let y0 = scroll.contentView.bounds.origin.y
+
+        for offset in [cell, outside, cell] {
+            editor.reproClickSelect(offset)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        }
+        var collapsed = 0
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) { frag in
+            if frag.layoutFragmentFrame.height < 0.5 { collapsed += 1 }
+            return true
+        }
+        #expect(collapsed == 0, "\(collapsed) laid-out fragments have no height")
+        #expect(abs(scroll.contentView.bounds.origin.y - y0) < 1)
+    }
 }

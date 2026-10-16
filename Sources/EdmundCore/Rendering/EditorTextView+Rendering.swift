@@ -1102,7 +1102,13 @@ extension EditorTextView {
         // Rewriting a table's attributes invalidates every row's fragment at
         // once, whichever path restyled it (a click into it, a caret move
         // between its cells, typing); see `validateInvalidatedLayout`.
-        if block.kind == .table { layoutInvalidatedByRestyle = true }
+        if block.kind == .table {
+            layoutInvalidatedByRestyle = true
+            // Nothing else is guaranteed to lay it out again: a caret move
+            // within the table restyles it with no recompose and no settle, and
+            // until something does, the rows stay collapsed on screen.
+            scheduleFullLayoutSettle()
+        }
 
         let styled: NSAttributedString
         if case .frontMatter = block.kind, viewMode != .source {
