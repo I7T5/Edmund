@@ -24,6 +24,7 @@ extension EditorTextView {
         let visible = scrollView.contentView.bounds
         guard let anchorOffset = topmostVisibleCharacterOffset() else { body(); return }
         let beforeY = lineRect(forCharacterAt: anchorOffset)?.minY
+        let framesBefore = Log.shouldTrace ? traceFragmentFrames(upTo: anchorOffset) : ""
 
         body()
 
@@ -31,6 +32,10 @@ extension EditorTextView {
         let delta = afterY - beforeY
         traceEdit("viewport anchor off=\(anchorOffset) beforeY=\(beforeY) afterY=\(afterY) "
                   + "Δ=\(delta) clipY=\(visible.origin.y)")
+        if abs(delta) > 50 {
+            traceEdit("anchor frames before: \(framesBefore)")
+            traceEdit("anchor frames after:  \(traceFragmentFrames(upTo: anchorOffset))")
+        }
         guard abs(delta) > 0.5 else { return }
         // Floor only, and deliberately not `clampedScrollY`: this runs while a
         // restyle is resizing the text view, when the clip view's idea of the

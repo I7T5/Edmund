@@ -79,6 +79,23 @@ extension EditorTextView {
                   + condensedCallStack())
     }
 
+    /// `offset:minY+height` for every layout fragment that is already laid out,
+    /// from the document start up to character `offset`. Reads the frames as
+    /// they are (never forces layout), so a trace taken before and after a
+    /// relayout shows which block's height changed.
+    func traceFragmentFrames(upTo offset: Int) -> String {
+        guard let tlm = textLayoutManager else { return "" }
+        var out: [String] = []
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) { frag in
+            let start = tlm.offset(from: tlm.documentRange.location, to: frag.rangeInElement.location)
+            if start > offset { return false }
+            let f = frag.layoutFragmentFrame
+            out.append("\(start):\(Int(f.minY.rounded()))+\(Int(f.height.rounded()))")
+            return true
+        }
+        return out.joined(separator: " ")
+    }
+
     /// A short, newline-escaped, length-capped rendering of edit text for traces.
     func logSnippet(_ s: String?) -> String {
         guard let s else { return "nil" }
