@@ -26,9 +26,9 @@ scenario in `$EV/scenarios/` and work out:
   otherwise shows a window (every scenario does; say "an Edmund window will
   open").
 - **Mouse and keyboard:** whether any scenario posts real HID events
-  (`realclickoff`, `clickhandle`, `handlemenu`, CGEvent or `axfind.swift`
-  steps). In-process commands (`type`, `clickoff`, `scroll`, `caret`) do not
-  move the mouse.
+  (`realclickoff`, `realclick`, `realseq`, `realoff`, `realmove`, CGEvent or
+  `axfind.swift` steps). In-process commands (`type`, `clickoff`, `scroll`,
+  `caret`, `clickhandle`, `handlemenu`) do not move the mouse.
 - **Time:** the sum of every `sleep` (ms) in the scenarios, run on both trees,
   plus about 1 minute per tree for the build (4 minutes if cold) and 30 s
   overhead per scenario. Give a range, in minutes, until the maintainer has

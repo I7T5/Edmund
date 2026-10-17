@@ -88,6 +88,7 @@ verbose diagnostics were on. Launch flags (file arg **must** be `argv[1]`):
 | `undo` | undo-stack depth |
 | `blocks` | block count |
 | `storLen` / `rawLen` | storage length vs rawSource length |
+| `clipY` | clip-view origin y at the time of the line (compare consecutive lines to see which event moved the viewport) |
 
 - **Healthy edit ordering:** `shouldChangeText` → `selectionDidChange` (up=N) →
   `synced`. A transient `⚠︎LEN-MISMATCH` *between* those lines is normal
@@ -96,6 +97,15 @@ verbose diagnostics were on. Launch flags (file arg **must** be `argv[1]`):
   **persisting** LEN-MISMATCH; a `shouldChangeText` with **no**
   `synced`/`SKIPPED`/`DEFERRED` after it (a bypassed `didChangeText`); the
   `healing storage edit that bypassed didChangeText` breadcrumb.
+- **Viewport jumps** have four breadcrumbs: `clip jump A→B (ΔN) … stack:` is any
+  non-user clip move of 2pt or more, with the stack starting after
+  `scrollToPoint:`; `viewport anchor off= beforeY= afterY= Δ= clipY=` is every
+  anchored restyle, followed by `anchor frames before/after`
+  (`offset:minY+height` per fragment, the 40 nearest the anchor) when |Δ| is over
+  50; `scrollRangeToVisible … → y` is the caret autoscroll's inputs; and
+  `active-block restyle took N ms fromMouse= dirty=` times a click's restyle.
+  A table that vanishes with `clipY` unchanged is not a scroll: look for
+  fragments with height 0 in the frame dump.
 - **`traceSelectionOrigin`** logs a **call stack** for any selection change that
   lands mid-recompose — this is what named `_fixSelectionAfterChange` in round 6.
 - **Walk BACKWARDS from the first bad line, not forwards from the symptom.** The

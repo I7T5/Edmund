@@ -102,7 +102,9 @@ Edmund's mitigations, converging in
 - Documents ≤ `fullLayoutMaxLength` (100k UTF-16 units) are kept **fully
   laid out** once styling converges, via a coalesced next-run-loop settle
   (`scheduleFullLayoutSettle`) wrapped in `preservingViewportAnchor` so the
-  correction can't visibly shift what's on screen. Larger documents stay
+  correction can't visibly shift what's on screen. A restyled table's rows are
+  invalid, not estimated, so `validateInvalidatedLayout` lays them out before
+  the anchor is read (ARCHITECTURE §8). Larger documents stay
   viewport-based; a full layout there is the process-killing path.
 - `repairContentAboveOrigin` detects a first fragment drifted *above* y=0
   (edits near the top can leave the scroller stuck with unreachable content

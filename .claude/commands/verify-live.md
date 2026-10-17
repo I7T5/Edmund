@@ -67,6 +67,10 @@ measures, which keeps build and launch noise out of this session.
 4. **Spawn `live-verifier`** with: the absolute `$EV` path, the class, the
    branch, and optionally a base ref. By default it uses the fork point from
    `origin/main`, never local `main`, which can be stale. Wait for its report.
+   The agent first asks the maintainer for permission with a native alert
+   (180 s timeout) and posts two notifications, when the live part ends and when
+   the result is ready. If it reports `INCONCLUSIVE (not approved)`, nothing was
+   built or run: say so and stop; do not run the check yourself.
 
 5. **Report** to the maintainer, and hand the same text to `/ship` for the PR
    body's Testing section when `/ship` called this:

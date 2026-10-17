@@ -166,7 +166,11 @@ motivated the `scrollRangeToVisible` override in the first place.
 Why deferred: running the full layout *inside* a caller's own
 `preservingViewportAnchor` body poisons that caller's before/after
 measurement (the tab-indent stability test caught exactly this — a 366pt
-compensation).
+compensation). The one exception is a restyled *table*: its rows are invalid
+rather than estimated, so `preservingViewportAnchor` runs
+`validateInvalidatedLayout` before reading the anchor and again after `body()`
+(ARCHITECTURE §8, "A restyled table has no layout until something lays it out
+again").
 
 **Stranded-content repair** (`8b4ecfe`, `repairContentAboveOrigin`): the
 settle also checks the document's **first fragment**; if its `minY < -0.5`,
