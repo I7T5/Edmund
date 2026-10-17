@@ -7,8 +7,8 @@ interface Props {
 const { id, title } = Astro.props;
 ---
 
-<section id={id} class="grid gap-8 py-12 sm:grid-cols-[180px_1fr]">
-  <h2 class="text-2xl font-semibold">{title}</h2>
+<section id={id}>
+  <h2>{title}</h2>
   <div>
     <slot />
   </div>

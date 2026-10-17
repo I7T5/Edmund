@@ -1,6 +1,8 @@
 ---
 import Footer from '../components/Footer.astro';
 import Header from '../components/Header.astro';
+// Read mode's own stylesheet, so the site reads like a document open in Edmund.
+import '../styles/read.css';
 
 interface Props {
   pageTitle?: string;
@@ -32,25 +34,27 @@ const base = import.meta.env.BASE_URL.endsWith("/")
     <style is:global>
       :root {
         color-scheme: light dark;
-        --color-background: #ffffff;
-        --color-surface: #ffffff;
+        /* Neutrals and links defer to read.css so the page takes Read mode's palette. */
+        --color-background: var(--bg);
+        --color-surface: var(--bg);
         --color-tertiary: #f2f2f7;
-        --color-border: #d1d1d6;
-        --color-text: #1d1d1f;
-        --color-secondary: #86868b;
-        --color-primary: #ff6916; 
+        --color-border: var(--rule);
+        --color-text: var(--fg);
+        --color-secondary: var(--faint);
+        --color-primary: #ff6916;
         --color-primary-strong: #ee5605;
-        --color-link: #007aff;
+        --color-link: var(--accent);
         --color-link-strong: #0051d5;
         --color-link-soft: #dbe9ff;
-
-        color: var(--color-text); 
+        --page-max-width: 680px;
 
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
 
-      a { color: var(--color-link); transition: color 0.3s ease; } 
+      /* UnoCSS's reset strips list markers; read.css restores only ul's. */
+      ol { list-style-type: decimal; }
+      a { transition: color 0.3s ease; }
       a:hover { color: var(--color-link-strong); }
       #acknowledgements a, #acknowledgements a:hover { color: inherit; }
       #acknowledgements a:hover { font-weight: bold; }
@@ -71,13 +75,13 @@ const base = import.meta.env.BASE_URL.endsWith("/")
       } */
     </style>
   </head>
-  <Header />
-  <body class="bg-background text-text font-serif antialiased">
-    <div class="mx-auto max-w-3xl px-6 sm:px-8">
+  <body>
+    <div class="page">
+      <Header />
       <main>
         <slot />
       </main>
+      <Footer />
     </div>
   </body>
-  <Footer />
 </html>

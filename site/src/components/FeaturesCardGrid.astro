@@ -51,13 +51,13 @@ const cards = [
 // );
 ---
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-  {cards.map((card) => (
-    <Card title={card.title}>
-      {card.text}
-    </Card>
-  ))}
-</div>
+<!-- One column of headed paragraphs, as the features would read in a Markdown file. -->
+{cards.map((card) => (
+  <>
+    <h3>{card.title}</h3>
+    <p>{card.text}</p>
+  </>
+))}
 
 <!-- Horizontal scroll -->
 <!-- <div class="overflow-x-auto">
