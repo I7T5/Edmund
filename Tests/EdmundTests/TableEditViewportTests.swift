@@ -25,6 +25,20 @@ struct TableEditViewportTests {
         return (editor, scroll)
     }
 
+    /// Fragments whose frame cannot be right: no height, or not starting where the
+    /// one before ends. What a restyled, not yet re-laid-out table looks like.
+    @MainActor private func brokenFragments(in tlm: NSTextLayoutManager) -> Int {
+        var n = 0
+        var expected: CGFloat = 0
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) { frag in
+            let f = frag.layoutFragmentFrame
+            if f.height < 0.5 || abs(f.minY - expected) > 1 { n += 1 }
+            expected = f.maxY
+            return true
+        }
+        return n
+    }
+
     /// `caretOffset`: distance from the viewport top to the caret line's top.
     @Test(arguments: [4.0, 10.0, 30.0, 340.0, 360.0])
     @MainActor func typingHoldsViewport(caretOffset: Double) throws {
@@ -160,6 +174,77 @@ struct TableEditViewportTests {
             return true
         }
         #expect(collapsed == 0, "\(collapsed) laid-out fragments have no height")
+        #expect(abs(scroll.contentView.bounds.origin.y - y0) < 1)
+    }
+
+    /// A frame can be drawn between a restyle and the next run-loop turn, so a
+    /// restyled table must already be laid out again when the restyle returns.
+    /// Laid out a turn later (the settle), that frame showed the table gone and
+    /// the text below moved up by its height: a flash on every caret move
+    /// between the table's cells.
+    @Test @MainActor func tableIsLaidOutWhenTheCaretMovesBetweenCells() throws {
+        let (editor, scroll) = windowedEditor()
+        let rows = (1...21).map { "| \($0) | a\($0) | b\($0) |" }
+        let table = (["| id | x | y |", "| --- | --- | --- |"] + rows).joined(separator: "\n")
+        let doc = ((0..<6).map { "lead \($0) words" } + [table]
+                   + (0..<40).map { "after \($0) with some words" }).joined(separator: "\n\n")
+        editor.loadContent(doc)
+        drainAllStyling(editor)
+        let tlm = try #require(editor.textLayoutManager)
+        editor.setFrameSize(NSSize(width: 900, height: 6000))
+        tlm.ensureLayout(for: tlm.documentRange)
+        func collapsed() -> Int { brokenFragments(in: tlm) }
+        let first = (editor.rawSource as NSString).range(of: "| 4 |").location + 2
+        editor.reproClickSelect(first)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        let cellY = try #require(editor.lineRect(forCharacterAt: first)).minY
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, cellY - 20)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        tlm.textViewportLayoutController.layoutViewport()
+
+        for row in [5, 6, 9, 14] {
+            let offset = (editor.rawSource as NSString).range(of: "| \(row) |").location + 2
+            editor.reproClickSelect(offset)
+            // No run-loop turn: this is the state a frame drawn now would show.
+            #expect(collapsed() == 0, "row \(row): \(collapsed()) fragments collapsed right after the caret moved")
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        }
+    }
+
+    /// The click from outside into a table is restyled on a later turn. No turn
+    /// in between may leave the table with collapsed rows, for a frame can be
+    /// drawn after any of them. Tried with the clicked cell at the very top of
+    /// the viewport, where the table's own rows are the topmost visible lines.
+    @Test(arguments: [0.0, 10.0, 40.0])
+    @MainActor func tableStaysLaidOutThroughAClickFromOutside(cellOffset: Double) throws {
+        let (editor, scroll) = windowedEditor()
+        let rows = (1...21).map { "| \($0) | a\($0) | b\($0) |" }
+        let table = (["| id | x | y |", "| --- | --- | --- |"] + rows).joined(separator: "\n")
+        let doc = ((0..<6).map { "lead \($0) words" } + [table]
+                   + (0..<40).map { "after \($0) with some words" }).joined(separator: "\n\n")
+        editor.loadContent(doc)
+        drainAllStyling(editor)
+        let tlm = try #require(editor.textLayoutManager)
+        editor.setFrameSize(NSSize(width: 900, height: 6000))
+        tlm.ensureLayout(for: tlm.documentRange)
+        func collapsed() -> Int { brokenFragments(in: tlm) }
+        let outside = (editor.rawSource as NSString).range(of: "after 1 ").location
+        editor.reproClickSelect(outside)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let cell = (editor.rawSource as NSString).range(of: "| 8 |").location + 2
+        let cellY = try #require(editor.lineRect(forCharacterAt: cell)).minY
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, cellY - cellOffset)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        tlm.textViewportLayoutController.layoutViewport()
+        let y0 = scroll.contentView.bounds.origin.y
+
+        editor.reproClickSelect(cell)
+        var worst = collapsed()
+        for _ in 0..<40 {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            worst = max(worst, collapsed())
+        }
+        #expect(worst == 0, "up to \(worst) fragments collapsed between turns")
         #expect(abs(scroll.contentView.bounds.origin.y - y0) < 1)
     }
 }

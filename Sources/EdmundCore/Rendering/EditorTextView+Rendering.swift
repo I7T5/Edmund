@@ -1219,6 +1219,9 @@ extension EditorTextView {
         restyleBlock(activeIdx, cursorInBlock: cursorInBlock, spans: spans)
         ts.endEditing()
         isUpdating = false
+        // Before anything can draw: a frame between this restyle and the next
+        // run-loop turn would show a restyled table with no rows.
+        validateInvalidatedLayout()
 
         appliedCursorSpans = cursorSig
         typingAttributes = baseAttributes

@@ -153,6 +153,9 @@ extension EditorTextView {
         typingAttributes = baseAttributes
 
         isUpdating = false
+        // As in `applyBlockStyle`: lay a restyled table out again now, not a
+        // run-loop turn later, so no frame is drawn with its rows collapsed.
+        validateInvalidatedLayout()
 
         if !skipsSpellRecheck { recheckSpelling(blocks: syncSet, sparingCaret: fromEdit) }
 

@@ -382,6 +382,7 @@ extension EditorTextView {
         suppressTypewriterCentering = false
         rawTableEditing = !alreadyRaw
         restyleBlock(blockIndex, cursorInBlock: 0)
+        validateInvalidatedLayout()
     }
 
     /// The table the caret is in, if any — the one `rawTableEditing` applies to.
