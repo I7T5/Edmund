@@ -114,6 +114,12 @@ extension EditorTextView {
                         deferred = true
                     }
                 }
+                let restyleStart = CFAbsoluteTimeGetCurrent()
+                defer {
+                    self.traceEdit("active-block restyle took "
+                                   + "\(Int((CFAbsoluteTimeGetCurrent() - restyleStart) * 1000)) ms "
+                                   + "fromMouse=\(fromMouse) dirty=\(dirty.count)")
+                }
                 // Only the new (visible) active block changes height now, so the
                 // caret anchor's delta is small and reliable. Typewriter mode
                 // centers on the post-restyle layout instead.

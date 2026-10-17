@@ -759,7 +759,9 @@ Notable subsystems:
   limitation; even TextEdit shows it). Mitigations: docs ≤
   `fullLayoutMaxLength` (100k UTF-16) are kept **fully laid out** by a
   coalesced next-run-loop settle (`scheduleFullLayoutSettle`, wrapped in
-  `preservingViewportAnchor` so corrections never shift what's on screen);
+  `preservingViewportAnchor` so corrections never shift what's on screen;
+  a restyled table's invalid rows are laid out first, see "A restyled table
+  has no layout" below);
   `centerViewportOnCaret` re-measures after its first scroll and corrects
   the residual; undo/redo avoids resetting layout at all (§4). Never trust
   an off-screen fragment's y-coordinate without laying out the span first.
@@ -1096,6 +1098,22 @@ Notable subsystems:
   for the click paths; the draw pass must not (forcing layout there re-enters
   the viewport layout controller and blanks the view), and a collapsed grid is
   reported as *no* grid rather than a zero-height one.
+- **A restyled table has no layout until something lays it out again.**
+  Restyling a table (a click into it, a caret move between its cells, typing,
+  the raw toggle) rewrites its attributes and invalidates all of its rows at
+  once. Until they are laid out again TextKit 2 reports them with no height, or
+  stacked at the wrong y, while the screen still shows the old frames. Anchoring
+  on that reading jumped the viewport by the table's height (~600pt) once the
+  settle ran; reading the caret's rect from it made AppKit's autoscroll scroll
+  on every keystroke in a cell near an edge; and a frame drawn before the next
+  run-loop turn showed the table with no rows. `restyleBlock` sets
+  `layoutInvalidatedByRestyle` for a `.table` block (documents up to
+  `fullLayoutMaxLength`) and queues the settle; `validateInvalidatedLayout`
+  lays the document out synchronously, once every block is styled, in
+  `applyBlockStyle`, `recomposeDirty`, the raw-table toggle, `lineRect` and at
+  both ends of `preservingViewportAnchor` (outside `body`, so a genuine height
+  change is still compensated). Pinned by `TableEditViewportTests`. Other
+  multi-fragment blocks may collapse the same way; none has been seen.
 - **A cell's padding is one kerned glyph, and the hidden pipe sits in the
   middle of it.** The column's slack is split between the cell's trailing space
   and the row's closing pipe, so that pipe draws at the visual midpoint of the

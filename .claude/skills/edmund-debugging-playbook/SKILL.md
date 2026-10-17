@@ -179,6 +179,7 @@ tracing"). Logs land in `~/Library/Application Support/Edmund/Logs/edmund-YYYY-M
 | `undo=Y/N` | `isUndoRedoing` |
 | `blocks=` | block count |
 | `storLen=` / `rawLen=` | storage vs rawSource lengths |
+| `clipY=` | clip-view origin y (compare consecutive lines to see which event moved the viewport) |
 | `⚠︎LEN-MISMATCH` | appended when they differ |
 
 **Healthy vs suspect edit orderings:**

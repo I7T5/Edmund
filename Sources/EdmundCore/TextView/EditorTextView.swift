@@ -273,6 +273,12 @@ public class EditorTextView: NSTextView {
     /// Coalesces the deferred full-document layout settle for small documents
     /// (see EditorTextView+LazyStyling `scheduleFullLayoutSettle`).
     var fullLayoutSettleScheduled = false
+    /// A restyle invalidated a table's rows and nothing has laid them out
+    /// again yet. Until then TextKit 2's frames for them are wrong (zero
+    /// height, stacked at the wrong y) while the screen still shows the old
+    /// ones, so a position read from the model is a position that was never on
+    /// screen. See `validateInvalidatedLayout`.
+    var layoutInvalidatedByRestyle = false
     /// Documents at or below this UTF-16 length are laid out in full once
     /// styling converges, eliminating TextKit 2 height estimates (and the
     /// scroll jumps they cause). See `scheduleFullLayoutSettle`.
@@ -493,6 +499,10 @@ public class EditorTextView: NSTextView {
     /// Clicks position the caret where the user clicked — centering there
     /// would be jarring and is the root cause of the "glitchy" feeling.
     var suppressTypewriterCentering = false
+
+    /// Clip-view origin at the last bounds change; only read under verbose
+    /// tracing, to log a one-step jump with the stack that caused it.
+    var traceLastClipY: CGFloat = 0
 
     /// Physical maximum text-column width in points. Windows wider than this
     /// cap get symmetric side margins; narrower windows fill edge-to-edge.

@@ -21,14 +21,30 @@ extension EditorTextView {
     /// yank or a jump to the document start.
     func preservingViewportAnchor(_ body: () -> Void) {
         guard let scrollView = enclosingScrollView else { body(); return }
+        // Before reading the anchor, not after: an invalid layout would pick and
+        // place it wrongly. Not compensated, since nothing on screen moves.
+        validateInvalidatedLayout()
         let visible = scrollView.contentView.bounds
         guard let anchorOffset = topmostVisibleCharacterOffset() else { body(); return }
         let beforeY = lineRect(forCharacterAt: anchorOffset)?.minY
+        let framesBefore = Log.shouldTrace ? traceFragmentFrames(upTo: anchorOffset) : ""
 
         body()
+        // The body's own restyle invalidated fragments; read the anchor's new
+        // position from a valid layout, so a genuine height change is
+        // compensated and a stale one is not.
+        validateInvalidatedLayout()
 
         guard let beforeY, let afterY = lineRect(forCharacterAt: anchorOffset)?.minY else { return }
         let delta = afterY - beforeY
+        traceEdit("viewport anchor off=\(anchorOffset) beforeY=\(beforeY) afterY=\(afterY) "
+                  + "Δ=\(delta) clipY=\(visible.origin.y)")
+        // Dump frames only for a correction of 50pt or more (a table's rows,
+        // not line-height noise), so ordinary re-estimation stays quiet.
+        if abs(delta) > 50 {
+            traceEdit("anchor frames before: \(framesBefore)")
+            traceEdit("anchor frames after:  \(traceFragmentFrames(upTo: anchorOffset))")
+        }
         guard abs(delta) > 0.5 else { return }
         // Floor only, and deliberately not `clampedScrollY`: this runs while a
         // restyle is resizing the text view, when the clip view's idea of the
@@ -250,7 +266,8 @@ extension EditorTextView {
     }
 
     /// The caret line's rect in text-container coordinates (TextKit 2: lays
-    /// out only the caret's fragment, positions above are estimated).
+    /// out only the caret's fragment, positions above are estimated; see
+    /// `lineRect` for the table exception).
     private func caretLineRect() -> CGRect? {
         lineRect(forCharacterAt: selectedRange().location)
     }
@@ -261,10 +278,21 @@ extension EditorTextView {
     /// MB document for a deep caret. For carets in or near the viewport the
     /// position is exact; for far jumps it may be a TextKit 2 estimate that
     /// the scroll anchoring + promotion settle once the region is reached.
+    ///
+    /// Exception: when a restyle has left a table's rows invalid in a document
+    /// of at most `fullLayoutMaxLength`, the document is laid out first
+    /// (`validateInvalidatedLayout`); the invalid rows would misplace the caret.
     func lineRect(forCharacterAt offset: Int) -> CGRect? {
         guard let tlm = textLayoutManager else { return nil }
         guard let loc = tlm.location(tlm.documentRange.location, offsetBy: offset)
         else { return nil }
+        // A restyled table's rows are invalid until laid out again, and ensuring
+        // only the caret's own range stacks that fragment straight after the last
+        // *valid* one — the table's top, not the row. AppKit's caret autoscroll
+        // read that and scrolled the viewport on every keystroke in a cell near
+        // an edge. Lay the table out first; a no-op unless a restyle left it
+        // invalid, so a deep caret in a huge file keeps the cheap path.
+        validateInvalidatedLayout()
         tlm.ensureLayout(for: NSTextRange(location: loc))
         // TextKit 2 has no fragment *at* `documentRange.endLocation` — the caret
         // there belongs to the last fragment (whose final line fragment is the
@@ -339,6 +367,8 @@ extension EditorTextView {
             return  // already visible
         }
         let clampedY = clampedScrollY(targetY)
+        traceEdit("scrollRangeToVisible \(range) top=\(top) bottom=\(bottom) "
+                  + "visible=\(visible.minY)..\(visible.maxY) → \(clampedY)")
         scrollView.contentView.scroll(to: NSPoint(x: visible.origin.x, y: clampedY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }

@@ -242,7 +242,9 @@ STTextView, Apple forums) — even TextEdit exhibits it.
   that motivated the lazy pipeline); running a full layout *inside* a caller's
   `preservingViewportAnchor` (poisons its before/after measurement — the
   tab-indent stability test caught a 366pt compensation; that's why the settle
-  is deferred).
+  is deferred). The exception is a restyled table: its rows are invalid, not
+  estimated, so `preservingViewportAnchor` runs `validateInvalidatedLayout`
+  before reading the anchor and after `body()`.
 - Backlog keeps "Inaccurate viewport estimates and things related" under
   On-going bugs, plus a lurking "glitch when scrolling" — the estimate class
   is managed, not extinct. Roadmap v1.0.0 carries "TextKit 2 viewport

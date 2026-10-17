@@ -126,7 +126,7 @@ grep -n 'scheduleBypassedEditSyncCheck\|healing storage edit' Sources/EdmundCore
      -settings.advanced.verboseEditorDiagnostics YES \
      -ApplePersistenceIgnoreState YES
    ```
-2. **Decode the trace fields:** `sel/active/marked/up/undo/blocks/storLen/rawLen`.
+2. **Decode the trace fields:** `sel/active/marked/up/undo/blocks/storLen/rawLen/clipY`.
    `up=Y` = event arrived mid-recompose (suspicious). Healthy ordering:
    `shouldChangeText` → `selectionDidChange (up=N)` → `synced`; a transient
    `⚠︎LEN-MISMATCH` between those is normal, a persisting one is not.

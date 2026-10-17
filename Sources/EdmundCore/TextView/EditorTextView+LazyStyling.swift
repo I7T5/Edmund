@@ -133,6 +133,10 @@ extension EditorTextView {
     /// correcting estimates *above* the viewport shifts every laid-out
     /// position below them, so doing it synchronously inside a caller's own
     /// anchored restyle would poison that caller's before/after measurement.
+    /// The one exception is `validateInvalidatedLayout`, which
+    /// `preservingViewportAnchor` runs outside `body`, and only when a restyled
+    /// table's rows are invalid (not estimated) — their frames are wrong, and
+    /// the screen still shows the old ones.
     func scheduleFullLayoutSettle() {
         guard !fullLayoutSettleScheduled else { return }
         guard isEditorPresentationActive, !isScrollingActive else { return }
@@ -153,6 +157,23 @@ extension EditorTextView {
                 }
             }
         }
+    }
+
+    /// Lays out what a restyle invalidated, so the model's frames are the ones
+    /// on screen again. A click that makes a table the active block restyles it
+    /// and invalidates its rows; until they are laid out again the rows have no
+    /// height, and every line below the table reads a table's height too high.
+    /// Anchoring on that (the deferred settle did, after the user's scroll
+    /// went quiet) "corrected" the viewport by the table's whole height, a jump
+    /// of ~600pt. The screen never moved, so this adjusts nothing: it only
+    /// makes the model agree with it. Small, fully styled documents only (the
+    /// rest keep their estimates, whose correction the anchor does compensate).
+    func validateInvalidatedLayout() {
+        guard layoutInvalidatedByRestyle,
+              (textStorage?.length ?? .max) <= Self.fullLayoutMaxLength,
+              unstyledBlockCount == 0, let tlm = textLayoutManager else { return }
+        tlm.ensureLayout(for: tlm.documentRange)
+        layoutInvalidatedByRestyle = false
     }
 
     /// TextKit 2 can leave the document's first fragment at a *negative* y
@@ -280,6 +301,7 @@ extension EditorTextView {
     @objc private func clipViewBoundsDidChange(_ note: Notification) {
         // Bounds also change for caret centering, outline jumps, and viewport
         // compensation. Those must promote promptly without pausing styling.
+        traceClipJump()
         guard !isPromotingVisibleBlocks else { return }
         scheduleScrollPromotion()
     }

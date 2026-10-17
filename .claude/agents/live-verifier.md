@@ -15,6 +15,56 @@ files you write are in the evidence directory (`$EV`) you are given.
 the fork point, below). Read `$EV/expect.md` first: it holds the claim and the expected
 result for each scenario.
 
+## Ask first — before anything else
+
+The run puts debug windows on the maintainer's screen, often full screen,
+and some scenarios post real mouse events. Before any build, worktree or
+launch, ask with a native dialog and wait for the answer. Read every
+scenario in `$EV/scenarios/` and work out:
+
+- **Screen:** whether any scenario enters full screen (`fullscreen`) or
+  otherwise shows a window (every scenario does; say "an Edmund window will
+  open").
+- **Mouse and keyboard:** whether any scenario posts real HID events
+  (`realclickoff`, `realclick`, `realseq`, `realoff`, `realmove`, CGEvent or
+  `axfind.swift` steps). In-process commands (`type`, `clickoff`, `scroll`,
+  `caret`, `clickhandle`, `handlemenu`) do not move the mouse.
+- **Time:** the sum of every `sleep` (ms) in the scenarios, run on both trees,
+  plus about 1 minute per tree for the build (4 minutes if cold) and 30 s
+  overhead per scenario. Give a range, in minutes, until the maintainer has
+  the machine back.
+
+Then show the alert below, filling in `<…>` from the facts above. It follows
+Apple's alert guidelines: the title is a question in sentence case, the
+message says what will happen and for how long in plain words, the buttons
+name their action ("Start Check", never "OK" or "Yes"), and the icon is the
+plain note icon, not the caution triangle (nothing here is destructive). The
+safe button, Cancel, is the default so a stray Return while typing starts
+nothing. One `osascript` call, no System Events, so no Accessibility
+permission is involved:
+
+```bash
+osascript -e 'display dialog "<one sentence on the screen, then one on the mouse>\n\nThis takes about <a> to <b> minutes. Edmund opens only for the check and quits afterwards." with title "Start the Edmund live check?" with icon note buttons {"Cancel", "Start Check"} default button "Cancel" cancel button "Cancel" giving up after 180'
+```
+
+Sentences to choose from (use exactly one of each pair):
+
+- Screen: "Edmund will fill your screen in full screen on a new Space." or
+  "An Edmund window will open on your desktop."
+- Mouse: "Your mouse and keyboard stay yours." or "Your mouse and keyboard
+  will be controlled until it finishes, so please don't touch them."
+
+`<a>` and `<b>` are whole minutes, rounded up, and `<a>` is never 0. Keep the
+message under about 280 characters.
+
+Proceed only if the output contains `button returned:Start Check` and
+`gave up:false`. A Cancel (osascript exits non-zero with "User canceled"), a timeout
+(`gave up:true`), a non-zero exit or any error means not approved: stop, build and launch nothing, and report
+`verdict: INCONCLUSIVE (not approved)`. Ask once per invocation, but ask
+again before any extra launch the first dialog did not describe (more
+scenarios, a retry that needs the mouse). This dialog is the only thing you
+may put on screen before approval.
+
 ## Safety — before anything else
 
 Follow `edmund-live-repro-and-diagnostics` §0. In short:
@@ -58,6 +108,28 @@ Follow `edmund-live-repro-and-diagnostics` §0. In short:
 4. **Chrome steps.** Run the steps `$EV/expect.md` lists (`-debug.render`,
    `axfind.swift`, `ui-harness.sh`) against each tree's own
    `.build/debug/edmd`. Save outputs to `$EV/base/` and `$EV/branch/`.
+4b. **Tell the maintainer the live part is over.** Steps 2 to 4 are the only
+   ones that use the screen and mouse. The moment the last app you launched
+   has quit (check with `pgrep` for your own PIDs), and before you measure,
+   parse logs or write anything, post one notification, because the work
+   after this point does not take over the computer and the maintainer should
+   not wait on it. Send it after an approved run ends in any way (finished,
+   build failure, harness refusal, a stop you chose), never after "not
+   approved", where nothing ran. It follows Apple's notification guidelines:
+   the title states what happened in a few words and makes sense alone; the
+   body adds what the title does not, in one short sentence; no app name (the
+   system shows it), no subtitle, no emoji, no exclamation mark, no "please".
+   A notification does not take focus. Use the system default sound only, so
+   the maintainer's notification settings stay in charge:
+
+   ```bash
+   osascript -e 'display notification "Your screen and mouse are free. The results are being summarized." with title "Live check finished running" sound name "default"'
+   ```
+
+   If the run stopped early, say what happened in the title instead
+   ("Live check stopped early") and keep the body's first sentence. If the
+   command fails, say so in the report and carry on.
+
 5. **Measure; don't eyeball.** For each PNG pair:
    - Same size: the pixel-difference bounding box and the count of changed
      pixels (PIL `ImageChops.difference(a, b).getbbox()`, or
@@ -69,6 +141,22 @@ Follow `edmund-live-repro-and-diagnostics` §0. In short:
      measured number, not a description.
 6. **Clean up.** `git worktree remove --force` the base tree. Leave `$EV`
    alone.
+
+7. **Tell the maintainer the result is ready.** After clean-up, post a second
+   notification (not after "not approved"). Same guidelines. The title is the
+   outcome, by verdict, in sentence case: "Live check passed" (`VERIFIED`),
+   "Live check found a problem" (`CONTRADICTED`), "Live check was
+   inconclusive" (`INCONCLUSIVE`). The body is the headline alone, under about
+   80 characters, and does not repeat that the screen is free (the earlier
+   notification said so). Default sound off, since the maintainer already
+   knows a notification is coming:
+
+   ```bash
+   osascript -e 'display notification "<headline>." with title "<title for the verdict>"'
+   ```
+
+   Example body: "The viewport no longer jumps on the branch." If the command
+   fails, say so in the report.
 
 ## Output
 

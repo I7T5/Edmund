@@ -1099,6 +1099,18 @@ extension EditorTextView {
 
         let block = blocks[blockIndex]
         guard block.range.upperBound <= ts.length else { return }
+        // Rewriting a table's attributes invalidates every row's fragment at
+        // once, whichever path restyled it (a click into it, a caret move
+        // between its cells, typing); see `validateInvalidatedLayout`.
+        // Only in a document `validateInvalidatedLayout` can lay out whole;
+        // above that size the flag would never clear.
+        if block.kind == .table, ts.length <= Self.fullLayoutMaxLength {
+            layoutInvalidatedByRestyle = true
+            // Nothing else is guaranteed to lay it out again: a caret move
+            // within the table restyles it with no recompose and no settle, and
+            // until something does, the rows stay collapsed on screen.
+            scheduleFullLayoutSettle()
+        }
 
         let styled: NSAttributedString
         if case .frontMatter = block.kind, viewMode != .source {
@@ -1209,6 +1221,9 @@ extension EditorTextView {
         restyleBlock(activeIdx, cursorInBlock: cursorInBlock, spans: spans)
         ts.endEditing()
         isUpdating = false
+        // Before anything can draw: a frame between this restyle and the next
+        // run-loop turn would show a restyled table with no rows.
+        validateInvalidatedLayout()
 
         appliedCursorSpans = cursorSig
         typingAttributes = baseAttributes

@@ -32,6 +32,7 @@ extension EditorTextView {
             + "marked=\(markedDesc) up=\(isUpdating ? "Y" : "N") undo=\(isUndoRedoing ? "Y" : "N") "
             + "blocks=\(blocks.count) storLen=\(storLen) rawLen=\(rawLen)"
             + (storLen == rawLen ? "" : " ⚠︎LEN-MISMATCH")
+            + (enclosingScrollView.map { " clipY=\($0.contentView.bounds.origin.y)" } ?? "")
     }
 
     /// One verbose trace line: `<event> | <live state>`. No-op (and the message
@@ -47,13 +48,54 @@ extension EditorTextView {
     /// moved the caret.
     func traceSelectionOrigin() {
         guard Log.shouldTrace else { return }
-        let frames = Thread.callStackSymbols.dropFirst(2).prefix(14).map { frame in
+        Log.trace("selection origin:\n    " + condensedCallStack(), category: .edit)
+    }
+
+    /// The caller's stack, one frame per line, without index/module/address.
+    /// For a clip-view move the interesting frames are the ones *after*
+    /// `-[NSClipView scrollToPoint:]` (who asked), not the notification-centre
+    /// frames before it, so start there when it is on the stack.
+    private func condensedCallStack() -> String {
+        let symbols = Thread.callStackSymbols
+        let start = symbols.firstIndex { $0.contains("scrollToPoint:") }.map { $0 + 1 } ?? 3
+        return symbols.dropFirst(start).prefix(16).map { frame in
             // "3  AppKit  0x00: -[NSTextView foo] + 12" → drop index/module/addr.
             let parts = frame.split(separator: " ", omittingEmptySubsequences: true)
             return parts.count > 3 ? parts[3...].joined(separator: " ") : frame
+        }.joined(separator: "\n    ")
+    }
+
+    /// Under verbose tracing, logs any single clip-view move of 2pt or more
+    /// that is not the user scrolling, with the stack that made it: the viewport
+    /// jumps that nothing else names (a restyle's anchor, an autoscroll, a
+    /// centering pass). Called from the clip view's bounds-change observer.
+    func traceClipJump() {
+        guard Log.shouldTrace, let clip = enclosingScrollView?.contentView else { return }
+        let y = clip.bounds.origin.y
+        defer { traceLastClipY = y }
+        guard abs(y - traceLastClipY) >= 2, !userScrollInProgress else { return }
+        traceEdit("clip jump \(traceLastClipY)→\(y) (Δ\(y - traceLastClipY)) "
+                  + "scrollingActive=\(isScrollingActive) stack:\n    "
+                  + condensedCallStack())
+    }
+
+    /// `offset:minY+height` for every layout fragment that is already laid out,
+    /// from the document start up to character `offset`. Reads the frames as
+    /// they are (never forces layout), so a trace taken before and after a
+    /// relayout shows which block's height changed.
+    func traceFragmentFrames(upTo offset: Int) -> String {
+        guard let tlm = textLayoutManager else { return "" }
+        var out: [String] = []
+        tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: []) { frag in
+            let start = tlm.offset(from: tlm.documentRange.location, to: frag.rangeInElement.location)
+            if start > offset { return false }
+            let f = frag.layoutFragmentFrame
+            out.append("\(start):\(Int(f.minY.rounded()))+\(Int(f.height.rounded()))")
+            return true
         }
-        Log.trace("selection origin:\n    " + frames.joined(separator: "\n    "),
-                  category: .edit)
+        // The 40 nearest the offset: a table's rows, not the whole prefix, so a
+        // verbose run stays cheap on a big document.
+        return (out.count > 40 ? "… " : "") + out.suffix(40).joined(separator: " ")
     }
 
     /// A short, newline-escaped, length-capped rendering of edit text for traces.
