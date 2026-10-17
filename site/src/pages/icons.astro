@@ -1,0 +1,64 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const base = import.meta.env.BASE_URL.endsWith("/")
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
+
+const oviotti = { name: "oviotti", url: "https://www.deviantart.com/oviotti" };
+
+const icons = [
+  { file: "current.png", name: "Edmund", note: "Current icon" },
+  { file: "e-light.png", name: "Edmund E, Light", by: oviotti },
+  { file: "e-dark.png", name: "Edmund E, Dark", by: oviotti },
+  { file: "digital-fleur-light.png", name: "Digital Fleur, Light", by: oviotti },
+  { file: "digital-fleur-light-alt.png", name: "Digital Fleur, Light (Alternative)", by: oviotti },
+  { file: "digital-fleur-dark.png", name: "Digital Fleur, Dark", by: oviotti },
+];
+---
+
+<BaseLayout pageTitle="App icons · Edmund" description="Edmund's app icon and alternatives.">
+  <h1>App icons</h1>
+  <p class="text-secondary">
+    Edmund's current icon, and alternatives designed for free by{" "}
+    <a href={oviotti.url}>{oviotti.name}</a>.
+  </p>
+
+  <div class="mt-10 flex flex-col gap-10">
+    {icons.map((icon, index) => (
+      <figure class="m-0">
+        <div class="tile">
+          <img
+            src={`${base}assets/icons/${icon.file}`}
+            alt={`${icon.name} app icon`}
+            width="640"
+            height="640"
+            loading={index < 2 ? "eager" : "lazy"}
+          />
+        </div>
+        <figcaption class="mt-3 font-sans text-sm leading-snug">
+          <div>{icon.name}</div>
+          <div class="text-secondary">
+            {icon.by ? <>by <a href={icon.by.url}>{icon.by.name}</a></> : icon.note}
+          </div>
+        </figcaption>
+      </figure>
+    ))}
+  </div>
+</BaseLayout>
+
+<style>
+  /* A flat square backdrop with the icon at two-thirds size, as on nelson.co. */
+  .tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    background: var(--code-bg);
+  }
+
+  .tile img {
+    width: 66%;
+    height: auto;
+  }
+</style>
