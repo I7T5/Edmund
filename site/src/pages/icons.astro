@@ -40,7 +40,7 @@ const icons = [
         <figcaption class="mt-2 text-[0.9375rem] leading-snug">
           <div>{icon.name}</div>
           <div class="mt-0.5 font-sans text-[0.8125rem] text-secondary">
-            {icon.by ? <>by <a href={icon.by.url}>{icon.by.name}</a></> : icon.note}
+            {icon.by ? <a href={icon.by.url}>@{icon.by.name}</a> : icon.note}
           </div>
         </figcaption>
       </figure>
