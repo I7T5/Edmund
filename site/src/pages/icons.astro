@@ -8,11 +8,12 @@ const base = import.meta.env.BASE_URL.endsWith("/")
 const oviotti = { name: "oviotti", url: "https://www.deviantart.com/oviotti" };
 
 const icons = [
-  { file: "current.png", name: "Edmund", note: "Current icon" },
+  { file: "current.png", name: "OG", note: "Current icon" },
   { file: "e-light.png", name: "Edmund E, Light", by: oviotti },
   { file: "e-dark.png", name: "Edmund E, Dark", by: oviotti },
-  { file: "digital-fleur-light.png", name: "Digital Fleur, Light", by: oviotti },
-  { file: "digital-fleur-light-alt.png", name: "Digital Fleur, Light (Alternative)", by: oviotti },
+  // The designer's "Light - Alt" export is the preferred light variant, so the labels are swapped.
+  { file: "digital-fleur-light-alt.png", name: "Digital Fleur, Light", by: oviotti },
+  { file: "digital-fleur-light.png", name: "Digital Fleur, Light (Alternative)", by: oviotti },
   { file: "digital-fleur-dark.png", name: "Digital Fleur, Dark", by: oviotti },
 ];
 ---
@@ -24,7 +25,7 @@ const icons = [
     <a href={oviotti.url}>{oviotti.name}</a>.
   </p>
 
-  <div class="mt-10 flex flex-col gap-10">
+  <div class="mt-10 grid grid-cols-[repeat(2,minmax(0,1fr))] gap-x-4 gap-y-8">
     {icons.map((icon, index) => (
       <figure class="m-0">
         <div class="tile">
@@ -36,7 +37,7 @@ const icons = [
             loading={index < 2 ? "eager" : "lazy"}
           />
         </div>
-        <figcaption class="mt-3 font-sans text-sm leading-snug">
+        <figcaption class="mt-2 text-[0.9375rem] leading-snug">
           <div>{icon.name}</div>
           <div class="text-secondary">
             {icon.by ? <>by <a href={icon.by.url}>{icon.by.name}</a></> : icon.note}
