@@ -39,6 +39,8 @@ extension EditorTextView {
         let delta = afterY - beforeY
         traceEdit("viewport anchor off=\(anchorOffset) beforeY=\(beforeY) afterY=\(afterY) "
                   + "Δ=\(delta) clipY=\(visible.origin.y)")
+        // Dump frames only for a correction of 50pt or more (a table's rows,
+        // not line-height noise), so ordinary re-estimation stays quiet.
         if abs(delta) > 50 {
             traceEdit("anchor frames before: \(framesBefore)")
             traceEdit("anchor frames after:  \(traceFragmentFrames(upTo: anchorOffset))")
@@ -264,7 +266,8 @@ extension EditorTextView {
     }
 
     /// The caret line's rect in text-container coordinates (TextKit 2: lays
-    /// out only the caret's fragment, positions above are estimated).
+    /// out only the caret's fragment, positions above are estimated; see
+    /// `lineRect` for the table exception).
     private func caretLineRect() -> CGRect? {
         lineRect(forCharacterAt: selectedRange().location)
     }
@@ -275,25 +278,21 @@ extension EditorTextView {
     /// MB document for a deep caret. For carets in or near the viewport the
     /// position is exact; for far jumps it may be a TextKit 2 estimate that
     /// the scroll anchoring + promotion settle once the region is reached.
+    ///
+    /// Exception: when a restyle has left a table's rows invalid in a document
+    /// of at most `fullLayoutMaxLength`, the document is laid out first
+    /// (`validateInvalidatedLayout`); the invalid rows would misplace the caret.
     func lineRect(forCharacterAt offset: Int) -> CGRect? {
         guard let tlm = textLayoutManager else { return nil }
         guard let loc = tlm.location(tlm.documentRange.location, offsetBy: offset)
         else { return nil }
-        // A table row mid-edit: the keystroke restyled the whole block, so its
-        // fragments (and the newline before it) are invalid, and ensuring only
-        // the caret's own range stacks that fragment straight after the last
+        // A restyled table's rows are invalid until laid out again, and ensuring
+        // only the caret's own range stacks that fragment straight after the last
         // *valid* one — the table's top, not the row. AppKit's caret autoscroll
         // read that and scrolled the viewport on every keystroke in a cell near
-        // an edge. Lay out from the document start, as `wrappedCellRects` does
-        // (a no-op when already laid out); only while the document is small
-        // enough to be fully laid out, so a deep caret in a huge file keeps the
-        // cheap path.
-        if (rawSource as NSString).length <= Self.fullLayoutMaxLength,
-           let block = blockIndexForRawOffset(offset), block < blocks.count,
-           blocks[block].kind == .table,
-           let through = NSTextRange(location: tlm.documentRange.location, end: loc) {
-            tlm.ensureLayout(for: through)
-        }
+        // an edge. Lay the table out first; a no-op unless a restyle left it
+        // invalid, so a deep caret in a huge file keeps the cheap path.
+        validateInvalidatedLayout()
         tlm.ensureLayout(for: NSTextRange(location: loc))
         // TextKit 2 has no fragment *at* `documentRange.endLocation` — the caret
         // there belongs to the last fragment (whose final line fragment is the

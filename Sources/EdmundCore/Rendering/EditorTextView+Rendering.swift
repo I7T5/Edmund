@@ -1102,7 +1102,9 @@ extension EditorTextView {
         // Rewriting a table's attributes invalidates every row's fragment at
         // once, whichever path restyled it (a click into it, a caret move
         // between its cells, typing); see `validateInvalidatedLayout`.
-        if block.kind == .table {
+        // Only in a document `validateInvalidatedLayout` can lay out whole;
+        // above that size the flag would never clear.
+        if block.kind == .table, ts.length <= Self.fullLayoutMaxLength {
             layoutInvalidatedByRestyle = true
             // Nothing else is guaranteed to lay it out again: a caret move
             // within the table restyles it with no recompose and no settle, and

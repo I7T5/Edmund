@@ -93,7 +93,9 @@ extension EditorTextView {
             out.append("\(start):\(Int(f.minY.rounded()))+\(Int(f.height.rounded()))")
             return true
         }
-        return out.joined(separator: " ")
+        // The 40 nearest the offset: a table's rows, not the whole prefix, so a
+        // verbose run stays cheap on a big document.
+        return (out.count > 40 ? "… " : "") + out.suffix(40).joined(separator: " ")
     }
 
     /// A short, newline-escaped, length-capped rendering of edit text for traces.

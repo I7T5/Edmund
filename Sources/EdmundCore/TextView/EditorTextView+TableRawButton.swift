@@ -382,6 +382,8 @@ extension EditorTextView {
         suppressTypewriterCentering = false
         rawTableEditing = !alreadyRaw
         restyleBlock(blockIndex, cursorInBlock: 0)
+        // As in `applyBlockStyle`: the raw toggle restyles the table, so lay it
+        // out before a frame can draw with its rows collapsed.
         validateInvalidatedLayout()
     }
 
