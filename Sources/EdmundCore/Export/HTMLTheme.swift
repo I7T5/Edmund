@@ -26,6 +26,9 @@ enum HTMLTheme {
         NSColor(hex: backgroundHex(dark: dark)) ?? .textBackgroundColor
     }
 
+    /// `site/src/styles/read.css` is a generated copy of this output (Classic
+    /// light). After a CSS change, regenerate it:
+    /// `EDMUND_SITE_READ_CSS=$PWD/site/src/styles/read.css swift test --filter SiteReadCSS`.
     @MainActor
     static func css(_ theme: EditorTheme,
                     callouts: [String: CalloutStyle],

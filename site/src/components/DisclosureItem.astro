@@ -6,97 +6,16 @@ interface Props {
 const { question } = Astro.props;
 ---
 
-<div class="faq-item py-4 last:pb-0" data-faq-item data-open="false">
-  <button class="faq-summary flex w-full cursor-pointer items-start justify-between gap-4 text-left font-semibold text-text" type="button" aria-expanded="false">
-    <span>{question}</span>
-    <span class="faq-icon mt-1 text-secondary" aria-hidden="true">
-      <span class="i-lucide-chevron-down block h-4 w-4"></span>
+<!-- The markup Read mode renders for a collapsed `> [!faq]-` callout
+     (HTMLRenderer), styled by read.css; the icon is LucideIcons' circle-question-mark. -->
+<details class="callout callout-faq callout-collapsible">
+  <summary class="callout-title">
+    <span class="callout-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
     </span>
-  </button>
-  <div class="faq-panel" aria-hidden="true">
-    <div class="faq-content text-text">
-      <slot />
-    </div>
+    <span class="callout-title-text">{question}</span>
+  </summary>
+  <div class="callout-body">
+    <slot />
   </div>
-</div>
-
-<style>
-  .faq-item {
-    scroll-margin-top: 2rem;
-    border-top: 1px solid var(--color-border);
-  }
-
-  .faq-item:first-child {
-    padding-top: 0;
-    border-top: 0;
-  }
-
-  .faq-item:last-child {
-    border-bottom: 0;
-  }
-
-  .faq-icon {
-    transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1), color 480ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .faq-item[data-open="true"] .faq-icon {
-    transform: rotate(180deg);
-  }
-
-  .faq-panel {
-    display: grid;
-    grid-template-rows: 0fr;
-    opacity: 0;
-    transform: translateY(-0.25rem);
-    transition:
-      grid-template-rows 500ms cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 500ms cubic-bezier(0.22, 1, 0.36, 1),
-      transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .faq-item[data-open="true"] .faq-panel {
-    grid-template-rows: 1fr;
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  .faq-content {
-    overflow: hidden;
-    padding-top: 1rem;
-  }
-</style>
-
-<script>
-  const setupFaqs = () => {
-    document.querySelectorAll("[data-faq-item]").forEach((item) => {
-      if (!(item instanceof HTMLElement)) {
-        return;
-      }
-
-      const button = item.querySelector("button");
-      const panel = item.querySelector(".faq-panel");
-
-      if (!(button instanceof HTMLButtonElement) || !(panel instanceof HTMLElement)) {
-        return;
-      }
-
-      if (button.dataset.bound === "true") {
-        return;
-      }
-
-      button.dataset.bound = "true";
-      button.addEventListener("click", () => {
-        const isOpen = item.dataset.open === "true";
-        item.dataset.open = String(!isOpen);
-        button.setAttribute("aria-expanded", String(!isOpen));
-        panel.setAttribute("aria-hidden", String(isOpen));
-      });
-    });
-  };
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", setupFaqs, { once: true });
-  } else {
-    setupFaqs();
-  }
-</script>
+</details>

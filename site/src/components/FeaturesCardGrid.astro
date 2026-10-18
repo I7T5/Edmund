@@ -24,7 +24,7 @@ const cards = [
   },
   {
     title: "Powerful", 
-    text:  "Full support for GFM and 99% of Obsidian-flavored Markdown. Math with upto 99.5% KaTeX with extension. File outline. Find and replace. Read mode + Export as PDF."
+    text:  "Full support for GFM and 99% of Obsidian-flavored Markdown. Mermaid. Math with upto 99.5% KaTeX with extension. Find and replace. Read mode + Export as PDF. File outline planned."
   },
   // {
   //   title: "Customizable",
@@ -51,13 +51,15 @@ const cards = [
 // );
 ---
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- A bullet list with a bold lead per item, as the features would read in a Markdown file. -->
+<ul class="my-5 space-y-3">
   {cards.map((card) => (
-    <Card title={card.title}>
+    <li>
+      <b>{card.title}</b><br />
       {card.text}
-    </Card>
+    </li>
   ))}
-</div>
+</ul>
 
 <!-- Horizontal scroll -->
 <!-- <div class="overflow-x-auto">
