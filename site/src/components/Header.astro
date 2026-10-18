@@ -5,12 +5,12 @@ const base = import.meta.env.BASE_URL.endsWith("/")
 
 const path = Astro.url.pathname.replace(/\/$/, "");
 const links = [
-  { href: base, label: "Edmund", current: path === base.replace(/\/$/, "") },
-  { href: `${base}icons/`, label: "App icons", current: path.endsWith("/icons") },
+  { href: base, label: "Edmund", icon: "i-lucide-file-text", current: path === base.replace(/\/$/, "") },
+  { href: `${base}icons/`, label: "App icons", icon: "i-lucide-layout-grid", current: path.endsWith("/icons") },
 ];
 ---
 
-<header class="mb-12">
+<header class="site-nav mb-12">
   <nav class="flex gap-5 font-sans text-sm">
     {links.map((link) => (
       <a
@@ -21,8 +21,52 @@ const links = [
           link.current ? "text-text" : "text-secondary",
         ]}
       >
+        <span class:list={["nav-icon h-4 w-4", link.icon]} aria-hidden="true"></span>
         {link.label}
       </a>
     ))}
   </nav>
 </header>
+
+<style>
+  .nav-icon { display: none; }
+
+  /* Wide windows: a floating sidebar in the left gutter, inset from the
+     window edges like a macOS Tahoe sidebar. 1100px leaves the 680px column
+     a 20px clearance from the panel. Narrower windows keep the top row. */
+  @media (min-width: 1100px) {
+    .site-nav {
+      position: fixed;
+      top: 10px;
+      bottom: 10px;
+      left: 10px;
+      z-index: 30;
+      width: 176px;
+      margin: 0;
+      padding: 10px 8px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 18px;
+      background: rgba(246, 246, 248, 0.72);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    .site-nav nav { flex-direction: column; gap: 2px; }
+
+    .site-nav a,
+    .site-nav a:hover {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      color: var(--fg);
+    }
+
+    .site-nav a[aria-current="page"] { background: rgba(0, 0, 0, 0.06); }
+
+    /* Sidebar symbols take the accent tint, as in Finder. */
+    .nav-icon { display: inline-block; color: var(--accent); }
+  }
+</style>

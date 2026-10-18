@@ -37,12 +37,9 @@ const videoId = "hero-video";
   pageTitle="Edmund"
   description="Edmund is a minimal native Markdown editor for macOS with inline live preview."
 >
-  <!-- Fills the first screen: 7.25rem is the page's top padding plus the header above it. -->
-  <section id="demo" class="flex min-h-[calc(100svh-7.25rem)] flex-col">
+  <section id="demo" class="hero flex flex-col">
     <div class="my-auto">
-      <!-- Width capped by viewport height (video is ~1.61:1) so the whole hero,
-           cue included, fits the first screen; 26rem is everything else in it. -->
-      <figure class="m-0 mb-10 max-w-[calc((100svh-26rem)*1.61)] overflow-hidden rounded-[8px] shadow-[0_10px_30px_rgba(0,0,0,0.08)] sm:rounded-[12px]">
+      <figure class="hero-video m-0 mb-10 overflow-hidden rounded-[8px] shadow-[0_10px_30px_rgba(0,0,0,0.08)] sm:rounded-[12px]">
         <video
           id={videoId}
           class="h-auto w-full"
@@ -191,6 +188,13 @@ const videoId = "hero-video";
      top margin as a first child (read.css). */
   main > section + section { margin-top: 4.5rem; }
   html { scroll-behavior: smooth; }
+
+  /* The hero fills the first screen below the page chrome (--chrome-top,
+     BaseLayout). The video's width is capped by the viewport height (it is
+     ~1.61:1) so the whole hero, cue included, fits; 18.75rem is the rest of
+     the hero. */
+  .hero { min-height: calc(100svh - var(--chrome-top)); }
+  .hero-video { max-width: calc((100svh - var(--chrome-top) - 18.75rem) * 1.61); }
 
   .scroll-cue { transition: opacity 300ms ease; }
   .scroll-cue[data-hidden="true"] { opacity: 0; pointer-events: none; }

@@ -47,9 +47,16 @@ const base = import.meta.env.BASE_URL.endsWith("/")
         --color-link-strong: #0051d5;
         --color-link-soft: #dbe9ff;
         --page-max-width: 680px;
+        /* Height of what sits above main: body's 48px top padding plus the
+           top nav bar. Once the nav floats beside the column (Header), only
+           the padding is left. */
+        --chrome-top: 7.25rem;
 
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+      }
+      @media (min-width: 1100px) {
+        :root { --chrome-top: 3rem; }
       }
 
       /* UnoCSS's reset strips list markers; read.css restores only ul's. */
