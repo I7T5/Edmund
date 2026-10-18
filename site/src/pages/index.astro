@@ -37,9 +37,12 @@ const videoId = "hero-video";
   pageTitle="Edmund"
   description="Edmund is a minimal native Markdown editor for macOS with inline live preview."
 >
-  <section id="demo">
-    <div>
-      <figure class="m-0 mb-10 overflow-hidden rounded-[8px] shadow-[0_10px_30px_rgba(0,0,0,0.08)] sm:rounded-[12px]">
+  <!-- Fills the first screen: 7.25rem is the page's top padding plus the header above it. -->
+  <section id="demo" class="flex min-h-[calc(100svh-7.25rem)] flex-col">
+    <div class="my-auto">
+      <!-- Width capped by viewport height (video is ~1.61:1) so the whole hero,
+           cue included, fits the first screen; 26rem is everything else in it. -->
+      <figure class="m-0 mb-10 max-w-[calc((100svh-26rem)*1.61)] overflow-hidden rounded-[8px] shadow-[0_10px_30px_rgba(0,0,0,0.08)] sm:rounded-[12px]">
         <video
           id={videoId}
           class="h-auto w-full"
@@ -77,10 +80,13 @@ const videoId = "hero-video";
         <p class="mt-3 text-sm leading-6 text-secondary font-sans">
           Requires macOS 14 Sonoma or later. (<a href="https://github.com/I7T5/Edmund#installation">Damaged?</a>)
         </p>
-
-        <!-- Animation to scroll here -->
       </div>
     </div>
+
+    <a id="scroll-cue" href="#overview" class="scroll-cue mt-6 flex flex-col items-center self-center pb-2 font-sans text-sm text-secondary no-underline hover:text-text">
+      Read more
+      <span class="scroll-cue-chevron i-lucide-chevron-down h-5 w-5" aria-hidden="true"></span>
+    </a>
   </section>
 
   <SideSection id="overview" title="Yet another Markdown editor?">
@@ -180,7 +186,35 @@ const videoId = "hero-video";
   </SideSection>
 </BaseLayout>
 
+<style is:global>
+  /* Clear breaks between sections; the h2 that opens each one drops its own
+     top margin as a first child (read.css). */
+  main > section + section { margin-top: 4.5rem; }
+  html { scroll-behavior: smooth; }
+
+  .scroll-cue { transition: opacity 300ms ease; }
+  .scroll-cue[data-hidden="true"] { opacity: 0; pointer-events: none; }
+  .scroll-cue-chevron { animation: scroll-cue-bob 1.8s ease-in-out infinite; }
+
+  @keyframes scroll-cue-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(5px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .scroll-cue-chevron { animation: none; }
+  }
+</style>
+
 <script>
+  const cue = document.getElementById("scroll-cue");
+  if (cue) {
+    const update = () => { cue.dataset.hidden = String(window.scrollY > 40); };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+  }
+
   const video = document.getElementById("hero-video");
 
   if (video instanceof HTMLVideoElement) {

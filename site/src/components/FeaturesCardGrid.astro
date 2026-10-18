@@ -51,13 +51,15 @@ const cards = [
 // );
 ---
 
-<!-- One column of headed paragraphs, as the features would read in a Markdown file. -->
-{cards.map((card) => (
-  <>
-    <h3>{card.title}</h3>
-    <p>{card.text}</p>
-  </>
-))}
+<!-- A bullet list with a bold lead per item, as the features would read in a Markdown file. -->
+<ul class="my-5 space-y-3">
+  {cards.map((card) => (
+    <li>
+      <b>{card.title}</b><br />
+      {card.text}
+    </li>
+  ))}
+</ul>
 
 <!-- Horizontal scroll -->
 <!-- <div class="overflow-x-auto">
