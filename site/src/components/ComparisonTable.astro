@@ -143,7 +143,7 @@ const fields: [string, AppKey][] = [
 
 <!-- wider screens -->
 <div class="hidden overflow-x-auto md:block">
-  <table class="min-w-max border-collapse text-sm font-sans">
+  <table class="comparison min-w-max text-sm font-sans">
     <tbody>
       <tr class="border-b border-border">
         <th class="sticky left-0 z-20 bg-background px-4 py-3 text-left font-semibold bg-tertiary-soft">
@@ -155,7 +155,7 @@ const fields: [string, AppKey][] = [
             class:list={[
               "px-4 py-3 whitespace-nowrap text-center bg-tertiary-soft",
               app.name === "Edmund" &&
-                "sticky w-29 left-31.5 z-10 bg-tertiary-soft font-semibold",
+                "sticky w-29 left-34 z-10 bg-tertiary-soft font-semibold",
             ]}
           >
             <a
@@ -183,7 +183,7 @@ const fields: [string, AppKey][] = [
               class:list={[
                 "px-4 py-3 whitespace-nowrap text-center",
                 app.name === "Edmund" &&
-                  "sticky left-31.5 z-10 bg-background font-semibold",
+                  "sticky left-34 z-10 bg-background font-semibold",
               ]}
             >
               {typeof app[key] === "boolean" ? (
@@ -204,3 +204,17 @@ const fields: [string, AppKey][] = [
     </tbody>
   </table>
 </div>
+
+<style>
+  /* Separate borders: in a collapsed table the borders belong to the table
+     grid, so the sticky columns slid over without theirs. Each cell draws
+     only its right and bottom edge; the first row and column add the outer
+     top and left. */
+  .comparison { border-collapse: separate; border-spacing: 0; }
+  .comparison :is(th, td) { border-width: 0 1px 1px 0; }
+  .comparison tr > :first-child { border-left-width: 1px; }
+  .comparison tr:first-child > * { border-top-width: 1px; }
+  /* Exactly the Edmund column's sticky offset (left-34), or scrolled cells
+     show through the gap between the two pinned columns. */
+  .comparison tr > :first-child { width: 8.5rem; min-width: 8.5rem; }
+</style>
