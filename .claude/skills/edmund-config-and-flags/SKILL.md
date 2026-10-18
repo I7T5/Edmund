@@ -51,7 +51,7 @@ Swift name) is what you pass as a launch arg.
 | `lastWindowHeight` | `settings.window.lastHeight` | Persisted window sizing (see the frame-not-content trap) |
 | `lastWindowOriginX` / `lastWindowOriginY` | `settings.window.lastOriginX` / `lastOriginY` | Persisted window origin; absent until the first move/resize; saved on resize/move, never in full screen |
 | `automaticallyChecksForUpdates` | `SUAutomaticallyChecksForUpdates` | Sparkle's own key (not namespaced) |
-| `EditorTheme.Keys.fontCascade` | `EditorFontCascade` | Per-script font cascade: `[script: family]` dict (Settings ▸ Appearance ▸ Fonts by script). Scripts: han, kana, hangul, cyrillic, greek, arabic, hebrew, thai, emoji; absent/uninstalled ⇒ system fallback. Lives in `EditorTheme.swift`, **not** `AppSettings` |
+| `EditorTheme.Keys.fontCascade` | `EditorFontCascade` | Per-script font cascade: `[script: family]` dict (Settings ▸ Appearance ▸ Manage… ▸ Fonts by script). Scripts: han, kana, hangul, cyrillic, greek, arabic, hebrew, thai, emoji; absent/uninstalled ⇒ system fallback. Lives in `EditorTheme.swift`, **not** `AppSettings` |
 | `EditorTheme.Keys.fontCascadeSizeRatios` | `EditorFontCascadeSizeRatios` | Per-script size ratios: `[script: Double]` multiplier of the run's size; absent = 1.0 (clamped 0.5–2.0 on load). Same home as the cascade |
 
 **Content width (the physical-column design):** persisted as **centimetres**
