@@ -153,7 +153,7 @@ struct EditSettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 380, alignment: .leading)
+                        .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }
@@ -173,7 +173,7 @@ struct EditSettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 380, alignment: .leading)
+                        .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }

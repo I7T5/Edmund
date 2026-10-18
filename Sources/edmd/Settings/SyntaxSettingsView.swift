@@ -45,7 +45,7 @@ struct SyntaxSettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 340, alignment: .leading)
+                        .frame(width: 340, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }
