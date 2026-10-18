@@ -50,7 +50,7 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            Divider().gridCellUnsizedAxes(.horizontal)
+            Divider().gridCellColumns(2)
 
             GridRow {
                 Text("Document save:")
