@@ -32,8 +32,9 @@ const links = [
   .nav-icon { display: none; }
 
   /* Wide windows: a floating sidebar in the left gutter, inset from the
-     window edges like a macOS Tahoe sidebar. 1100px leaves the 680px column
-     a 20px clearance from the panel. Narrower windows keep the top row. */
+     window edges like a macOS Tahoe sidebar. At 1100px the 680px column
+     clears the panel by about 24px (overlay scrollbars). Narrower windows
+     keep the top row. */
   @media (min-width: 1100px) {
     .site-nav {
       position: fixed;

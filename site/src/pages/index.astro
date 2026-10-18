@@ -191,8 +191,9 @@ const videoId = "hero-video";
 
   /* The hero fills the first screen below the page chrome (--chrome-top,
      BaseLayout). The video's width is capped by the viewport height (it is
-     ~1.61:1) so the whole hero, cue included, fits; 18.75rem is the rest of
-     the hero. */
+     ~1.61:1) so the whole hero, cue included, fits; 18.75rem is the hero's
+     height without the video: heading, tagline, buttons, requirement line
+     and Read more cue. */
   .hero { min-height: calc(100svh - var(--chrome-top)); }
   .hero-video { max-width: calc((100svh - var(--chrome-top) - 18.75rem) * 1.61); }
 
