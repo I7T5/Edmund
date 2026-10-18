@@ -31,12 +31,6 @@ const base = import.meta.env.BASE_URL.endsWith("/")
     <link rel="icon" type="image/x-icon" href={`${base}favicon.ico`} />
     <link rel="apple-touch-icon" sizes="180x180" href={`${base}apple-touch-icon.png`} />
     <title>{pageTitle}</title>
-    <!-- Restore a collapsed sidebar before first paint, so it never flashes open (Header). -->
-    <script is:inline>
-      try {
-        if (localStorage.getItem("sidebar") === "collapsed") document.documentElement.dataset.sidebar = "collapsed";
-      } catch {}
-    </script>
     <style is:global>
       :root {
         color-scheme: light dark;

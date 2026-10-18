@@ -11,10 +11,7 @@ const links = [
 ---
 
 <header class="site-nav mb-12">
-  <button class="nav-toggle" type="button" aria-controls="site-nav-links" aria-expanded="true" aria-label="Hide sidebar">
-    <span class="i-lucide-panel-left h-4 w-4" aria-hidden="true"></span>
-  </button>
-  <nav id="site-nav-links" class="flex gap-5 font-sans text-sm">
+  <nav class="flex gap-5 font-sans text-sm">
     {links.map((link) => (
       <a
         href={link.href}
@@ -32,7 +29,7 @@ const links = [
 </header>
 
 <style>
-  .nav-icon, .nav-toggle { display: none; }
+  .nav-icon { display: none; }
 
   /* Wide windows: a floating sidebar in the left gutter, inset from the
      window edges like a macOS Tahoe sidebar. 1100px leaves the 680px column
@@ -70,45 +67,5 @@ const links = [
 
     /* Sidebar symbols take the accent tint, as in Finder: Edmund's orange. */
     .nav-icon { display: inline-block; color: var(--color-primary); }
-
-    .nav-toggle {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      margin: 0 0 4px 4px;
-      border-radius: 8px;
-      color: var(--faint);
-      cursor: pointer;
-    }
-    .nav-toggle:hover { background: rgba(0, 0, 0, 0.06); color: var(--fg); }
-
-    /* Collapsed (BaseLayout restores the choice before first paint): only the
-       toggle remains, as a small floating button. */
-    :global(html[data-sidebar="collapsed"]) .site-nav { width: auto; padding: 4px; }
-    :global(html[data-sidebar="collapsed"]) .site-nav nav { display: none; }
-    :global(html[data-sidebar="collapsed"]) .nav-toggle { margin: 0; }
   }
 </style>
-
-<script>
-  const root = document.documentElement;
-  const toggle = document.querySelector(".nav-toggle");
-
-  const sync = () => {
-    const collapsed = root.dataset.sidebar === "collapsed";
-    toggle?.setAttribute("aria-expanded", String(!collapsed));
-    toggle?.setAttribute("aria-label", collapsed ? "Show sidebar" : "Hide sidebar");
-  };
-
-  sync();
-  toggle?.addEventListener("click", () => {
-    const collapsed = root.dataset.sidebar !== "collapsed";
-    root.dataset.sidebar = collapsed ? "collapsed" : "open";
-    try {
-      localStorage.setItem("sidebar", root.dataset.sidebar);
-    } catch {}
-    sync();
-  });
-</script>
