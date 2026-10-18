@@ -15,6 +15,7 @@ import EdmundCore
 ///                    toolbar label — `pane:Appearance`, `pane:Themes`
 ///   editor:<name>    an editor theme's detail box — `editor:solarized-light`
 ///   syntax:<name>    a code theme's detail box — `syntax:tomorrow`
+///   sheet:FontThemes the Appearance pane's Manage font themes sheet
 ///
 /// Renders in Aqua unless `-debug.renderDark YES`, writes the PNG at the
 /// screen's scale, and exits. Pass `-debug.disableUpdater YES` alongside.
@@ -41,7 +42,8 @@ enum SettingsRender {
             let view = NSHostingController(rootView: detail).view
             view.frame = NSRect(x: 0, y: 0, width: 472, height: 620)
             view.layoutSubtreeIfNeeded()
-            view.frame.size.height = max(view.fittingSize.height, 300)
+            view.frame.size = NSSize(width: view.fittingSize.width,
+                                     height: max(view.fittingSize.height, 300))
             window = NSWindow(contentRect: view.frame, styleMask: [.titled],
                               backing: .buffered, defer: false)
             window.contentView = view
@@ -92,6 +94,12 @@ enum SettingsRender {
                 fail("no code theme named \(name)")
             }
             detail = AnyView(SyntaxThemeDetail(theme: theme, isEditable: true, onChange: { _ in }))
+        } else if target == "sheet:FontThemes" {
+            // The sheet sizes itself, so it skips the bordered box below.
+            let name = UserDefaults.standard.string(forKey: AppSettings.Key.themeFont)
+                ?? AppSettings.DefaultTheme.font
+            return AnyView(FontThemesSheet(fonts: FontSettings(), fontTheme: .constant(name),
+                                           fontThemes: .constant(store.fontThemes())))
         } else {
             return nil
         }
