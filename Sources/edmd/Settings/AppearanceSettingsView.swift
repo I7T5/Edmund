@@ -235,7 +235,8 @@ struct AppearanceSettingsView: View {
 
             fontCascadeSection
         }
-        .settingsPanePadding(help: HelpAnchor.appearance)
+        // Rows here are 12 apart, not 18.
+        .settingsPanePadding(help: HelpAnchor.appearance, top: SettingsPaneInsets.top + 4)
         .onAppear {
             fontThemes = ThemeStore.shared.fontThemes()
             // Told, not applied: the values are already live, and re-applying

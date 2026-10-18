@@ -175,7 +175,8 @@ struct EditSettingsView: View {
                 }
             }
         }
-        .settingsPanePadding(help: HelpAnchor.edit)
+        // The first row's popup already sits its label ~3pt lower.
+        .settingsPanePadding(help: HelpAnchor.edit, top: SettingsPaneInsets.top + 2)
     }
 
     private var invisibleCharacterGrid: some View {

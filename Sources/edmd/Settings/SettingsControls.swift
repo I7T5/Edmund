@@ -242,14 +242,15 @@ enum HelpAnchor {
                       keyBindings, extensions, advanced, versionHistory]
 }
 
-/// Insets every Settings pane shares, so switching tabs never moves the
-/// content's top edge or the Help button. The top is tighter than the bottom,
-/// as in CotEditor: the toolbar above already separates the content.
+/// Insets the Settings panes share, so switching tabs never moves the Help
+/// button. The top varies a little by pane: the room under the toolbar is
+/// matched to how densely each pane's rows are spaced.
 enum SettingsPaneInsets {
     static let top: CGFloat = 14
-    /// Extra top inset for the form panes, whose first row is bare text and
-    /// controls: at `top` alone it crowds the toolbar, where a sidebar pane's
-    /// box edge doesn't.
+    /// Top inset for the form panes, whose rows are 18 apart: at `top` alone
+    /// the first row crowds the toolbar. Denser panes pass less
+    /// (`settingsPanePadding(top:)`) so the room above matches the spacing
+    /// between their rows.
     static let formTop: CGFloat = top + 8
     /// From the Help button to the window's bottom and trailing edges.
     static let help: CGFloat = 20
@@ -257,8 +258,9 @@ enum SettingsPaneInsets {
     /// (Themes, Key Bindings, Extensions) get from their stack spacing.
     static let helpGap: CGFloat = 10
     /// Content inset of the sidebar panes (Themes, Key Bindings, Extensions),
-    /// whose Help button sits in their bottom row.
-    static let sidebar = EdgeInsets(top: top, leading: help, bottom: help, trailing: help)
+    /// whose Help button sits in their bottom row. Even all round: their boxes
+    /// want the same air above as beside and below them.
+    static let sidebar = EdgeInsets(top: help, leading: help, bottom: help, trailing: help)
 }
 
 extension View {
@@ -268,8 +270,9 @@ extension View {
     /// row that lays out taller than it reports eats into the Help button's
     /// gap. A wrapping caption (`fixedSize(vertical:)`) in a
     /// `.frame(maxWidth:)` does exactly that; give it a fixed `width:`.
-    func settingsPanePadding(help anchor: String) -> some View {
-        self.padding(EdgeInsets(top: SettingsPaneInsets.formTop, leading: 28,
+    func settingsPanePadding(help anchor: String,
+                             top: CGFloat = SettingsPaneInsets.formTop) -> some View {
+        self.padding(EdgeInsets(top: top, leading: 28,
                                 // the Help button's row: gap, button, inset
                                 bottom: SettingsPaneInsets.helpGap + 22 + SettingsPaneInsets.help, trailing: 28))
         .frame(width: 600, alignment: .topLeading)
