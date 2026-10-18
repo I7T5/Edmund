@@ -116,7 +116,7 @@ const fields: [string, AppKey][] = [
       <dl class="grid gap-2 text-sm">
         {fields.map(([label, key]) => (
           <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-tertiary pt-2 first:border-t-0 first:pt-0">
-            <dt class="text-secondary">{label}</dt>
+            <dt>{label}</dt>
             <dd class="max-w-[9rem] text-right font-medium text-text">
               {typeof app[key] === "boolean" ? (
                 <span class="inline-flex items-center gap-1.5">
