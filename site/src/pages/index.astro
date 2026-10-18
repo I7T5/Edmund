@@ -194,8 +194,10 @@ const videoId = "hero-video";
 
   .scroll-cue { transition: opacity 300ms ease; }
   .scroll-cue[data-hidden="true"] { opacity: 0; pointer-events: none; }
-  /* --marker: the lighter gray Read mode draws list bullets in. */
-  .scroll-cue-chevron { color: var(--marker); animation: scroll-cue-bob 1.8s ease-in-out infinite; }
+  /* --marker: the lighter gray Read mode draws list bullets in. Two classes
+     deep because UnoCSS's icon rule sets `color: inherit` and loads later. */
+  .scroll-cue .scroll-cue-chevron { color: var(--marker); }
+  .scroll-cue-chevron { animation: scroll-cue-bob 1.8s ease-in-out infinite; }
 
   @keyframes scroll-cue-bob {
     0%, 100% { transform: translateY(0); }
