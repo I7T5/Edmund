@@ -59,6 +59,16 @@ const base = import.meta.env.BASE_URL.endsWith("/")
         :root { --chrome-top: 3rem; }
       }
 
+      /* Page switches crossfade (cross-document View Transitions; browsers
+         without them just navigate). The nav is its own layer, so it holds
+         still while the page beneath it fades. */
+      @view-transition { navigation: auto; }
+      .site-nav { view-transition-name: site-nav; }
+      ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 200ms; }
+      @media (prefers-reduced-motion: reduce) {
+        @view-transition { navigation: none; }
+      }
+
       /* UnoCSS's reset strips list markers; read.css restores only ul's. */
       ol { list-style-type: decimal; }
       a { transition: color 0.3s ease; }
