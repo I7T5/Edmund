@@ -40,6 +40,15 @@ struct FontThemesSheet: View {
             }
         }
         .scenePadding()
+        // Editing a theme is what the sheet is for, so its edits are written
+        // into the selected one. Opened on Custom, the first edit saves the
+        // whole screen into it, Custom changes included.
+        .onAppear { fonts.writesPreset = true }
+        .onDisappear {
+            fonts.writesPreset = false
+            // The pane compares the screen against these to decide Custom.
+            fontThemes = ThemeStore.shared.fontThemes()
+        }
         .alert("Rename Font Theme", isPresented: $renamingTheme) {
             TextField("Name", text: $newThemeName)
             Button("Cancel", role: .cancel) {}

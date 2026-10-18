@@ -226,6 +226,25 @@ public struct FontTheme: Codable, Sendable, Equatable {
     /// row per font theme.
     public var label: String { displayName }
 
+    /// Whether two themes set the same typography, names aside. Line height
+    /// is compared to a tolerance: settings hold it as spacing in points, and
+    /// the multiple does not survive the round trip bit for bit.
+    public func hasSameTypography(as other: FontTheme) -> Bool {
+        var other = other
+        guard abs(other.lineHeight - lineHeight) < 0.001 else { return false }
+        other.lineHeight = lineHeight
+        return FontTheme(name: name, displayName: displayName,
+                         fontName: other.fontName, fontSize: other.fontSize,
+                         monospaceFontName: other.monospaceFontName,
+                         monospaceFontSize: other.monospaceFontSize,
+                         lineHeight: other.lineHeight,
+                         standardLigatures: other.standardLigatures,
+                         monospaceLigatures: other.monospaceLigatures,
+                         cascade: other.cascade,
+                         cascadeSizeRatios: other.cascadeSizeRatios,
+                         cascadeLigatures: other.cascadeLigatures) == self
+    }
+
     public init(name: String, displayName: String,
                 fontName: String, fontSize: Double,
                 monospaceFontName: String, monospaceFontSize: Double,

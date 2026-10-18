@@ -34,14 +34,17 @@ final class FontSettings: NSObject, ObservableObject {
     static let minCascadeSizeRatio = 0.5
     static let maxCascadeSizeRatio = 2.0
 
-    /// The font preset the Appearance pane's picker names. Edits are written
-    /// into it as well as into the `Editor*` keys, so the preset the picker
-    /// names always *is* what is on screen — there is no "modified" state to
-    /// explain, and no way to silently diverge from it.
-    ///
-    /// Antialiasing is the exception, being a display setting rather than
-    /// typography: it never reaches a preset.
+    /// The font preset the Appearance pane's picker names.
     var editingPreset: String?
+
+    /// Whether edits are also written into `editingPreset`. On while the
+    /// Manage sheet is open, where editing a theme is the point; off in the
+    /// pane, where an edit changes only what is on screen and the picker
+    /// reads Custom until a preset is chosen again.
+    ///
+    /// Antialiasing never reaches a preset either way, being a display
+    /// setting rather than typography.
+    var writesPreset = false
 
     /// Set while `apply(preset:)` is assigning the published mirrors. Each of
     /// those carries a `didSet` that commits, and committing writes the preset
@@ -164,11 +167,10 @@ final class FontSettings: NSObject, ObservableObject {
         commit(updated)
     }
 
-    /// Where an edit goes: into the preset the picker names, and into the live
-    /// settings and every open document. The selected preset *is* the one in
-    /// force, so there is only ever one destination.
+    /// Where an edit goes: into the live settings and every open document,
+    /// and into the named preset while the Manage sheet is editing it.
     private func commit(_ updated: EditorTheme) {
-        syncPreset()
+        if writesPreset { syncPreset() }
         updated.save()
         applyToDocuments(updated)
     }
@@ -178,8 +180,18 @@ final class FontSettings: NSObject, ObservableObject {
         guard !isApplying, let name = editingPreset,
               let existing = ThemeStore.shared.fontThemes().first(where: { $0.name == name })
         else { return }
-        try? ThemeStore.shared.save(
-            theme.fontTheme(name: name, displayName: existing.displayName))
+        save(asPreset: name, displayName: existing.displayName)
+    }
+
+    /// Writes what is on screen into the preset `name`.
+    func save(asPreset name: String, displayName: String) {
+        try? ThemeStore.shared.save(theme.fontTheme(name: name, displayName: displayName))
+    }
+
+    /// Whether what is on screen is exactly `preset`'s typography.
+    func matches(_ preset: FontTheme) -> Bool {
+        theme.fontTheme(name: preset.name, displayName: preset.displayName)
+            .hasSameTypography(as: preset)
     }
 
     /// Puts a preset in force: its values become the `Editor*` keys and every

@@ -463,7 +463,10 @@ Notable subsystems:
   scale the cascade for free; unset scripts keep the system fallback). The
   sheet's theme list is the pane's picker by another means: selecting a row
   writes the same `themeFont` binding and the pane's `onChange` applies it,
-  because `FontSettings` edits only the live preset. Every column-2 cell in
+  because `FontSettings` edits only the live preset. Only the sheet writes
+  edits into that preset (`FontSettings.writesPreset`); a pane edit changes
+  the screen alone, and the popup reads Custom while `FontSettings.matches`
+  is false. Every column-2 cell in
   the Appearance Grid is `maxWidth: .infinity` with fixed-width labels, or
   the Grid hands the pane's slack to the label column.
 - This section owns the *mechanism* and the settings with non-obvious

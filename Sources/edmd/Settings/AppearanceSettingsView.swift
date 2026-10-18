@@ -12,9 +12,9 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppSettings.Key.maxContentWidthCm) private var maxContentWidthCm = AppSettings.defaultMaxContentWidthCm
     /// "" follows the locale; "cm"/"in" override it (toggled via the unit button).
     @AppStorage(AppSettings.Key.contentWidthUnit) private var unitOverride = ""
-    /// The font preset in force. Always names one: everything below the divider
-    /// is its contents, and a picker reading blank while the fonts are set
-    /// would say nothing true. Choosing one here is choosing it — there is no
+    /// The font preset last chosen. Always names one, even while the popup
+    /// reads Custom: it is what Custom was edited from, and what the Manage
+    /// sheet opens on. Choosing one here is choosing it — there is no
     /// separate "use this" step.
     @AppStorage(AppSettings.Key.themeFont) private var fontTheme = AppSettings.DefaultTheme.font
 
@@ -22,6 +22,7 @@ struct AppearanceSettingsView: View {
     /// The tag for the popup's trailing "New Font Theme…" item. A tag no theme
     /// can carry — names come from filenames — so picking it is unambiguous.
     private static let newThemeTag = "\u{0}new"
+    private static let customTag = "\u{0}custom"
     @State private var renamingTheme = false
     @State private var newThemeName = ""
     @State private var managingThemes = false
@@ -124,55 +125,50 @@ struct AppearanceSettingsView: View {
                 Text("Font theme:")
                     .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 HStack(spacing: 8) {
-                    // 240 to match the font rows' preview field below, so the
-                    // three boxes share one edge.
-                    Picker("", selection: $fontTheme) {
-                        ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
-                        Divider()
-                        // The same trailing item the code-syntax popup has:
-                        // making one belongs with choosing one. It starts from
-                        // what is on screen — the selected preset always is —
-                        // and asks for a name straight away, which is the one
-                        // thing a copy cannot supply for itself.
-                        Text("New Font Theme…").tag(Self.newThemeTag)
+                    // 240 for the popup and size buttons together, to match
+                    // the font rows' preview field below, so the boxes share
+                    // one edge.
+                    HStack(spacing: 8) {
+                        Picker("", selection: themeSelection) {
+                            // Only while it is true: an item for "none of
+                            // these", shown when the fonts on screen are no
+                            // longer the selected theme's.
+                            if isCustom {
+                                Text("Custom").tag(Self.customTag)
+                                Divider()
+                            }
+                            ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
+                            Divider()
+                            // The same trailing item the code-syntax popup has:
+                            // making one belongs with choosing one. It starts
+                            // from what is on screen and asks for a name
+                            // straight away, which is the one thing a copy
+                            // cannot supply for itself.
+                            Text("New Font Theme…").tag(Self.newThemeTag)
+                        }
+                        .accessibilityLabel("Font theme")
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+                        .onChange(of: fontTheme) {
+                            guard let chosen = selectedPreset else { return }
+                            fonts.apply(preset: chosen)
+                        }
+                        fontSizeButtons
                     }
-                    .accessibilityLabel("Font theme")
-                    .labelsHidden()
                     .frame(width: 240)
-                    .onChange(of: fontTheme) { previous, name in
-                        if name == Self.newThemeTag {
-                            newTheme(from: previous)
-                            return
+                    // Trailing edge on the font rows' Select… buttons: an
+                    // invisible copy of their stepper and button sets the width.
+                    ZStack(alignment: .trailing) {
+                        HStack(spacing: 8) {
+                            Stepper("", value: .constant(0)).labelsHidden()
+                            Button("Select…") {}.fixedSize()
                         }
-                        guard let chosen = fontThemes.first(where: { $0.name == name }) else { return }
-                        fonts.apply(preset: chosen)
+                        .hidden()
+                        .accessibilityHidden(true)
+                        Button("Manage…") { managingThemes = true }
+                            .fixedSize()
+                            .help("Manage font themes")
                     }
-                    // One size for the whole preset, the way iA Writer and
-                    // Obsidian offer one: the standard size is the anchor, and
-                    // the monospaced and per-script sizes scale with it. Small
-                    // A / big A rather than a stepper, as Safari and Books
-                    // offer it: the glyphs say what the buttons change. The
-                    // numbers in the fields below are the readout, and the
-                    // rows there still change each on its own.
-                    let size = fonts.standardFont.pointSize
-                    ControlGroup {
-                        Button { fonts.scaleAllSizes(toStandard: size - 1) } label: {
-                            Image(systemName: "textformat.size.smaller")
-                        }
-                        .accessibilityLabel("Smaller")
-                        .help("Make every font smaller")
-                        .disabled(size <= 8)
-                        Button { fonts.scaleAllSizes(toStandard: size + 1) } label: {
-                            Image(systemName: "textformat.size.larger")
-                        }
-                        .accessibilityLabel("Larger")
-                        .help("Make every font larger")
-                        .disabled(size >= 72)
-                    }
-                    .fixedSize()
-                    Button("Manage…") { managingThemes = true }
-                        .fixedSize()
-                        .help("Manage font themes")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -250,20 +246,67 @@ struct AppearanceSettingsView: View {
         }
     }
 
-    /// A copy of `source` — the preset that was selected when "New Font
-    /// Theme…" was picked, and so exactly the typography on screen — selected
-    /// and put up for naming. Selecting it is what moves the popup off the
-    /// sentinel; `onChange` then applies it, a no-op, since it already is what
-    /// is live.
-    private func newTheme(from source: String) {
-        guard let copy = try? ThemeStore.shared.duplicate(source) else {
-            fontTheme = source
-            return
-        }
+    /// A copy of the selected theme holding the typography on screen — Custom
+    /// edits included — selected and put up for naming. `onChange` then
+    /// applies it, a no-op, since it already is what is live.
+    private func newTheme() {
+        guard let copy = try? ThemeStore.shared.duplicate(fontTheme),
+              let made = ThemeStore.shared.fontThemes().first(where: { $0.name == copy })
+        else { return }
+        fonts.save(asPreset: copy, displayName: made.displayName)
         fontThemes = ThemeStore.shared.fontThemes()
         fontTheme = copy
         newThemeName = ""
         renamingTheme = true
+    }
+
+    private var selectedPreset: FontTheme? { fontThemes.first { $0.name == fontTheme } }
+
+    /// The fonts on screen differ from the selected theme's: an edit in this
+    /// pane changes only what is on screen (see `FontSettings.writesPreset`).
+    private var isCustom: Bool { selectedPreset.map { !fonts.matches($0) } ?? false }
+
+    /// The popup's selection: Custom while the fonts have diverged, else the
+    /// theme. Choosing the theme already selected puts it back, which is the
+    /// one way out of Custom to it — `fontTheme` does not change, so its
+    /// onChange would not fire.
+    private var themeSelection: Binding<String> {
+        Binding(
+            get: { isCustom ? Self.customTag : fontTheme },
+            set: { name in
+                switch name {
+                case Self.customTag: break
+                case Self.newThemeTag: newTheme()
+                case fontTheme: selectedPreset.map(fonts.apply(preset:))
+                default: fontTheme = name
+                }
+            })
+    }
+
+    /// One size for the whole preset, the way iA Writer and Obsidian offer
+    /// one: the standard size is the anchor, and the monospaced and per-script
+    /// sizes scale with it. Small A / big A rather than a stepper, as Safari
+    /// and Books offer it: the glyphs say what the buttons change. The numbers
+    /// in the fields below are the readout, and the rows there still change
+    /// each on its own.
+    private var fontSizeButtons: some View {
+        let size = fonts.standardFont.pointSize
+        return HStack(spacing: 4) {
+            Button { fonts.scaleAllSizes(toStandard: size - 1) } label: {
+                Image(systemName: "textformat.size.smaller")
+            }
+            .accessibilityLabel("Smaller")
+            .help("Make every font smaller")
+            .disabled(size <= 8)
+            Button { fonts.scaleAllSizes(toStandard: size + 1) } label: {
+                Image(systemName: "textformat.size.larger")
+            }
+            .accessibilityLabel("Larger")
+            .help("Make every font larger")
+            .disabled(size >= 72)
+        }
+        .buttonStyle(.borderless)
+        .fixedSize()
     }
 
     /// Shared with the Manage sheet, which renames from its own list.
