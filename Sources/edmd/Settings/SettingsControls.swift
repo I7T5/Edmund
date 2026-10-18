@@ -247,6 +247,10 @@ enum HelpAnchor {
 /// as in CotEditor: the toolbar above already separates the content.
 enum SettingsPaneInsets {
     static let top: CGFloat = 14
+    /// Extra top inset for the form panes, whose first row is bare text and
+    /// controls: at `top` alone it crowds the toolbar, where a sidebar pane's
+    /// box edge doesn't.
+    static let formTop: CGFloat = top + 8
     /// From the Help button to the window's bottom and trailing edges.
     static let help: CGFloat = 20
     /// From the pane's last row to the Help button: the 10 the sidebar panes
@@ -265,7 +269,7 @@ extension View {
     /// gap. A wrapping caption (`fixedSize(vertical:)`) in a
     /// `.frame(maxWidth:)` does exactly that; give it a fixed `width:`.
     func settingsPanePadding(help anchor: String) -> some View {
-        self.padding(EdgeInsets(top: SettingsPaneInsets.top, leading: 28,
+        self.padding(EdgeInsets(top: SettingsPaneInsets.formTop, leading: 28,
                                 // the Help button's row: gap, button, inset
                                 bottom: SettingsPaneInsets.helpGap + 22 + SettingsPaneInsets.help, trailing: 28))
         .frame(width: 600, alignment: .topLeading)
