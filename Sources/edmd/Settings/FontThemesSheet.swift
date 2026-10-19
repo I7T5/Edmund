@@ -132,21 +132,17 @@ struct FontThemesSheet: View {
 
     // MARK: Detail
 
-    /// The pane's font rows without Antialias, which is a display setting the
-    /// pane keeps: it never reaches a theme.
+    /// The theme's fonts as Xcode's theme editor shows them, each with its
+    /// Ligatures switch beside it. No Antialias: it is a display setting the
+    /// pane keeps, and it never reaches a theme.
     private var detail: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 12) {
             GridRow {
                 Text("Standard font:")
                     .frame(width: Self.labelColumnWidth, alignment: .trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    AppearanceSettingsView.fontRow(
-                        summary: fonts.standardSummary, sizeLabel: "Standard font size",
-                        font: fonts.standardFont,
-                        antialias: fonts.antialias,
-                        size: Binding(get: { Double(fonts.standardFont.pointSize) },
-                                      set: { fonts.setStandardSize(CGFloat($0)) }),
-                        select: fonts.selectStandardFont)
+                HStack(spacing: 12) {
+                    fontWell(summary: fonts.standardSummary, font: fonts.standardFont,
+                             select: fonts.selectStandardFont)
                     Toggle("Ligatures", isOn: $fonts.standardLigatures)
                 }
             }
@@ -154,14 +150,9 @@ struct FontThemesSheet: View {
             GridRow {
                 Text("Monospaced font:")
                     .frame(width: Self.labelColumnWidth, alignment: .trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    AppearanceSettingsView.fontRow(
-                        summary: fonts.monospaceSummary, sizeLabel: "Monospaced font size",
-                        font: fonts.monospaceFont,
-                        antialias: fonts.antialias,
-                        size: Binding(get: { Double(fonts.monospaceFont.pointSize) },
-                                      set: { fonts.setMonospaceSize(CGFloat($0)) }),
-                        select: fonts.selectMonospaceFont)
+                HStack(spacing: 12) {
+                    fontWell(summary: fonts.monospaceSummary, font: fonts.monospaceFont,
+                             select: fonts.selectMonospaceFont)
                     Toggle("Ligatures", isOn: $fonts.monospaceLigatures)
                 }
             }
@@ -176,6 +167,57 @@ struct FontThemesSheet: View {
         }
         .fixedSize()
     }
+
+    /// Xcode's font row: the font drawn in itself, with the button onto the
+    /// font panel inside the same bezel, and no stepper — the panel sets the
+    /// size, as it does there. Leading-aligned, so a long name runs toward the
+    /// button rather than under it from both sides.
+    private func fontWell(summary: String, font: NSFont,
+                          select: @escaping () -> Void) -> some View {
+        HStack(spacing: 0) {
+            // The row's text baseline. SwiftUI reads the field's bottom edge
+            // as its baseline, which hangs the row label a descender low; this
+            // hidden text sits on the control's center line instead.
+            Text(" ").hidden().frame(width: 0)
+            HStack(spacing: 4) {
+                AntialiasingText(summary)
+                    .plain()
+                    .antialiasDisabled(!fonts.antialias)
+                    // The face at the control's size, as Xcode draws it: the
+                    // size is in the summary, and drawn at it a long name
+                    // would not fit beside its Ligatures switch.
+                    .font(nsFont: NSFont(descriptor: font.fontDescriptor,
+                                         size: NSFont.systemFontSize) ?? font)
+                    .alignment(.left)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button(action: select) { FontPanelGlyph() }
+                    .buttonStyle(.borderless)
+                    .help("Choose Font…")
+                    .accessibilityLabel("Choose Font")
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .background { FieldBezel() }
+            .frame(width: 200)
+        }
+    }
+}
+
+/// The genuine AppKit text-field bezel, borrowed from an empty `NSTextField`
+/// rather than stroked by hand: it follows dark mode and Increase Contrast,
+/// which a drawn border does not.
+private struct FieldBezel: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(string: "")
+        field.isBezeled = true
+        field.bezelStyle = .squareBezel
+        field.isEditable = false
+        field.isSelectable = false
+        field.refusesFirstResponder = true
+        return field
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {}
 }
 
 // MARK: - Fonts by script (per-script cascade)

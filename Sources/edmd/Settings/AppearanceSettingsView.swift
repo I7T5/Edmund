@@ -156,6 +156,12 @@ struct AppearanceSettingsView: View {
                         fontSizeButtons
                     }
                     .frame(width: 240)
+                    // Leading edge on the font rows' Select… buttons: an
+                    // invisible stepper stands where theirs does.
+                    Stepper("", value: .constant(0))
+                        .labelsHidden()
+                        .hidden()
+                        .accessibilityHidden(true)
                     Button("Manage…") { managingThemes = true }
                         .fixedSize()
                         .help("Manage font themes")
@@ -342,52 +348,18 @@ struct AppearanceSettingsView: View {
     @ViewBuilder
     static func fontRow(summary: String, sizeLabel: String, font: NSFont, antialias: Bool,
                         size: Binding<Double>, select: @escaping () -> Void) -> some View {
-        // Xcode's font row: the font drawn in itself, with the button onto
-        // the font panel inside the same bezel, and no stepper — the panel
-        // sets the size, as it does there.
-        // Leading-aligned, so a long name runs toward the button rather than
-        // under it from both sides.
-        HStack(spacing: 0) {
-            // The row's text baseline. SwiftUI reads the field's bottom edge
-            // as its baseline, which hangs the row label a descender low; this
-            // hidden text sits on the control's center line, where the Select…
-            // button's title used to put it.
-            Text(" ").hidden().frame(width: 0)
-            HStack(spacing: 4) {
-                AntialiasingText(summary)
-                    .plain()
-                    .antialiasDisabled(!antialias)
-                    .font(nsFont: font)
-                    .alignment(.left)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button(action: select) { FontPanelGlyph() }
-                    .buttonStyle(.borderless)
-                    .help("Choose Font…")
-                    .accessibilityLabel("Choose Font")
-            }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 3)
-            .background { FieldBezel() }
-            .frame(width: 240)
+        HStack(spacing: 8) {
+            AntialiasingText(summary)
+                .antialiasDisabled(!antialias)
+                .font(nsFont: font)
+                .frame(width: 240)
+            Stepper("", value: size, in: 8...72, step: 1)
+                .accessibilityLabel(sizeLabel)
+                .labelsHidden()
+            Button("Select…", action: select)
+                .fixedSize()
         }
     }
-}
-
-/// The genuine AppKit text-field bezel, borrowed from an empty `NSTextField`
-/// rather than stroked by hand: it follows dark mode and Increase Contrast,
-/// which a drawn border does not.
-private struct FieldBezel: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField(string: "")
-        field.isBezeled = true
-        field.bezelStyle = .squareBezel
-        field.isEditable = false
-        field.isSelectable = false
-        field.refusesFirstResponder = true
-        return field
-    }
-
-    func updateNSView(_ nsView: NSTextField, context: Context) {}
 }
 
 // MARK: - Continuous NSSlider
