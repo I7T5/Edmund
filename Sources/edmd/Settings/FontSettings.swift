@@ -196,11 +196,18 @@ final class FontSettings: NSObject, ObservableObject {
 
     /// Puts a preset in force: its values become the `Editor*` keys and every
     /// open document is repainted. Choosing one in the picker is choosing it.
-    func apply(preset: FontTheme) {
-        isApplying = true
-        defer { isApplying = false }
+    ///
+    /// Returns whether anything changed. A preset that is already what is on
+    /// screen — a fresh copy, the next theme after a delete that the pane's
+    /// onChange already applied — repaints nothing: each repaint restyles
+    /// every open document whole, seconds on a long one.
+    @discardableResult
+    func apply(preset: FontTheme) -> Bool {
         editingPreset = preset.name
         let updated = theme.applying(preset)
+        guard updated != theme else { return false }
+        isApplying = true
+        defer { isApplying = false }
         theme = updated
         standardFont = updated.bodyFont
         monospaceFont = updated.monospaceFont()
@@ -216,6 +223,7 @@ final class FontSettings: NSObject, ObservableObject {
         // editing one. Writing it back would save a user copy of a bundled
         // preset merely because it had been *chosen*.
         applyToDocuments(updated)
+        return true
     }
 
     /// Scales every size at once — both faces directly, and the per-script

@@ -106,6 +106,22 @@ struct FontPresetTests {
         }
     }
 
+    /// Applying what is already on screen repaints nothing: each repaint
+    /// restyles every open document whole.
+    @Test("Applying the preset already on screen changes nothing")
+    func reapplyingIsANoOp() throws {
+        try withCleanSlate {
+            let helvetica = try #require(
+                ThemeStore.shared.fontThemes().first { $0.name == "helvetica-neue" })
+            let fonts = FontSettings()
+            fonts.apply(preset: helvetica)
+            #expect(fonts.apply(preset: helvetica) == false)
+            // A real difference still lands.
+            fonts.setLineHeight(2.5)
+            #expect(fonts.apply(preset: helvetica) == true)
+        }
+    }
+
     /// An edit in the pane changes only what is on screen: the preset keeps
     /// its values, and the pane reads the difference as Custom.
     @Test("An edit in the pane leaves the preset and diverges from it")

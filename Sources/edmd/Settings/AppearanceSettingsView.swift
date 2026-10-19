@@ -247,7 +247,7 @@ struct AppearanceSettingsView: View {
                 switch name {
                 case Self.customTag: break
                 case Self.newThemeTag: newTheme()
-                case fontTheme: selectedPreset.map(fonts.apply(preset:))
+                case fontTheme: if let preset = selectedPreset { fonts.apply(preset: preset) }
                 default: fontTheme = name
                 }
             })

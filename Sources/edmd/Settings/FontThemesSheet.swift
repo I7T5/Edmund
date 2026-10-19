@@ -193,8 +193,8 @@ struct FontThemesSheet: View {
     private func deleteTheme() {
         let going = fontTheme
         guard let next = fontThemes.first(where: { $0.name != going }) else { return }
+        // The pane's onChange applies it; applying here too repainted twice.
         fontTheme = next.name
-        fonts.apply(preset: next)
         try? ThemeStore.shared.deleteUserTheme(named: going)
         fontThemes = ThemeStore.shared.fontThemes()
     }
