@@ -24,22 +24,30 @@ struct FontThemesSheet: View {
 
     /// Fits "Monospaced font:" and "Fonts by script:", the widest labels here.
     static let labelColumnWidth: CGFloat = 110
-    private static let sidebarWidth: CGFloat = 150
+    private static let sidebarWidth: CGFloat = 180
 
+    /// A source list down the sheet's leading edge and the selected theme
+    /// beside it — the shape of CotEditor's syntax editor sheet, and of any
+    /// macOS editor of a list of things.
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                sidebar
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            VStack(alignment: .leading, spacing: 16) {
                 detail
+                Spacer(minLength: 0)
+                HStack {
+                    HelpLink(anchor: HelpAnchor.appearance)
+                    Spacer()
+                    Button("Done") { dismiss() }
+                        .keyboardShortcut(.defaultAction)
+                }
             }
-            HStack {
-                HelpLink(anchor: HelpAnchor.appearance)
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
+            .padding(20)
+            // The sheet's size comes from here: a sidebar List has no ideal
+            // size of its own, and left to it the sheet collapses.
+            .fixedSize()
         }
-        .scenePadding()
         // Editing a theme is what the sheet is for, so its edits are written
         // into the selected one. Opened on Custom, the first edit saves the
         // whole screen into it, Custom changes included.
@@ -61,29 +69,20 @@ struct FontThemesSheet: View {
 
     // MARK: Theme list
 
+    /// The native sidebar: its own material, a section header, and the
+    /// accent-filled selection. The footer rides on the same material.
     private var sidebar: some View {
-        VStack(spacing: 0) {
-            // The Themes pane's caption: singular, naming what a row is.
-            Text("Font Theme")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 28)
-            Divider()
-            List(selection: Binding<String?>(
-                get: { fontTheme },
-                // A plain list can be clicked empty; the pane always names one.
-                set: { if let name = $0 { fontTheme = name } })) {
-                ForEach(fontThemes, id: \.name) {
-                    Text($0.displayName).tag($0.name).listRowSeparator(.hidden)
-                }
+        List(selection: Binding<String?>(
+            get: { fontTheme },
+            // A list can be clicked empty; the pane always names one.
+            set: { if let name = $0 { fontTheme = name } })) {
+            Section("Font Themes") {
+                ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            footer
         }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .frame(width: Self.sidebarWidth)
-        .frame(maxHeight: .infinity)
     }
 
     /// The Themes pane's footer: add, remove, and the rest in a menu.
@@ -117,7 +116,9 @@ struct FontThemesSheet: View {
             Spacer()
         }
         .buttonStyle(.borderless)
-        .padding(6)
+        // On the rows' leading edge.
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private func duplicateTheme() {
