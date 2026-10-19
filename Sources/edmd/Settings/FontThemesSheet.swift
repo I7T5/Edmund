@@ -13,13 +13,15 @@ struct FontThemesSheet: View {
     /// the detail can show nothing but the one in force.
     @Binding var fontTheme: String
     @Binding var fontThemes: [FontTheme]
-    /// Opened by "New Font Theme…" on a fresh copy: ask for its name at once,
-    /// the one thing a copy cannot supply for itself.
+    /// Opened by "New Font Theme…" on a fresh copy: put its name up for
+    /// editing at once, the one thing a copy cannot supply for itself.
     var asksForName = false
     @Environment(\.dismiss) private var dismiss
 
-    @State private var renamingTheme = false
+    /// The theme whose row is a name field, as Finder renames in place.
+    @State private var renaming: String?
     @State private var newThemeName = ""
+    @FocusState private var nameFieldFocused: Bool
     /// The script row the pointer last picked. Selection, not state: nothing
     /// reads it but the highlight, which is what tells a reader the box is a
     /// table and a double click will do something.
@@ -60,10 +62,7 @@ struct FontThemesSheet: View {
         // whole screen into it, Custom changes included.
         .onAppear {
             fonts.writesPreset = true
-            if asksForName {
-                newThemeName = ""
-                renamingTheme = true
-            }
+            if asksForName { beginRename() }
         }
         .onDisappear {
             fonts.writesPreset = false
@@ -77,11 +76,6 @@ struct FontThemesSheet: View {
         } message: {
             Text("This removes the theme’s file. You can’t undo this.")
         }
-        .alert("Rename Font Theme", isPresented: $renamingTheme) {
-            TextField("Name", text: $newThemeName)
-            Button("Cancel", role: .cancel) {}
-            Button("Rename", action: commitRename)
-        }
     }
 
     // MARK: Theme list
@@ -94,10 +88,28 @@ struct FontThemesSheet: View {
             // A list can be clicked empty; the pane always names one.
             set: { if let name = $0 { fontTheme = name } })) {
             Section("Font Themes") {
-                ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
+                ForEach(fontThemes, id: \.name) { theme in
+                    Group {
+                        if renaming == theme.name {
+                            // Return or clicking away keeps the name; Esc
+                            // leaves the old one, as in Finder.
+                            TextField("Name", text: $newThemeName)
+                                .focused($nameFieldFocused)
+                                .onAppear { nameFieldFocused = true }
+                                .onSubmit(commitRename)
+                                .onExitCommand { renaming = nil }
+                        } else {
+                            Text(theme.displayName)
+                        }
+                    }
+                    .tag(theme.name)
+                }
             }
         }
         .listStyle(.sidebar)
+        .onChange(of: nameFieldFocused) { _, focused in
+            if !focused, renaming != nil { commitRename() }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 Divider()
@@ -137,7 +149,7 @@ struct FontThemesSheet: View {
     /// the edge — the list's controls, not a toolbar of their own.
     private var footer: some View {
         HStack(spacing: 8) {
-            Button(action: duplicateTheme) { Image(systemName: "plus") }
+            Button(action: newTheme) { Image(systemName: "plus") }
                 .help("New font theme, copied from the selected one")
             Button { confirmingDelete = true } label: { Image(systemName: "minus") }
                 .help("Delete the selected font theme")
@@ -146,10 +158,7 @@ struct FontThemesSheet: View {
                 // nothing to name.
                 .disabled(!ThemeStore.shared.isUserTheme(fontTheme) || fontThemes.count < 2)
             Menu {
-                Button("Rename…") {
-                    newThemeName = fontThemes.first { $0.name == fontTheme }?.displayName ?? ""
-                    renamingTheme = true
-                }
+                Button("Rename", action: beginRename)
                     // A built-in keeps the name it ships under; Duplicate is the
                     // way to one with your own name on it.
                     .disabled(ThemeStore.shared.isBuiltIn(fontTheme))
@@ -158,6 +167,8 @@ struct FontThemesSheet: View {
                 // Circled, as every other Settings list's footer has it.
                 Image(systemName: "ellipsis.circle")
             }
+            .help("Rename or duplicate the selected font theme")
+            .accessibilityLabel("More")
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             // Grey like + and −: a borderless menu button draws its label in
@@ -173,15 +184,47 @@ struct FontThemesSheet: View {
         .padding(.vertical, 6)
     }
 
+    private func beginRename() {
+        newThemeName = fontThemes.first { $0.name == fontTheme }?.displayName ?? ""
+        renaming = fontTheme
+    }
+
     private func commitRename() {
+        defer { renaming = nil }
         let trimmed = newThemeName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
-              var theme = fontThemes.first(where: { $0.name == fontTheme }) else { return }
+              var theme = fontThemes.first(where: { $0.name == renaming }) else { return }
         // The display name only: `name` is the filename and the value stored in
         // settings, so moving it would orphan the selection.
         theme.displayName = trimmed
         try? ThemeStore.shared.save(theme)
         fontThemes = ThemeStore.shared.fontThemes()
+    }
+
+    /// "New Theme", or "New Theme 2" and on when that is taken — the name a
+    /// new theme carries until it is given one.
+    static func untitledName(among themes: [FontTheme]) -> String {
+        let taken = Set(themes.map(\.displayName))
+        var name = "New Theme"
+        var n = 2
+        while taken.contains(name) {
+            name = "New Theme \(n)"
+            n += 1
+        }
+        return name
+    }
+
+    /// A copy of the selected theme under the untitled name, its row put up
+    /// for naming: the + button's "New Font Theme", as the pane's popup item.
+    private func newTheme() {
+        guard let copy = try? ThemeStore.shared.duplicate(fontTheme),
+              var made = ThemeStore.shared.fontThemes().first(where: { $0.name == copy })
+        else { return }
+        made.displayName = Self.untitledName(among: fontThemes)
+        try? ThemeStore.shared.save(made)
+        fontThemes = ThemeStore.shared.fontThemes()
+        fontTheme = copy
+        beginRename()
     }
 
     private func duplicateTheme() {
@@ -327,8 +370,6 @@ extension FontThemesSheet {
 
     /// Box width, and one script row's height. Five rows are visible and the
     /// remaining four scroll — the same 5-row window the Syntax pane's box uses.
-    /// Narrower than it was with a third column: two columns in a 380pt box
-    /// left a stretch of nothing down the middle.
     /// The font wells above take this width too; one edge for all three.
     private var scriptBoxWidth: CGFloat { 240 }
     /// The Syntax pane's row height, so the two boxes read as the same kind
@@ -398,7 +439,7 @@ extension FontThemesSheet {
         .frame(height: scriptRowHeight * 5)
     }
 
-    /// One script's row, under the two column titles: a sample of the script
+    /// One script's row, under the three column titles: a sample of the script
     /// drawn in its own face, and the ligature switch.
     ///
     /// The sample stands in for an English script name. "Chinese (Han)" told a
@@ -411,7 +452,8 @@ extension FontThemesSheet {
     /// sample already shows the size, drawn at it.
     ///
     /// One script: whether it takes the default, then its sample with the size
-    /// it is drawn at, then its ligatures. The sample IS the font button.
+    /// it is drawn at, then its ligatures. Double-clicking the row opens the
+    /// font panel.
     ///
     /// The Default switch is the row's own state made visible. With it on the
     /// rest of the row is disabled — there is no font to have ligatures, and

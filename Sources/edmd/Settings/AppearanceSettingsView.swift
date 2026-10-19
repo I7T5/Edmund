@@ -207,8 +207,8 @@ struct AppearanceSettingsView: View {
             fonts.editingPreset = fontTheme
         }
         // Selecting a theme in the sheet writes `fontTheme`, and the picker's
-        // onChange above applies it: one path for both, since this pane stays
-        // alive beneath the sheet.
+        // onChange (in `fontThemePicker`) applies it: one path for both, since
+        // this pane stays alive beneath the sheet.
         .sheet(isPresented: $managingThemes, onDismiss: { namingNewTheme = false }) {
             FontThemesSheet(fonts: fonts, fontTheme: $fontTheme, fontThemes: $fontThemes,
                             asksForName: namingNewTheme)
@@ -216,14 +216,13 @@ struct AppearanceSettingsView: View {
     }
 
     /// A copy of the selected theme holding the typography on screen — Custom
-    /// edits included — selected, and opened in the Manage sheet to be named:
-    /// a new theme is made to be edited, and the sheet is where that happens.
-    /// `onChange` applies it, a no-op, since it already is what is live.
+    /// edits included — under the untitled name, selected, and opened in the
+    /// Manage sheet with its row up for naming: a new theme is made to be
+    /// edited, and the sheet is where that happens. `onChange` applies it,
+    /// which repaints nothing: it already is what is live.
     private func newTheme() {
-        guard let copy = try? ThemeStore.shared.duplicate(fontTheme),
-              let made = ThemeStore.shared.fontThemes().first(where: { $0.name == copy })
-        else { return }
-        fonts.save(asPreset: copy, displayName: made.displayName)
+        guard let copy = try? ThemeStore.shared.duplicate(fontTheme) else { return }
+        fonts.save(asPreset: copy, displayName: FontThemesSheet.untitledName(among: fontThemes))
         fontThemes = ThemeStore.shared.fontThemes()
         fontTheme = copy
         namingNewTheme = true
@@ -258,7 +257,9 @@ struct AppearanceSettingsView: View {
             // Only while it is true: an item for "none of these", shown when
             // the fonts on screen are no longer the selected theme's.
             if isCustom {
-                Text("Custom").tag(Self.customTag)
+                // "(Unsaved)" so it never reads as a theme that happens to
+                // be named Custom, as the upgrade migration's own may be.
+                Text("Custom (Unsaved)").tag(Self.customTag)
                 Divider()
             }
             ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
@@ -289,13 +290,13 @@ struct AppearanceSettingsView: View {
             Button { fonts.scaleAllSizes(toStandard: size - 1) } label: {
                 Image(systemName: "textformat.size.smaller")
             }
-            .accessibilityLabel("Smaller")
+            .accessibilityLabel("Smaller font size")
             .help("Make every font smaller")
             .disabled(size <= 8)
             Button { fonts.scaleAllSizes(toStandard: size + 1) } label: {
                 Image(systemName: "textformat.size.larger")
             }
-            .accessibilityLabel("Larger")
+            .accessibilityLabel("Larger font size")
             .help("Make every font larger")
             .disabled(size >= 72)
         }

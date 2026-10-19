@@ -106,6 +106,17 @@ struct FontPresetTests {
         }
     }
 
+    /// A new theme is "New Theme" until named, numbered past any taken.
+    @Test("A new theme's untitled name skips the ones in use")
+    func untitledNameSkipsTaken() {
+        func theme(_ display: String) -> FontTheme {
+            EditorTheme.default.fontTheme(name: display, displayName: display)
+        }
+        #expect(FontThemesSheet.untitledName(among: [theme("Iowan")]) == "New Theme")
+        #expect(FontThemesSheet.untitledName(among: [theme("New Theme"), theme("New Theme 2")])
+                == "New Theme 3")
+    }
+
     /// Applying what is already on screen repaints nothing: each repaint
     /// restyles every open document whole.
     @Test("Applying the preset already on screen changes nothing")
