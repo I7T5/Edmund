@@ -84,8 +84,6 @@ struct FontThemesSheet: View {
         }
         .frame(width: Self.sidebarWidth)
         .frame(maxHeight: .infinity)
-        .settingsSurfaceBackground()
-        .border(.separator)
     }
 
     /// The Themes pane's footer: add, remove, and the rest in a menu.
