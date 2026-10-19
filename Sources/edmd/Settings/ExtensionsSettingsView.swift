@@ -41,10 +41,10 @@ struct ExtensionsSettingsView: View {
 
             HStack {
                 Spacer()
-                Button("More Extensions…") {
-                    // STUB: link to GitHub extensions repo for now.
-                    // Extensions marketplace comes later.
-                }
+                // Disabled until a catalog exists to browse: every extension is
+                // built in (ExtensionRegistry.all) and none has its own repo yet.
+                Button("More Extensions…") {}
+                    .disabled(true)
                 HelpLink(anchor: HelpAnchor.extensions)
             }
         }

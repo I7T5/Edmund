@@ -1,4 +1,4 @@
-// The General settings pane (quitting, startup, document saving).
+// The General settings pane (startup, quitting, document saving).
 
 import SwiftUI
 import AppKit
@@ -15,6 +15,23 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
+            GridRow {
+                Text("On startup:")
+                    .gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Reopen windows from last session", isOn: $reopenWindows)
+                        .onChange(of: reopenWindows) { if reopenWindows { quitWhenAllClosed = false } }
+                    Text("When nothing else is open:")
+                    Picker("", selection: $startupAction) {
+                        ForEach(AppSettings.StartupAction.allCases) { Text($0.label).tag($0) }
+                    }
+                    .accessibilityLabel("When nothing else is open")
+                    .labelsHidden()
+                    .fixedSize()
+                    .padding(.leading, 20)
+                }
+            }
+
             GridRow {
                 Text("Closing:")
                     .gridColumnAlignment(.trailing)
@@ -33,24 +50,7 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            Divider().gridCellUnsizedAxes(.horizontal)
-
-            GridRow {
-                Text("On startup:")
-                    .gridColumnAlignment(.trailing)
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Reopen windows from last session", isOn: $reopenWindows)
-                        .onChange(of: reopenWindows) { if reopenWindows { quitWhenAllClosed = false } }
-                    Text("When nothing else is open:")
-                    Picker("", selection: $startupAction) {
-                        ForEach(AppSettings.StartupAction.allCases) { Text($0.label).tag($0) }
-                    }
-                    .accessibilityLabel("When nothing else is open")
-                    .labelsHidden()
-                    .fixedSize()
-                    .padding(.leading, 20)
-                }
-            }
+            Divider().gridCellColumns(2)
 
             GridRow {
                 Text("Document save:")

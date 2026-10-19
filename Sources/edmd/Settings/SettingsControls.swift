@@ -242,32 +242,43 @@ enum HelpAnchor {
                       keyBindings, extensions, advanced, versionHistory]
 }
 
-/// Insets every Settings pane shares, so switching tabs never moves the
-/// content's top edge or the Help button. The top is tighter than the bottom,
-/// as in CotEditor: the toolbar above already separates the content.
+/// Insets the Settings panes share, so switching tabs never moves the Help
+/// button. The top varies a little by pane: the room under the toolbar is
+/// matched to how densely each pane's rows are spaced.
 enum SettingsPaneInsets {
     static let top: CGFloat = 14
+    /// Top inset for the form panes, whose rows are 18 apart: at `top` alone
+    /// the first row crowds the toolbar. Denser panes pass less
+    /// (`settingsPanePadding(top:)`) so the room above matches the spacing
+    /// between their rows.
+    static let formTop: CGFloat = top + 8
     /// From the Help button to the window's bottom and trailing edges.
     static let help: CGFloat = 20
+    /// From the pane's last row to the Help button: the 10 the sidebar panes
+    /// (Themes, Key Bindings, Extensions) get from their stack spacing.
+    static let helpGap: CGFloat = 10
     /// Content inset of the sidebar panes (Themes, Key Bindings, Extensions),
-    /// whose Help button sits in their bottom row.
-    static let sidebar = EdgeInsets(top: top, leading: help, bottom: help, trailing: help)
+    /// whose Help button sits in their bottom row. Even all round: their boxes
+    /// want the same air above as beside and below them.
+    static let sidebar = EdgeInsets(top: help, leading: help, bottom: help, trailing: help)
 }
 
 extension View {
     /// Consistent pane padding for the form-style panes: content pinned to the
     /// top, a little more room on the sides, and the Help button pinned to the
-    /// bottom-trailing corner. Pinning rather than stacking: Edit and Syntax lay
-    /// out a few points taller than SwiftUI reports, and in a stack that
-    /// overflow came out of the top and bottom insets, so they differed by pane.
-    func settingsPanePadding(help anchor: String) -> some View {
-        self.padding(EdgeInsets(top: SettingsPaneInsets.top, leading: 28,
+    /// bottom-trailing corner. The window takes the pane's ideal size, so a
+    /// row that lays out taller than it reports eats into the Help button's
+    /// gap. A wrapping caption (`fixedSize(vertical:)`) in a
+    /// `.frame(maxWidth:)` does exactly that; give it a fixed `width:`.
+    func settingsPanePadding(help anchor: String,
+                             top: CGFloat = SettingsPaneInsets.formTop) -> some View {
+        self.padding(EdgeInsets(top: top, leading: 28,
                                 // the Help button's row: gap, button, inset
-                                bottom: SettingsPaneInsets.help * 2 + 22, trailing: 28))
+                                bottom: SettingsPaneInsets.helpGap + 22 + SettingsPaneInsets.help, trailing: 28))
         .frame(width: 600, alignment: .topLeading)
         // minHeight 0: without it the frame grows to the content's laid-out
-        // height, which in Edit is 7.5pt more than it reports, and the Help
-        // button pinned to the frame's bottom slid below the window edge.
+        // height, which can be more than it reports, and the Help button
+        // pinned to the frame's bottom slides below the window edge.
         .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottomTrailing) {
             HelpLink(anchor: anchor).padding(SettingsPaneInsets.help)

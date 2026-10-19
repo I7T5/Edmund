@@ -127,9 +127,6 @@ struct EditSettingsView: View {
                     // }
                     invisibleCharacterGrid
                         .padding(.leading, 20)
-                        // Deliberate (cea007a, tuned in d75f6ab): pulls the
-                        // Lines row up under this grid. Visual tuning; keep.
-                        .padding(.bottom, -15)
                         .disabled(!showInvisibles)
                 }
                 .onChange(of: showInvisibles) { AppSettings.applyEditSettingsToOpenDocuments() }
@@ -153,7 +150,7 @@ struct EditSettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 380, alignment: .leading)
+                        .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }
@@ -173,12 +170,13 @@ struct EditSettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 380, alignment: .leading)
+                        .frame(width: 380, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }
         }
-        .settingsPanePadding(help: HelpAnchor.edit)
+        // The first row's popup already sits its label ~3pt lower.
+        .settingsPanePadding(help: HelpAnchor.edit, top: SettingsPaneInsets.top + 2)
     }
 
     private var invisibleCharacterGrid: some View {

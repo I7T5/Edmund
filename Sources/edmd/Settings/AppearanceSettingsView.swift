@@ -32,8 +32,11 @@ struct AppearanceSettingsView: View {
     /// Every label in the pane gets this fixed width, so the "Fonts by script"
     /// rows can appear/disappear without re-sizing the Grid's label column
     /// (which would slide every row sideways as the section opens). Sized to
-    /// fit the pane's widest label ("Max content width:").
-    static let labelColumnWidth: CGFloat = 130
+    /// fit the pane's widest label ("Max content width:"), plus 20 of lead-in:
+    /// the tab is wider than the grid, and all of the slack was landing on the
+    /// right. Widening the column rather than padding the grid keeps the
+    /// divider spanning the pane, the same inset from both window edges.
+    static let labelColumnWidth: CGFloat = 150
 
     // MARK: - Unit helpers
 
@@ -232,10 +235,9 @@ struct AppearanceSettingsView: View {
 
             fontCascadeSection
         }
-        // The tab is wider than this grid, and all of the slack was landing on
-        // the right. Nudged so the block sits nearer the middle of it.
-        .padding(.leading, 20)
-        .settingsPanePadding(help: HelpAnchor.appearance)
+        // Rows here are 12 apart, not 18, so the first row needs less room
+        // under the toolbar than formTop gives.
+        .settingsPanePadding(help: HelpAnchor.appearance, top: SettingsPaneInsets.top + 4)
         .onAppear {
             fontThemes = ThemeStore.shared.fontThemes()
             // Told, not applied: the values are already live, and re-applying
