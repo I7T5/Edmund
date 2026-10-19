@@ -58,6 +58,19 @@ enum SettingsRender {
         window.layoutIfNeeded()
         // Let SwiftUI settle: fonts, preferences, the tab resize animation.
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
+        // A detail measured before SwiftUI settled can come out far too small
+        // (a sidebar List has no ideal size until it has laid out), so fit
+        // the window again now that it has.
+        // Repeated until the size holds: one pass can still read a stale size.
+        if !target.hasPrefix("pane:"), let content = window.contentView {
+            for _ in 0..<5 {
+                let size = NSSize(width: content.fittingSize.width,
+                                  height: max(content.fittingSize.height, 300))
+                if size == content.frame.size { break }
+                window.setContentSize(size)
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            }
+        }
 
         let id = CGWindowID(window.windowNumber)
         guard let image = captureWindow(id, scale: window.backingScaleFactor),
