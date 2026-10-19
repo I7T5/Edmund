@@ -149,7 +149,8 @@ struct FontThemesSheet: View {
                     .disabled(ThemeStore.shared.isBuiltIn(fontTheme))
                 Button("Duplicate", action: duplicateTheme)
             } label: {
-                Image(systemName: "ellipsis")
+                // Circled, as every other Settings list's footer has it.
+                Image(systemName: "ellipsis.circle")
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -228,7 +229,16 @@ struct FontThemesSheet: View {
     /// button rather than under it from both sides.
     private func fontWell(summary: String, font: NSFont,
                           select: @escaping () -> Void) -> some View {
-        HStack(spacing: 0) {
+        // The face at the control's size, as Xcode draws it: the size is in
+        // the summary, and drawn at it a long name would not fit beside its
+        // Ligatures switch.
+        let shown = NSFont(descriptor: font.fontDescriptor, size: NSFont.systemFontSize) ?? font
+        // The capitals centered in the field, whatever the face: a shared
+        // baseline, which suits the script list's column of samples, put a
+        // tall-capped face high and a short-capped one low. On the half point,
+        // where a 2x display can draw it.
+        let baseline = ((AntialiasingText.plainHeight + shown.capHeight) / 2 * 2).rounded() / 2
+        return HStack(spacing: 0) {
             // The row's text baseline. SwiftUI reads the field's bottom edge
             // as its baseline, which hangs the row label a descender low; this
             // hidden text sits on the control's center line instead.
@@ -237,11 +247,8 @@ struct FontThemesSheet: View {
                 AntialiasingText(summary)
                     .plain()
                     .antialiasDisabled(!fonts.antialias)
-                    // The face at the control's size, as Xcode draws it: the
-                    // size is in the summary, and drawn at it a long name
-                    // would not fit beside its Ligatures switch.
-                    .font(nsFont: NSFont(descriptor: font.fontDescriptor,
-                                         size: NSFont.systemFontSize) ?? font)
+                    .font(nsFont: shown)
+                    .baseline(baseline)
                     .alignment(.left)
                     .padding(.leading, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
