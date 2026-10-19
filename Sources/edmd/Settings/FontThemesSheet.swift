@@ -143,7 +143,9 @@ struct FontThemesSheet: View {
                 HStack(spacing: 12) {
                     fontWell(summary: fonts.standardSummary, font: fonts.standardFont,
                              select: fonts.selectStandardFont)
+                    // Small, like the Themes pane's switches beside a value.
                     Toggle("Ligatures", isOn: $fonts.standardLigatures)
+                        .controlSize(.small)
                 }
             }
 
@@ -154,6 +156,7 @@ struct FontThemesSheet: View {
                     fontWell(summary: fonts.monospaceSummary, font: fonts.monospaceFont,
                              select: fonts.selectMonospaceFont)
                     Toggle("Ligatures", isOn: $fonts.monospaceLigatures)
+                        .controlSize(.small)
                 }
             }
 
@@ -189,6 +192,7 @@ struct FontThemesSheet: View {
                     .font(nsFont: NSFont(descriptor: font.fontDescriptor,
                                          size: NSFont.systemFontSize) ?? font)
                     .alignment(.left)
+                    .padding(.leading, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: select) { FontPanelGlyph() }
                     .buttonStyle(.borderless)
