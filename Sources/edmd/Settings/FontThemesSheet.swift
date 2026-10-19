@@ -63,6 +63,13 @@ struct FontThemesSheet: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
+            // The Themes pane's caption: singular, naming what a row is.
+            Text("Font Theme")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+            Divider()
             List(selection: Binding<String?>(
                 get: { fontTheme },
                 // A plain list can be clicked empty; the pane always names one.
