@@ -37,9 +37,9 @@ const videoId = "hero-video";
   pageTitle="Edmund"
   description="Edmund is a minimal native Markdown editor for macOS with inline live preview."
 >
-  <section id="demo" class="flex min-h-[100svh] items-center px-0 py-8 sm:px-2 lg:px-4">
-    <div class="mx-auto flex w-full flex-col">
-      <figure class="m-3 mb-8 overflow-hidden rounded-[8px] shadow-[0_10px_30px_rgba(0,0,0,0.08)] sm:rounded-[12px] sm:m-4 sm:mb-10 lg:m-6 lg:mb-10">
+  <section id="demo" class="hero flex flex-col">
+    <div class="my-auto">
+      <figure class="hero-video m-0 mb-10 overflow-hidden rounded-[8px] shadow-[0_10px_30px_rgba(0,0,0,0.08)] sm:rounded-[12px]">
         <video
           id={videoId}
           class="h-auto w-full"
@@ -53,21 +53,21 @@ const videoId = "hero-video";
         </video>
       </figure>
 
-      <div class="pb-3 sm:pb-4 lg:pb-6">
-        <h1 class="font-serif text-2xl font-semibold leading-tight sm:text-4xl">Edmund</h1>
-        <p class="mt-5 text-xl leading-8 text-secondary">
+      <div>
+        <h1>Edmund</h1>
+        <p>
           A minimal, file-based, native macOS Markdown editor with inline live preview. 
         </p>
-        <div class="mt-8 flex flex-wrap gap-3">
+        <div class="mt-6 flex flex-wrap gap-3">
           <a
-            class="inline-flex items-center gap-2 rounded-[8px] bg-primary px-4 py-2 text-sm font-sans font-semibold text-white transition transition-duration-300 hover:text-white hover:bg-primary-strong"
+            class="inline-flex items-center gap-2 rounded-[8px] bg-primary px-4 py-2 text-sm font-sans font-semibold text-white no-underline transition transition-duration-300 hover:text-white hover:bg-primary-strong"
             href="https://github.com/I7T5/Edmund/releases/latest"
           >
             Download (beta)
             <span class="i-lucide-download h-4 w-4" aria-hidden="true"></span>
           </a>
           <a
-            class="inline-flex items-center gap-2 rounded-[8px] bg-tertiary px-4 py-2 text-sm font-sans font-semibold text-text transition transition-duration-300 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black"
+            class="inline-flex items-center gap-2 rounded-[8px] bg-tertiary px-4 py-2 text-sm font-sans font-semibold text-text no-underline transition transition-duration-300 hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black"
             href="https://github.com/I7T5/Edmund"
           >
             Repository
@@ -77,14 +77,17 @@ const videoId = "hero-video";
         <p class="mt-3 text-sm leading-6 text-secondary font-sans">
           Requires macOS 14 Sonoma or later. (<a href="https://github.com/I7T5/Edmund#installation">Damaged?</a>)
         </p>
-
-        <!-- Animation to scroll here -->
       </div>
     </div>
+
+    <a id="scroll-cue" href="#overview" class="scroll-cue mt-6 flex flex-col items-center self-center pb-2 font-sans text-sm text-secondary no-underline hover:text-secondary">
+      Read more
+      <span class="scroll-cue-chevron i-lucide-chevron-down h-5 w-5" aria-hidden="true"></span>
+    </a>
   </section>
 
   <SideSection id="overview" title="Yet another Markdown editor?">
-    <div class="space-y-5 text-lg leading-8">
+    <div>
       <p>
         As of July 2026, I have not found a Markdown editor that is 
         <i>native to macOS</i>, <b>file-based</b>, and has <i><b>inline WYSIWYG live preview</b></i>
@@ -101,32 +104,32 @@ const videoId = "hero-video";
     </div>
   </SideSection>
 
-  <section id="features" class="my-4">
-    <h2 class="text-2xl font-semibold mb-2">Features</h2>
-    <p class="text-secondary mb-4">There's more on the <a href="https://trello.com/b/vw2TveNI">Roadmap</a>.</p>
+  <section id="features">
+    <h2>Features</h2>
+    <p>There's more on the <a href="https://trello.com/b/vw2TveNI">Roadmap</a>.</p>
     <FeaturesCardGrid />
   </section>
 
   <!-- Later: Change to scroll view -->
-  <section id="screenshots" class="grid gap-8 py-10">
-    <h2 class="text-2xl font-semibold">Screenshots</h2>
+  <section id="screenshots">
+    <h2>Screenshots</h2>
     <!-- <p class="text-secondary">Scroll to see more :)</p> -->
-    <div class="grid gap-4 sm:grid-cols-2">
+    <div class="grid gap-6">
       {screenshots.map((shot, index) => (
         <ExpandableScreenshot src={shot.src} alt={shot.alt} loading={index === 0 ? "eager" : "lazy"} />
       ))}
     </div>
   </section>
 
-  <section class="mt-4 mb-12">
-    <h2 class="text-2xl font-semibold mb-1">Comparisons</h2>
-    <p class="text-secondary mb-4">And <a href="https://github.com/mundimark/awesome-markdown-editors">alternatives</a>, if Edmund's not for you. Scroll for more :D</p>
+  <section>
+    <h2>Comparisons</h2>
+    <p>And <a href="https://github.com/mundimark/awesome-markdown-editors">alternatives</a>, if Edmund's not for you. Scroll for more :D</p>
     <ComparisonTable />
   </section>
 
-  <section id="acknowledgements" class="my-2">
-    <h2 class="text-2xl font-semibold">Acknowledgements</h2>
-    <ul class="my-4 pl-4 text-secondary">
+  <section id="acknowledgements">
+    <h2>Acknowledgements</h2>
+    <ul class="my-4">
       <li>
         <a href="https://coteditor.com">CotEditor</a> for the philosophy</li>
       <li>
@@ -154,7 +157,7 @@ const videoId = "hero-video";
   </section>
 
   <SideSection id="faqs" title="FAQs">
-    <div class="px-5">
+    <div>
       <DisclosureItem question="How much does Edmund cost?">
         Edmund is and will always be free, at least as long as I (I7T5) am in charge. 
       </DisclosureItem>
@@ -180,7 +183,46 @@ const videoId = "hero-video";
   </SideSection>
 </BaseLayout>
 
+<style is:global>
+  /* Clear breaks between sections; the h2 that opens each one drops its own
+     top margin as a first child (read.css). */
+  main > section + section { margin-top: 4.5rem; }
+  html { scroll-behavior: smooth; }
+
+  /* The hero fills the first screen below the page chrome (--chrome-top,
+     BaseLayout). The video's width is capped by the viewport height (it is
+     ~1.61:1) so the whole hero, cue included, fits; 18.75rem is the hero's
+     height without the video: heading, tagline, buttons, requirement line
+     and Read more cue. */
+  .hero { min-height: calc(100svh - var(--chrome-top)); }
+  .hero-video { max-width: calc((100svh - var(--chrome-top) - 18.75rem) * 1.61); }
+
+  .scroll-cue { transition: opacity 300ms ease; }
+  .scroll-cue[data-hidden="true"] { opacity: 0; pointer-events: none; }
+  /* --marker: the lighter gray Read mode draws list bullets in. Two classes
+     deep because UnoCSS's icon rule sets `color: inherit` and loads later. */
+  .scroll-cue .scroll-cue-chevron { color: var(--marker); }
+  .scroll-cue-chevron { animation: scroll-cue-bob 1.8s ease-in-out infinite; }
+
+  @keyframes scroll-cue-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(5px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .scroll-cue-chevron { animation: none; }
+  }
+</style>
+
 <script>
+  const cue = document.getElementById("scroll-cue");
+  if (cue) {
+    const update = () => { cue.dataset.hidden = String(window.scrollY > 40); };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+  }
+
   const video = document.getElementById("hero-video");
 
   if (video instanceof HTMLVideoElement) {

@@ -33,9 +33,10 @@ struct SyntaxSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Enable extended Markdown syntax (non-GFM)", isOn: $enableNonGFM)
                         .onChange(of: enableNonGFM) { applyFeatures() }
-                        // Deliberate (ca96727, tuned in d75f6ab): lifts the
-                        // toggle off the row's top edge. Visual tuning; keep.
-                        .padding(.top, -8)
+                        // Deliberate: this row lays out lower than the other
+                        // panes' first rows, for a reason not yet found; -16
+                        // lands it level with them (settingsPanePadding's top).
+                        .padding(.top, -16)
                     // Parsed rather than left to `Text`'s own literal markdown
                     // handling, so `settingsLinkTinted()` can bring the link in
                     // line with every other link in Settings.
@@ -45,7 +46,7 @@ struct SyntaxSettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 340, alignment: .leading)
+                        .frame(width: 340, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }

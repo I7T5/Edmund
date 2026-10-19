@@ -1,0 +1,72 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const base = import.meta.env.BASE_URL.endsWith("/")
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
+
+const oviotti = { name: "oviotti", url: "https://www.deviantart.com/oviotti" };
+
+const icons = [
+  { file: "current.png", name: "OG", note: "Pre v1.0.0 tribute to Typora" },
+  // The designer's "Light - Alt" export is the preferred light variant, so the labels are swapped.
+  { file: "digital-fleur-light-alt.png", name: "Digital Fleur, Light", by: oviotti },
+  { file: "digital-fleur-light.png", name: "Digital Fleur, Light (Alternative)", by: oviotti },
+  { file: "digital-fleur-dark.png", name: "Digital Fleur, Dark", by: oviotti },
+  { file: "e-light.png", name: "Edmund E, Light", by: oviotti },
+  { file: "e-dark.png", name: "Edmund E, Dark", by: oviotti },
+];
+---
+
+<BaseLayout pageTitle="App icons · Edmund" description="Edmund's app icon and alternatives.">
+  <h1>App Icons</h1>
+  <p>
+    An official gallery of icons for those who are especially aesthetics-driven. 
+    To change the icon for Edmund (or any app), see {" "}
+    <a href="https://support.apple.com/en-us/guide/mac-help/mchlp2313/mac">Apple's official guide</a>. 
+  </p>
+
+  <div class="my-10 grid grid-cols-[repeat(2,minmax(0,1fr))] gap-x-4 gap-y-8">
+    {icons.map((icon, index) => (
+      <figure class="m-0">
+        <div class="tile">
+          <img
+            src={`${base}assets/icons/${icon.file}`}
+            alt={`${icon.name} app icon`}
+            width="640"
+            height="640"
+            loading={index < 2 ? "eager" : "lazy"}
+          />
+        </div>
+        <figcaption class="mt-2 text-[0.9375rem] leading-snug">
+          <div>{icon.name}</div>
+          <div class="mt-0.5 font-sans text-[0.8125rem] text-secondary">
+            {icon.by ? <a class="text-secondary no-underline hover:text-text" href={icon.by.url}>@{icon.by.name}</a> : icon.note}
+          </div>
+        </figcaption>
+      </figure>
+    ))}
+  </div>
+
+  <p>
+    Many thanks to {" "}
+    <a href={oviotti.url}>@{oviotti.name}</a> {" "}
+    for designing these beautiful icons. 
+  </p>
+</BaseLayout>
+
+<style>
+  /* A flat square backdrop with the icon at two-thirds size, as on nelson.co. */
+  .tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    background: var(--code-bg);
+  }
+
+  .tile img {
+    width: 66%;
+    height: auto;
+  }
+</style>
