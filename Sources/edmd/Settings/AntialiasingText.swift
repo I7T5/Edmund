@@ -103,10 +103,12 @@ struct AntialiasingText: NSViewRepresentable {
         }
     }
 
-    /// Drops the bezel and background. The font rows keep theirs — a bezeled
-    /// field is what the Appearance pane has always shown there — but inside the
-    /// script list the box's own border already frames the column, and a second
-    /// one around each sample reads as an editable field, which it is not.
+    /// Drops the bezel and background. The pane's font rows keep theirs — a
+    /// bezeled field is what the Appearance pane has always shown there. Inside
+    /// the script list the box's own border already frames the column, and a
+    /// second one around each sample reads as an editable field, which it is
+    /// not; the Manage sheet's font wells draw their own bezel around a plain
+    /// field, so the field's would make a second one.
     func plain(_ plain: Bool = true) -> Self {
         var view = self
         view.isPlain = plain

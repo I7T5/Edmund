@@ -19,8 +19,8 @@ final class FontSettings: NSObject, ObservableObject {
     @Published var monospaceLigatures: Bool { didSet { applyLigatures() } }
     /// A single editor-wide antialias setting (both font toggles share it).
     @Published var antialias: Bool { didSet { applyAntialias() } }
-    /// Per-script font overrides for the Appearance pane's "Fonts by script"
-    /// section (script → family name).
+    /// Per-script font overrides for the Manage font themes sheet's "Fonts by
+    /// script" box (script → family name).
     @Published var cascadeFonts: [FontCascadeScript: String]
     /// Per-script size ratios (script → multiplier of the run's size;
     /// absent = 1.0). Persisted with the theme; see EditorTheme.
@@ -47,9 +47,10 @@ final class FontSettings: NSObject, ObservableObject {
     var writesPreset = false
 
     /// Set while `apply(preset:)` is assigning the published mirrors. Each of
-    /// those carries a `didSet` that commits, and committing writes the preset
-    /// back — so without this, merely *choosing* a bundled preset saved a user
-    /// copy of it, which then reads as an edited built-in and offers itself to
+    /// those carries a `didSet` that commits, and while the Manage sheet is
+    /// open (`writesPreset`) committing writes the preset back — so without
+    /// this, merely *choosing* a bundled preset in the sheet saved a user copy
+    /// of it, which then reads as an edited built-in and offers itself to
     /// Restore Defaults.
     private var isApplying = false
 
