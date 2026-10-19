@@ -23,9 +23,10 @@ struct AppearanceSettingsView: View {
     /// can carry — names come from filenames — so picking it is unambiguous.
     private static let newThemeTag = "\u{0}new"
     private static let customTag = "\u{0}custom"
-    @State private var renamingTheme = false
-    @State private var newThemeName = ""
     @State private var managingThemes = false
+    /// Set when "New Font Theme…" opens the sheet, so it asks for the new
+    /// theme's name as it appears.
+    @State private var namingNewTheme = false
 
     /// Every label in the pane gets this fixed width, so the label column
     /// never takes a share of the pane's slack. Sized to fit the pane's
@@ -203,25 +204,19 @@ struct AppearanceSettingsView: View {
             // on every visit would overwrite an edit made since.
             fonts.editingPreset = fontTheme
         }
-        .alert("Rename Font Theme", isPresented: $renamingTheme) {
-            TextField("Name", text: $newThemeName)
-            Button("Cancel", role: .cancel) {}
-            Button("Rename") {
-                Self.renameFontTheme(fontTheme, to: newThemeName, in: fontThemes)
-                fontThemes = ThemeStore.shared.fontThemes()
-            }
-        }
         // Selecting a theme in the sheet writes `fontTheme`, and the picker's
         // onChange above applies it: one path for both, since this pane stays
         // alive beneath the sheet.
-        .sheet(isPresented: $managingThemes) {
-            FontThemesSheet(fonts: fonts, fontTheme: $fontTheme, fontThemes: $fontThemes)
+        .sheet(isPresented: $managingThemes, onDismiss: { namingNewTheme = false }) {
+            FontThemesSheet(fonts: fonts, fontTheme: $fontTheme, fontThemes: $fontThemes,
+                            asksForName: namingNewTheme)
         }
     }
 
     /// A copy of the selected theme holding the typography on screen — Custom
-    /// edits included — selected and put up for naming. `onChange` then
-    /// applies it, a no-op, since it already is what is live.
+    /// edits included — selected, and opened in the Manage sheet to be named:
+    /// a new theme is made to be edited, and the sheet is where that happens.
+    /// `onChange` applies it, a no-op, since it already is what is live.
     private func newTheme() {
         guard let copy = try? ThemeStore.shared.duplicate(fontTheme),
               let made = ThemeStore.shared.fontThemes().first(where: { $0.name == copy })
@@ -229,8 +224,8 @@ struct AppearanceSettingsView: View {
         fonts.save(asPreset: copy, displayName: made.displayName)
         fontThemes = ThemeStore.shared.fontThemes()
         fontTheme = copy
-        newThemeName = ""
-        renamingTheme = true
+        namingNewTheme = true
+        managingThemes = true
     }
 
     private var selectedPreset: FontTheme? { fontThemes.first { $0.name == fontTheme } }
@@ -302,17 +297,6 @@ struct AppearanceSettingsView: View {
             .help("Make every font larger")
             .disabled(size >= 72)
         }
-    }
-
-    /// Shared with the Manage sheet, which renames from its own list.
-    static func renameFontTheme(_ name: String, to newName: String, in themes: [FontTheme]) {
-        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              var theme = themes.first(where: { $0.name == name }) else { return }
-        // The display name only: `name` is the filename and the value stored in
-        // settings, so moving it would orphan the selection.
-        theme.displayName = trimmed
-        try? ThemeStore.shared.save(theme)
     }
 
     /// Pushes a content-width change to every open editor live, converting cm

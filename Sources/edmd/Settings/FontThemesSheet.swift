@@ -13,6 +13,9 @@ struct FontThemesSheet: View {
     /// the detail can show nothing but the one in force.
     @Binding var fontTheme: String
     @Binding var fontThemes: [FontTheme]
+    /// Opened by "New Font Theme…" on a fresh copy: ask for its name at once,
+    /// the one thing a copy cannot supply for itself.
+    var asksForName = false
     @Environment(\.dismiss) private var dismiss
 
     @State private var renamingTheme = false
@@ -55,7 +58,13 @@ struct FontThemesSheet: View {
         // Editing a theme is what the sheet is for, so its edits are written
         // into the selected one. Opened on Custom, the first edit saves the
         // whole screen into it, Custom changes included.
-        .onAppear { fonts.writesPreset = true }
+        .onAppear {
+            fonts.writesPreset = true
+            if asksForName {
+                newThemeName = ""
+                renamingTheme = true
+            }
+        }
         .onDisappear {
             fonts.writesPreset = false
             // The pane compares the screen against these to decide Custom.
@@ -71,10 +80,7 @@ struct FontThemesSheet: View {
         .alert("Rename Font Theme", isPresented: $renamingTheme) {
             TextField("Name", text: $newThemeName)
             Button("Cancel", role: .cancel) {}
-            Button("Rename") {
-                AppearanceSettingsView.renameFontTheme(fontTheme, to: newThemeName, in: fontThemes)
-                fontThemes = ThemeStore.shared.fontThemes()
-            }
+            Button("Rename", action: commitRename)
         }
     }
 
@@ -165,6 +171,17 @@ struct FontThemesSheet: View {
         .controlSize(.small)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+    }
+
+    private func commitRename() {
+        let trimmed = newThemeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              var theme = fontThemes.first(where: { $0.name == fontTheme }) else { return }
+        // The display name only: `name` is the filename and the value stored in
+        // settings, so moving it would orphan the selection.
+        theme.displayName = trimmed
+        try? ThemeStore.shared.save(theme)
+        fontThemes = ThemeStore.shared.fontThemes()
     }
 
     private func duplicateTheme() {
