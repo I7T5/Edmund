@@ -607,10 +607,12 @@ Notable subsystems:
   signs inside-out — Sparkle.framework with `--deep`, the Quick Look appex
   with its own entitlements — then seals the outer `.app` **without**
   `--deep` (it would re-sign the appex and strip its sandbox entitlements)
-  while the root holds only `Contents/`, then copies the SwiftMath bundle in **after** signing (it
-  must sit at the `.app` root — its generated `Bundle.module` accessor is
-  hardcoded to `Bundle.main.bundleURL` — and codesign refuses to seal with
-  any item at the root). That one unsealed root item makes
+  while the root holds only `Contents/`, then copies the SwiftPM resource
+  bundles in **after** signing (they must sit at the bundle root — the
+  generated `Bundle.module` accessor is hardcoded to `Bundle.main.bundleURL` —
+  and codesign refuses to seal with any item at the root). The appex gets the
+  same treatment: its bundles go at the appex root after the appex is signed,
+  before the outer seal. Those unsealed root items make
   `codesign --verify` (CLI) and `--strict` complain, but Sparkle's actual
   check (`SecStaticCodeCheckValidityWithErrors` +
   `kSecCSCheckAllArchitectures`, non-strict) tolerates it — verified
@@ -694,7 +696,8 @@ Notable subsystems:
   the run has its own defaults and its own saved state and can never disturb the
   maintainer's installed Edmund. `codesign --deep` fails with "unsealed contents
   present in the bundle root" until the SwiftPM `*.bundle` resources at the
-  `.app` root are moved aside and put back after signing. Note the isolated
+  `.app` root and the Quick Look appex root are moved aside and put back after
+  signing. Note the isolated
   clone still shares `~/Library/Autosave Information` and the "Unsaved edmd
   Document" namespace with the real app — a draft it reopens may be the
   maintainer's.
