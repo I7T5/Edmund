@@ -125,43 +125,42 @@ struct AppearanceSettingsView: View {
                 Text("Font theme:")
                     .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 HStack(spacing: 8) {
-                    // 240 for the popup and size buttons together, to match
-                    // the font rows' preview field below, so the boxes share
-                    // one edge.
-                    HStack(spacing: 8) {
-                        Picker("", selection: themeSelection) {
-                            // Only while it is true: an item for "none of
-                            // these", shown when the fonts on screen are no
-                            // longer the selected theme's.
-                            if isCustom {
-                                Text("Custom").tag(Self.customTag)
-                                Divider()
-                            }
-                            ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
+                    // The popup under the slider, and the size buttons under
+                    // the width field and its stepper; Manage… then starts
+                    // where the font rows' Select… buttons do.
+                    Picker("", selection: themeSelection) {
+                        // Only while it is true: an item for "none of
+                        // these", shown when the fonts on screen are no
+                        // longer the selected theme's.
+                        if isCustom {
+                            Text("Custom").tag(Self.customTag)
                             Divider()
-                            // The same trailing item the code-syntax popup has:
-                            // making one belongs with choosing one. It starts
-                            // from what is on screen and asks for a name
-                            // straight away, which is the one thing a copy
-                            // cannot supply for itself.
-                            Text("New Font Theme…").tag(Self.newThemeTag)
                         }
-                        .accessibilityLabel("Font theme")
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity)
-                        .onChange(of: fontTheme) {
-                            guard let chosen = selectedPreset else { return }
-                            fonts.apply(preset: chosen)
-                        }
-                        fontSizeButtons
+                        ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
+                        Divider()
+                        // The same trailing item the code-syntax popup has:
+                        // making one belongs with choosing one. It starts
+                        // from what is on screen and asks for a name
+                        // straight away, which is the one thing a copy
+                        // cannot supply for itself.
+                        Text("New Font Theme…").tag(Self.newThemeTag)
                     }
-                    .frame(width: 240)
-                    // Leading edge on the font rows' Select… buttons: an
-                    // invisible stepper stands where theirs does.
-                    Stepper("", value: .constant(0))
-                        .labelsHidden()
-                        .hidden()
-                        .accessibilityHidden(true)
+                    .accessibilityLabel("Font theme")
+                    .labelsHidden()
+                    .frame(width: 200)
+                    .onChange(of: fontTheme) {
+                        guard let chosen = selectedPreset else { return }
+                        fonts.apply(preset: chosen)
+                    }
+                    // An invisible copy of the width row's field and stepper
+                    // sets the buttons' width, so they end where it does.
+                    HStack(spacing: 8) {
+                        Color.clear.frame(width: 32, height: 0)
+                        Stepper("", value: .constant(0)).labelsHidden()
+                    }
+                    .hidden()
+                    .accessibilityHidden(true)
+                    .overlay { fontSizeButtons.frame(maxWidth: .infinity) }
                     Button("Manage…") { managingThemes = true }
                         .fixedSize()
                         .help("Manage font themes")
@@ -301,7 +300,6 @@ struct AppearanceSettingsView: View {
             .help("Make every font larger")
             .disabled(size >= 72)
         }
-        .fixedSize()
     }
 
     /// Shared with the Manage sheet, which renames from its own list.
