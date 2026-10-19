@@ -24,7 +24,11 @@ struct FontThemesSheet: View {
 
     /// Fits "Monospaced font:" and "Fonts by script:", the widest labels here.
     static let labelColumnWidth: CGFloat = 110
-    private static let sidebarWidth: CGFloat = 180
+    /// Starts narrow and drags wider for a long name. Never remembered, as
+    /// the Themes pane's is not.
+    @State private var sidebarWidth: CGFloat = 140
+    @State private var dragStartWidth: CGFloat?
+    @State private var confirmingDelete = false
 
     /// A source list down the sheet's leading edge and the selected theme
     /// beside it — the shape of CotEditor's syntax editor sheet, and of any
@@ -32,7 +36,7 @@ struct FontThemesSheet: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-            Divider()
+            Divider().overlay { resizeHandle }
             VStack(alignment: .leading, spacing: 16) {
                 detail
                 Spacer(minLength: 0)
@@ -56,6 +60,13 @@ struct FontThemesSheet: View {
             fonts.writesPreset = false
             // The pane compares the screen against these to decide Custom.
             fontThemes = ThemeStore.shared.fontThemes()
+        }
+        // The Themes pane's confirmation, for the same irreversible act.
+        .confirmationDialog(deleteTitle, isPresented: $confirmingDelete) {
+            Button("Delete", role: .destructive, action: deleteTheme)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the theme’s file. You can’t undo this.")
         }
         .alert("Rename Font Theme", isPresented: $renamingTheme) {
             TextField("Name", text: $newThemeName)
@@ -81,16 +92,48 @@ struct FontThemesSheet: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
-        .frame(width: Self.sidebarWidth)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                Divider()
+                footer
+            }
+        }
+        .frame(width: sidebarWidth)
     }
 
-    /// The Themes pane's footer: add, remove, and the rest in a menu.
+    /// The divider doubles as the drag target that resizes the sidebar, as
+    /// the gap between the Themes pane's boxes does. Wider than the line it
+    /// sits on, so it can be found.
+    private var resizeHandle: some View {
+        Color.clear
+            .frame(width: 8)
+            .contentShape(Rectangle())
+            .onHover { $0 ? NSCursor.resizeLeftRight.push() : NSCursor.pop() }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { drag in
+                        // Latched: `translation` runs from where the drag began.
+                        let base = dragStartWidth ?? sidebarWidth
+                        dragStartWidth = base
+                        sidebarWidth = min(max(base + drag.translation.width, 110), 260)
+                    }
+                    .onEnded { _ in dragStartWidth = nil }
+            )
+            .accessibilityHidden(true)
+    }
+
+    private var deleteTitle: String {
+        let name = fontThemes.first { $0.name == fontTheme }?.displayName
+        return name.map { "Delete “\($0)”?" } ?? "Delete this font theme?"
+    }
+
+    /// Preview's sidebar footer: small bare glyphs under a rule, close to
+    /// the edge — the list's controls, not a toolbar of their own.
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button(action: duplicateTheme) { Image(systemName: "plus") }
                 .help("New font theme, copied from the selected one")
-            Button(action: deleteTheme) { Image(systemName: "minus") }
+            Button { confirmingDelete = true } label: { Image(systemName: "minus") }
                 .help("Delete the selected font theme")
                 // A bundled theme lives inside the app: there is nothing to
                 // delete, and removing the last one would leave the picker with
@@ -106,8 +149,9 @@ struct FontThemesSheet: View {
                     .disabled(ThemeStore.shared.isBuiltIn(fontTheme))
                 Button("Duplicate", action: duplicateTheme)
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "ellipsis")
             }
+            .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             // Grey like + and −: a borderless menu button draws its label in
             // the control tint.
@@ -116,9 +160,10 @@ struct FontThemesSheet: View {
             Spacer()
         }
         .buttonStyle(.borderless)
-        // On the rows' leading edge.
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .font(.system(size: 12))
+        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     private func duplicateTheme() {
@@ -208,7 +253,8 @@ struct FontThemesSheet: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 3)
             .background { FieldBezel() }
-            .frame(width: 200)
+            // The script box's width, so the wells and the box share both edges.
+            .frame(width: scriptBoxWidth)
         }
     }
 }
@@ -259,8 +305,7 @@ extension FontThemesSheet {
     /// remaining four scroll — the same 5-row window the Syntax pane's box uses.
     /// Narrower than it was with a third column: two columns in a 380pt box
     /// left a stretch of nothing down the middle.
-    /// The font rows' preview fields are 240, and this sits under them; one
-    /// edge for all three.
+    /// The font wells above take this width too; one edge for all three.
     private var scriptBoxWidth: CGFloat { 240 }
     /// The Syntax pane's row height, so the two boxes read as the same kind
     /// of list. 28 was sized to a body-size sample; the sample is drawn small
