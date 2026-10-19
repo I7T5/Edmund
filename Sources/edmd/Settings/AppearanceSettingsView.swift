@@ -156,19 +156,15 @@ struct AppearanceSettingsView: View {
                         fontSizeButtons
                     }
                     .frame(width: 240)
-                    // Trailing edge on the font rows' Select… buttons: an
-                    // invisible copy of their stepper and button sets the width.
-                    ZStack(alignment: .trailing) {
-                        HStack(spacing: 8) {
-                            Stepper("", value: .constant(0)).labelsHidden()
-                            Button("Select…") {}.fixedSize()
-                        }
+                    // Leading edge on the font rows' Select… buttons: an
+                    // invisible stepper stands where theirs does.
+                    Stepper("", value: .constant(0))
+                        .labelsHidden()
                         .hidden()
                         .accessibilityHidden(true)
-                        Button("Manage…") { managingThemes = true }
-                            .fixedSize()
-                            .help("Manage font themes")
-                    }
+                    Button("Manage…") { managingThemes = true }
+                        .fixedSize()
+                        .help("Manage font themes")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -291,7 +287,7 @@ struct AppearanceSettingsView: View {
     /// each on its own.
     private var fontSizeButtons: some View {
         let size = fonts.standardFont.pointSize
-        return HStack(spacing: 4) {
+        return ControlGroup {
             Button { fonts.scaleAllSizes(toStandard: size - 1) } label: {
                 Image(systemName: "textformat.size.smaller")
             }
@@ -305,7 +301,6 @@ struct AppearanceSettingsView: View {
             .help("Make every font larger")
             .disabled(size >= 72)
         }
-        .buttonStyle(.borderless)
         .fixedSize()
     }
 
