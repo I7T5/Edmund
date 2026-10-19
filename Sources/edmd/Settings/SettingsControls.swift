@@ -277,8 +277,8 @@ extension View {
                                 bottom: SettingsPaneInsets.helpGap + 22 + SettingsPaneInsets.help, trailing: 28))
         .frame(width: 600, alignment: .topLeading)
         // minHeight 0: without it the frame grows to the content's laid-out
-        // height, which in Edit is 7.5pt more than it reports, and the Help
-        // button pinned to the frame's bottom slid below the window edge.
+        // height, which can be more than it reports, and the Help button
+        // pinned to the frame's bottom slides below the window edge.
         .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottomTrailing) {
             HelpLink(anchor: anchor).padding(SettingsPaneInsets.help)

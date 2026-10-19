@@ -33,8 +33,8 @@ struct SyntaxSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Enable extended Markdown syntax (non-GFM)", isOn: $enableNonGFM)
                         .onChange(of: enableNonGFM) { applyFeatures() }
-                        // Deliberate (ca96727, tuned in d75f6ab): this row
-                        // lays out lower than the other panes' first rows; -16
+                        // Deliberate: this row lays out lower than the other
+                        // panes' first rows, for a reason not yet found; -16
                         // lands it level with them (settingsPanePadding's top).
                         .padding(.top, -16)
                     // Parsed rather than left to `Text`'s own literal markdown

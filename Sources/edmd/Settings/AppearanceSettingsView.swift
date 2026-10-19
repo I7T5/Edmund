@@ -235,7 +235,8 @@ struct AppearanceSettingsView: View {
 
             fontCascadeSection
         }
-        // Rows here are 12 apart, not 18.
+        // Rows here are 12 apart, not 18, so the first row needs less room
+        // under the toolbar than formTop gives.
         .settingsPanePadding(help: HelpAnchor.appearance, top: SettingsPaneInsets.top + 4)
         .onAppear {
             fontThemes = ThemeStore.shared.fontThemes()
