@@ -6,7 +6,7 @@ const base = import.meta.env.BASE_URL.endsWith("/")
 const path = Astro.url.pathname.replace(/\/$/, "");
 const links = [
   { href: base, label: "Edmund", icon: "i-lucide-file-text", current: path === base.replace(/\/$/, "") },
-  { href: `${base}icons/`, label: "App icons", icon: "i-lucide-layout-grid", current: path.endsWith("/icons") },
+  { href: `${base}icons/`, label: "App Icons", icon: "i-lucide-layout-grid", current: path.endsWith("/icons") },
 ];
 ---
 
