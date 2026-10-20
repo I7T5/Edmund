@@ -14,7 +14,11 @@ let package = Package(
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.5.0"),
-        .package(url: "https://github.com/mgriebling/SwiftMath.git", from: "1.7.0"),
+        // Fork of 1.7.3 whose resource lookup tries Contents/Resources first, so
+        // build-app.sh can keep the bundle inside the signature (notarization
+        // rejects files at the .app root). Return to upstream once it carries
+        // the change.
+        .package(url: "https://github.com/I7T5/SwiftMath.git", revision: "b44a787e94cf4ada5caf1a38626ccbc7f20b46d0"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [

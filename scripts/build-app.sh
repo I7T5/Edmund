@@ -195,8 +195,6 @@ fi
 # Assemble the Quick Look preview extension as an .appex in Contents/PlugIns.
 # It's an executable target (SwiftPM has no app-extension product); its entry
 # point is Foundation's NSExtensionMain via the linker flag in Package.swift.
-# Its SwiftPM resource bundles are copied in after it is signed (see "Code
-# signing" below).
 echo "Assembling Quick Look extension..."
 QL_NAME="EdmundQuickLook"
 APPEX="${BUNDLE}/Contents/PlugIns/${QL_NAME}.appex"
@@ -215,6 +213,22 @@ cp ".build/release/${TH_NAME}" "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
 strip_binary "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
 cp Resources/ThumbnailInfo.plist "${THUMB_APPEX}/Contents/Info.plist"
 
+# SwiftPM resource bundles (EdmundCore's themes and syntaxes, SwiftMath's math
+# fonts) go in Contents/Resources of the app and of each appex, *before*
+# signing, so they are sealed. Never at a bundle root: notarization rejects
+# anything outside the signature ("The signature of the binary is invalid").
+# The `swift build` Bundle.module accessor only looks at the bundle root, so
+# both packages resolve their bundle through Bundle.main.resourceURL first
+# (Bundle.edmundCore here; the SwiftMath fork pinned in Package.swift).
+echo "Copying SwiftPM resource bundles..."
+for dest in "${BUNDLE}/Contents/Resources" "${APPEX}/Contents/Resources" \
+            "${THUMB_APPEX}/Contents/Resources"; do
+    for bundle in .build/release/*.bundle; do
+        [ -e "$bundle" ] && cp -R "$bundle" "$dest/"
+    done
+    prune_math_fonts "$dest"
+done
+
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
 #
 # Why this matters: at install time Sparkle re-validates the downloaded update's
@@ -224,16 +238,6 @@ cp Resources/ThumbnailInfo.plist "${THUMB_APPEX}/Contents/Info.plist"
 # only the standalone binary (as we used to) produces a bundle with no
 # _CodeSignature seal, which fails that check — so every Sparkle update was
 # rejected.
-#
-# Sign inside-out: Sparkle.framework first (its nested XPC helpers must be signed
-# before macOS will launch them), then the whole .app. We seal the app while its
-# root contains only Contents/, because codesign refuses to seal a bundle that
-# has extra items at the .app root ("unsealed contents present in the bundle
-# root"). The SwiftMath resource bundle has to live at the .app root at runtime
-# (see below), so we copy it in *after* sealing. That leaves one unsealed item at
-# the root, which `codesign --verify` (CLI) and --strict flag — but Sparkle's
-# actual check is non-strict (SecStaticCodeCheckValidityWithErrors with
-# kSecCSCheckAllArchitectures), which tolerates it. Verified end-to-end.
 echo "Code signing..."
 # Sign inside-out, then seal the app WITHOUT --deep. --deep on the outer .app
 # would re-sign every nested item with default flags — stripping each appex's
@@ -246,21 +250,6 @@ codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
     --identifier "com.i7t5.edmund.quicklook" "$APPEX"
 codesign --force --sign - --entitlements Resources/Thumbnail.entitlements \
     --identifier "com.i7t5.edmund.thumbnail" "$THUMB_APPEX"
-# Each appex has the same constraint as the app (below): the `swift build`
-# Bundle.module accessor only looks at Bundle.main.bundleURL/<name>.bundle —
-# for an .appex that is its root, not Contents/Resources, where these used to
-# go — and calls fatalError otherwise, so every preview crashed in
-# ThemeStore.reload() (#388). Copy after signing the appex, since codesign
-# refuses to seal a bundle with extra items at its root. The outer app seal and
-# Sparkle's non-strict validity check are unaffected (verified with
-# SecStaticCodeCheckValidityWithErrors + kSecCSCheckAllArchitectures, with and
-# without kSecCSCheckNestedCode).
-for appex in "$APPEX" "$THUMB_APPEX"; do
-    for bundle in .build/release/*.bundle; do
-        [ -e "$bundle" ] && cp -R "$bundle" "${appex}/"
-    done
-    prune_math_fonts "$appex"
-done
 # The sandboxed variants sign with no --identifier override: the signing id
 # names the container (~/Library/Containers/<id>) and keys the automatic
 # preferences migration, so it must equal the Info.plist bundle id. The ad-hoc
@@ -270,19 +259,6 @@ case "$VARIANT" in
     mas)     codesign --force --sign - --entitlements Resources/Edmund.entitlements "$BUNDLE" ;;
     adhoc)   codesign --force --sign - --identifier "com.i7t5.edmd" "$BUNDLE" ;;
 esac
-
-# SwiftPM dependencies that ship resources (SwiftMath's math fonts) emit a
-# per-target bundle next to the binary. SwiftMath's generated Bundle.module
-# accessor looks for it at Bundle.main.bundleURL — i.e. the .app root — and only
-# otherwise at a hardcoded absolute .build path that doesn't exist once the app
-# is installed. So it must sit at the .app root; copy it in *after* signing (it
-# can't be sealed there — see above) so the bundle's own seal stays valid.
-# Without this the app crashes the moment it renders any LaTeX.
-echo "Copying SwiftPM resource bundles..."
-for bundle in .build/release/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "${BUNDLE}/"
-done
-prune_math_fonts "$BUNDLE"
 
 echo ""
 echo "Done: ${BUNDLE} (variant: ${VARIANT})"
