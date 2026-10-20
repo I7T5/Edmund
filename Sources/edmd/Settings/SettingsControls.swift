@@ -245,7 +245,8 @@ enum HelpAnchor {
 /// Insets the Settings panes share, so switching tabs never moves the Help
 /// button. The top varies a little by pane, tuned so the first line of text
 /// sits about 20pt under the toolbar (Appearance's, the reference); a pane
-/// whose first row is a bezel or box edge starts that edge ~4pt higher.
+/// whose first row starts with a bezel or box edge puts that edge ~4pt above
+/// the 20pt line.
 enum SettingsPaneInsets {
     static let top: CGFloat = 14
     /// Top inset for the form panes whose first row is a checkbox or radio
