@@ -150,7 +150,9 @@ struct EditSettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 380, alignment: .leading)
+                        // Just wider than the text: a wider frame widens this
+                        // column past its rows and shifts the grid left.
+                        .frame(width: 340, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }
@@ -170,12 +172,13 @@ struct EditSettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 380, alignment: .leading)
+                        .frame(width: 340, alignment: .leading)
                         .padding(.leading, 20)
                 }
             }
         }
-        // The first row's popup already sits its label ~3pt lower.
+        // The first row is a popup whose label sits ~5pt below its bezel, so
+        // a shallower top lands that text where formTop lands the others'.
         .settingsPanePadding(help: HelpAnchor.edit, top: SettingsPaneInsets.top + 2)
     }
 

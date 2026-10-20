@@ -137,9 +137,15 @@ every nested item with default flags, which strips the appex's sandbox
 entitlements and resets its identifier to the app's. So: sign
 `Sparkle.framework` (deep, for its own XPC helpers) → sign the appex with its
 entitlements → seal the `.app` non-deep over the already-signed contents. The
-appex's resource bundles go in `Contents/Resources` *before* signing (an appex's
-`Bundle.module` resolves via `Bundle.main.resourceURL`), unlike the app's
-SwiftMath bundle which must sit at the `.app` root *after* the seal.
+appex's resource bundles go at the appex root, copied in *after* the appex is
+signed, for the same reason as the app's: the `swift build` `Bundle.module`
+accessor looks only at `Bundle.main.bundleURL/<name>.bundle` (the appex root)
+and otherwise `fatalError`s, and codesign refuses to seal a bundle with items at
+its root. The sandbox also blocks the accessor's absolute `.build` fallback, so a
+misplaced bundle crashes local builds too. They once went in `Contents/Resources`
+on the belief that an appex resolves via `Bundle.main.resourceURL`; that holds
+only for Xcode's accessor, and every preview crashed in `ThemeStore.reload()`
+from v0.7.0 (#388).
 
 ## 5. Not built (candidates)
 

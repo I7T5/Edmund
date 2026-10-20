@@ -194,9 +194,7 @@ struct AppearanceSettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        // Rows here are 12 apart, not 18, so the first row needs less room
-        // under the toolbar than formTop gives.
-        .settingsPanePadding(help: HelpAnchor.appearance, top: SettingsPaneInsets.top + 4)
+        .settingsPanePadding(help: HelpAnchor.appearance)
         .onAppear {
             fontThemes = ThemeStore.shared.fontThemes()
             // Told, not applied: the values are already live, and re-applying
