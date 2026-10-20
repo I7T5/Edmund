@@ -88,11 +88,7 @@ struct FontThemesSheet: View {
     /// accent-filled selection. The footer rides on the same material.
     private var sidebar: some View {
         List(selection: Binding<String?>(
-            // None while a row is renamed: the list keeps its blue, focused
-            // selection behind a field inside it, and the field's blue focus
-            // ring vanishes into it. Finder's row goes to the grey unfocused
-            // selection instead; the renamed row draws that itself, below.
-            get: { renaming == nil ? fontTheme : nil },
+            get: { fontTheme },
             // A list can be clicked empty; the pane always names one.
             set: { if let name = $0 { fontTheme = name } })) {
             Section("Font Themes") {
@@ -102,15 +98,19 @@ struct FontThemesSheet: View {
                             // Return or clicking away keeps the name; Esc
                             // leaves the old one, as in Finder.
                             TextField("Name", text: $newThemeName)
-                                // Finder's rename field is AppKit's own: a square
-                                // field with a 1px edge, the native focus ring
-                                // round it, and only as wide as the name. So
-                                // this is that field, sized to its text — not a
-                                // drawn imitation, which missed the square inner
-                                // edge and left a gap after the name.
-                                .textFieldStyle(.squareBorder)
+                                // Finder's list-view rename field (measured): a
+                                // white box hugging the name with ~1pt either
+                                // side, on the row's own blue selection, and no
+                                // focus ring — the field inside the selected
+                                // row already says where typing goes. The
+                                // ground is drawn here because a plain field
+                                // draws none, leaving the text on the blue.
+                                .textFieldStyle(.plain)
+                                .focusEffectDisabled()
                                 .fixedSize()
-                                .padding(.vertical, 3)
+                                .padding(.horizontal, 1)
+                                .background(Color(nsColor: .textBackgroundColor),
+                                            in: RoundedRectangle(cornerRadius: 1.5))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .focused($nameFieldFocused)
                                 .onAppear { nameFieldFocused = true }
@@ -121,11 +121,6 @@ struct FontThemesSheet: View {
                         }
                     }
                     .tag(theme.name)
-                    .listRowBackground(renaming == theme.name
-                        ? RoundedRectangle(cornerRadius: 5)
-                            .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
-                            .padding(.horizontal, 10)
-                        : nil)
                 }
             }
         }
