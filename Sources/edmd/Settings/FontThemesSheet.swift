@@ -161,7 +161,7 @@ struct FontThemesSheet: View {
             .accessibilityHidden(true)
     }
 
-    private static let footerHitSize: CGFloat = 20
+    private static let footerHitSize: CGFloat = 16
 
     /// A footer glyph centred in its whole hit square, all of it clickable.
     private func footerGlyph(_ symbol: String) -> some View {
@@ -178,11 +178,11 @@ struct FontThemesSheet: View {
     /// Preview's sidebar footer: small bare glyphs under a rule, close to
     /// the edge — the list's controls, not a toolbar of their own.
     ///
-    /// Each control answers anywhere in a 20pt square, not only on its glyph:
+    /// Each control answers anywhere in a 16pt square, not only on its glyph:
     /// a borderless button hit-tests the symbol's own ink, and a thin minus
     /// was a few pixels tall to aim at.
     private var footer: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 6) {
             Button(action: newTheme) { footerGlyph("plus") }
                 .help("New font theme, copied from the selected one")
             Button { confirmingDelete = true } label: { footerGlyph("minus") }
@@ -217,8 +217,8 @@ struct FontThemesSheet: View {
         .controlSize(.small)
         // Less than before by the hit squares' own margin, so the glyphs —
         // and the bar's height — stay where they were.
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
     }
 
     private func beginRename() {
