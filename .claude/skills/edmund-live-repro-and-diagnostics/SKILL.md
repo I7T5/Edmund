@@ -387,6 +387,7 @@ mechanism.
 | `ui-measure.py box\|runs\|rows` | Ink bounding box, control gaps, colour transitions | **exercised** 2026-07-26 |
 | `axfind.swift <pid> <title> --dump\|--press\|--showmenu <t>` | AX-dump/press a **background** app's window elements via the AX C API — no activation needed (§5b) | **exercised** 2026-08-18 (Appearance pane, PR #268) |
 | `rightclick.swift <x> <y>` | Real CGEvent right-click at screen coords — the `.contextMenu` fallback (§5b) | **exercised** 2026-08-18 |
+| `leftclick.swift <pid> <x> <y> […]` | Real CGEvent left-click(s) at screen coords, for chrome `realclick` cannot aim at (a Settings sheet); refuses unless `<pid>` owns the topmost window under the point | guard **exercised** 2026-10-20; a click into an inactive Settings sheet did not register — activate and verify state, don't assume |
 | `launch-debug.sh <file.md> [script.repro]` | Build + assemble EdmundDbg.app + direct-exec with flags | **verify on first use** (assumes arm64 debug triple; guards user instance) |
 
 All shell scripts pass `bash -n`. One caveat on `launch-debug.sh`: its header claims a bare
