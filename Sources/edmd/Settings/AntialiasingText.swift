@@ -200,7 +200,13 @@ private final class CenteringTextFieldCell: NSTextFieldCell {
             // the ascender: a face with line gap (Input Mono) draws its
             // baseline lower than one ascender down.
             let offset = NSLayoutManager().defaultBaselineOffset(for: font)
-            titleRect.origin.y = (rect.minY + baseline - offset).rounded()
+            // Rounded to device pixels, not whole points: `.5` rounds away
+            // from zero, so whole-point rounding sent a face whose offset
+            // lands on a half point up or down by half a point depending on
+            // the sign — Input Mono Narrow drew a point higher than Iowan for
+            // the same requested baseline.
+            let scale = controlView?.window?.backingScaleFactor ?? 2
+            titleRect.origin.y = ((rect.minY + baseline - offset) * scale).rounded() / scale
         } else {
             let titleSize = attributedStringValue.size()
             titleRect.origin.y = (rect.minY + (rect.height - titleSize.height) / 2).rounded(.up)

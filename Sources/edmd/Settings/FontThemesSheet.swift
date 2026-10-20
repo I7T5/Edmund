@@ -161,6 +161,15 @@ struct FontThemesSheet: View {
             .accessibilityHidden(true)
     }
 
+    private static let footerHitSize: CGFloat = 20
+
+    /// A footer glyph centred in its whole hit square, all of it clickable.
+    private func footerGlyph(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .frame(width: Self.footerHitSize, height: Self.footerHitSize)
+            .contentShape(Rectangle())
+    }
+
     private var deleteTitle: String {
         let name = fontThemes.first { $0.name == fontTheme }?.displayName
         return name.map { "Delete “\($0)”?" } ?? "Delete this font theme?"
@@ -168,11 +177,15 @@ struct FontThemesSheet: View {
 
     /// Preview's sidebar footer: small bare glyphs under a rule, close to
     /// the edge — the list's controls, not a toolbar of their own.
+    ///
+    /// Each control answers anywhere in a 20pt square, not only on its glyph:
+    /// a borderless button hit-tests the symbol's own ink, and a thin minus
+    /// was a few pixels tall to aim at.
     private var footer: some View {
-        HStack(spacing: 8) {
-            Button(action: newTheme) { Image(systemName: "plus") }
+        HStack(spacing: 2) {
+            Button(action: newTheme) { footerGlyph("plus") }
                 .help("New font theme, copied from the selected one")
-            Button { confirmingDelete = true } label: { Image(systemName: "minus") }
+            Button { confirmingDelete = true } label: { footerGlyph("minus") }
                 .help("Delete the selected font theme")
                 // A bundled theme lives inside the app: there is nothing to
                 // delete, and removing the last one would leave the picker with
@@ -195,14 +208,17 @@ struct FontThemesSheet: View {
             // Grey like + and −: a borderless menu button draws its label in
             // the control tint.
             .tint(.secondary)
-            .fixedSize()
+            // The pop-up button's frame is its hit area.
+            .frame(width: Self.footerHitSize, height: Self.footerHitSize)
             Spacer()
         }
         .buttonStyle(.borderless)
         .font(.system(size: 12))
         .controlSize(.small)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        // Less than before by the hit squares' own margin, so the glyphs —
+        // and the bar's height — stay where they were.
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
     }
 
     private func beginRename() {
@@ -316,9 +332,9 @@ struct FontThemesSheet: View {
         let shown = NSFont(descriptor: font.fontDescriptor, size: NSFont.systemFontSize) ?? font
         // The capitals centered in the field, whatever the face: a shared
         // baseline, which suits the script list's column of samples, put a
-        // tall-capped face high and a short-capped one low. On the half point,
-        // where a 2x display can draw it.
-        let baseline = ((AntialiasingText.plainHeight + shown.capHeight) / 2 * 2).rounded() / 2
+        // tall-capped face high and a short-capped one low. Exact here; the
+        // cell rounds the line box to device pixels.
+        let baseline = (AntialiasingText.plainHeight + shown.capHeight) / 2
         return HStack(spacing: 0) {
             // The row's text baseline. SwiftUI reads the field's bottom edge
             // as its baseline, which hangs the row label a descender low; this
