@@ -133,6 +133,22 @@ struct FontPresetTests {
         }
     }
 
+    /// Line height is stored as a multiple and applied as points, and the
+    /// round trip is rarely exact: 6.4pt of spacing at 16pt comes back a bit
+    /// off. Re-applying such a preset must still count as no change.
+    @Test("A preset whose line height round-trips inexactly still reapplies as no change")
+    func inexactLineHeightIsANoOp() {
+        withCleanSlate {
+            var shipped = EditorTheme.default
+            shipped.fontSize = 16
+            shipped.lineSpacing = 6.4
+            let preset = shipped.fontTheme(name: "probe", displayName: "Probe")
+            let fonts = FontSettings()
+            fonts.apply(preset: preset)
+            #expect(fonts.apply(preset: preset) == false)
+        }
+    }
+
     /// An edit in the pane changes only what is on screen: the preset keeps
     /// its values, and the pane reads the difference as Custom.
     @Test("An edit in the pane leaves the preset and diverges from it")

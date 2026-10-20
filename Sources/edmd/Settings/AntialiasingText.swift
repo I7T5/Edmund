@@ -190,6 +190,10 @@ private final class AntialiasingTextField: NSTextField {
 }
 
 private final class CenteringTextFieldCell: NSTextFieldCell {
+    /// One layout manager for every cell's baseline lookup, rather than a new
+    /// one per layout pass: it holds no text, only answers font metrics.
+    @MainActor private static let metrics = NSLayoutManager()
+
     override func titleRect(forBounds rect: NSRect) -> NSRect {
         var titleRect = super.titleRect(forBounds: rect)
         if let baseline = (controlView as? AntialiasingTextField)?.fixedBaseline,
@@ -199,7 +203,7 @@ private final class CenteringTextFieldCell: NSTextFieldCell {
             // between them. That is the layout manager's baseline offset, not
             // the ascender: a face with line gap (Input Mono) draws its
             // baseline lower than one ascender down.
-            let offset = NSLayoutManager().defaultBaselineOffset(for: font)
+            let offset = Self.metrics.defaultBaselineOffset(for: font)
             // Rounded to device pixels, not whole points: `.5` rounds away
             // from zero, so whole-point rounding sent a face whose offset
             // lands on a half point up or down by half a point depending on

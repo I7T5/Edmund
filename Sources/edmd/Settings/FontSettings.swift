@@ -205,8 +205,12 @@ final class FontSettings: NSObject, ObservableObject {
     @discardableResult
     func apply(preset: FontTheme) -> Bool {
         editingPreset = preset.name
+        // The tolerant comparison, as Custom uses: line height round-trips
+        // through floating point (stored as a multiple, applied as points),
+        // so an exact one called most presets changed — 6.4pt at 16pt among
+        // them — and repainted for nothing.
+        guard !matches(preset) else { return false }
         let updated = theme.applying(preset)
-        guard updated != theme else { return false }
         isApplying = true
         defer { isApplying = false }
         theme = updated
