@@ -36,13 +36,17 @@ Shared plumbing:
   scopes (`keywords`/`commands`/`types`/…) must be **pairwise disjoint** — the
   scanner's "most specific wins" rule is ambiguous otherwise (a test asserts
   this).
-- **Quick Look** hosts `ReadModeWebView` in a `QLPreviewingController`. The web
-  view derives light/dark from `effectiveAppearance` and re-renders on a system
-  appearance flip, so the preview follows System Settings ▸ Appearance for
-  free. `preparePreviewOfFile(at:)` awaits the first render (via
-  `onLoadFinished`) so Quick Look snapshots the finished page, not a blank one.
-  Body font is `EditorTheme.quickLook` = system-ui (`HTMLTheme.cssFontStack`
-  gained a `system-ui` keyword branch), rather than the editor's serif.
+- **Quick Look** is a *data-based* preview (`QLIsDataBasedPreview`):
+  `PreviewProvider` returns the page's HTML (`QuickLookPage.html`, the same
+  self-contained document HTML export builds) and Quick Look renders it in its
+  own view, inside its native rounded panel. A view-based extension gets no
+  clipping or corner radius from Quick Look and there is no API for the panel's
+  radius, so the earlier design (our own `ReadModeWebView` in a view
+  controller) showed square corners. The page is built for the appearance at
+  preview time; an open preview does not follow a light/dark flip. The theme is
+  `EditorTheme.quickLook`: system-ui (`HTMLTheme.cssFontStack` has a `system-ui`
+  keyword branch) at the 13pt macOS body size, with tighter margins and 1em
+  bullets (`QuickLookPage.css`).
 
 ## 3. Limitation — App Intents don't appear in Shortcuts from a SwiftPM build
 
@@ -69,6 +73,9 @@ support becomes a requirement, the fix is an Xcode-project build (or a wrapper
 target), not more SwiftPM flags.
 
 ## 4. Fixed — the Quick Look appex hung (it did launch; it just never replied)
+
+*History of the view-based design, replaced by the data-based preview in §2:
+the extension no longer hosts a WKWebView.*
 
 **Live-verified 2026-08-05**, by an end user on a real ad-hoc-signed
 `/Applications/Edmund.app` install (macOS 26.6) — exactly the "To verify live"
