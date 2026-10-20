@@ -60,7 +60,14 @@ struct FontThemesSheet: View {
         // Editing a theme is what the sheet is for, so its edits are written
         // into the selected one. Opened on Custom, the first edit saves the
         // whole screen into it, Custom changes included.
-        .onAppear { fonts.writesPreset = true }
+        .onAppear {
+            fonts.writesPreset = true
+            #if DEBUG
+            // Puts the selected row into rename for a live capture of the field
+            // (`-debug.renameFontTheme YES`; see SettingsRender).
+            if UserDefaults.standard.bool(forKey: "debug.renameFontTheme") { beginRename() }
+            #endif
+        }
         .onDisappear {
             fonts.writesPreset = false
             // The pane compares the screen against these to decide Custom.
@@ -81,7 +88,11 @@ struct FontThemesSheet: View {
     /// accent-filled selection. The footer rides on the same material.
     private var sidebar: some View {
         List(selection: Binding<String?>(
-            get: { fontTheme },
+            // None while a row is renamed: the list keeps its blue, focused
+            // selection behind a field inside it, and the field's blue focus
+            // ring vanishes into it. Finder's row goes to the grey unfocused
+            // selection instead; the renamed row draws that itself, below.
+            get: { renaming == nil ? fontTheme : nil },
             // A list can be clicked empty; the pane always names one.
             set: { if let name = $0 { fontTheme = name } })) {
             Section("Font Themes") {
@@ -91,22 +102,14 @@ struct FontThemesSheet: View {
                             // Return or clicking away keeps the name; Esc
                             // leaves the old one, as in Finder.
                             TextField("Name", text: $newThemeName)
-                                // Finder's rename field: as wide as the name, on
-                                // a ground of its own, with the focus ring — a
-                                // 3pt translucent band — set just outside its
-                                // edge, inside the row (measured off Finder's).
-                                // Drawn here: the plain style draws no ring, and
-                                // left to the selection drew no ground either.
-                                .textFieldStyle(.plain)
-                                .focusEffectDisabled()
+                                // Finder's rename field is AppKit's own: a square
+                                // field with a 1px edge, the native focus ring
+                                // round it, and only as wide as the name. So
+                                // this is that field, sized to its text — not a
+                                // drawn imitation, which missed the square inner
+                                // edge and left a gap after the name.
+                                .textFieldStyle(.squareBorder)
                                 .fixedSize()
-                                .padding(.horizontal, 3)
-                                .background(Color(nsColor: .textBackgroundColor).opacity(0.85),
-                                            in: RoundedRectangle(cornerRadius: 3))
-                                .overlay(RoundedRectangle(cornerRadius: 4.5)
-                                    .stroke(Color(nsColor: .keyboardFocusIndicatorColor),
-                                            lineWidth: 3)
-                                    .padding(-1.5))
                                 .padding(.vertical, 3)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .focused($nameFieldFocused)
@@ -118,6 +121,11 @@ struct FontThemesSheet: View {
                         }
                     }
                     .tag(theme.name)
+                    .listRowBackground(renaming == theme.name
+                        ? RoundedRectangle(cornerRadius: 5)
+                            .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
+                            .padding(.horizontal, 10)
+                        : nil)
                 }
             }
         }

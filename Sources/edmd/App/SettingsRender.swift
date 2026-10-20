@@ -72,8 +72,23 @@ enum SettingsRender {
             }
         }
 
-        let id = CGWindowID(window.windowNumber)
-        guard let image = captureWindow(id, scale: window.backingScaleFactor),
+        // A sheet the pane put up (`-debug.openFontThemes`) is its own window;
+        // it is what the render is for when there is one.
+        let shot = window.attachedSheet ?? window
+        let id = CGWindowID(shot.windowNumber)
+        // `-debug.renderHold <s>`: print the window id and stay up, so a shell
+        // holding Screen Recording can `screencapture -l<id>` it. For a run
+        // launched through `open` — the only way to get a key window, whose
+        // focus rings are drawn — which has no grant of its own, so the
+        // capture below fails there.
+        let hold = defaults.double(forKey: "debug.renderHold")
+        if hold > 0 {
+            print("window \(id)")
+            fflush(stdout)
+            RunLoop.current.run(until: Date().addingTimeInterval(hold))
+            exit(0)
+        }
+        guard let image = captureWindow(id, scale: shot.backingScaleFactor),
               let data = NSBitmapImageRep(cgImage: image)
                 .representation(using: .png, properties: [:]) else {
             fail("could not capture window \(id)")

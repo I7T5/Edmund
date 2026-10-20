@@ -202,6 +202,11 @@ struct AppearanceSettingsView: View {
             // Told, not applied: the values are already live, and re-applying
             // on every visit would overwrite an edit made since.
             fonts.editingPreset = fontTheme
+            #if DEBUG
+            // Opens Manage… for a live capture of the sheet
+            // (`-debug.openFontThemes YES`; see SettingsRender).
+            if UserDefaults.standard.bool(forKey: "debug.openFontThemes") { managingThemes = true }
+            #endif
         }
         // Selecting a theme in the sheet writes `fontTheme`, and the picker's
         // onChange (in `fontThemePicker`) applies it: one path for both, since

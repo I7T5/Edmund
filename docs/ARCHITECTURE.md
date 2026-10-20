@@ -673,6 +673,15 @@ Notable subsystems:
   in: ReproScript `settingspane <png> <pane>` renders a live pane's content
   view with `cacheDisplay`, logs its Help button's bottom and trailing insets,
   and takes no focus.
+- **Focus rings and selection emphasis need a key window,** and only an
+  instance started through LaunchServices can become key — which has no
+  Screen Recording grant of its own. So: `open -n <bundle> --stdout out.txt
+  --args -debug.render pane:Appearance -debug.renderHold 20 …`; the render
+  prints `window <id>` and stays up, and the shell (which holds the grant)
+  runs `screencapture -x -o -l<id>`. A pane's attached sheet is the window
+  captured. `-debug.openFontThemes YES` opens Manage… and
+  `-debug.renameFontTheme YES` puts its selected row into rename; the rename is
+  never committed, since the render exits.
 - **Counting an app's windows is the flakiest measurement in this repo — don't
   trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
   `winid.swift` uses) lists windows the app has already *closed*, so a stale
