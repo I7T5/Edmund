@@ -24,9 +24,6 @@ struct AppearanceSettingsView: View {
     private static let newThemeTag = "\u{0}new"
     private static let customTag = "\u{0}custom"
     @State private var managingThemes = false
-    /// Set when "New Font Theme…" opens the sheet, so it asks for the new
-    /// theme's name as it appears.
-    @State private var namingNewTheme = false
 
     /// Every label in the pane gets this fixed width, so the label column
     /// never takes a share of the pane's slack. Sized to fit the pane's
@@ -209,24 +206,20 @@ struct AppearanceSettingsView: View {
         // Selecting a theme in the sheet writes `fontTheme`, and the picker's
         // onChange (in `fontThemePicker`) applies it: one path for both, since
         // this pane stays alive beneath the sheet.
-        .sheet(isPresented: $managingThemes, onDismiss: { namingNewTheme = false }) {
-            FontThemesSheet(fonts: fonts, fontTheme: $fontTheme, fontThemes: $fontThemes,
-                            asksForName: namingNewTheme)
+        .sheet(isPresented: $managingThemes) {
+            FontThemesSheet(fonts: fonts, fontTheme: $fontTheme, fontThemes: $fontThemes)
         }
     }
 
     /// A copy of the selected theme holding the typography on screen — Custom
-    /// edits included — under the untitled name, selected, and opened in the
-    /// Manage sheet with its row up for naming: a new theme is made to be
-    /// edited, and the sheet is where that happens. `onChange` applies it,
-    /// which repaints nothing: it already is what is live.
+    /// edits included — under the untitled name, and selected. Nothing more:
+    /// naming and editing it are Manage…'s, a click away. `onChange` applies
+    /// it, which repaints nothing: it already is what is live.
     private func newTheme() {
         guard let copy = try? ThemeStore.shared.duplicate(fontTheme) else { return }
         fonts.save(asPreset: copy, displayName: FontThemesSheet.untitledName(among: fontThemes))
         fontThemes = ThemeStore.shared.fontThemes()
         fontTheme = copy
-        namingNewTheme = true
-        managingThemes = true
     }
 
     private var selectedPreset: FontTheme? { fontThemes.first { $0.name == fontTheme } }

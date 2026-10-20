@@ -13,9 +13,6 @@ struct FontThemesSheet: View {
     /// the detail can show nothing but the one in force.
     @Binding var fontTheme: String
     @Binding var fontThemes: [FontTheme]
-    /// Opened by "New Font Theme…" on a fresh copy: put its name up for
-    /// editing at once, the one thing a copy cannot supply for itself.
-    var asksForName = false
     @Environment(\.dismiss) private var dismiss
 
     /// The theme whose row is a name field, as Finder renames in place.
@@ -63,10 +60,7 @@ struct FontThemesSheet: View {
         // Editing a theme is what the sheet is for, so its edits are written
         // into the selected one. Opened on Custom, the first edit saves the
         // whole screen into it, Custom changes included.
-        .onAppear {
-            fonts.writesPreset = true
-            if asksForName { beginRename() }
-        }
+        .onAppear { fonts.writesPreset = true }
         .onDisappear {
             fonts.writesPreset = false
             // The pane compares the screen against these to decide Custom.
@@ -97,10 +91,16 @@ struct FontThemesSheet: View {
                             // Return or clicking away keeps the name; Esc
                             // leaves the old one, as in Finder.
                             TextField("Name", text: $newThemeName)
-                                // Its own white field, as Finder's: left to the
-                                // row, a field focused while the sheet is still
-                                // appearing drew no background on the selection.
-                                .textFieldStyle(.squareBorder)
+                                // Finder's rename field: a plain field on a
+                                // light ground of its own, inside the row, with
+                                // no ring — the row already says which one.
+                                // The ground is drawn here because a plain field
+                                // left to the selection drew none at all.
+                                .textFieldStyle(.plain)
+                                .focusEffectDisabled()
+                                .padding(.horizontal, 3)
+                                .background(Color(nsColor: .textBackgroundColor).opacity(0.85),
+                                            in: RoundedRectangle(cornerRadius: 3))
                                 .focused($nameFieldFocused)
                                 .onAppear { nameFieldFocused = true }
                                 .onSubmit(commitRename)
@@ -115,6 +115,9 @@ struct FontThemesSheet: View {
         }
         .listStyle(.sidebar)
         .focused($listFocused)
+        // Focus is for Return, not for show: a sidebar draws no ring of its
+        // own, and the row's selection already marks it.
+        .focusEffectDisabled()
         .onKeyPress(.return) {
             guard renaming == nil, !ThemeStore.shared.isBuiltIn(fontTheme) else { return .ignored }
             beginRename()
