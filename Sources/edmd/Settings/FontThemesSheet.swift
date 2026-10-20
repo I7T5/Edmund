@@ -260,8 +260,8 @@ struct FontThemesSheet: View {
         return name
     }
 
-    /// A copy of the selected theme under the untitled name, its row put up
-    /// for naming: the + button's "New Font Theme", as the pane's popup item.
+    /// The + button's new theme: a copy of the selected one, named as the
+    /// pane's New Font Theme… names it, but put straight into rename.
     private func newTheme() {
         guard let copy = try? ThemeStore.shared.duplicate(fontTheme),
               var made = ThemeStore.shared.fontThemes().first(where: { $0.name == copy })
@@ -322,7 +322,7 @@ struct FontThemesSheet: View {
                     .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 HStack(spacing: 12) {
                     fontWell(summary: fonts.standardSummary, font: fonts.standardFont,
-                             select: fonts.selectStandardFont)
+                             role: "standard", select: fonts.selectStandardFont)
                     // Small, like the Themes pane's switches beside a value.
                     Toggle("Ligatures", isOn: $fonts.standardLigatures)
                         .controlSize(.small)
@@ -334,7 +334,7 @@ struct FontThemesSheet: View {
                     .frame(width: Self.labelColumnWidth, alignment: .trailing)
                 HStack(spacing: 12) {
                     fontWell(summary: fonts.monospaceSummary, font: fonts.monospaceFont,
-                             select: fonts.selectMonospaceFont)
+                             role: "monospaced", select: fonts.selectMonospaceFont)
                     Toggle("Ligatures", isOn: $fonts.monospaceLigatures)
                         .controlSize(.small)
                 }
@@ -355,7 +355,10 @@ struct FontThemesSheet: View {
     /// font panel inside the same bezel, and no stepper — the panel sets the
     /// size, as it does there. Leading-aligned, so a long name runs toward the
     /// button rather than under it from both sides.
-    private func fontWell(summary: String, font: NSFont,
+    /// `role` names the well for VoiceOver and the tooltip ("standard",
+    /// "monospaced"): two buttons both called Choose Font left a VoiceOver
+    /// reader unable to tell them apart.
+    private func fontWell(summary: String, font: NSFont, role: String,
                           select: @escaping () -> Void) -> some View {
         // The face at the control's size, as Xcode draws it: the size is in
         // the summary, and drawn at it a long name would not fit beside its
@@ -382,8 +385,8 @@ struct FontThemesSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: select) { FontPanelGlyph() }
                     .buttonStyle(.borderless)
-                    .help("Choose Font…")
-                    .accessibilityLabel("Choose Font")
+                    .help("Choose the \(role) font")
+                    .accessibilityLabel("Choose \(role) font")
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 3)
@@ -526,7 +529,7 @@ private final class NormalStyleCell: NSTextFieldCell {
     /// AppKit's ring straddles its mask's edge, so on the field's own frame
     /// its inner 1.5pt lay over the white fill as a pale band. Finder's ring
     /// starts where the fill stops (measured, 2x: 6px ring, 1px blended edge,
-    /// then fill), so the mask stands 1.5pt outside the frame. Still AppKit's
+    /// then fill), so the mask stands 1pt outside the frame. Still AppKit's
     /// ring, drawn by AppKit; only where it is drawn moves.
     private static let ringOutset: CGFloat = 1
 

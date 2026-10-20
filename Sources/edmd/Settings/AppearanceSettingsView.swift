@@ -261,9 +261,8 @@ struct AppearanceSettingsView: View {
             ForEach(fontThemes, id: \.name) { Text($0.displayName).tag($0.name) }
             Divider()
             // The same trailing item the code-syntax popup has: making one
-            // belongs with choosing one. It starts from what is on screen and
-            // asks for a name straight away, which is the one thing a copy
-            // cannot supply for itself.
+            // belongs with choosing one. It saves what is on screen, Custom
+            // edits included, as "New Theme"; naming it is Manage…'s.
             Text("New Font Theme…").tag(Self.newThemeTag)
         }
         .accessibilityLabel("Font theme")
