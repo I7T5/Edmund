@@ -18,7 +18,6 @@ struct FontThemesSheet: View {
     /// The theme whose row is a name field, as Finder renames in place.
     @State private var renaming: String?
     @State private var newThemeName = ""
-    @FocusState private var nameFieldFocused: Bool
     /// The list has focus: Return renames the selected theme, as in Finder,
     /// so Done gives up the Return key while it does.
     @FocusState private var listFocused: Bool
@@ -97,25 +96,11 @@ struct FontThemesSheet: View {
                         if renaming == theme.name {
                             // Return or clicking away keeps the name; Esc
                             // leaves the old one, as in Finder.
-                            TextField("Name", text: $newThemeName)
-                                // Finder's list-view rename field (measured): a
-                                // white box hugging the name with ~1pt either
-                                // side, on the row's own blue selection, and no
-                                // focus ring — the field inside the selected
-                                // row already says where typing goes. The
-                                // ground is drawn here because a plain field
-                                // draws none, leaving the text on the blue.
-                                .textFieldStyle(.plain)
-                                .focusEffectDisabled()
+                            RenameField(text: $newThemeName,
+                                        commit: commitRename,
+                                        cancel: { renaming = nil })
                                 .fixedSize()
-                                .padding(.horizontal, 1)
-                                .background(Color(nsColor: .textBackgroundColor),
-                                            in: RoundedRectangle(cornerRadius: 1.5))
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .focused($nameFieldFocused)
-                                .onAppear { nameFieldFocused = true }
-                                .onSubmit(commitRename)
-                                .onExitCommand { renaming = nil }
                         } else {
                             Text(theme.displayName)
                         }
@@ -145,9 +130,6 @@ struct FontThemesSheet: View {
                 Button("Delete…") { fontTheme = name; confirmingDelete = true }
                     .disabled(!ThemeStore.shared.isUserTheme(name) || fontThemes.count < 2)
             }
-        }
-        .onChange(of: nameFieldFocused) { _, focused in
-            if !focused, renaming != nil { commitRename() }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
@@ -362,6 +344,151 @@ struct FontThemesSheet: View {
             // The script box's width, so the wells and the box share both edges.
             .frame(width: scriptBoxWidth)
         }
+    }
+}
+
+/// The in-place rename field: an AppKit `NSTextField`, borderless on a white
+/// ground, with AppKit's own exterior focus ring — square inside, rounded
+/// outside, following Increase Contrast — hugging the name. Finder's list view
+/// renames with exactly this.
+///
+/// Not a SwiftUI `TextField`: `.squareBorder` gets the native ring but pads the
+/// text ~3pt inside its bezel, which Finder's field does not; `.plain` has no
+/// padding but SwiftUI turns its ring off. SwiftUI's List also offers no way
+/// into the table view's own cell editing, which is what Finder uses.
+///
+/// Return or losing focus commits; Esc cancels.
+private struct RenameField: NSViewRepresentable {
+    @Binding var text: String
+    let commit: () -> Void
+    let cancel: () -> Void
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = FocusingTextField(string: text)
+        field.isBordered = false
+        field.isBezeled = false
+        field.drawsBackground = true
+        field.backgroundColor = .textBackgroundColor
+        field.focusRingType = .exterior
+        field.font = .systemFont(ofSize: NSFont.systemFontSize)
+        field.lineBreakMode = .byClipping
+        field.delegate = context.coordinator
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        context.coordinator.parent = self
+        if field.currentEditor() == nil, field.stringValue != text { field.stringValue = text }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: RenameField
+        /// Set by Esc, so the end of editing that follows does not commit.
+        private var cancelled = false
+        init(parent: RenameField) { self.parent = parent }
+
+        func controlTextDidChange(_ note: Notification) {
+            guard let field = note.object as? NSTextField else { return }
+            parent.text = field.stringValue
+            // The field hugs the name, so it grows and shrinks with it.
+            field.invalidateIntrinsicContentSize()
+        }
+
+        func control(_ control: NSControl, textView: NSTextView,
+                     doCommandBy selector: Selector) -> Bool {
+            if selector == #selector(NSResponder.cancelOperation(_:)) {
+                cancelled = true
+                parent.cancel()
+                return true
+            }
+            return false
+        }
+
+        func controlTextDidEndEditing(_ note: Notification) {
+            // The window's shared field editor, back to AppKit's padding for
+            // whichever field it serves next.
+            (note.userInfo?["NSFieldEditor"] as? NSTextView)?.textContainer?.lineFragmentPadding = 2
+            guard !cancelled else { return }
+            // Return and a click away both land here, once.
+            cancelled = true
+            parent.commit()
+        }
+    }
+}
+
+/// Takes focus with its text selected as soon as it is in a window, as
+/// Finder's rename field does.
+private final class FocusingTextField: NSTextField {
+    override class var cellClass: AnyClass? {
+        get { NormalStyleCell.self }
+        set { _ = newValue }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        // The row is still being built when this is called, and the list
+        // takes focus as the sheet settles; so try over the next few frames
+        // until the field holds it.
+        Task { @MainActor [weak self] in
+            for _ in 0..<10 {
+                guard let self, let window = self.window else { return }
+                if self.currentEditor() != nil, window.isKeyWindow { return }
+                if window.makeFirstResponder(self) {
+                    // Finder's selection runs to the field's edge: no line
+                    // padding. The field editor is the window's, shared, so
+                    // the coordinator puts its padding back when editing ends.
+                    (self.currentEditor() as? NSTextView)?.textContainer?.lineFragmentPadding = 0
+                    self.currentEditor()?.selectAll(nil)
+                    self.invalidateIntrinsicContentSize()
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+    }
+
+    /// The name's width and 2pt for the caret after it — Finder's field is
+    /// that and no more (measured) — so `fixedSize` hugs the name and tracks
+    /// what is typed.
+    override var intrinsicContentSize: NSSize {
+        let text = (currentEditor() as? NSTextView)?.string ?? stringValue
+        let width = NSAttributedString(string: text, attributes: [.font: font as Any]).size().width
+        return NSSize(width: ceil(width) + 2, height: super.intrinsicContentSize.height)
+    }
+}
+
+/// A selected table row hands its cells the emphasized background style,
+/// under which a text field draws white text and no background: the name read
+/// as plain row text, with no field at all. The rename field is a field
+/// whatever row it sits in.
+private final class NormalStyleCell: NSTextFieldCell {
+    override var backgroundStyle: NSView.BackgroundStyle {
+        get { .normal }
+        set { _ = newValue }
+    }
+
+    /// AppKit's ring straddles its mask's edge, so on the field's own frame
+    /// its inner 1.5pt lay over the white fill as a pale band. Finder's ring
+    /// starts where the fill stops (measured, 2x: 6px ring, 1px blended edge,
+    /// then fill), so the mask stands 1.5pt outside the frame. Still AppKit's
+    /// ring, drawn by AppKit; only where it is drawn moves.
+    private static let ringOutset: CGFloat = 1
+
+    /// No inset of the cell's own: the field editor's line padding is all the
+    /// room Finder's field gives the text, and the selection runs to the edge.
+    /// The title rect is where the field editor is placed.
+    override func titleRect(forBounds rect: NSRect) -> NSRect { rect }
+    override func drawingRect(forBounds rect: NSRect) -> NSRect { rect }
+
+    override func focusRingMaskBounds(forFrame cellFrame: NSRect, in controlView: NSView) -> NSRect {
+        cellFrame.insetBy(dx: -Self.ringOutset, dy: -Self.ringOutset)
+    }
+
+    override func drawFocusRingMask(withFrame cellFrame: NSRect, in controlView: NSView) {
+        NSBezierPath(rect: cellFrame.insetBy(dx: -Self.ringOutset, dy: -Self.ringOutset)).fill()
     }
 }
 
