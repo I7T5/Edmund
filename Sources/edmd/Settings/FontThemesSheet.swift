@@ -22,6 +22,9 @@ struct FontThemesSheet: View {
     @State private var renaming: String?
     @State private var newThemeName = ""
     @FocusState private var nameFieldFocused: Bool
+    /// The list has focus: Return renames the selected theme, as in Finder,
+    /// so Done gives up the Return key while it does.
+    @FocusState private var listFocused: Bool
     /// The script row the pointer last picked. Selection, not state: nothing
     /// reads it but the highlight, which is what tells a reader the box is a
     /// table and a double click will do something.
@@ -49,7 +52,7 @@ struct FontThemesSheet: View {
                     HelpLink(anchor: HelpAnchor.appearance)
                     Spacer()
                     Button("Done") { dismiss() }
-                        .keyboardShortcut(.defaultAction)
+                        .keyboardShortcut(listFocused || renaming != nil ? nil : .defaultAction)
                 }
             }
             .padding(20)
@@ -94,6 +97,10 @@ struct FontThemesSheet: View {
                             // Return or clicking away keeps the name; Esc
                             // leaves the old one, as in Finder.
                             TextField("Name", text: $newThemeName)
+                                // Its own white field, as Finder's: left to the
+                                // row, a field focused while the sheet is still
+                                // appearing drew no background on the selection.
+                                .textFieldStyle(.squareBorder)
                                 .focused($nameFieldFocused)
                                 .onAppear { nameFieldFocused = true }
                                 .onSubmit(commitRename)
@@ -107,6 +114,24 @@ struct FontThemesSheet: View {
             }
         }
         .listStyle(.sidebar)
+        .focused($listFocused)
+        .onKeyPress(.return) {
+            guard renaming == nil, !ThemeStore.shared.isBuiltIn(fontTheme) else { return .ignored }
+            beginRename()
+            return .handled
+        }
+        // A row's own commands on its secondary click, as Finder's sidebar has
+        // them; the footer keeps the same set for the pointer-only reader.
+        .contextMenu(forSelectionType: String.self) { names in
+            if let name = names.first {
+                Button("Rename") { fontTheme = name; beginRename() }
+                    .disabled(ThemeStore.shared.isBuiltIn(name))
+                Button("Duplicate") { fontTheme = name; duplicateTheme() }
+                Divider()
+                Button("Delete…") { fontTheme = name; confirmingDelete = true }
+                    .disabled(!ThemeStore.shared.isUserTheme(name) || fontThemes.count < 2)
+            }
+        }
         .onChange(of: nameFieldFocused) { _, focused in
             if !focused, renaming != nil { commitRename() }
         }
