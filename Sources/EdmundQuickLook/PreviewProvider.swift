@@ -39,6 +39,9 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
         }
         qlLog.log("built \(html.utf8.count) bytes of HTML")
         let data = Data(html.utf8)
+        // The preview's preferred size, which Quick Look uses to size its panel.
+        // 800×800 is close to the window `qlmanage -p` opens for the system's
+        // own text preview (816×810 points).
         return QLPreviewReply(dataOfContentType: .html, contentSize: CGSize(width: 800, height: 800)) { _ in data }
     }
 }

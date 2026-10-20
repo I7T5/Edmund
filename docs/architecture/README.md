@@ -80,8 +80,8 @@ write-ups:
 - [`reader-and-export.md`](reader-and-export.md) — Read mode's WKWebView,
   the sandbox and raw-HTML policy, PDF/Print, mode-switch viewport sync.
 - [`macos-integrations.md`](macos-integrations.md) — Services, App Intents,
-  Quick Look preview, AppleScript syntax; and the two signing/toolchain
-  limitations (App Intents metadata, ad-hoc appex launch).
+  Quick Look preview, AppleScript syntax; and the App Intents metadata
+  limitation.
 - [`editor-affordances.md`](editor-affordances.md) — the editor-only display
   features: invisibles, list indent guides, line numbers, focus mode, and the
   re-vend rule (`refreshOverdraw()`) they all depend on.

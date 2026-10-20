@@ -2,17 +2,18 @@
 
 Expands [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §6 (feature map). Covers the
 OS-level entry points into Edmund added beyond `CFBundleDocumentTypes`
-(double-click / Open With), and — importantly — **two limitations that are not
-bugs but consequences of how Edmund is built and signed**. Read those before
-assuming an integration is broken.
+(double-click / Open With), and — importantly — **one limitation that is not a
+bug but a consequence of how Edmund is built** (§3). Read it before assuming an
+integration is broken.
 
 ## 1. Why
 
 Edmund is a native editor, so it should be reachable the native ways: from the
 right-click Services menu, from Shortcuts/Spotlight, and by pressing Space on a
 `.md` in Finder. Three of the four pieces reuse code that already exists — the
-Quick Look preview in particular is the app's own `ReadModeWebView`, so a
-Finder preview renders identically to Read mode with no second renderer.
+Quick Look preview in particular is the HTML export's self-contained page
+(`DocumentHTML.full` via `QuickLookPage.html`), so a Finder preview uses the
+same HTML renderer as Read mode and export.
 
 ## 2. The four pieces
 
@@ -113,8 +114,8 @@ WebProcessProxy::processDidTerminateOrFailedToLaunch: reason=Crash
 ```
 
 **Why it hangs instead of falling back to plain text.** `preparePreviewOfFile`
-awaits a `withCheckedContinuation` that only `webView.onLoadFinished` resumes
-(§2 above). WebKit never surfaces a `WebContent` launch failure to
+awaited a `withCheckedContinuation` that only `webView.onLoadFinished` resumed.
+WebKit never surfaces a `WebContent` launch failure to
 `ReadModeWebView` as a call to that closure, so the continuation is never
 resumed and the `async throws` function never returns — Quick Look has no
 fallback for an extension that never replies, so Finder just spins forever.
@@ -129,12 +130,6 @@ happened; nothing was ever told to resume.
 re-registering, the same `qlmanage -p` invocation shows `WebContent` launching
 successfully and the page completing (`didFinishLoadForFrame`,
 `DidFirstMeaningfulPaint`), no permission error.
-
-**Follow-up worth considering, not part of this fix:** the continuation in
-`preparePreviewOfFile` has no timeout or `didFail` path, so any *other* future
-cause of a `WebContent` launch or load failure reproduces this exact hang.
-Resuming (and throwing) on a navigation failure, or adding a timeout, would
-make a future break fail fast instead of hanging forever again.
 
 ### Signing order in `build-app.sh` (why it's the way it is)
 
