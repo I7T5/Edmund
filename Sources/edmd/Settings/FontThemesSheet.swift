@@ -432,7 +432,13 @@ private struct RenameField: NSViewRepresentable {
             guard !cancelled else { return }
             // Return and a click away both land here, once.
             cancelled = true
-            parent.commit()
+            // Next turn, not now: a click on − (or any footer button) is what
+            // ends the editing, from inside that click's mouse-down, and
+            // committing then reloads the list mid-click, which made SwiftUI
+            // drop the press — − took a second click to delete a theme just
+            // made with +.
+            let commit = parent.commit
+            Task { @MainActor in commit() }
         }
     }
 }
