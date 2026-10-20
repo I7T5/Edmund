@@ -91,16 +91,22 @@ struct FontThemesSheet: View {
                             // Return or clicking away keeps the name; Esc
                             // leaves the old one, as in Finder.
                             TextField("Name", text: $newThemeName)
-                                // Finder's rename field: a plain field on a
-                                // light ground of its own, inside the row, with
-                                // no ring — the row already says which one.
-                                // The ground is drawn here because a plain field
-                                // left to the selection drew none at all.
+                                // Finder's rename field: as wide as the name, on
+                                // a light ground of its own, ringed exactly on
+                                // its edge. The system focus ring stands a few
+                                // points off the field, so it is drawn here
+                                // instead; so is the ground, because a plain
+                                // field left to the selection drew none.
                                 .textFieldStyle(.plain)
                                 .focusEffectDisabled()
+                                .fixedSize()
                                 .padding(.horizontal, 3)
                                 .background(Color(nsColor: .textBackgroundColor).opacity(0.85),
                                             in: RoundedRectangle(cornerRadius: 3))
+                                .overlay(RoundedRectangle(cornerRadius: 3)
+                                    .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor),
+                                                  lineWidth: 2))
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .focused($nameFieldFocused)
                                 .onAppear { nameFieldFocused = true }
                                 .onSubmit(commitRename)
