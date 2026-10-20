@@ -19,8 +19,8 @@ final class FontSettings: NSObject, ObservableObject {
     @Published var monospaceLigatures: Bool { didSet { applyLigatures() } }
     /// A single editor-wide antialias setting (both font toggles share it).
     @Published var antialias: Bool { didSet { applyAntialias() } }
-    /// Per-script font overrides for the Appearance pane's "Fonts by script"
-    /// section (script → family name).
+    /// Per-script font overrides for the Manage font themes sheet's "Fonts by
+    /// script" box (script → family name).
     @Published var cascadeFonts: [FontCascadeScript: String]
     /// Per-script size ratios (script → multiplier of the run's size;
     /// absent = 1.0). Persisted with the theme; see EditorTheme.
@@ -34,19 +34,23 @@ final class FontSettings: NSObject, ObservableObject {
     static let minCascadeSizeRatio = 0.5
     static let maxCascadeSizeRatio = 2.0
 
-    /// The font preset the Appearance pane's picker names. Edits are written
-    /// into it as well as into the `Editor*` keys, so the preset the picker
-    /// names always *is* what is on screen — there is no "modified" state to
-    /// explain, and no way to silently diverge from it.
-    ///
-    /// Antialiasing is the exception, being a display setting rather than
-    /// typography: it never reaches a preset.
+    /// The font preset the Appearance pane's picker names.
     var editingPreset: String?
 
+    /// Whether edits are also written into `editingPreset`. On while the
+    /// Manage sheet is open, where editing a theme is the point; off in the
+    /// pane, where an edit changes only what is on screen and the picker
+    /// reads Custom until a preset is chosen again.
+    ///
+    /// Antialiasing never reaches a preset either way, being a display
+    /// setting rather than typography.
+    var writesPreset = false
+
     /// Set while `apply(preset:)` is assigning the published mirrors. Each of
-    /// those carries a `didSet` that commits, and committing writes the preset
-    /// back — so without this, merely *choosing* a bundled preset saved a user
-    /// copy of it, which then reads as an edited built-in and offers itself to
+    /// those carries a `didSet` that commits, and while the Manage sheet is
+    /// open (`writesPreset`) committing writes the preset back — so without
+    /// this, merely *choosing* a bundled preset in the sheet saved a user copy
+    /// of it, which then reads as an edited built-in and offers itself to
     /// Restore Defaults.
     private var isApplying = false
 
@@ -164,11 +168,10 @@ final class FontSettings: NSObject, ObservableObject {
         commit(updated)
     }
 
-    /// Where an edit goes: into the preset the picker names, and into the live
-    /// settings and every open document. The selected preset *is* the one in
-    /// force, so there is only ever one destination.
+    /// Where an edit goes: into the live settings and every open document,
+    /// and into the named preset while the Manage sheet is editing it.
     private func commit(_ updated: EditorTheme) {
-        syncPreset()
+        if writesPreset { syncPreset() }
         updated.save()
         applyToDocuments(updated)
     }
@@ -178,17 +181,38 @@ final class FontSettings: NSObject, ObservableObject {
         guard !isApplying, let name = editingPreset,
               let existing = ThemeStore.shared.fontThemes().first(where: { $0.name == name })
         else { return }
-        try? ThemeStore.shared.save(
-            theme.fontTheme(name: name, displayName: existing.displayName))
+        save(asPreset: name, displayName: existing.displayName)
+    }
+
+    /// Writes what is on screen into the preset `name`.
+    func save(asPreset name: String, displayName: String) {
+        try? ThemeStore.shared.save(theme.fontTheme(name: name, displayName: displayName))
+    }
+
+    /// Whether what is on screen is exactly `preset`'s typography.
+    func matches(_ preset: FontTheme) -> Bool {
+        theme.fontTheme(name: preset.name, displayName: preset.displayName)
+            .hasSameTypography(as: preset)
     }
 
     /// Puts a preset in force: its values become the `Editor*` keys and every
     /// open document is repainted. Choosing one in the picker is choosing it.
-    func apply(preset: FontTheme) {
+    ///
+    /// Returns whether anything changed. A preset that is already what is on
+    /// screen — a fresh copy, the next theme after a delete that the pane's
+    /// onChange already applied — repaints nothing: each repaint restyles
+    /// every open document whole, seconds on a long one.
+    @discardableResult
+    func apply(preset: FontTheme) -> Bool {
+        editingPreset = preset.name
+        // The tolerant comparison, as Custom uses: line height round-trips
+        // through floating point (stored as a multiple, applied as points),
+        // so an exact one called most presets changed — 6.4pt at 16pt among
+        // them — and repainted for nothing.
+        guard !matches(preset) else { return false }
+        let updated = theme.applying(preset)
         isApplying = true
         defer { isApplying = false }
-        editingPreset = preset.name
-        let updated = theme.applying(preset)
         theme = updated
         standardFont = updated.bodyFont
         monospaceFont = updated.monospaceFont()
@@ -204,6 +228,7 @@ final class FontSettings: NSObject, ObservableObject {
         // editing one. Writing it back would save a user copy of a bundled
         // preset merely because it had been *chosen*.
         applyToDocuments(updated)
+        return true
     }
 
     /// Scales every size at once — both faces directly, and the per-script

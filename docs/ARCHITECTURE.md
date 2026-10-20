@@ -456,18 +456,19 @@ Notable subsystems:
   for this role" and is resolved at the call site, beside the value it falls
   back to — not the same as missing data, because a semantic color like
   `NSColor.textColor` tracks Increase Contrast and a hex cannot. The per-script font cascade is NOT a
-  pane: it is a collapsed "Fonts by script" section at the foot of Appearance
+  pane: it is the "Fonts by script" box in the Manage font themes sheet
+  (Appearance ▸ Manage…, `FontThemesSheet.swift`)
   (`EditorFontCascade` = `[script: family]` dict, `EditorFontCascadeSizeRatios`
   = `[script: ratio]` — ratios of the body size, so zoom and body-size changes
   scale the cascade for free; unset scripts keep the system fallback). The
-  section's rows live in the pane's own Grid with fixed-width labels: a
-  section hosted in a `gridCellColumns(2)` cell feeds its width back into the
-  columns it spans and slides every row sideways as it opens. Fixed-width
-  labels alone don't finish the job — the Grid hands leftover width to
-  whichever column can grow, so EVERY column-2 cell in the pane is
-  `maxWidth: .infinity`; otherwise the collapsed pane's slack lands in the
-  label column and expanding the section still shifts every column-2
-  control sideways.
+  sheet's theme list is the pane's picker by another means: selecting a row
+  writes the same `themeFont` binding and the pane's `onChange` applies it,
+  because `FontSettings` edits only the live preset. Only the sheet writes
+  edits into that preset (`FontSettings.writesPreset`); a pane edit changes
+  the screen alone, and the popup reads Custom (Unsaved) while `FontSettings.matches`
+  is false. Every column-2 cell in
+  the Appearance Grid is `maxWidth: .infinity` with fixed-width labels, or
+  the Grid hands the pane's slack to the label column.
 - This section owns the *mechanism* and the settings with non-obvious
   behavior, not the full key list — that inventory drifts fastest and lives in
   `.claude/skills/edmund-config-and-flags/`. Grep
@@ -663,7 +664,8 @@ Notable subsystems:
 - **Settings panes render offscreen** (DEBUG builds): `.build/debug/edmd
   -debug.render pane:Appearance -debug.renderOut out.png [-debug.renderDark YES]
   -debug.disableUpdater YES` — also `editor:<name>` / `syntax:<name>` for a
-  theme's detail box (`Sources/edmd/App/SettingsRender.swift`). Live
+  theme's detail box and `sheet:FontThemes` for the Manage font themes sheet
+  (`Sources/edmd/App/SettingsRender.swift`). Live
   `screencapture` has never worked for these panes; use this, don't
   hand-build a scaffold. It captures through ScreenCaptureKit, which needs
   Screen Recording granted to the launching process; without it the render
@@ -673,6 +675,15 @@ Notable subsystems:
   in: ReproScript `settingspane <png> <pane>` renders a live pane's content
   view with `cacheDisplay`, logs its Help button's bottom and trailing insets,
   and takes no focus.
+- **Focus rings and selection emphasis need a key window,** and only an
+  instance started through LaunchServices can become key — which has no
+  Screen Recording grant of its own. So: `open -n <bundle> --stdout out.txt
+  --args -debug.render pane:Appearance -debug.renderHold 20 …`; the render
+  prints `window <id>` and stays up, and the shell (which holds the grant)
+  runs `screencapture -x -o -l<id>`. A pane's attached sheet is the window
+  captured. `-debug.openFontThemes YES` opens Manage… and
+  `-debug.renameFontTheme YES` puts its selected row into rename; the rename is
+  never committed, since the render exits.
 - **Counting an app's windows is the flakiest measurement in this repo — don't
   trust one source.** `CGWindowListCopyWindowInfo(.optionAll)` (what
   `winid.swift` uses) lists windows the app has already *closed*, so a stale

@@ -95,12 +95,14 @@ enum AppSettings {
         static let themeGeneralDark  = "settings.themes.generalDark"
         static let themeSyntaxLight  = "settings.themes.syntaxLight"
         static let themeSyntaxDark   = "settings.themes.syntaxDark"
-        /// The font preset in force. Named `settings.themes.*` for continuity
-        /// with the four above and because `ThemeStore` loads it; it is chosen
-        /// in Appearance, and no color theme names it.
+        /// The font preset last chosen, in Appearance or the Manage sheet. The
+        /// fonts on screen can differ from it (the popup then reads Custom).
+        /// Named `settings.themes.*` for continuity with the four above and
+        /// because `ThemeStore` loads it; no color theme names it.
         static let themeFont         = "settings.themes.font"
-        // Whether the "Fonts by script" section at the foot of the Appearance
-        // pane is expanded (per-script cascade rows).
+        // No longer read: "Fonts by script" was a collapsible section at the
+        // foot of Appearance, and is now a box in the Manage font themes
+        // sheet with nothing to expand.
         static let fontsByScriptExpanded = "settings.appearance.fontsByScriptExpanded"
         static let suppressInconsistentLineEndingWarning = "settings.general.suppressInconsistentLineEndingWarning"
         static let diagnosticLogging = "settings.general.diagnosticLogging"

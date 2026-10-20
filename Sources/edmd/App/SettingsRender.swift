@@ -15,6 +15,7 @@ import EdmundCore
 ///                    toolbar label — `pane:Appearance`, `pane:Themes`
 ///   editor:<name>    an editor theme's detail box — `editor:solarized-light`
 ///   syntax:<name>    a code theme's detail box — `syntax:tomorrow`
+///   sheet:FontThemes the Appearance pane's Manage font themes sheet
 ///
 /// Renders in Aqua unless `-debug.renderDark YES`, writes the PNG at the
 /// screen's scale, and exits. Pass `-debug.disableUpdater YES` alongside.
@@ -41,7 +42,8 @@ enum SettingsRender {
             let view = NSHostingController(rootView: detail).view
             view.frame = NSRect(x: 0, y: 0, width: 472, height: 620)
             view.layoutSubtreeIfNeeded()
-            view.frame.size.height = max(view.fittingSize.height, 300)
+            view.frame.size = NSSize(width: view.fittingSize.width,
+                                     height: max(view.fittingSize.height, 300))
             window = NSWindow(contentRect: view.frame, styleMask: [.titled],
                               backing: .buffered, defer: false)
             window.contentView = view
@@ -56,9 +58,37 @@ enum SettingsRender {
         window.layoutIfNeeded()
         // Let SwiftUI settle: fonts, preferences, the tab resize animation.
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
+        // A detail measured before SwiftUI settled can come out far too small
+        // (a sidebar List has no ideal size until it has laid out), so fit
+        // the window again now that it has.
+        // Repeated until the size holds: one pass can still read a stale size.
+        if !target.hasPrefix("pane:"), let content = window.contentView {
+            for _ in 0..<5 {
+                let size = NSSize(width: content.fittingSize.width,
+                                  height: max(content.fittingSize.height, 300))
+                if size == content.frame.size { break }
+                window.setContentSize(size)
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            }
+        }
 
-        let id = CGWindowID(window.windowNumber)
-        guard let image = captureWindow(id, scale: window.backingScaleFactor),
+        // A sheet the pane put up (`-debug.openFontThemes`) is its own window;
+        // it is what the render is for when there is one.
+        let shot = window.attachedSheet ?? window
+        let id = CGWindowID(shot.windowNumber)
+        // `-debug.renderHold <s>`: print the window id and stay up, so a shell
+        // holding Screen Recording can `screencapture -l<id>` it. For a run
+        // launched through `open` — the only way to get a key window, whose
+        // focus rings are drawn — which has no grant of its own, so the
+        // capture below fails there.
+        let hold = defaults.double(forKey: "debug.renderHold")
+        if hold > 0 {
+            print("window \(id)")
+            fflush(stdout)
+            RunLoop.current.run(until: Date().addingTimeInterval(hold))
+            exit(0)
+        }
+        guard let image = captureWindow(id, scale: shot.backingScaleFactor),
               let data = NSBitmapImageRep(cgImage: image)
                 .representation(using: .png, properties: [:]) else {
             fail("could not capture window \(id)")
@@ -92,6 +122,12 @@ enum SettingsRender {
                 fail("no code theme named \(name)")
             }
             detail = AnyView(SyntaxThemeDetail(theme: theme, isEditable: true, onChange: { _ in }))
+        } else if target == "sheet:FontThemes" {
+            // The sheet sizes itself, so it skips the bordered box below.
+            let name = UserDefaults.standard.string(forKey: AppSettings.Key.themeFont)
+                ?? AppSettings.DefaultTheme.font
+            return AnyView(FontThemesSheet(fonts: FontSettings(), fontTheme: .constant(name),
+                                           fontThemes: .constant(store.fontThemes())))
         } else {
             return nil
         }

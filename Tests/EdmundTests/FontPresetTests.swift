@@ -81,9 +81,9 @@ struct FontPresetTests {
         }
     }
 
-    /// The other direction: an edit made while a preset is named is written
-    /// into it, so the picker's name always describes what is on screen.
-    @Test("An edit writes through to the named preset")
+    /// The other direction: an edit made in the Manage sheet is written into
+    /// the preset it names.
+    @Test("An edit in the sheet writes through to the named preset")
     func editsWriteThrough() throws {
         try withCleanSlate {
             let name = "test-preset-\(UUID().uuidString.prefix(8))"
@@ -95,12 +95,90 @@ struct FontPresetTests {
             }
 
             let fonts = FontSettings()
-            fonts.editingPreset = name
+            fonts.apply(preset: seed)
+            fonts.writesPreset = true
             fonts.setLineHeight(1.8)
 
             let updated = try #require(
                 ThemeStore.shared.fontThemes().first { $0.name == name })
             #expect(abs(updated.lineHeight - 1.8) < 0.0001)
+            #expect(fonts.matches(updated))
+        }
+    }
+
+    /// A new theme is "New Theme" until named, numbered past any taken.
+    @Test("A new theme's untitled name skips the ones in use")
+    func untitledNameSkipsTaken() {
+        func theme(_ display: String) -> FontTheme {
+            EditorTheme.default.fontTheme(name: display, displayName: display)
+        }
+        #expect(FontThemesSheet.untitledName(among: [theme("Iowan")]) == "New Theme")
+        #expect(FontThemesSheet.untitledName(among: [theme("New Theme"), theme("New Theme 2")])
+                == "New Theme 3")
+    }
+
+    /// Applying what is already on screen repaints nothing: each repaint
+    /// restyles every open document whole.
+    @Test("Applying the preset already on screen changes nothing")
+    func reapplyingIsANoOp() throws {
+        try withCleanSlate {
+            let helvetica = try #require(
+                ThemeStore.shared.fontThemes().first { $0.name == "helvetica-neue" })
+            let fonts = FontSettings()
+            fonts.apply(preset: helvetica)
+            #expect(fonts.apply(preset: helvetica) == false)
+            // A real difference still lands.
+            fonts.setLineHeight(2.5)
+            #expect(fonts.apply(preset: helvetica) == true)
+        }
+    }
+
+    /// Line height is stored as a multiple and applied as points, and the
+    /// round trip is rarely exact: 6.4pt of spacing at 16pt comes back a bit
+    /// off. Re-applying such a preset must still count as no change.
+    @Test("A preset whose line height round-trips inexactly still reapplies as no change")
+    func inexactLineHeightIsANoOp() {
+        withCleanSlate {
+            var shipped = EditorTheme.default
+            shipped.fontSize = 16
+            shipped.lineSpacing = 6.4
+            let preset = shipped.fontTheme(name: "probe", displayName: "Probe")
+            let fonts = FontSettings()
+            fonts.apply(preset: preset)
+            #expect(fonts.apply(preset: preset) == false)
+        }
+    }
+
+    /// An edit in the pane changes only what is on screen: the preset keeps
+    /// its values, and the pane reads the difference as Custom.
+    @Test("An edit in the pane leaves the preset and diverges from it")
+    func paneEditsDiverge() throws {
+        try withCleanSlate {
+            let name = "test-preset-\(UUID().uuidString.prefix(8))"
+            let seed = EditorTheme.default.fontTheme(name: name, displayName: "Test")
+            try ThemeStore.shared.save(seed)
+            defer {
+                try? ThemeStore.shared.deleteUserTheme(named: name)
+                ThemeStore.shared.reload()
+            }
+
+            let fonts = FontSettings()
+            fonts.apply(preset: seed)
+            // Every bundled preset too: line height is stored as points and
+            // must still read back as the same theme once applied.
+            #expect(fonts.matches(seed))
+            for preset in ThemeStore.shared.fontThemes() {
+                fonts.apply(preset: preset)
+                #expect(fonts.matches(preset), "\(preset.name)")
+            }
+
+            fonts.apply(preset: seed)
+            fonts.setLineHeight(1.8)
+
+            let stored = try #require(
+                ThemeStore.shared.fontThemes().first { $0.name == name })
+            #expect(stored == seed)
+            #expect(!fonts.matches(stored))
         }
     }
 

@@ -18,6 +18,8 @@ struct AntialiasingText: NSViewRepresentable {
     private var alignment: NSTextAlignment = .center
     private var clickThrough = false
     private var isPlain = false
+    /// A plain field's baseline, when not `plainBaseline`.
+    private var baseline: CGFloat?
 
     init(_ text: String) {
         self.text = text
@@ -51,7 +53,8 @@ struct AntialiasingText: NSViewRepresentable {
         nsView.alignment = alignment
         (nsView as? AntialiasingTextField)?.antialiasDisabled = antialiasDisabled
         (nsView as? AntialiasingTextField)?.clickThrough = clickThrough
-        (nsView as? AntialiasingTextField)?.fixedBaseline = isPlain ? Self.plainBaseline : nil
+        (nsView as? AntialiasingTextField)?.fixedBaseline =
+            isPlain ? (baseline ?? Self.plainBaseline) : nil
         // Only ever written when opting OUT of the bezel. `NSTextField(string:)`
         // comes up bezeled, and `isBordered = true` is not the same thing — it
         // is the flat square border — so writing it on the default path turned
@@ -87,7 +90,7 @@ struct AntialiasingText: NSViewRepresentable {
     func baselineAligned() -> some View {
         // A plain field puts its baseline at one fixed offset whatever the
         // font, so it reports that and nothing has to be measured.
-        let fixed: CGFloat? = isPlain ? Self.plainBaseline : nil
+        let fixed: CGFloat? = isPlain ? (baseline ?? Self.plainBaseline) : nil
         let metrics: (titleHeight: CGFloat, ascender: CGFloat)? = font.map {
             (NSAttributedString(string: text, attributes: [.font: $0]).size().height,
              $0.ascender)
@@ -100,13 +103,24 @@ struct AntialiasingText: NSViewRepresentable {
         }
     }
 
-    /// Drops the bezel and background. The font rows keep theirs — a bezeled
-    /// field is what the Appearance pane has always shown there — but inside the
-    /// script list the box's own border already frames the column, and a second
-    /// one around each sample reads as an editable field, which it is not.
+    /// Drops the bezel and background. The pane's font rows keep theirs — a
+    /// bezeled field is what the Appearance pane has always shown there. Inside
+    /// the script list the box's own border already frames the column, and a
+    /// second one around each sample reads as an editable field, which it is
+    /// not; the Manage sheet's font wells draw their own bezel around a plain
+    /// field, so the field's would make a second one.
     func plain(_ plain: Bool = true) -> Self {
         var view = self
         view.isPlain = plain
+        return view
+    }
+
+    /// Moves a plain field's baseline off the shared `plainBaseline`, for a
+    /// field that stands alone and should center its own face rather than
+    /// line up with others.
+    func baseline(_ offsetFromTop: CGFloat) -> Self {
+        var view = self
+        view.baseline = offsetFromTop
         return view
     }
 
@@ -176,13 +190,27 @@ private final class AntialiasingTextField: NSTextField {
 }
 
 private final class CenteringTextFieldCell: NSTextFieldCell {
+    /// One layout manager for every cell's baseline lookup, rather than a new
+    /// one per layout pass: it holds no text, only answers font metrics.
+    @MainActor private static let metrics = NSLayoutManager()
+
     override func titleRect(forBounds rect: NSRect) -> NSRect {
         var titleRect = super.titleRect(forBounds: rect)
         if let baseline = (controlView as? AntialiasingTextField)?.fixedBaseline,
            let font {
             // The field is flipped, so y grows downward: the top of the line
-            // box goes an ascender above the baseline.
-            titleRect.origin.y = (rect.minY + baseline - font.ascender).rounded()
+            // box goes above the baseline by as much as string drawing puts
+            // between them. That is the layout manager's baseline offset, not
+            // the ascender: a face with line gap (Input Mono) draws its
+            // baseline lower than one ascender down.
+            let offset = Self.metrics.defaultBaselineOffset(for: font)
+            // Rounded to device pixels, not whole points: `.5` rounds away
+            // from zero, so whole-point rounding sent a face whose offset
+            // lands on a half point up or down by half a point depending on
+            // the sign — Input Mono Narrow drew a point higher than Iowan for
+            // the same requested baseline.
+            let scale = controlView?.window?.backingScaleFactor ?? 2
+            titleRect.origin.y = ((rect.minY + baseline - offset) * scale).rounded() / scale
         } else {
             let titleSize = attributedStringValue.size()
             titleRect.origin.y = (rect.minY + (rect.height - titleSize.height) / 2).rounded(.up)
