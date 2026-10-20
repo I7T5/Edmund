@@ -34,3 +34,16 @@ struct EditorThemeMathColorTests {
         #expect(t.mathNumberColor == NSColor.systemOrange)
     }
 }
+
+@Suite("EditorTheme — Quick Look preset")
+struct EditorThemeQuickLookTests {
+
+    @Test("Quick Look renders at the 13pt macOS body size, code and leading scaled with it")
+    @MainActor func sizes() {
+        let d = EditorTheme.default, q = EditorTheme.quickLook
+        #expect(q.fontName == "system-ui")
+        #expect(q.fontSize == 13)
+        #expect(q.monospaceFontSize == (d.monospaceFontSize * 13 / d.fontSize).rounded())
+        #expect(abs(q.lineSpacing - d.lineSpacing * 13 / d.fontSize) < 0.001)
+    }
+}
