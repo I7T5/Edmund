@@ -243,24 +243,24 @@ enum HelpAnchor {
 }
 
 /// Insets the Settings panes share, so switching tabs never moves the Help
-/// button. The top varies a little by pane: the room under the toolbar is
-/// matched to how densely each pane's rows are spaced.
+/// button. The top varies a little by pane, tuned so the first line of text
+/// sits about 20pt under the toolbar (Appearance's, the reference); a pane
+/// whose first row is a bezel or box edge starts that edge ~4pt higher.
 enum SettingsPaneInsets {
     static let top: CGFloat = 14
-    /// Top inset for the form panes, whose rows are 18 apart: at `top` alone
-    /// the first row crowds the toolbar. Denser panes pass less
-    /// (`settingsPanePadding(top:)`) so the room above matches the spacing
-    /// between their rows.
-    static let formTop: CGFloat = top + 8
+    /// Top inset for the form panes whose first row is a checkbox or radio
+    /// row: lands its text at ~20pt.
+    static let formTop: CGFloat = top + 4
     /// From the Help button to the window's bottom and trailing edges.
     static let help: CGFloat = 20
     /// From the pane's last row to the Help button: the 10 the sidebar panes
     /// (Themes, Key Bindings, Extensions) get from their stack spacing.
     static let helpGap: CGFloat = 10
     /// Content inset of the sidebar panes (Themes, Key Bindings, Extensions),
-    /// whose Help button sits in their bottom row. Even all round: their boxes
-    /// want the same air above as beside and below them.
-    static let sidebar = EdgeInsets(top: help, leading: help, bottom: help, trailing: help)
+    /// whose Help button sits in their bottom row. The top is 4 short of the
+    /// sides: the toolbar above already reads as space, and a box edge at a
+    /// full 20 looks set too low.
+    static let sidebar = EdgeInsets(top: 16, leading: help, bottom: help, trailing: help)
 }
 
 extension View {
