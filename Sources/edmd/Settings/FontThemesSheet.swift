@@ -92,20 +92,22 @@ struct FontThemesSheet: View {
                             // leaves the old one, as in Finder.
                             TextField("Name", text: $newThemeName)
                                 // Finder's rename field: as wide as the name, on
-                                // a light ground of its own, ringed exactly on
-                                // its edge. The system focus ring stands a few
-                                // points off the field, so it is drawn here
-                                // instead; so is the ground, because a plain
-                                // field left to the selection drew none.
+                                // a ground of its own, with the focus ring — a
+                                // 3pt translucent band — set just outside its
+                                // edge, inside the row (measured off Finder's).
+                                // Drawn here: the plain style draws no ring, and
+                                // left to the selection drew no ground either.
                                 .textFieldStyle(.plain)
                                 .focusEffectDisabled()
                                 .fixedSize()
                                 .padding(.horizontal, 3)
                                 .background(Color(nsColor: .textBackgroundColor).opacity(0.85),
                                             in: RoundedRectangle(cornerRadius: 3))
-                                .overlay(RoundedRectangle(cornerRadius: 3)
-                                    .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor),
-                                                  lineWidth: 2))
+                                .overlay(RoundedRectangle(cornerRadius: 4.5)
+                                    .stroke(Color(nsColor: .keyboardFocusIndicatorColor),
+                                            lineWidth: 3)
+                                    .padding(-1.5))
+                                .padding(.vertical, 3)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .focused($nameFieldFocused)
                                 .onAppear { nameFieldFocused = true }
