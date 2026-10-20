@@ -33,6 +33,9 @@ struct FontThemesSheet: View {
     @State private var sidebarWidth: CGFloat = 140
     @State private var dragStartWidth: CGFloat?
     @State private var confirmingDelete = false
+    /// The theme the confirmation is for, when a row menu named one other
+    /// than the selection; nil means the selected theme.
+    @State private var deleting: String?
 
     /// A source list down the sheet's leading edge and the selected theme
     /// beside it — the shape of CotEditor's syntax editor sheet, and of any
@@ -125,9 +128,12 @@ struct FontThemesSheet: View {
             if let name = names.first {
                 Button("Rename") { fontTheme = name; beginRename() }
                     .disabled(ThemeStore.shared.isBuiltIn(name))
-                Button("Duplicate") { fontTheme = name; duplicateTheme() }
+                // Selecting only for Rename, which needs the row in edit; the
+                // others act on the clicked row and leave the theme in force
+                // alone, as Finder leaves the selection on a secondary click.
+                Button("Duplicate") { duplicateTheme(name) }
                 Divider()
-                Button("Delete…") { fontTheme = name; confirmingDelete = true }
+                Button("Delete…") { confirmDelete(name) }
                     .disabled(!ThemeStore.shared.isUserTheme(name) || fontThemes.count < 2)
             }
         }
@@ -172,7 +178,8 @@ struct FontThemesSheet: View {
     }
 
     private var deleteTitle: String {
-        let name = fontThemes.first { $0.name == fontTheme }?.displayName
+        let target = deleting ?? fontTheme
+        let name = fontThemes.first { $0.name == target }?.displayName
         return name.map { "Delete “\($0)”?" } ?? "Delete this font theme?"
     }
 
@@ -187,7 +194,7 @@ struct FontThemesSheet: View {
         HStack(spacing: 10) {
             Button(action: newTheme) { footerGlyph("plus") }
                 .help("New font theme, copied from the selected one")
-            Button { confirmingDelete = true } label: { footerGlyph("minus") }
+            Button { confirmDelete(fontTheme) } label: { footerGlyph("minus") }
                 .help("Delete the selected font theme")
                 // A bundled theme lives inside the app: there is nothing to
                 // delete, and removing the last one would leave the picker with
@@ -266,17 +273,39 @@ struct FontThemesSheet: View {
         beginRename()
     }
 
+    /// The footer's Duplicate: a copy of the selected theme, selected — the
+    /// same typography, so nothing repaints.
     private func duplicateTheme() {
         guard let copy = try? ThemeStore.shared.duplicate(fontTheme) else { return }
         fontThemes = ThemeStore.shared.fontThemes()
         fontTheme = copy
     }
 
+    /// A row menu's Duplicate: a copy of that row's theme, the selection left
+    /// alone, as Finder leaves it on a secondary click. Selecting the copy of
+    /// a theme not in force would put it in force.
+    private func duplicateTheme(_ name: String) {
+        guard (try? ThemeStore.shared.duplicate(name)) != nil else { return }
+        fontThemes = ThemeStore.shared.fontThemes()
+    }
+
+    /// Puts the confirmation up for `name`, which a row menu may name without
+    /// selecting it.
+    private func confirmDelete(_ name: String) {
+        deleting = name
+        confirmingDelete = true
+    }
+
     private func deleteTheme() {
-        let going = fontTheme
-        guard let next = fontThemes.first(where: { $0.name != going }) else { return }
-        // The pane's onChange applies it; applying here too repainted twice.
-        fontTheme = next.name
+        let going = deleting ?? fontTheme
+        deleting = nil
+        // Only the theme in force has to hand over to another; deleting any
+        // other leaves the selection where it is.
+        if going == fontTheme {
+            guard let next = fontThemes.first(where: { $0.name != going }) else { return }
+            // The pane's onChange applies it; applying here too repainted twice.
+            fontTheme = next.name
+        }
         try? ThemeStore.shared.deleteUserTheme(named: going)
         fontThemes = ThemeStore.shared.fontThemes()
     }
