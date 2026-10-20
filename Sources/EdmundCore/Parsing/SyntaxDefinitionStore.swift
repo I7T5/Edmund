@@ -101,7 +101,7 @@ public final class SyntaxDefinitionStore {
     }
 
     private static func loadBundled() -> [(LanguageDefinition, URL)] {
-        let urls = Bundle.module.urls(forResourcesWithExtension: "json", subdirectory: "Syntaxes") ?? []
+        let urls = Bundle.edmundCore.urls(forResourcesWithExtension: "json", subdirectory: "Syntaxes") ?? []
         return urls.compactMap(decode)
     }
 

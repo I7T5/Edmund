@@ -377,7 +377,7 @@ public final class ThemeStore {
     }
 
     private static func load<T: Decodable>(_ type: T.Type, bundled subdirectory: String) -> [(T, URL)] {
-        let urls = Bundle.module.urls(forResourcesWithExtension: "json", subdirectory: subdirectory) ?? []
+        let urls = Bundle.edmundCore.urls(forResourcesWithExtension: "json", subdirectory: subdirectory) ?? []
         return urls.compactMap { decode(type, $0) }
     }
 
