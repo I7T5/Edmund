@@ -205,16 +205,14 @@ class Document: NSDocument, HeadingNavigable {
         }
 
         // Toolbar holds the formatting items plus the right-aligned view-mode
-        // toggle (and gives the titlebar extra height for roomy traffic lights).
-        // Set it only after `editor` exists — assigning the toolbar synchronously
-        // vends its items.
+        // toggle and inspector button (and gives the titlebar extra height for
+        // roomy traffic lights). Set it only after `editor` exists — assigning
+        // the toolbar synchronously vends its items.
         //
         // The identifier is versioned: `autosavesConfiguration` persists the item
-        // layout per identifier, so every window that ever ran the one-item
-        // toolbar has `[flexibleSpace, viewMode]` on disk, and that saved set
-        // wins over any new defaults. Bumping the identifier is what makes the
-        // format items appear for existing users; the only customization it
-        // discards is the ordering of a single item.
+        // layout per identifier, and a saved set wins over any new defaults.
+        // MainToolbar3 is what makes the inspector button appear for existing
+        // users; it also discards any layout they customized under MainToolbar2.
         formatToolbar = FormatToolbar(document: self)
         let toolbar = NSToolbar(identifier: "MainToolbar3")
         toolbar.delegate = self
@@ -232,7 +230,7 @@ class Document: NSDocument, HeadingNavigable {
         let statusBarHeight: CGFloat = 22
         let contentBounds = window.contentView!.bounds
 
-        // The text view fills the whole window; the status bar floats over its
+        // The text view fills the editor pane; the status bar floats over its
         // bottom edge, revealed on hover.
         scrollView = NSScrollView(frame: contentBounds)
         scrollView.autoresizingMask = [.width, .height]

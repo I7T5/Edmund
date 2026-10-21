@@ -80,6 +80,28 @@ import AppKit
         #expect(growing.roots[0].children.allSatisfy { growing.outlineView.isItemExpanded($0) })
     }
 
+    /// Return on the selected heading goes to it, as a click does — the only
+    /// way a keyboard user reaches a heading they arrowed to.
+    @Test func returnGoesToTheSelectedHeading() throws {
+        let inspector = InspectorViewController()
+        _ = inspector.view
+        inspector.setHeadings([(1, "A"), (2, "a1"), (1, "B")].map {
+            OutlineHeading(level: $0.0, title: $0.1, range: NSRange(location: 0, length: 0))
+        })
+        var went: Int?
+        inspector.onSelectHeading = { went = $0 }
+        let outline = inspector.outlineView
+        let row = outline.row(forItem: inspector.roots[1])
+        outline.selectRowIndexes([row], byExtendingSelection: false)
+
+        let returnKey = try #require(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+            context: nil, characters: "\r", charactersIgnoringModifiers: "\r",
+            isARepeat: false, keyCode: 36))
+        outline.keyDown(with: returnKey)
+        #expect(went == 2)
+    }
+
     /// Collapsing a heading survives a rebuild, which creates new node objects.
     @Test func userCollapseSurvivesRebuild() throws {
         let inspector = InspectorViewController()

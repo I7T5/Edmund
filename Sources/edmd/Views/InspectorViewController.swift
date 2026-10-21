@@ -40,6 +40,9 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     /// Headings the user collapsed, by level and title, re-applied after a
     /// rebuild — the rebuilt nodes are new objects.
     private var collapsedKeys: Set<String> = []
+    /// Set while this code expands or reloads rows itself, so the collapse and
+    /// expand notifications that fires are not recorded in `collapsedKeys` as
+    /// the user's own choices.
     private var isReloading = false
     /// Past this many headings the outline opens folded to two levels. Applied
     /// once, the first time there are headings, so an outline that grows past
@@ -137,8 +140,11 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         for child in node.children { expand(child) }
     }
 
+    /// A click on a heading, or Return on the selected one (`clickedRow` is -1
+    /// for a key press, see `InspectorOutlineView.keyDown`).
     @objc private func rowClicked(_ sender: Any?) {
-        guard let node = outlineView.item(atRow: outlineView.clickedRow) as? OutlineNode else { return }
+        let row = outlineView.clickedRow >= 0 ? outlineView.clickedRow : outlineView.selectedRow
+        guard let node = outlineView.item(atRow: row) as? OutlineNode else { return }
         onSelectHeading?(node.index)
     }
 
@@ -181,8 +187,8 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         case let section as Section:
             return sectionCell(section.title)
         case let node as OutlineNode:
-            // The Info names' secondary colour: full label colour read too stark
-            // for a column of navigation.
+            // Secondary label colour, like the Info names: full label colour read
+            // too stark for a column of navigation.
             let cell = textCell(node.heading.title.isEmpty ? " " : node.heading.title, id: "heading",
                                 color: .secondaryLabelColor)
             cell.toolTip = node.heading.title
@@ -286,11 +292,27 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 /// alongside the section titles, instead of the full label colour AppKit
 /// gives them. Faded rather than tinted: the disclosure button's cell ignores
 /// `contentTintColor` (set, template image, still drawn in label colour), and
-/// secondary label is label colour at about half opacity anyway.
+/// secondary label is label colour at about half opacity anyway. Not faded
+/// under Increase Contrast, where secondary label colour darkens instead.
+///
+/// Return or Enter on the selected heading goes to it, as a click does:
+/// otherwise a keyboard user could arrow to a heading but never reach it.
 private final class InspectorOutlineView: NSOutlineView {
     override func makeView(withIdentifier identifier: NSUserInterfaceItemIdentifier, owner: Any?) -> NSView? {
         let view = super.makeView(withIdentifier: identifier, owner: owner)
-        if identifier == NSOutlineView.disclosureButtonIdentifier { view?.alphaValue = 0.5 }
+        if identifier == NSOutlineView.disclosureButtonIdentifier,
+           !NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
+            view?.alphaValue = 0.5
+        }
         return view
+    }
+
+    override func keyDown(with event: NSEvent) {
+        // 36 is Return, 76 the keypad's Enter.
+        if event.keyCode == 36 || event.keyCode == 76, selectedRow >= 0, let action {
+            sendAction(action, to: target)
+            return
+        }
+        super.keyDown(with: event)
     }
 }

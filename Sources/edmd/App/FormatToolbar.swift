@@ -41,7 +41,7 @@ final class FormatToolbar: NSObject {
 
     /// The view-mode and inspector buttons, right-aligned. The formatting
     /// group stays *allowed*, so it can be dragged in from Customize Toolbar,
-    /// but the default bar is bare.
+    /// but the default bar has no formatting items.
     static func defaultIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
         [.flexibleSpace, viewMode, inspector]
     }
