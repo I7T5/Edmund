@@ -184,7 +184,10 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             cell.textField?.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
             return cell
         case let node as OutlineNode:
-            let cell = textCell(node.heading.title.isEmpty ? " " : node.heading.title, id: "heading")
+            // The Info names' secondary colour: full label colour read too stark
+            // for a column of navigation.
+            let cell = textCell(node.heading.title.isEmpty ? " " : node.heading.title, id: "heading",
+                                color: .secondaryLabelColor)
             cell.toolTip = node.heading.title
             return cell
         case let row as InfoRow:
