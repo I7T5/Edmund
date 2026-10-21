@@ -7,7 +7,8 @@ import EdmundCore
 /// Info section repeating the status bar's fields. One source-list
 /// `NSOutlineView` whose two sections are group rows, so AppKit supplies their
 /// hover Show/Hide; every heading with sub-headings gets its own disclosure
-/// triangle. Everything opens expanded.
+/// triangle. Everything opens expanded, except that a long outline opens
+/// folded to its top two levels.
 @MainActor
 final class InspectorViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
@@ -40,15 +41,24 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     /// rebuild — the rebuilt nodes are new objects.
     private var collapsedKeys: Set<String> = []
     private var isReloading = false
+    /// Past this many headings the outline opens folded to two levels. Applied
+    /// once, the first time there are headings, so an outline that grows past
+    /// it while being written never folds under the writer.
+    static let foldThreshold = 20
+    private var hasAppliedDefaultFold = false
 
     private(set) var infoRows = [InfoRow("Words", "0"), InfoRow("Characters", "0"),
                                  InfoRow("Location", "0"), InfoRow("Line", "1"),
                                  InfoRow("Line Ending", "LF")]
 
-    let outlineView = NSOutlineView()
+    let outlineView: NSOutlineView = InspectorOutlineView()
 
     override func loadView() {
         outlineView.style = .sourceList
+        // The editor's own background rather than the source list's
+        // translucent material, so the inspector reads as part of the page.
+        // Set after `style`, which installs the material's clear background.
+        outlineView.backgroundColor = .textBackgroundColor
         outlineView.headerView = nil
         outlineView.floatsGroupRows = false
         let column = NSTableColumn(identifier: .init("main"))
@@ -64,11 +74,18 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         let scroll = NSScrollView()
         scroll.documentView = outlineView
         scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
+        // With "always show scroll bars" a legacy scroller otherwise keeps
+        // its empty track down the inspector's edge when nothing scrolls.
+        scroll.autohidesScrollers = true
+        scroll.backgroundColor = .textBackgroundColor
         view = scroll
 
         outlineView.reloadData()
-        outlineView.expandItem(nil, expandChildren: true)
+        isReloading = true
+        outlineView.expandItem(outlineSection)
+        outlineView.expandItem(infoSection)
+        for root in roots { expand(root) }
+        isReloading = false
     }
 
     // MARK: - Updates
@@ -78,6 +95,10 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         guard keys != shownHeadings else { return }
         shownHeadings = keys
         roots = OutlineNode.tree(headings)
+        if !hasAppliedDefaultFold, !headings.isEmpty {
+            hasAppliedDefaultFold = true
+            if headings.count > Self.foldThreshold { for root in roots { foldBelow(root) } }
+        }
         guard isViewLoaded else { return }
         isReloading = true
         outlineView.reloadItem(outlineSection, reloadChildren: true)
@@ -94,6 +115,16 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     }
 
     nonisolated private static func key(_ heading: OutlineHeading) -> String { "\(heading.level)|\(heading.title)" }
+
+    /// Marks every heading under `node` that has sub-headings as collapsed —
+    /// all of them, not just the first level, so opening one shows only its
+    /// own children.
+    private func foldBelow(_ node: OutlineNode) {
+        for child in node.children where !child.children.isEmpty {
+            collapsedKeys.insert(Self.key(child.heading))
+            foldBelow(child)
+        }
+    }
 
     /// Expands `node` and its descendants, except those the user collapsed.
     private func expand(_ node: OutlineNode) {
@@ -212,5 +243,18 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         }
         value.stringValue = row.value
         return cell
+    }
+}
+
+/// Draws its disclosure chevrons at the weight of the secondary label colour,
+/// alongside the section titles, instead of the full label colour AppKit
+/// gives them. Faded rather than tinted: the disclosure button's cell ignores
+/// `contentTintColor` (set, template image, still drawn in label colour), and
+/// secondary label is label colour at about half opacity anyway.
+private final class InspectorOutlineView: NSOutlineView {
+    override func makeView(withIdentifier identifier: NSUserInterfaceItemIdentifier, owner: Any?) -> NSView? {
+        let view = super.makeView(withIdentifier: identifier, owner: owner)
+        if identifier == NSOutlineView.disclosureButtonIdentifier { view?.alphaValue = 0.5 }
+        return view
     }
 }

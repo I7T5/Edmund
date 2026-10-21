@@ -258,8 +258,8 @@ class Document: NSDocument, HeadingNavigable {
         containerView.addSubview(statusBar)   // overlay, on top of the text
 
         // The editor pane and the inspector, as AppKit's own split: its
-        // inspector item is what the toolbar's `.toggleInspector` button and
-        // `.inspectorTrackingSeparator` act on. Sized before it becomes the
+        // inspector item is what `toggleInspector(_:)` — the toolbar's info
+        // button — collapses and expands. Sized before it becomes the
         // content view controller, which otherwise resizes the window to fit it.
         let editorPane = NSViewController()
         editorPane.view = containerView
@@ -1230,8 +1230,8 @@ class Document: NSDocument, HeadingNavigable {
         prefs.save()
     }
 
-    /// View ▸ Show/Hide Inspector. The toolbar button sends AppKit's own
-    /// `toggleInspector(_:)`, but the split view controller that answers it
+    /// View ▸ Show/Hide Inspector. The toolbar button sends the split view
+    /// controller's own `toggleInspector(_:)`, but the controller
     /// leaves a menu item's title alone, so the menu comes through here to be
     /// retitled like Show/Hide Status Bar.
     @objc func toggleInspectorShown(_ sender: Any?) {

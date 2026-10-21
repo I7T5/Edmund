@@ -12,7 +12,7 @@ import EdmundCore
 //
 // Default order (misc/plans/prompts/format-bar.md):
 //   Format ▾ · Checklist · Table · Image ▾ · Link · (spacer) · View mode · Share
-//   │ Inspector
+//   · Inspector
 //
 // `FormatToolbar` is an object rather than an enum because it has to *own* the
 // icon-row buttons' action targets, which `NSControl.target` only holds weakly.
@@ -26,6 +26,7 @@ final class FormatToolbar: NSObject {
     static let image      = NSToolbarItem.Identifier("image")
     static let link       = NSToolbarItem.Identifier("link")
     static let share      = NSToolbarItem.Identifier("share")
+    static let inspector  = NSToolbarItem.Identifier("inspector")
 
     private weak var document: Document?
 
@@ -38,18 +39,15 @@ final class FormatToolbar: NSObject {
     static let centeredIdentifiers: Set<NSToolbarItem.Identifier> =
         [format, checklist, table, image, link]
 
-    /// The view-mode button right-aligned, then the inspector button past the
-    /// separator that tracks the inspector's edge. The formatting group stays
-    /// *allowed*, so it can be dragged in from Customize Toolbar, but the
-    /// default bar is bare. Both inspector items are AppKit's own: the button
-    /// sends `toggleInspector(_:)` to the window's split view controller.
+    /// The view-mode and inspector buttons, right-aligned. The formatting
+    /// group stays *allowed*, so it can be dragged in from Customize Toolbar,
+    /// but the default bar is bare.
     static func defaultIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, viewMode, .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
+        [.flexibleSpace, viewMode, inspector]
     }
 
     static func allowedIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
-        [format, checklist, table, image, link, share, viewMode,
-         .inspectorTrackingSeparator, .toggleInspector, .space, .flexibleSpace]
+        [format, checklist, table, image, link, share, viewMode, inspector, .space, .flexibleSpace]
     }
 
     /// Builds one of the formatting items, or nil if `id` isn't ours (the
@@ -79,6 +77,13 @@ final class FormatToolbar: NSObject {
             // menu here would also take the toolbar's own secondary click.
             return actionItem(id, label: "Link", toolTip: "Insert a link", symbol: "link.badge.plus",
                               action: #selector(EditorTextView.formatLink(_:)))
+        case Self.inspector:
+            // Ours rather than AppKit's `.toggleInspector`, for the info glyph
+            // in place of its sidebar one. Same action, answered by the
+            // window's split view controller up the responder chain.
+            return actionItem(id, label: "Inspector", toolTip: "Show or hide the inspector",
+                              symbol: "info.circle",
+                              action: #selector(NSSplitViewController.toggleInspector(_:)))
         case Self.share:
             // AppKit's own share item: it owns the picker, the anchoring and the
             // standard icon, and asks the delegate below for what to share.

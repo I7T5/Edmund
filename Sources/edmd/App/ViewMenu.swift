@@ -60,7 +60,7 @@ enum ViewMenu {
                                      shortcut: .cmdOpt("i")).makeItem())
         viewMenu.addItem(.separator())
 
-        // The inspector (outline + info) the toolbar's inspector button opens,
+        // The inspector (outline + info) the toolbar's info button opens,
         // retitled Show/Hide by Document.validateMenuItem. No default shortcut:
         // ⌥⌘I, the usual one, is Inspect Reader's.
         viewMenu.addItem(MenuCommand(id: "view.toggleInspector", group: "View",

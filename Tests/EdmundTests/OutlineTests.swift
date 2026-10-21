@@ -56,6 +56,30 @@ import AppKit
         #expect(roots[1].children[1].children[0].index == 4)
     }
 
+    /// Past the threshold the outline opens at two levels: the roots open, the
+    /// headings under them closed. Decided once — a short outline that grows
+    /// past it stays as it was.
+    @Test func longOutlineOpensFoldedToTwoLevels() {
+        func headings(_ sections: Int) -> [OutlineHeading] {
+            [OutlineHeading(level: 1, title: "Doc", range: NSRange())] + (0..<sections).flatMap { i in
+                [OutlineHeading(level: 2, title: "S\(i)", range: NSRange()),
+                 OutlineHeading(level: 3, title: "S\(i).a", range: NSRange())]
+            }
+        }
+        let long = InspectorViewController()
+        _ = long.view
+        long.setHeadings(headings(InspectorViewController.foldThreshold))
+        let outline = long.outlineView
+        #expect(outline.isItemExpanded(long.roots[0]))
+        #expect(long.roots[0].children.allSatisfy { !outline.isItemExpanded($0) })
+
+        let growing = InspectorViewController()
+        _ = growing.view
+        growing.setHeadings(headings(2))
+        growing.setHeadings(headings(InspectorViewController.foldThreshold))
+        #expect(growing.roots[0].children.allSatisfy { growing.outlineView.isItemExpanded($0) })
+    }
+
     /// Collapsing a heading survives a rebuild, which creates new node objects.
     @Test func userCollapseSurvivesRebuild() throws {
         let inspector = InspectorViewController()
