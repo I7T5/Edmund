@@ -45,7 +45,9 @@ final class ThumbnailProvider: QLThumbnailProvider {
         thumbLog.log("drew \(image == nil ? "nothing" : "\(image!.width)x\(image!.height) px", privacy: .public)")
         guard let image else { return handler(nil, nil) }
         handler(QLThumbnailReply(contextSize: size) { ctx in
-            ctx.draw(image, in: CGRect(origin: .zero, size: size))
+            // The context is in pixels (contextSize × scale), not the points of
+            // `size`: drawing at `size` filled only its bottom-left quarter.
+            ctx.draw(image, in: ctx.boundingBoxOfClipPath)
             return true
         }, nil)
     }
