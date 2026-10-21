@@ -165,11 +165,22 @@ extension EditorTextView {
         NSSound.beep()
     }
 
+    /// The document's headings in source order, for the inspector's outline.
+    /// Read off the parsed blocks, so a `#` in a code fence or front matter is
+    /// never one.
+    public var outlineHeadings: [OutlineHeading] {
+        blocks.compactMap { block in
+            guard case .heading(let level) = block.kind else { return nil }
+            return OutlineHeading(level: level, title: OutlineHeading.title(of: block.content),
+                                  range: block.range)
+        }
+    }
+
     /// Brings `range`'s block into view. In Edit/Source the editor selects the
     /// block (a visible highlight) and scrolls to it; in Read mode the editor is
     /// hidden, so it scrolls the web view instead — mapping the block's source
     /// line to the nearest top-level anchor the read view actually carries.
-    private func scrollToBlock(_ range: NSRange) {
+    public func scrollToBlock(_ range: NSRange) {
         if viewMode == .reading {
             let line = line(forOffset: range.location)
             // Anchors exist only on top-level block starts; snap `line` to the
