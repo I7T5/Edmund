@@ -178,6 +178,9 @@ final class FormatToolbar: NSObject {
         "tablecells": 14,
         "photo.on.rectangle": 13.5,
         "link.badge.plus": 13.5,
+        // A closed circle fills its box: at 15 it drew 16×15pt of ink beside
+        // the view-mode pencil's 11×11.5 and book's 13×12. 13 draws 13×13.
+        "info.circle": 13,
     ]
 
     static func symbol(_ name: String) -> NSImage? {

@@ -265,6 +265,10 @@ class Document: NSDocument, HeadingNavigable {
         editorPane.view = containerView
         inspector = InspectorViewController()
         inspector.onSelectHeading = { [weak self] in self?.goToHeading(at: $0) }
+        // Opening width, CotEditor's inspector's (Xcode's is 260pt). Unset, the
+        // split falls back to the minimum; a width the user drags to is saved
+        // by the autosave below and wins over this.
+        inspector.view.setFrameSize(NSSize(width: 200, height: contentBounds.height))
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         inspectorItem.minimumThickness = 180
         inspectorItem.maximumThickness = 360

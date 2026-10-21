@@ -50,7 +50,7 @@ import ScreenCaptureKit
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   inspector         toggle the inspector from the first responder, as the
 ///                     toolbar button and View menu item reach it
-///   outline           log the inspector's rows (depth, expanded, text)
+///   outline           log the inspector's width and rows (depth, expanded, text)
 ///   outlineclick <t>  click the inspector's outline row titled <t>
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
@@ -546,6 +546,7 @@ enum ReproScript {
             case "outline":
                 scheduleDoc(after: delay) { doc in
                     let view = doc.inspector.outlineView
+                    report("repro outline width=\(doc.inspector.view.frame.width)")
                     for row in 0..<view.numberOfRows {
                         let item = view.item(atRow: row)
                         let text: String
