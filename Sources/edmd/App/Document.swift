@@ -36,6 +36,11 @@ class Document: NSDocument, HeadingNavigable {
     private var findController: FindController!
     private var formatBar: FormatBarView!
     private var readView: ReadModeWebView?
+    /// The right-hand inspector (outline + info) and its split item, which
+    /// `toggleInspector(_:)` collapses and expands.
+    private(set) var inspector: InspectorViewController!
+    private var inspectorItem: NSSplitViewItem!
+    private var inspectorCollapseObservation: NSKeyValueObservation?
 
     /// Editor character offset captured when entering Read mode (the topmost
     /// visible line at the moment of the switch), used to scroll the editor
@@ -211,11 +216,11 @@ class Document: NSDocument, HeadingNavigable {
         // format items appear for existing users; the only customization it
         // discards is the ordering of a single item.
         formatToolbar = FormatToolbar(document: self)
-        let toolbar = NSToolbar(identifier: "MainToolbar2")
+        let toolbar = NSToolbar(identifier: "MainToolbar3")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
-        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar2"
+        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar3"
         // Flexible space alone does not centre the group: measured on a 1500pt
         // window, the leading one absorbed all 1077pt of slack and the trailing
         // one got nothing. This is the API that actually centres.
@@ -252,7 +257,30 @@ class Document: NSDocument, HeadingNavigable {
         containerView.addSubview(scrollView)
         containerView.addSubview(statusBar)   // overlay, on top of the text
 
-        window.contentView = containerView
+        // The editor pane and the inspector, as AppKit's own split: its
+        // inspector item is what the toolbar's `.toggleInspector` button and
+        // `.inspectorTrackingSeparator` act on. Sized before it becomes the
+        // content view controller, which otherwise resizes the window to fit it.
+        let editorPane = NSViewController()
+        editorPane.view = containerView
+        inspector = InspectorViewController()
+        inspector.onSelectHeading = { [weak self] in self?.goToHeading(at: $0) }
+        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
+        inspectorItem.minimumThickness = 180
+        inspectorItem.maximumThickness = 360
+        inspectorItem.isCollapsed = true
+        let split = NSSplitViewController()
+        split.addSplitViewItem(NSSplitViewItem(viewController: editorPane))
+        split.addSplitViewItem(inspectorItem)
+        // Open/closed and width carry over to the next window and launch.
+        split.splitView.autosaveName = "EdmundInspector"
+        split.view.frame = contentBounds
+        window.contentViewController = split
+        // The outline is only kept current while it is showing; catch it up
+        // whenever it opens.
+        inspectorCollapseObservation = inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.refreshOutline(immediately: true) }
+        }
 
         findController = FindController(editor: editor, scrollView: scrollView,
                                        container: containerView, statusBar: statusBar)
@@ -406,6 +434,7 @@ class Document: NSDocument, HeadingNavigable {
 
     @objc private func editorDidChange(_ notification: Notification) {
         updateStatusBar()
+        refreshOutline()
         // An edit can add or remove the delimiters around the caret without
         // moving the selection, so the bar's on-state has to follow edits too.
         refreshFormatBarState()
@@ -435,17 +464,53 @@ class Document: NSDocument, HeadingNavigable {
         // changed, and debounce across a typing burst so a long document gets
         // one pass after the user pauses, not one per keystroke. Selection
         // changes reuse the cached counts (same text → same counts).
-        if let cached = statusMetrics, cached.source == text {
-            statusBar.setMetrics(words: cached.words, characters: cached.characters,
-                                 location: location, line: line,
-                                 lineEnding: editor.originalLineEnding.displayName)
+        if statusMetrics?.source != text { scheduleStatusMetrics(for: text) }
+        guard let cached = statusMetrics else { return }
+        let ending = editor.originalLineEnding.displayName
+        statusBar.setMetrics(words: cached.words, characters: cached.characters,
+                             location: location, line: line, lineEnding: ending)
+        inspector?.setMetrics(words: cached.words, characters: cached.characters,
+                              location: location, line: line, lineEnding: ending)
+    }
+
+    // MARK: - Inspector outline
+
+    /// Rebuilds the inspector's outline from the editor's headings. Edits
+    /// debounce like the Read view's re-render, and nothing runs while the
+    /// inspector is closed — opening it catches up (see the collapse observer).
+    func refreshOutline(immediately: Bool = false) {
+        outlineRefreshWorkItem?.cancel()
+        outlineRefreshWorkItem = nil
+        guard let inspectorItem, !inspectorItem.isCollapsed else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let editor = self.editor else { return }
+            self.inspector.setHeadings(editor.outlineHeadings)
+        }
+        if immediately {
+            work.perform()
         } else {
-            scheduleStatusMetrics(for: text)
-            if let cached = statusMetrics {
-                statusBar.setMetrics(words: cached.words, characters: cached.characters,
-                                     location: location, line: line,
-                                     lineEnding: editor.originalLineEnding.displayName)
-            }
+            outlineRefreshWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        }
+    }
+
+    /// The pending debounced outline rebuild, replaced on every edit.
+    private var outlineRefreshWorkItem: DispatchWorkItem?
+
+    /// An outline click. The heading is looked up again by index rather than
+    /// carried in the row, whose range may be a debounce behind the text.
+    /// Edit and Source put the caret at the heading and scroll it to the top;
+    /// Read scrolls the page to it.
+    private func goToHeading(at index: Int) {
+        let headings = editor.outlineHeadings
+        guard headings.indices.contains(index) else { return }
+        let range = headings[index].range
+        if editor.viewMode == .reading {
+            editor.scrollToBlock(range)
+        } else {
+            editor.window?.makeFirstResponder(editor)
+            editor.setSelectedRange(NSRange(location: range.location, length: 0))
+            editor.scrollCharacterToTop(range.location)
         }
     }
 
@@ -519,6 +584,7 @@ class Document: NSDocument, HeadingNavigable {
             warnIfInconsistentLineEndings(in: content)
         }
         updateStatusBar()
+        refreshOutline(immediately: true)
     }
 
     /// Every reload of the file on disk lands here: AppKit's silent re-read when
@@ -541,6 +607,7 @@ class Document: NSDocument, HeadingNavigable {
         editor.setSelectedRange(NSRange(location: offset, length: 0))
         editor.scrollRangeToVisible(editor.selectedRange())
         refreshReadView(immediately: true)
+        refreshOutline(immediately: true)
         Log.info("Reloaded from disk", category: .io)
     }
 
@@ -1163,6 +1230,14 @@ class Document: NSDocument, HeadingNavigable {
         prefs.save()
     }
 
+    /// View ▸ Show/Hide Inspector. The toolbar button sends AppKit's own
+    /// `toggleInspector(_:)`, but the split view controller that answers it
+    /// leaves a menu item's title alone, so the menu comes through here to be
+    /// retitled like Show/Hide Status Bar.
+    @objc func toggleInspectorShown(_ sender: Any?) {
+        (inspector.parent as? NSSplitViewController)?.toggleInspector(sender)
+    }
+
     /// Applies the format bar's visibility rule (hidden in Reading mode or when
     /// the Show Format Bar setting is off — the latter also removes any chance
     /// of a click reaching a read-only editor), refreshes its controls' enabled
@@ -1237,6 +1312,9 @@ class Document: NSDocument, HeadingNavigable {
         }
         if item.action == #selector(toggleStatusBarShown(_:)) {
             item.title = StatusBarPrefs.load().isShown ? "Hide Status Bar" : "Show Status Bar"
+        }
+        if item.action == #selector(toggleInspectorShown(_:)) {
+            item.title = inspectorItem?.isCollapsed == false ? "Hide Inspector" : "Show Inspector"
         }
         if item.action == #selector(toggleAlwaysShowStatusBar(_:)) {
             let prefs = StatusBarPrefs.load()

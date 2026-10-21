@@ -12,6 +12,7 @@ import EdmundCore
 //
 // Default order (misc/plans/prompts/format-bar.md):
 //   Format ▾ · Checklist · Table · Image ▾ · Link · (spacer) · View mode · Share
+//   │ Inspector
 //
 // `FormatToolbar` is an object rather than an enum because it has to *own* the
 // icon-row buttons' action targets, which `NSControl.target` only holds weakly.
@@ -37,15 +38,18 @@ final class FormatToolbar: NSObject {
     static let centeredIdentifiers: Set<NSToolbarItem.Identifier> =
         [format, checklist, table, image, link]
 
-    /// Just the view-mode button, right-aligned — the toolbar as it shipped. The
-    /// formatting group stays *allowed*, so it can be dragged in from Customize
-    /// Toolbar, but the default bar is bare.
+    /// The view-mode button right-aligned, then the inspector button past the
+    /// separator that tracks the inspector's edge. The formatting group stays
+    /// *allowed*, so it can be dragged in from Customize Toolbar, but the
+    /// default bar is bare. Both inspector items are AppKit's own: the button
+    /// sends `toggleInspector(_:)` to the window's split view controller.
     static func defaultIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, viewMode]
+        [.flexibleSpace, viewMode, .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
     }
 
     static func allowedIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
-        [format, checklist, table, image, link, share, viewMode, .space, .flexibleSpace]
+        [format, checklist, table, image, link, share, viewMode,
+         .inspectorTrackingSeparator, .toggleInspector, .space, .flexibleSpace]
     }
 
     /// Builds one of the formatting items, or nil if `id` isn't ours (the

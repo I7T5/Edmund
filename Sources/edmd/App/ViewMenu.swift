@@ -60,6 +60,14 @@ enum ViewMenu {
                                      shortcut: .cmdOpt("i")).makeItem())
         viewMenu.addItem(.separator())
 
+        // The inspector (outline + info) the toolbar's inspector button opens,
+        // retitled Show/Hide by Document.validateMenuItem. No default shortcut:
+        // ⌥⌘I, the usual one, is Inspect Reader's.
+        viewMenu.addItem(MenuCommand(id: "view.toggleInspector", group: "View",
+                                     title: "Show Inspector",
+                                     action: #selector(Document.toggleInspectorShown(_:))).makeItem())
+        viewMenu.addItem(.separator())
+
         // The status bar, as a pair like the toolbar's above: Show/Hide
         // (retitled by Document.validateMenuItem) and a checkbox pinning it
         // visible — off by default, when the bar only appears on hover. Worded
