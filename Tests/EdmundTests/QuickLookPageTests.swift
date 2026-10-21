@@ -52,6 +52,26 @@ struct QuickLookPageTests {
                                         pixelSize: CGSize(width: 200, height: 259)) != nil)
     }
 
+    @Test("A short document renders whole in the thumbnail")
+    @MainActor func thumbnailSourceShort() {
+        let md = "# Title\n\nShort body.\n"
+        #expect(QuickLookPage.thumbnailSource(md) == md)
+    }
+
+    @Test("A long document is cut at a blank line near the limit, never inside a code fence")
+    @MainActor func thumbnailSourceCut() {
+        let para = String(repeating: "word ", count: 40) + "\n\n"            // 202 bytes
+        let fence = "```\n" + String(repeating: "code line\n\n", count: 30) + "```\n\n"
+        let md = String(repeating: para, count: 20) + fence + String(repeating: para, count: 40)
+        // The limit falls inside the fence (bytes 4040–4378), whose blank lines
+        // are not cut points, so the cut is the blank line before the fence.
+        let cut = QuickLookPage.thumbnailSource(md, limit: 4_300)
+        #expect(md.hasPrefix(cut))
+        #expect(cut.utf8.count == 4_040)
+        #expect(cut.hasSuffix("\n\n"))
+        #expect(!cut.contains("```"))
+    }
+
     @Test("Light and dark pages paint different backgrounds")
     @MainActor func appearance() {
         let light = QuickLookPage.html(markdown: "text", baseURL: nil, dark: false)

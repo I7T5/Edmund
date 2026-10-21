@@ -22,8 +22,16 @@ final class ThumbnailProvider: QLThumbnailProvider {
                                    _ handler: @escaping (QLThumbnailReply?, Error?) -> Void) {
         let url = request.fileURL
         thumbLog.log("provideThumbnail: \(url.lastPathComponent, privacy: .public) max \(request.maximumSize.width, privacy: .public)x\(request.maximumSize.height, privacy: .public) @\(request.scale, privacy: .public)x")
+        // The thumbnail renders only the start of the document
+        // (`QuickLookPage.thumbnailSource`), so read only the start of the file.
+        // A character split at the 64 KB boundary decodes as U+FFFD, well past
+        // where the page is cut.
         let markdown: String
-        do { markdown = try String(contentsOf: url, encoding: .utf8) } catch { return handler(nil, error) }
+        do {
+            let file = try FileHandle(forReadingFrom: url)
+            defer { try? file.close() }
+            markdown = String(decoding: try file.read(upToCount: 65_536) ?? Data(), as: UTF8.self)
+        } catch { return handler(nil, error) }
         let maximumSize = request.maximumSize, scale = request.scale
 
         // The HTML importer behind the page runs on the main thread. The
