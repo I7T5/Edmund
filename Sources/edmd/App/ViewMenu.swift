@@ -51,18 +51,21 @@ enum ViewMenu {
                                      title: "Show Source in Editor",
                                      action: #selector(Document.toggleSourceMode(_:))).makeItem())
 
-        // Web Inspector (⌥⌘I). nil target → routes through the responder chain
-        // to the key window's Document, so it works from Edit mode too: it
-        // switches to Read mode and opens the inspector, and toggles the
-        // inspector back off when it's already up.
-        viewMenu.addItem(MenuCommand(id: "view.inspectReader", group: "View", title: "Inspect Reader",
+        // Web Inspector (⌥⌘I), Safari's name for the same thing — and not the
+        // inspector below, which is the window's outline pane. nil target →
+        // routes through the responder chain to the key window's Document, so
+        // it works from Edit mode too: it switches to Read mode and opens the
+        // Web Inspector, and toggles it back off when it's already up
+        // (Document.validateMenuItem retitles it Show/Hide). The id keeps its
+        // shipped name so bound shortcuts survive.
+        viewMenu.addItem(MenuCommand(id: "view.inspectReader", group: "View", title: "Show Web Inspector",
                                      action: #selector(Document.toggleReaderInspector(_:)),
                                      shortcut: .cmdOpt("i")).makeItem())
         viewMenu.addItem(.separator())
 
         // The inspector (outline + info) the toolbar's info button opens,
         // retitled Show/Hide by Document.validateMenuItem. No default shortcut:
-        // ⌥⌘I, the usual one, is Inspect Reader's.
+        // ⌥⌘I, the usual one, is the Web Inspector's.
         viewMenu.addItem(MenuCommand(id: "view.toggleInspector", group: "View",
                                      title: "Show Inspector",
                                      action: #selector(Document.toggleInspectorShown(_:))).makeItem())

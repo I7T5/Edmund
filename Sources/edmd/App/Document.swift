@@ -1318,6 +1318,10 @@ class Document: NSDocument, HeadingNavigable {
         if item.action == #selector(toggleInspectorShown(_:)) {
             item.title = inspectorItem?.isCollapsed == false ? "Hide Inspector" : "Show Inspector"
         }
+        if item.action == #selector(toggleReaderInspector(_:)) {
+            let shown = editor?.viewMode == .reading && readView?.isWebInspectorVisible == true
+            item.title = shown ? "Hide Web Inspector" : "Show Web Inspector"
+        }
         if item.action == #selector(toggleAlwaysShowStatusBar(_:)) {
             let prefs = StatusBarPrefs.load()
             item.state = prefs.autoHide ? .off : .on
@@ -1350,10 +1354,10 @@ class Document: NSDocument, HeadingNavigable {
         editor?.viewMode == .reading ? editingMode : .reading
     }
 
-    /// "Inspect Reader" (⌥⌘I) — a semi-toggle, so one shortcut always gets you
-    /// to "reading with the inspector open": from Edit (or from Read with the
-    /// inspector closed) it lands in Read mode with the inspector up; pressed
-    /// again in that state it closes the inspector and leaves you in Read mode.
+    /// View ▸ Show Web Inspector (⌥⌘I) — a semi-toggle, so one shortcut always
+    /// gets you to "reading with the Web Inspector open": from Edit (or from
+    /// Read with it closed) it lands in Read mode with the Web Inspector up;
+    /// pressed again in that state it closes it and leaves you in Read mode.
     @objc func toggleReaderInspector(_ sender: Any?) {
         if editor.viewMode == .reading, readView?.isWebInspectorVisible == true {
             readView?.hideWebInspector(nil)

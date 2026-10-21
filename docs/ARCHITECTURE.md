@@ -352,7 +352,7 @@ Notable subsystems:
   lines: `HTMLRenderer.preprocess` strips front matter and block `%%` comments
   before swift-markdown parses, and reports what it cut so `originalLine`
   can map back — the `edmund-l<N>` anchors below use the same map.
-  **Inspect Reader (⌥⌘I)** is a semi-toggle on `Document`, not on the web
+  **View ▸ Show Web Inspector (⌥⌘I)** is a semi-toggle on `Document`, not on the web
   view, so it works from Edit too: it switches to Read and opens WebKit's
   private `_inspector`, and closes it when already up; entering Edit always
   hides it. The read view's context menu carries the same item as "Inspect
