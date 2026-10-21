@@ -113,7 +113,9 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         guard values != infoRows.map(\.value) else { return }
         for (row, value) in zip(infoRows, values) { row.value = value }
         guard isViewLoaded else { return }
-        outlineView.reloadItem(infoSection, reloadChildren: true)
+        // The rows only, not the section: reloading its title on every caret
+        // move re-created it, and it flashed a different grey each time.
+        for row in infoRows { outlineView.reloadItem(row) }
     }
 
     nonisolated private static func key(_ heading: OutlineHeading) -> String { "\(heading.level)|\(heading.title)" }
@@ -177,12 +179,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         switch item {
         case let section as Section:
-            // A source list's group-row look, set by hand: AppKit applies it
-            // only when the inspector opens in a window already on screen, so
-            // an inspector restored open at launch drew plain titles.
-            let cell = textCell(section.title, id: "group", color: .secondaryLabelColor)
-            cell.textField?.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
-            return cell
+            return sectionCell(section.title)
         case let node as OutlineNode:
             // The Info names' secondary colour: full label colour read too stark
             // for a column of navigation.
@@ -229,6 +226,36 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
             field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
             field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        return cell
+    }
+
+    /// A section title: small and bold, in the secondary colour CotEditor's
+    /// and Xcode's inspectors title their sections in.
+    ///
+    /// The label is deliberately not the cell's `textField`. A source list
+    /// restyles the label in that outlet — tertiary colour, semibold, some
+    /// time after the cell is created and only in a window on screen — which
+    /// set the two titles in different greys and made one re-created by a
+    /// reload flash dark before fading. Overriding the label's setters did not
+    /// stop it; leaving the outlet empty does.
+    private func sectionCell(_ title: String) -> NSTableCellView {
+        let identifier = NSUserInterfaceItemIdentifier("group")
+        if let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
+           let label = cell.subviews.first as? NSTextField {
+            label.stringValue = title
+            return cell
+        }
+        let cell = NSTableCellView()
+        cell.identifier = identifier
+        let label = NSTextField(labelWithString: title)
+        label.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
     }
