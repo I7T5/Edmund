@@ -19,10 +19,11 @@ public struct OutlineHeading: Equatable, Sendable {
     ///
     /// Runs for every heading on every outline refresh, so the one-line case —
     /// nearly all of them — slices one `Substring` instead of splitting,
-    /// trimming and joining: that took 6.5 of the 8.3ms a refresh spent on a
-    /// 1,509-heading document.
+    /// trimming and joining; on a 1,509-heading document that cut the heading
+    /// walk from ~6.5 to ~5.4ms (debug).
     public static func title(of content: String) -> String {
-        guard !content.contains("\n") else {
+        // A byte search: `contains(Character)` walks graphemes.
+        guard !content.utf8.contains(UInt8(ascii: "\n")) else {
             var lines = content.split(separator: "\n", omittingEmptySubsequences: false)
             lines.removeLast()   // setext underline
             return lines.map { String(trimmed($0)) }.joined(separator: " ")

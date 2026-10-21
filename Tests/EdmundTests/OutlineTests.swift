@@ -132,6 +132,42 @@ import AppKit
         #expect(!outline.isItemExpanded(inspector.roots[0]))
     }
 
+    /// Retitling many headings at once (a Replace All) rebuilds once instead
+    /// of reloading row by row.
+    @Test func massRetitleRebuilds() {
+        let inspector = InspectorViewController()
+        _ = inspector.view
+        let count = InspectorViewController.maxInPlaceRetitles + 1
+        func headings(_ prefix: String) -> [OutlineHeading] {
+            (0..<count).map { OutlineHeading(level: 1, title: "\(prefix)\($0)", range: NSRange(location: 0, length: 0)) }
+        }
+        inspector.setHeadings(headings("a"))
+        let first = inspector.roots[0]
+        inspector.setHeadings(headings("b"))
+        #expect(inspector.roots[0] !== first)
+        #expect(inspector.roots[0].heading.title == "b0")
+    }
+
+    /// Two collapsed headings share a title; renaming one must not make the
+    /// other forget it was collapsed.
+    @Test func renamingOneTwinKeepsTheOtherCollapsed() {
+        let inspector = InspectorViewController()
+        _ = inspector.view
+        func headings(_ titles: [(Int, String)]) -> [OutlineHeading] {
+            titles.map { OutlineHeading(level: $0.0, title: $0.1, range: NSRange(location: 0, length: 0)) }
+        }
+        inspector.setHeadings(headings([(1, "Notes"), (2, "x"), (1, "Notes"), (2, "y")]))
+        let outline = inspector.outlineView
+        outline.collapseItem(inspector.roots[0])
+        outline.collapseItem(inspector.roots[1])
+
+        inspector.setHeadings(headings([(1, "Renamed"), (2, "x"), (1, "Notes"), (2, "y")]))
+        // A level change forces a rebuild, which re-applies remembered state.
+        inspector.setHeadings(headings([(1, "Renamed"), (2, "x"), (1, "Notes"), (3, "y")]))
+        #expect(!outline.isItemExpanded(inspector.roots[0]))
+        #expect(!outline.isItemExpanded(inspector.roots[1]))
+    }
+
     /// Collapsing a heading survives a rebuild, which creates new node objects.
     @Test func userCollapseSurvivesRebuild() throws {
         let inspector = InspectorViewController()

@@ -50,6 +50,10 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     /// once, the first time there are headings, so an outline that grows past
     /// it while being written never folds under the writer.
     static let foldThreshold = 20
+    /// Most headings `setHeadings` retitles row by row before it rebuilds
+    /// instead (see there). An unmeasured guess: time a 1,509-heading Replace
+    /// All on both paths before tuning it.
+    static let maxInPlaceRetitles = 50
     private var hasAppliedDefaultFold = false
 
     private(set) var infoRows = [InfoRow("Words", "0"), InfoRow("Characters", "0"),
@@ -104,16 +108,26 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         // Same count and levels is the same tree: typing in a heading only
         // retitles it. Update those nodes in place and reload their rows,
         // rather than rebuild — which re-expanded every node, cost 6–7.5ms a
-        // pause on a 1,509-heading document, and dropped the selection.
+        // pause on a 1,509-heading document, and dropped the selection. Past
+        // `maxInPlaceRetitles` (a Replace All across headings) one rebuild is
+        // cheaper than that many single-row reloads.
         if isViewLoaded, headings.count == nodes.count,
            zip(headings, nodes).allSatisfy({ $0.level == $1.heading.level }) {
-            for (heading, node) in zip(headings, nodes) where heading.title != node.heading.title {
-                // A collapsed heading stays collapsed under its new title.
-                if collapsedKeys.remove(Self.key(node.heading)) != nil { collapsedKeys.insert(Self.key(heading)) }
-                node.heading = heading
-                outlineView.reloadItem(node)
+            let retitled = zip(headings, nodes).filter { $0.title != $1.heading.title }
+            if retitled.count <= Self.maxInPlaceRetitles {
+                for (heading, node) in retitled {
+                    // A collapsed heading stays collapsed under its new title;
+                    // the old key stays too while a same-titled twin keeps it.
+                    let oldKey = Self.key(node.heading)
+                    if collapsedKeys.contains(oldKey) {
+                        collapsedKeys.insert(Self.key(heading))
+                        if !keys.contains(oldKey) { collapsedKeys.remove(oldKey) }
+                    }
+                    node.heading = heading
+                    outlineView.reloadItem(node)
+                }
+                return
             }
-            return
         }
         roots = OutlineNode.tree(headings)
         nodes = []
