@@ -25,10 +25,12 @@ enum DocumentHTML {
                      dark: Bool,
                      baseURL: URL? = nil,
                      options: ReadRenderOptions = .default,
-                     forAttributedString: Bool = false) -> String {
+                     forAttributedString: Bool = false,
+                     extraCSS: String = "") -> String {
         let body = HTMLRenderer.render(markdown: markdown, options: options)
         let css = HTMLTheme.css(theme, callouts: callouts, dark: dark,
                                 maxContentWidthPoints: options.maxContentWidthPoints)
+            + (extraCSS.isEmpty ? "" : "\n" + extraCSS)
         return finish(body: body, css: css, theme: theme, dark: dark, baseURL: baseURL,
                       options: options, forAttributedString: forAttributedString)
     }

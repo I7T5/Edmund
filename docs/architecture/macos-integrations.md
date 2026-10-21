@@ -2,26 +2,28 @@
 
 Expands [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §6 (feature map). Covers the
 OS-level entry points into Edmund added beyond `CFBundleDocumentTypes`
-(double-click / Open With), and — importantly — **two limitations that are not
-bugs but consequences of how Edmund is built and signed**. Read those before
-assuming an integration is broken.
+(double-click / Open With), and — importantly — **one limitation that is not a
+bug but a consequence of how Edmund is built** (§3). Read it before assuming an
+integration is broken.
 
 ## 1. Why
 
 Edmund is a native editor, so it should be reachable the native ways: from the
 right-click Services menu, from Shortcuts/Spotlight, and by pressing Space on a
-`.md` in Finder. Three of the four pieces reuse code that already exists — the
-Quick Look preview in particular is the app's own `ReadModeWebView`, so a
-Finder preview renders identically to Read mode with no second renderer.
+`.md` in Finder. Four of the five pieces reuse code that already exists — the
+Quick Look preview in particular is the HTML export's self-contained page
+(`DocumentHTML.full` via `QuickLookPage.html`), so a Finder preview uses the
+same HTML renderer as Read mode and export.
 
-## 2. The four pieces
+## 2. The five pieces
 
 | Piece | Files | Status |
 | --- | --- | --- |
 | **AppleScript code-fence syntax** | `EdmundCore/Resources/Syntaxes/applescript.json` | Works. Fully tested. |
 | **Services menu** | `edmd/App/ServicesProvider.swift`, `NSServices` in `Info.plist`, registered in `main.swift` `applicationDidFinishLaunching` | Built & registered; live menu-click not yet exercised. |
 | **App Intents** | `edmd/App/Intents.swift` (+ `DocumentController.newDocument(withContent:)`) | Code correct; **Shortcuts discovery blocked** — see §3. |
-| **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Live-verified and fixed 2026-08-05 — see §4. |
+| **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Data-based since 2026-10-20; live-verified on macOS 15.7.9 (Space-bar panel, light and dark). §4 is the history of the view-based design. |
+| **Quick Look thumbnail** | `EdmundThumbnail` target, `Resources/ThumbnailInfo.plist`, `Resources/Thumbnail.entitlements`, assembled by `scripts/build-app.sh` | Live-verified 2026-10-21 through Finder and `QLThumbnailGenerator`, macOS 15.7.9. `qlmanage -t` never calls it. |
 
 Shared plumbing:
 
@@ -36,13 +38,27 @@ Shared plumbing:
   scopes (`keywords`/`commands`/`types`/…) must be **pairwise disjoint** — the
   scanner's "most specific wins" rule is ambiguous otherwise (a test asserts
   this).
-- **Quick Look** hosts `ReadModeWebView` in a `QLPreviewingController`. The web
-  view derives light/dark from `effectiveAppearance` and re-renders on a system
-  appearance flip, so the preview follows System Settings ▸ Appearance for
-  free. `preparePreviewOfFile(at:)` awaits the first render (via
-  `onLoadFinished`) so Quick Look snapshots the finished page, not a blank one.
-  Body font is `EditorTheme.quickLook` = system-ui (`HTMLTheme.cssFontStack`
-  gained a `system-ui` keyword branch), rather than the editor's serif.
+- **Quick Look** is a *data-based* preview (`QLIsDataBasedPreview`):
+  `PreviewProvider` returns the page's HTML (`QuickLookPage.html`, the same
+  self-contained document HTML export builds) and Quick Look renders it in its
+  own view, inside its native rounded panel. A view-based extension gets no
+  clipping or corner radius from Quick Look and there is no API for the panel's
+  radius, so the earlier design (our own `ReadModeWebView` in a view
+  controller) showed square corners. The page is built for the appearance at
+  preview time; an open preview does not follow a light/dark flip. The theme is
+  `EditorTheme.quickLook`: system-ui (`HTMLTheme.cssFontStack` has a `system-ui`
+  keyword branch) at the 13pt macOS body size, with tighter margins and 1em
+  bullets (`QuickLookPage.css`).
+- **The thumbnail** is what Finder's preview column and large icons show: the
+  column never displays a data-based preview live (not even Quick Look's own
+  HTML preview), only the file's thumbnail. `QuickLookPage.thumbnail` draws the
+  RTF export's page (AppKit's HTML importer, no web view, so it renders
+  off-window) onto a white 400 × 518pt portrait page, from only the first ~6 KB
+  of the document (`QuickLookPage.thumbnailSource`). It is a bitmap, so no
+  text selection in the column. `QLThumbnailMinimumDimension` 64 keeps the
+  generic icon at sizes where the text can't be read. `ThumbnailInfo.plist`
+  imports `net.daringfireball.markdown`: macOS declares no Markdown type
+  itself, so the type the extension claims could otherwise fail to resolve.
 
 ## 3. Limitation — App Intents don't appear in Shortcuts from a SwiftPM build
 
@@ -69,6 +85,9 @@ support becomes a requirement, the fix is an Xcode-project build (or a wrapper
 target), not more SwiftPM flags.
 
 ## 4. Fixed — the Quick Look appex hung (it did launch; it just never replied)
+
+*History of the view-based design, replaced by the data-based preview in §2:
+the extension no longer hosts a WKWebView.*
 
 **Live-verified 2026-08-05**, by an end user on a real ad-hoc-signed
 `/Applications/Edmund.app` install (macOS 26.6) — exactly the "To verify live"
@@ -106,8 +125,8 @@ WebProcessProxy::processDidTerminateOrFailedToLaunch: reason=Crash
 ```
 
 **Why it hangs instead of falling back to plain text.** `preparePreviewOfFile`
-awaits a `withCheckedContinuation` that only `webView.onLoadFinished` resumes
-(§2 above). WebKit never surfaces a `WebContent` launch failure to
+awaited a `withCheckedContinuation` that only `webView.onLoadFinished` resumed.
+WebKit never surfaces a `WebContent` launch failure to
 `ReadModeWebView` as a call to that closure, so the continuation is never
 resumed and the `async throws` function never returns — Quick Look has no
 fallback for an extension that never replies, so Finder just spins forever.
@@ -123,22 +142,16 @@ re-registering, the same `qlmanage -p` invocation shows `WebContent` launching
 successfully and the page completing (`didFinishLoadForFrame`,
 `DidFirstMeaningfulPaint`), no permission error.
 
-**Follow-up worth considering, not part of this fix:** the continuation in
-`preparePreviewOfFile` has no timeout or `didFail` path, so any *other* future
-cause of a `WebContent` launch or load failure reproduces this exact hang.
-Resuming (and throwing) on a navigation failure, or adding a timeout, would
-make a future break fail fast instead of hanging forever again.
-
 ### Signing order in `build-app.sh` (why it's the way it is)
 
-The appex is sealed inside the app, so it must be signed **before** the app, and
-the app must be sealed **without** `--deep` — a `--deep` outer sign re-signs
-every nested item with default flags, which strips the appex's sandbox
-entitlements and resets its identifier to the app's. So: sign
-`Sparkle.framework` (deep, for its own XPC helpers) → sign the appex with its
-entitlements → seal the `.app` non-deep over the already-signed contents. The
-appex's resource bundles go at the appex root, copied in *after* the appex is
-signed, for the same reason as the app's: the `swift build` `Bundle.module`
+The two appexes (preview and thumbnail) are sealed inside the app, so they must
+be signed **before** the app, and the app must be sealed **without** `--deep` —
+a `--deep` outer sign re-signs every nested item with default flags, which
+strips each appex's sandbox entitlements and resets its identifier to the
+app's. So: sign `Sparkle.framework` (deep, for its own XPC helpers) → sign each
+appex with its own entitlements → seal the `.app` non-deep over the
+already-signed contents. Each appex's resource bundles go at its root, copied
+in *after* it is signed, for the same reason as the app's: the `swift build` `Bundle.module`
 accessor looks only at `Bundle.main.bundleURL/<name>.bundle` (the appex root)
 and otherwise `fatalError`s, and codesign refuses to seal a bundle with items at
 its root. The sandbox also blocks the accessor's absolute `.build` fallback, so a
@@ -156,6 +169,7 @@ from v0.7.0 (#388).
   `DocumentHTML`; cheap once §3's metadata plumbing works.
 - **`UTImportedTypeDeclarations`** — declare `net.daringfireball.markdown`
   properly (consistent Finder kind string + doc icon); also modernizes the
-  legacy `CFBundleTypeExtensions` block. Pure `Info.plist`.
-- **CLI symlink**, **Dock menu** (`applicationDockMenu`), **Quick Look
-  thumbnails** (`QLThumbnailProvider`, same appex).
+  legacy `CFBundleTypeExtensions` block. Pure `Info.plist`. The thumbnail
+  appex already imports it (`ThumbnailInfo.plist`); the app's own
+  `Info.plist` still doesn't.
+- **CLI symlink**, **Dock menu** (`applicationDockMenu`).

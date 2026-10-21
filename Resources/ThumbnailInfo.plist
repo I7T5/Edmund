@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>EdmundThumbnail</string>
+    <key>CFBundleDisplayName</key>
+    <string>Edmund Markdown Thumbnail</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.i7t5.edmund.thumbnail</string>
+    <key>CFBundleExecutable</key>
+    <string>EdmundThumbnail</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleVersion</key>
+    <string>7</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.2.1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.quicklook.thumbnail</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>EdmundThumbnailProvider</string>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <key>QLSupportedContentTypes</key>
+            <array>
+                <string>net.daringfireball.markdown</string>
+            </array>
+            <key>QLThumbnailMinimumDimension</key>
+            <integer>64</integer>
+        </dict>
+    </dict>
+    <!-- macOS declares no Markdown type itself; only other apps do. Declare it
+         here, as Skim's thumbnail extension does for its types, so
+         QLSupportedContentTypes resolves even on a Mac where no other app
+         declares it. -->
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>net.daringfireball.markdown</string>
+            <key>UTTypeDescription</key>
+            <string>Markdown Document</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.plain-text</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>md</string>
+                    <string>markdown</string>
+                    <string>mdown</string>
+                    <string>mkd</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>text/markdown</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>

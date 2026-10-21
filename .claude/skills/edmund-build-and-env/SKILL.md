@@ -86,11 +86,12 @@ swift test --filter Callout    # one suite
    it the updater crashes on first check) and `install_name_tool -add_rpath
    "@executable_path/../Frameworks"` so `@rpath` resolves post-install.
 5. Codesign **inside-out**: Sparkle.framework first (nested XPC helpers must
-   be signed before macOS will launch them), then the Quick Look appex with
-   its own entitlements (then copy `.build/release/*.bundle` into the appex
-   **root**, for the same reason as step 6), then the outer `.app` **without** `--deep`
+   be signed before macOS will launch them), then both Quick Look appexes
+   (preview, thumbnail), each with its own entitlements (then copy
+   `.build/release/*.bundle` into each appex **root**, for the same reason as
+   step 6), then the outer `.app` **without** `--deep`
    (entitlements and identifier vary by variant: sparkle, mas, adhoc; `--deep`
-   would re-sign the appex and strip its sandbox entitlements). Sealing the *bundle* — not just the
+   would re-sign the appexes and strip their sandbox entitlements). Sealing the *bundle* — not just the
    binary — is what Sparkle's update validator requires.
 6. **Only after sealing**: copy `.build/release/*.bundle` (SwiftMath's math
    fonts) into the `.app` **root**.
@@ -104,8 +105,8 @@ Why step 6 is last and at the root — two constraints collide:
   `Bundle.main.bundleURL` — the `.app` root — with only a hardcoded absolute
   `.build` path as fallback. So the bundle *must* sit at the root.
 
-The appex hits the same pair: its accessor looks at the appex root, and its
-sandbox blocks the `.build` fallback (#388). Resolution for both: seal first,
+Both appexes hit the same pair: the accessor looks at each appex's root, and
+the sandbox blocks the `.build` fallback (#388). Resolution for both: seal first,
 copy after. The unsealed root items make
 `codesign --verify` and `--strict` complain, but Sparkle's actual check is
 non-strict and tolerates it (verified end-to-end; details in

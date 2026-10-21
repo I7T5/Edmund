@@ -23,9 +23,11 @@
         <key>NSExtensionPointIdentifier</key>
         <string>com.apple.quicklook.preview</string>
         <key>NSExtensionPrincipalClass</key>
-        <string>EdmundPreviewViewController</string>
+        <string>EdmundPreviewProvider</string>
         <key>NSExtensionAttributes</key>
         <dict>
+            <key>QLIsDataBasedPreview</key>
+            <true/>
             <key>QLSupportedContentTypes</key>
             <array>
                 <string>net.daringfireball.markdown</string>

@@ -160,12 +160,14 @@ when the old script signed only the bare binary.
 
 1. `codesign --force --deep --sign - Sparkle.framework` (nested XPC helpers
    must be signed before macOS will launch them),
-2. sign the Quick Look appex with `Resources/QuickLook.entitlements`, copy
-   the SwiftPM resource bundles into the appex root (same accessor rule as
+2. sign the Quick Look preview and thumbnail appexes with
+   `Resources/QuickLook.entitlements` and `Resources/Thumbnail.entitlements`
+   respectively,
+   copy the SwiftPM resource bundles into each appex root (same accessor rule as
    step 3; in `Contents/Resources` every preview crashed, #388), then
    seal the outer `.app` **without `--deep`** (entitlements and identifier vary
-   by variant: sparkle, mas, adhoc; `--deep` would re-sign the appex and strip
-   its sandbox entitlements) **while its root holds only `Contents/`** —
+   by variant: sparkle, mas, adhoc; `--deep` would re-sign the appexes and strip
+   their sandbox entitlements) **while its root holds only `Contents/`** —
    codesign refuses to seal a bundle with extra items at the root,
 3. copy the SwiftMath resource bundle to the `.app` root **after** sealing
    (its generated `Bundle.module` looks at `Bundle.main.bundleURL`; without it
