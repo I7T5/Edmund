@@ -55,10 +55,12 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
     override func loadView() {
         outlineView.style = .sourceList
-        // The editor's own background rather than the source list's
-        // translucent material, so the inspector reads as part of the page.
-        // Set after `style`, which installs the material's clear background.
-        outlineView.backgroundColor = .textBackgroundColor
+        // Opaque window grey, as Xcode's and CotEditor's inspectors, rather
+        // than the source list's translucent material: an inspector is not a
+        // sidebar, and in dark mode the grey sits back where the text
+        // background's near-black stood out. Set after `style`, which
+        // installs the material's clear background.
+        outlineView.backgroundColor = .windowBackgroundColor
         outlineView.headerView = nil
         outlineView.floatsGroupRows = false
         let column = NSTableColumn(identifier: .init("main"))
@@ -77,7 +79,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         // With "always show scroll bars" a legacy scroller otherwise keeps
         // its empty track down the inspector's edge when nothing scrolls.
         scroll.autohidesScrollers = true
-        scroll.backgroundColor = .textBackgroundColor
+        scroll.backgroundColor = .windowBackgroundColor
         view = scroll
 
         outlineView.reloadData()
@@ -175,7 +177,12 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         switch item {
         case let section as Section:
-            return textCell(section.title, id: "group")
+            // A source list's group-row look, set by hand: AppKit applies it
+            // only when the inspector opens in a window already on screen, so
+            // an inspector restored open at launch drew plain titles.
+            let cell = textCell(section.title, id: "group", color: .secondaryLabelColor)
+            cell.textField?.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
+            return cell
         case let node as OutlineNode:
             let cell = textCell(node.heading.title.isEmpty ? " " : node.heading.title, id: "heading")
             cell.toolTip = node.heading.title
@@ -200,8 +207,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     // MARK: - Cells
 
     /// A one-label cell. `color` is applied once, at creation, and only when
-    /// given: a group row's label is styled by the source list itself, and
-    /// recolouring it on reuse overrode that.
+    /// given.
     private func textCell(_ text: String, id: String, color: NSColor? = nil) -> NSTableCellView {
         let identifier = NSUserInterfaceItemIdentifier(id)
         if let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView {
