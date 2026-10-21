@@ -91,9 +91,8 @@ public struct EditorTheme: Equatable, Sendable {
     /// Theme for the Quick Look preview: `.default` but in the system UI font
     /// (`system-ui`, resolved by `HTMLTheme.cssFontStack`) rather than the
     /// editor's serif body face, at the 13pt macOS body size. The editor's 16pt
-    /// reads as oversized in Finder's preview column, which shows the page at
-    /// a fraction of the Space-bar panel's width. Code size and leading scale
-    /// with it.
+    /// reads as oversized next to the system's own 13pt text preview, and the
+    /// thumbnail draws with this theme too. Code size and leading scale with it.
     public static let quickLook: EditorTheme = {
         var t = EditorTheme.default
         t.fontName = "system-ui"

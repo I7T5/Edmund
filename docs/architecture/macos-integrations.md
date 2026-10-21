@@ -22,8 +22,8 @@ same HTML renderer as Read mode and export.
 | **AppleScript code-fence syntax** | `EdmundCore/Resources/Syntaxes/applescript.json` | Works. Fully tested. |
 | **Services menu** | `edmd/App/ServicesProvider.swift`, `NSServices` in `Info.plist`, registered in `main.swift` `applicationDidFinishLaunching` | Built & registered; live menu-click not yet exercised. |
 | **App Intents** | `edmd/App/Intents.swift` (+ `DocumentController.newDocument(withContent:)`) | Code correct; **Shortcuts discovery blocked** — see §3. |
-| **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Live-verified and fixed 2026-08-05 — see §4. |
-| **Quick Look thumbnail** | `EdmundThumbnail` target, `Resources/ThumbnailInfo.plist`, `Resources/Thumbnail.entitlements`, assembled by `scripts/build-app.sh` | Finder's preview column and large icons. |
+| **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Data-based since 2026-10-20; live-verified on macOS 15.7.9 (Space-bar panel, light and dark). §4 is the history of the view-based design. |
+| **Quick Look thumbnail** | `EdmundThumbnail` target, `Resources/ThumbnailInfo.plist`, `Resources/Thumbnail.entitlements`, assembled by `scripts/build-app.sh` | Live-verified 2026-10-21 through Finder and `QLThumbnailGenerator`, macOS 15.7.9. `qlmanage -t` never calls it. |
 
 Shared plumbing:
 
@@ -53,9 +53,12 @@ Shared plumbing:
   column never displays a data-based preview live (not even Quick Look's own
   HTML preview), only the file's thumbnail. `QuickLookPage.thumbnail` draws the
   RTF export's page (AppKit's HTML importer, no web view, so it renders
-  off-window) onto a light 400 × 518pt portrait page. It is a bitmap, so no
+  off-window) onto a white 400 × 518pt portrait page, from only the first ~6 KB
+  of the document (`QuickLookPage.thumbnailSource`). It is a bitmap, so no
   text selection in the column. `QLThumbnailMinimumDimension` 64 keeps the
-  generic icon at sizes where the text can't be read.
+  generic icon at sizes where the text can't be read. `ThumbnailInfo.plist`
+  imports `net.daringfireball.markdown`: macOS declares no Markdown type
+  itself, so the type the extension claims could otherwise fail to resolve.
 
 ## 3. Limitation — App Intents don't appear in Shortcuts from a SwiftPM build
 
@@ -166,5 +169,7 @@ from v0.7.0 (#388).
   `DocumentHTML`; cheap once §3's metadata plumbing works.
 - **`UTImportedTypeDeclarations`** — declare `net.daringfireball.markdown`
   properly (consistent Finder kind string + doc icon); also modernizes the
-  legacy `CFBundleTypeExtensions` block. Pure `Info.plist`.
+  legacy `CFBundleTypeExtensions` block. Pure `Info.plist`. The thumbnail
+  appex already imports it (`ThumbnailInfo.plist`); the app's own
+  `Info.plist` still doesn't.
 - **CLI symlink**, **Dock menu** (`applicationDockMenu`).

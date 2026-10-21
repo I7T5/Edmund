@@ -17,8 +17,8 @@ import AppKit
 @MainActor
 public enum QuickLookPage {
 
-    /// Read mode's margins are sized for a window; the system text preview
-    /// insets about 7pt, and 48px wastes most of Finder's preview column.
+    /// Read mode's 48px/24px padding is sized for a window; the system text
+    /// preview insets about 7pt.
     /// Bullets: Read mode's 0.85em marker is tuned for Iowan; in the system font
     /// it sits 1px below the x-height middle at 13pt, and 1em puts it 1px above,
     /// as Iowan's does (measured from WebKit renders).
