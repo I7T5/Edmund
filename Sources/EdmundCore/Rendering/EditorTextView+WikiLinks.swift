@@ -168,6 +168,12 @@ extension EditorTextView {
     /// The document's headings in source order, for the inspector's outline.
     /// Read off the parsed blocks, so a `#` in a code fence or front matter is
     /// never one.
+    ///
+    /// Whole-document: the open inspector calls this once per typing pause
+    /// (0.3s debounce), whatever the edit touched — ~5.4ms in a debug build on
+    /// 12,073 blocks / 1,509 headings, mostly the block iteration. Bounded
+    /// alternative if it matters: recompute only the edited blocks' headings
+    /// (performance.md §4).
     public var outlineHeadings: [OutlineHeading] {
         blocks.compactMap { block in
             guard case .heading(let level) = block.kind else { return nil }

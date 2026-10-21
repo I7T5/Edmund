@@ -157,3 +157,10 @@ measurement showing the cost is bounded, or a comment naming the ceiling.
   Dynamic colors could avoid editor restyling on appearance flips.
 - Pinch-to-zoom: scale with scroll-view magnification during the gesture and
   commit the font size once at the end.
+- Inspector outline: `outlineHeadings` walks every block once per typing pause
+  while the inspector is open (~5.4ms debug at 1 MB / 1,509 headings; release
+  unmeasured). Bounded fix: recompute only the edited blocks' headings.
+- Inspector toggle: the animated collapse restyles width-dependent blocks per
+  frame that moves the column (1 on open, 2 on close, ~33ms each in debug on a
+  1 MB table-heavy document). Deferring to the animation's end saves one at
+  most and draws tables force-wrapped meanwhile.

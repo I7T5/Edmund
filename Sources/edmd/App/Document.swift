@@ -278,10 +278,13 @@ class Document: NSDocument, HeadingNavigable {
         split.splitView.autosaveName = "EdmundInspector"
         split.view.frame = contentBounds
         window.contentViewController = split
-        // The outline is only kept current while it is showing; catch it up
-        // whenever it opens.
+        // The outline and Info are only kept current while they are showing;
+        // catch both up whenever the inspector opens.
         inspectorCollapseObservation = inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.refreshOutline(immediately: true) }
+            MainActor.assumeIsolated {
+                self?.refreshOutline(immediately: true)
+                self?.updateStatusBar()
+            }
         }
 
         findController = FindController(editor: editor, scrollView: scrollView,
@@ -471,8 +474,13 @@ class Document: NSDocument, HeadingNavigable {
         let ending = editor.originalLineEnding.displayName
         statusBar.setMetrics(words: cached.words, characters: cached.characters,
                              location: location, line: line, lineEnding: ending)
-        inspector?.setMetrics(words: cached.words, characters: cached.characters,
-                              location: location, line: line, lineEnding: ending)
+        // Not while the inspector is closed — the default, and this runs on
+        // every caret move; opening it pushes the current values (see the
+        // collapse observer).
+        if inspectorItem?.isCollapsed == false {
+            inspector.setMetrics(words: cached.words, characters: cached.characters,
+                                 location: location, line: line, lineEnding: ending)
+        }
     }
 
     // MARK: - Inspector outline
@@ -1318,6 +1326,10 @@ class Document: NSDocument, HeadingNavigable {
         if item.action == #selector(toggleInspectorShown(_:)) {
             item.title = inspectorItem?.isCollapsed == false ? "Hide Inspector" : "Show Inspector"
         }
+        if item.action == #selector(toggleReaderInspector(_:)) {
+            let shown = editor?.viewMode == .reading && readView?.isWebInspectorVisible == true
+            item.title = shown ? "Hide Web Inspector" : "Show Web Inspector"
+        }
         if item.action == #selector(toggleAlwaysShowStatusBar(_:)) {
             let prefs = StatusBarPrefs.load()
             item.state = prefs.autoHide ? .off : .on
@@ -1350,10 +1362,10 @@ class Document: NSDocument, HeadingNavigable {
         editor?.viewMode == .reading ? editingMode : .reading
     }
 
-    /// "Inspect Reader" (⌥⌘I) — a semi-toggle, so one shortcut always gets you
-    /// to "reading with the inspector open": from Edit (or from Read with the
-    /// inspector closed) it lands in Read mode with the inspector up; pressed
-    /// again in that state it closes the inspector and leaves you in Read mode.
+    /// View ▸ Show Web Inspector (⌥⌘I) — a semi-toggle, so one shortcut always
+    /// gets you to "reading with the Web Inspector open": from Edit (or from
+    /// Read with it closed) it lands in Read mode with the Web Inspector up;
+    /// pressed again in that state it closes it and leaves you in Read mode.
     @objc func toggleReaderInspector(_ sender: Any?) {
         if editor.viewMode == .reading, readView?.isWebInspectorVisible == true {
             readView?.hideWebInspector(nil)

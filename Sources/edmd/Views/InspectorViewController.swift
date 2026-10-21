@@ -34,6 +34,8 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     var onSelectHeading: ((Int) -> Void)?
 
     private(set) var roots: [OutlineNode] = []
+    /// Every node of `roots`, in heading order (`nodes[i].index == i`).
+    private var nodes: [OutlineNode] = []
     /// The (level, title) list `roots` was built from, so an edit that leaves
     /// the headings alone doesn't rebuild the tree.
     private var shownHeadings: [String] = []
@@ -48,6 +50,10 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     /// once, the first time there are headings, so an outline that grows past
     /// it while being written never folds under the writer.
     static let foldThreshold = 20
+    /// Most headings `setHeadings` retitles row by row before it rebuilds
+    /// instead (see there). An unmeasured guess: time a 1,509-heading Replace
+    /// All on both paths before tuning it.
+    static let maxInPlaceRetitles = 50
     private var hasAppliedDefaultFold = false
 
     private(set) var infoRows = [InfoRow("Words", "0"), InfoRow("Characters", "0"),
@@ -99,7 +105,37 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         let keys = headings.map(Self.key)
         guard keys != shownHeadings else { return }
         shownHeadings = keys
+        // Same count and levels is the same tree: typing in a heading only
+        // retitles it. Update those nodes in place and reload their rows,
+        // rather than rebuild — which re-expanded every node, cost 6–7.5ms a
+        // pause on a 1,509-heading document, and dropped the selection. Past
+        // `maxInPlaceRetitles` (a Replace All across headings) one rebuild is
+        // cheaper than that many single-row reloads.
+        if isViewLoaded, headings.count == nodes.count,
+           zip(headings, nodes).allSatisfy({ $0.level == $1.heading.level }) {
+            let retitled = zip(headings, nodes).filter { $0.title != $1.heading.title }
+            if retitled.count <= Self.maxInPlaceRetitles {
+                for (heading, node) in retitled {
+                    // A collapsed heading stays collapsed under its new title;
+                    // the old key stays too while a same-titled twin keeps it.
+                    let oldKey = Self.key(node.heading)
+                    if collapsedKeys.contains(oldKey) {
+                        collapsedKeys.insert(Self.key(heading))
+                        if !keys.contains(oldKey) { collapsedKeys.remove(oldKey) }
+                    }
+                    node.heading = heading
+                    outlineView.reloadItem(node)
+                }
+                return
+            }
+        }
         roots = OutlineNode.tree(headings)
+        nodes = []
+        var stack = roots.reversed() as [OutlineNode]
+        while let node = stack.popLast() {
+            nodes.append(node)
+            stack.append(contentsOf: node.children.reversed())
+        }
         if !hasAppliedDefaultFold, !headings.isEmpty {
             hasAppliedDefaultFold = true
             if headings.count > Self.foldThreshold { for root in roots { foldBelow(root) } }
@@ -113,12 +149,13 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
     func setMetrics(words: Int, characters: Int, location: Int, line: Int, lineEnding: String) {
         let values = ["\(words)", "\(characters)", "\(location)", "\(line)", lineEnding]
-        guard values != infoRows.map(\.value) else { return }
-        for (row, value) in zip(infoRows, values) { row.value = value }
+        // Only the rows that changed — a caret move changes two of five — and
+        // never the section: reloading its title on every caret move
+        // re-created it, and it flashed a different grey each time.
+        let changed = zip(infoRows, values).filter { $0.value != $1 }
+        for (row, value) in changed { row.value = value }
         guard isViewLoaded else { return }
-        // The rows only, not the section: reloading its title on every caret
-        // move re-created it, and it flashed a different grey each time.
-        for row in infoRows { outlineView.reloadItem(row) }
+        for (row, _) in changed { outlineView.reloadItem(row) }
     }
 
     nonisolated private static func key(_ heading: OutlineHeading) -> String { "\(heading.level)|\(heading.title)" }
