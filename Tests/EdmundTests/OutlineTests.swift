@@ -37,6 +37,8 @@ import AppKit
         ("#", ""),
         ("# #", ""),
         ("Line one\nline two\n---", "Line one line two"),
+        ("##   Spaced   ##   ", "Spaced"),
+        ("#\tTabbed\t#", "Tabbed"),
     ])
     func titles(_ content: String, _ expected: String) {
         #expect(OutlineHeading.title(of: content) == expected)
@@ -100,6 +102,34 @@ import AppKit
             isARepeat: false, keyCode: 36))
         outline.keyDown(with: returnKey)
         #expect(went == 2)
+    }
+
+    /// Typing in a heading only retitles it: the node on screen is updated in
+    /// place, so the selection and a collapsed parent survive, rather than the
+    /// tree being rebuilt.
+    @Test func retitleUpdatesTheNodeInPlace() {
+        let inspector = InspectorViewController()
+        _ = inspector.view
+        func headings(_ titles: [(Int, String)]) -> [OutlineHeading] {
+            titles.map { OutlineHeading(level: $0.0, title: $0.1, range: NSRange(location: 0, length: 0)) }
+        }
+        inspector.setHeadings(headings([(1, "A"), (2, "a1"), (1, "B"), (2, "b1")]))
+        let outline = inspector.outlineView
+        let a = inspector.roots[0], b = inspector.roots[1]
+        outline.collapseItem(a)
+        outline.selectRowIndexes([outline.row(forItem: b)], byExtendingSelection: false)
+
+        inspector.setHeadings(headings([(1, "A!"), (2, "a1"), (1, "B"), (2, "b1")]))
+        #expect(inspector.roots[0] === a)
+        #expect(a.heading.title == "A!")
+        #expect(!outline.isItemExpanded(a))
+        #expect(outline.selectedRow == outline.row(forItem: b))
+
+        // A level change is a new shape: the tree is rebuilt, and the renamed
+        // heading is still remembered as collapsed.
+        inspector.setHeadings(headings([(1, "A!"), (2, "a1"), (2, "B"), (2, "b1")]))
+        #expect(inspector.roots[0] !== a)
+        #expect(!outline.isItemExpanded(inspector.roots[0]))
     }
 
     /// Collapsing a heading survives a rebuild, which creates new node objects.

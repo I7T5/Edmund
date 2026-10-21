@@ -34,6 +34,8 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     var onSelectHeading: ((Int) -> Void)?
 
     private(set) var roots: [OutlineNode] = []
+    /// Every node of `roots`, in heading order (`nodes[i].index == i`).
+    private var nodes: [OutlineNode] = []
     /// The (level, title) list `roots` was built from, so an edit that leaves
     /// the headings alone doesn't rebuild the tree.
     private var shownHeadings: [String] = []
@@ -99,7 +101,27 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         let keys = headings.map(Self.key)
         guard keys != shownHeadings else { return }
         shownHeadings = keys
+        // Same count and levels is the same tree: typing in a heading only
+        // retitles it. Update those nodes in place and reload their rows,
+        // rather than rebuild — which re-expanded every node, cost 6–7.5ms a
+        // pause on a 1,509-heading document, and dropped the selection.
+        if isViewLoaded, headings.count == nodes.count,
+           zip(headings, nodes).allSatisfy({ $0.level == $1.heading.level }) {
+            for (heading, node) in zip(headings, nodes) where heading.title != node.heading.title {
+                // A collapsed heading stays collapsed under its new title.
+                if collapsedKeys.remove(Self.key(node.heading)) != nil { collapsedKeys.insert(Self.key(heading)) }
+                node.heading = heading
+                outlineView.reloadItem(node)
+            }
+            return
+        }
         roots = OutlineNode.tree(headings)
+        nodes = []
+        var stack = roots.reversed() as [OutlineNode]
+        while let node = stack.popLast() {
+            nodes.append(node)
+            stack.append(contentsOf: node.children.reversed())
+        }
         if !hasAppliedDefaultFold, !headings.isEmpty {
             hasAppliedDefaultFold = true
             if headings.count > Self.foldThreshold { for root in roots { foldBelow(root) } }
@@ -113,12 +135,13 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
     func setMetrics(words: Int, characters: Int, location: Int, line: Int, lineEnding: String) {
         let values = ["\(words)", "\(characters)", "\(location)", "\(line)", lineEnding]
-        guard values != infoRows.map(\.value) else { return }
-        for (row, value) in zip(infoRows, values) { row.value = value }
+        // Only the rows that changed — a caret move changes two of five — and
+        // never the section: reloading its title on every caret move
+        // re-created it, and it flashed a different grey each time.
+        let changed = zip(infoRows, values).filter { $0.value != $1 }
+        for (row, value) in changed { row.value = value }
         guard isViewLoaded else { return }
-        // The rows only, not the section: reloading its title on every caret
-        // move re-created it, and it flashed a different grey each time.
-        for row in infoRows { outlineView.reloadItem(row) }
+        for (row, _) in changed { outlineView.reloadItem(row) }
     }
 
     nonisolated private static func key(_ heading: OutlineHeading) -> String { "\(heading.level)|\(heading.title)" }

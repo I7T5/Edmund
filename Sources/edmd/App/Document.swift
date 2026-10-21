@@ -278,10 +278,13 @@ class Document: NSDocument, HeadingNavigable {
         split.splitView.autosaveName = "EdmundInspector"
         split.view.frame = contentBounds
         window.contentViewController = split
-        // The outline is only kept current while it is showing; catch it up
-        // whenever it opens.
+        // The outline and Info are only kept current while they are showing;
+        // catch both up whenever the inspector opens.
         inspectorCollapseObservation = inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.refreshOutline(immediately: true) }
+            MainActor.assumeIsolated {
+                self?.refreshOutline(immediately: true)
+                self?.updateStatusBar()
+            }
         }
 
         findController = FindController(editor: editor, scrollView: scrollView,
@@ -471,8 +474,13 @@ class Document: NSDocument, HeadingNavigable {
         let ending = editor.originalLineEnding.displayName
         statusBar.setMetrics(words: cached.words, characters: cached.characters,
                              location: location, line: line, lineEnding: ending)
-        inspector?.setMetrics(words: cached.words, characters: cached.characters,
-                              location: location, line: line, lineEnding: ending)
+        // Not while the inspector is closed — the default, and this runs on
+        // every caret move; opening it pushes the current values (see the
+        // collapse observer).
+        if inspectorItem?.isCollapsed == false {
+            inspector.setMetrics(words: cached.words, characters: cached.characters,
+                                 location: location, line: line, lineEnding: ending)
+        }
     }
 
     // MARK: - Inspector outline
