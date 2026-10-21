@@ -10,12 +10,12 @@ integration is broken.
 
 Edmund is a native editor, so it should be reachable the native ways: from the
 right-click Services menu, from Shortcuts/Spotlight, and by pressing Space on a
-`.md` in Finder. Three of the four pieces reuse code that already exists — the
+`.md` in Finder. Four of the five pieces reuse code that already exists — the
 Quick Look preview in particular is the HTML export's self-contained page
 (`DocumentHTML.full` via `QuickLookPage.html`), so a Finder preview uses the
 same HTML renderer as Read mode and export.
 
-## 2. The four pieces
+## 2. The five pieces
 
 | Piece | Files | Status |
 | --- | --- | --- |
@@ -23,6 +23,7 @@ same HTML renderer as Read mode and export.
 | **Services menu** | `edmd/App/ServicesProvider.swift`, `NSServices` in `Info.plist`, registered in `main.swift` `applicationDidFinishLaunching` | Built & registered; live menu-click not yet exercised. |
 | **App Intents** | `edmd/App/Intents.swift` (+ `DocumentController.newDocument(withContent:)`) | Code correct; **Shortcuts discovery blocked** — see §3. |
 | **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Live-verified and fixed 2026-08-05 — see §4. |
+| **Quick Look thumbnail** | `EdmundThumbnail` target, `Resources/ThumbnailInfo.plist`, `Resources/Thumbnail.entitlements`, assembled by `scripts/build-app.sh` | Finder's preview column and large icons. |
 
 Shared plumbing:
 
@@ -48,6 +49,13 @@ Shared plumbing:
   `EditorTheme.quickLook`: system-ui (`HTMLTheme.cssFontStack` has a `system-ui`
   keyword branch) at the 13pt macOS body size, with tighter margins and 1em
   bullets (`QuickLookPage.css`).
+- **The thumbnail** is what Finder's preview column and large icons show: the
+  column never displays a data-based preview live (not even Quick Look's own
+  HTML preview), only the file's thumbnail. `QuickLookPage.thumbnail` draws the
+  RTF export's page (AppKit's HTML importer, no web view, so it renders
+  off-window) onto a light 400 × 518pt portrait page. It is a bitmap, so no
+  text selection in the column. `QLThumbnailMinimumDimension` 64 keeps the
+  generic icon at sizes where the text can't be read.
 
 ## 3. Limitation — App Intents don't appear in Shortcuts from a SwiftPM build
 
