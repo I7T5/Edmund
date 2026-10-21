@@ -205,6 +205,16 @@ cp ".build/release/${QL_NAME}" "${APPEX}/Contents/MacOS/${QL_NAME}"
 strip_binary "${APPEX}/Contents/MacOS/${QL_NAME}"
 cp Resources/QuickLookInfo.plist "${APPEX}/Contents/Info.plist"
 
+# The Quick Look thumbnail extension (Finder's preview column and large icons),
+# assembled the same way.
+echo "Assembling Quick Look thumbnail extension..."
+TH_NAME="EdmundThumbnail"
+THUMB_APPEX="${BUNDLE}/Contents/PlugIns/${TH_NAME}.appex"
+mkdir -p "${THUMB_APPEX}/Contents/MacOS" "${THUMB_APPEX}/Contents/Resources"
+cp ".build/release/${TH_NAME}" "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
+strip_binary "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
+cp Resources/ThumbnailInfo.plist "${THUMB_APPEX}/Contents/Info.plist"
+
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
 #
 # Why this matters: at install time Sparkle re-validates the downloaded update's
@@ -234,7 +244,9 @@ echo "Code signing..."
 [ "$VARIANT" != "mas" ] && codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
     --identifier "com.i7t5.edmund.quicklook" "$APPEX"
-# The appex has the same constraint as the app (below): the `swift build`
+codesign --force --sign - --entitlements Resources/Thumbnail.entitlements \
+    --identifier "com.i7t5.edmund.thumbnail" "$THUMB_APPEX"
+# Each appex has the same constraint as the app (below): the `swift build`
 # Bundle.module accessor only looks at Bundle.main.bundleURL/<name>.bundle —
 # for an .appex that is its root, not Contents/Resources, where these used to
 # go — and calls fatalError otherwise, so every preview crashed in
@@ -243,10 +255,12 @@ codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
 # Sparkle's non-strict validity check are unaffected (verified with
 # SecStaticCodeCheckValidityWithErrors + kSecCSCheckAllArchitectures, with and
 # without kSecCSCheckNestedCode).
-for bundle in .build/release/*.bundle; do
-    [ -e "$bundle" ] && cp -R "$bundle" "${APPEX}/"
+for appex in "$APPEX" "$THUMB_APPEX"; do
+    for bundle in .build/release/*.bundle; do
+        [ -e "$bundle" ] && cp -R "$bundle" "${appex}/"
+    done
+    prune_math_fonts "$appex"
 done
-prune_math_fonts "$APPEX"
 # The sandboxed variants sign with no --identifier override: the signing id
 # names the container (~/Library/Containers/<id>) and keys the automatic
 # preferences migration, so it must equal the Info.plist bundle id. The ad-hoc

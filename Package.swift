@@ -41,6 +41,11 @@ let package = Package(
             name: "EdmundQuickLook",
             dependencies: ["EdmundCore"],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]),
+        // The Quick Look thumbnail extension, assembled the same way.
+        .executableTarget(
+            name: "EdmundThumbnail",
+            dependencies: ["EdmundCore"],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]),
         .testTarget(
             name: "EdmundTests",
             dependencies: ["EdmundCore", "edmd"]),
