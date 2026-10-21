@@ -15,7 +15,7 @@ The caller gives a diff range (default: `git diff main...HEAD` plus
 `git diff HEAD` for uncommitted work, plus untracked files; a range the
 caller names wins) and may add: a PR body draft, sample
 CHANGELOG lines, `ui: yes|no` (whether to run the HIG pass; if absent, run it
-when the diff touches `Sources/edmd/`, `Sources/EdmundQuickLook/` or
+when the diff touches `Sources/edmd/`, `Sources/EdmundQuickLook/`, `Sources/EdmundThumbnail/` or
 `Resources/Edmund.help/`), and PNG
 screenshot paths. Read the diff first; open surrounding code only where a
 finding depends on it. If screenshots are given, Read them and judge what you

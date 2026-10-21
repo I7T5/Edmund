@@ -49,7 +49,7 @@ stopping and reporting if any step fails:
       touches app chrome:
 
       ```sh
-      { git diff main --name-only -- Sources/edmd Sources/EdmundQuickLook; git diff main -U0 -- Sources | grep -E '^\+.*(NSMenu|keyEquivalent|NSButton|NSAlert|NSPopover|NSToolbar|NSWindow|NSColor|accessibility|toolTip|SwiftUI)'; } | grep -q . && echo ui
+      { git diff main --name-only -- Sources/edmd Sources/EdmundQuickLook Sources/EdmundThumbnail; git diff main -U0 -- Sources | grep -E '^\+.*(NSMenu|keyEquivalent|NSButton|NSAlert|NSPopover|NSToolbar|NSWindow|NSColor|accessibility|toolTip|SwiftUI)'; } | grep -q . && echo ui
       ```
 
       Spawn the `hig-reviewer` subagent with the diff, `ui: yes|no` from the

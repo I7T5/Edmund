@@ -141,14 +141,14 @@ successfully and the page completing (`didFinishLoadForFrame`,
 
 ### Signing order in `build-app.sh` (why it's the way it is)
 
-The appex is sealed inside the app, so it must be signed **before** the app, and
-the app must be sealed **without** `--deep` — a `--deep` outer sign re-signs
-every nested item with default flags, which strips the appex's sandbox
-entitlements and resets its identifier to the app's. So: sign
-`Sparkle.framework` (deep, for its own XPC helpers) → sign the appex with its
-entitlements → seal the `.app` non-deep over the already-signed contents. The
-appex's resource bundles go at the appex root, copied in *after* the appex is
-signed, for the same reason as the app's: the `swift build` `Bundle.module`
+The two appexes (preview and thumbnail) are sealed inside the app, so they must
+be signed **before** the app, and the app must be sealed **without** `--deep` —
+a `--deep` outer sign re-signs every nested item with default flags, which
+strips each appex's sandbox entitlements and resets its identifier to the
+app's. So: sign `Sparkle.framework` (deep, for its own XPC helpers) → sign each
+appex with its own entitlements → seal the `.app` non-deep over the
+already-signed contents. Each appex's resource bundles go at its root, copied
+in *after* it is signed, for the same reason as the app's: the `swift build` `Bundle.module`
 accessor looks only at `Bundle.main.bundleURL/<name>.bundle` (the appex root)
 and otherwise `fatalError`s, and codesign refuses to seal a bundle with items at
 its root. The sandbox also blocks the accessor's absolute `.build` fallback, so a
@@ -167,5 +167,4 @@ from v0.7.0 (#388).
 - **`UTImportedTypeDeclarations`** — declare `net.daringfireball.markdown`
   properly (consistent Finder kind string + doc icon); also modernizes the
   legacy `CFBundleTypeExtensions` block. Pure `Info.plist`.
-- **CLI symlink**, **Dock menu** (`applicationDockMenu`), **Quick Look
-  thumbnails** (`QLThumbnailProvider`, same appex).
+- **CLI symlink**, **Dock menu** (`applicationDockMenu`).

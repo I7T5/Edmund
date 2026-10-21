@@ -236,10 +236,10 @@ cp Resources/ThumbnailInfo.plist "${THUMB_APPEX}/Contents/Info.plist"
 # kSecCSCheckAllArchitectures), which tolerates it. Verified end-to-end.
 echo "Code signing..."
 # Sign inside-out, then seal the app WITHOUT --deep. --deep on the outer .app
-# would re-sign every nested item with default flags — stripping the appex's
+# would re-sign every nested item with default flags — stripping each appex's
 # sandbox entitlements and resetting its identifier to the app's. Instead we
 # sign each nested item explicitly (Sparkle deep so its own XPC helpers are
-# covered; the appex with its entitlements) and let the non-deep app sign just
+# covered; each appex with its own entitlements) and let the non-deep app sign just
 # seal the container over the already-signed contents.
 [ "$VARIANT" != "mas" ] && codesign --force --deep --sign - "${BUNDLE}/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - --entitlements Resources/QuickLook.entitlements \

@@ -605,15 +605,16 @@ Notable subsystems:
   rejected as *"The update is improperly signed…"*. The old script signed
   only the main binary (no `_CodeSignature/CodeResources`) — **every
   Sparkle update failed** (the v0.1.0→0.1.1 error). Fix: `build-app.sh`
-  signs inside-out — Sparkle.framework with `--deep`, the Quick Look appex
-  with its own entitlements — then seals the outer `.app` **without**
-  `--deep` (it would re-sign the appex and strip its sandbox entitlements)
+  signs inside-out — Sparkle.framework with `--deep`, both Quick Look appexes
+  (preview and thumbnail), each with its own entitlements — then seals the
+  outer `.app` **without** `--deep` (it would re-sign the appexes and strip
+  their sandbox entitlements)
   while the root holds only `Contents/`, then copies the SwiftPM resource
   bundles in **after** signing (they must sit at the bundle root — the
   generated `Bundle.module` accessor is hardcoded to `Bundle.main.bundleURL` —
-  and codesign refuses to seal with any item at the root). The appex gets the
-  same treatment: its bundles go at the appex root after the appex is signed,
-  before the outer seal. Those unsealed root items make
+  and codesign refuses to seal with any item at the root). Each appex gets the
+  same treatment: its bundles go at its root after it is signed, before the
+  outer seal. Those unsealed root items make
   `codesign --verify` (CLI) and `--strict` complain, but Sparkle's actual
   check (`SecStaticCodeCheckValidityWithErrors` +
   `kSecCSCheckAllArchitectures`, non-strict) tolerates it — verified
@@ -707,7 +708,8 @@ Notable subsystems:
   the run has its own defaults and its own saved state and can never disturb the
   maintainer's installed Edmund. `codesign --deep` fails with "unsealed contents
   present in the bundle root" until the SwiftPM `*.bundle` resources at the
-  `.app` root and the Quick Look appex root are moved aside and put back after
+  `.app` root and both appex roots (`EdmundQuickLook.appex`,
+  `EdmundThumbnail.appex`) are moved aside and put back after
   signing. Note the isolated
   clone still shares `~/Library/Autosave Information` and the "Unsaved edmd
   Document" namespace with the real app — a draft it reopens may be the
