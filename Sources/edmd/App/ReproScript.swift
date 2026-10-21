@@ -48,6 +48,10 @@ import ScreenCaptureKit
 ///                     button's insets, render the content view to <png>;
 ///                     takes no focus
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
+///   inspector         toggle the inspector from the first responder, as the
+///                     toolbar button and View menu item reach it
+///   outline           log the inspector's width and rows (depth, expanded, text)
+///   outlineclick <t>  click the inspector's outline row titled <t>
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
 ///   handlemenu row|column  open a table handle's menu via its real hit test
@@ -523,6 +527,49 @@ enum ReproScript {
                     } else {
                         report("repro clicktoolbar \(arg) has no button and no action")
                     }
+                }
+            case "inspector":
+                // Validation of the toolbar button needs a key window, which a
+                // script-launched app never has, so its button stays disabled;
+                // this sends the same action down the same responder chain.
+                scheduleDoc(after: delay) { doc in
+                    let window = doc.windowControllers.first?.window
+                    let sent = window?.firstResponder?.tryToPerform(
+                        #selector(NSSplitViewController.toggleInspector(_:)), with: nil) ?? false
+                    // The View menu item's title as validation sets it (a menu
+                    // validates only off a key window, so ask directly).
+                    let item = NSMenuItem(title: "", action: #selector(Document.toggleInspectorShown(_:)),
+                                          keyEquivalent: "")
+                    _ = doc.validateMenuItem(item)
+                    report("repro inspector sent=\(sent) menuTitle=\(item.title)")
+                }
+            case "outline":
+                scheduleDoc(after: delay) { doc in
+                    let view = doc.inspector.outlineView
+                    report("repro outline width=\(doc.inspector.view.frame.width)")
+                    for row in 0..<view.numberOfRows {
+                        let item = view.item(atRow: row)
+                        let text: String
+                        switch item {
+                        case let s as InspectorViewController.Section: text = s.title
+                        case let n as OutlineNode: text = n.heading.title
+                        case let r as InspectorViewController.InfoRow: text = "\(r.name)=\(r.value)"
+                        default: text = "\(item ?? "nil")"
+                        }
+                        report("repro outline \(view.level(forRow: row)) " +
+                               "expanded=\(view.isItemExpanded(item)) \(text)")
+                    }
+                }
+            case "outlineclick":
+                scheduleDoc(after: delay) { doc in
+                    let view = doc.inspector.outlineView
+                    guard let row = (0..<view.numberOfRows).first(where: {
+                        (view.item(atRow: $0) as? OutlineNode)?.heading.title == arg
+                    }), let node = view.item(atRow: row) as? OutlineNode else {
+                        report("repro outlineclick: no row titled \(arg)"); return
+                    }
+                    report("repro outlineclick \(arg) index=\(node.index)")
+                    doc.inspector.onSelectHeading?(node.index)
                 }
             case "clickrow":
                 scheduleDoc(after: delay) { _ in

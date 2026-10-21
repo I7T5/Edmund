@@ -14,6 +14,9 @@ import AppKit
     return (FormatToolbar(document: doc), doc)
 }
 
+/// Items AppKit vends itself, which `FormatToolbar.makeItem` never sees.
+private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace]
+
 /// Titles of a menu's real items, separators rendered as "-".
 @MainActor private func titles(_ menu: NSMenu) -> [String] {
     menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
@@ -23,10 +26,10 @@ import AppKit
 
     private let viewMode = NSToolbarItem.Identifier("viewMode")
 
-    /// The default bar is the one that shipped: view-mode alone, on the right.
+    /// View mode then the inspector button, on the right.
     @Test func defaultOrderMatchesTheSpec() {
-        let ids = FormatToolbar.defaultIdentifiers(viewMode: viewMode).map(\.rawValue)
-        #expect(ids == ["NSToolbarFlexibleSpaceItem", "viewMode"])
+        let ids = FormatToolbar.defaultIdentifiers(viewMode: viewMode)
+        #expect(ids == [.flexibleSpace, viewMode, FormatToolbar.inspector])
     }
 
     /// The point sizes are per symbol precisely so the drawn glyphs match; a
@@ -73,7 +76,7 @@ import AppKit
     @Test func vendsEveryItemItDeclares() {
         let (bar, doc) = toolbar()
         for id in FormatToolbar.allowedIdentifiers(viewMode: viewMode)
-        where id != viewMode && id != .space && id != .flexibleSpace {
+        where id != viewMode && !appKitItems.contains(id) {
             #expect(bar.makeItem(id) != nil, "no item vended for \(id.rawValue)")
         }
         _ = doc
@@ -509,7 +512,7 @@ import AppKit
         // Share draws AppKit's own icon and view-mode belongs to `Document`, so
         // neither has a glyph of ours to check.
         for id in FormatToolbar.allowedIdentifiers(viewMode: viewMode)
-        where id != .space && id != .flexibleSpace && id != FormatToolbar.share && id != viewMode {
+        where !appKitItems.contains(id) && id != FormatToolbar.share && id != viewMode {
             let item = bar.makeItem(id)
             let image = item?.image ?? (item?.view as? NSButton)?.image
             #expect((image?.size.width ?? 0) > 0, "\(id.rawValue) has no glyph")
