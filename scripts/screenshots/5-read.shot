@@ -1,3 +1,6 @@
-# doc: misc/marketing/screenshot-docs/GFM.md
-viewmode
-sleep 2000
+# doc: misc/marketing/screenshot-docs/GFM and Obsidian.md
+# Read mode with the Web Inspector beside it.
+# window: 1000,720
+# offset: 0.26,0.22
+webinspector
+sleep 3000

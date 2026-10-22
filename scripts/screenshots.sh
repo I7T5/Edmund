@@ -8,7 +8,13 @@
 #   # doc: <path>      document to open, relative to the repo root (or $SHOTS_DOC_ROOT)
 #   # args: <flags>    extra launch arguments, shell-quoted (settings, toolbar layout)
 #   # modes: <list>    default "light dark"
-# The runner sizes the window to 1200×750 pt and brings it to the front before
+#   # window: w,h      window size in points, default 1200,750
+#   # offset: dx,dy    with several windows, shift each by this fraction of the
+#                      canvas from the one before (cascade, side by side)
+#   # compose: no      capture only, for use by a combined shot
+#   # combine: <shot>...  no run of its own: the key windows of those shots'
+#                      captures, in order, on one canvas (with # offset:)
+# The runner sizes the window and brings it to the front before
 # the scenario, then `screencapture -l`s every visible window with its shadow
 # and stacks them, key window on top, on a 2880×1800 gradient
 # (scripts/screenshots/compose.swift).
@@ -29,7 +35,11 @@
 # Activation: `front` has to make Edmund the active app, or the window captures
 # with grey traffic lights and a smaller shadow. macOS refuses that while you
 # are typing in another app, so leave the machine alone during a run; a refused
-# capture is retried up to 3 times.
+# capture is retried up to 3 times. Anything that only draws fully in the key
+# window (find's yellow match highlights, selection colour) needs an idle machine.
+#
+# compose.swift also works on its own, on captures you take by hand
+# (⇧⌘4, Space, click a window — shadow included).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
@@ -91,13 +101,18 @@ capture() {
     return $got
 }
 
+header() { sed -n "s/^# $2: *//p" "$1" | head -1; }
+
 shots=0; failed=()
 for shot in scripts/screenshots/*.shot; do
     name="$(basename "$shot" .shot)"
     [[ -n "$PATTERN" && "$name" != *$PATTERN* ]] && continue
-    doc="$DOC_ROOT/$(sed -n 's/^# doc: *//p' "$shot" | head -1)"
-    modes="$(sed -n 's/^# modes: *//p' "$shot" | head -1)"
-    eval "set -- $(sed -n 's/^# args: *//p' "$shot" | head -1)"
+    [ -n "$(header "$shot" combine)" ] && continue   # composed below
+    doc="$DOC_ROOT/$(header "$shot" doc)"
+    modes="$(header "$shot" modes)"
+    size="$(header "$shot" window)"
+    offset="$(header "$shot" offset)"
+    eval "set -- $(header "$shot" args)"
     if [ ! -f "$doc" ]; then
         echo "FAIL  $name  (doc missing: $doc)"; failed+=("$name"); continue
     fi
@@ -107,7 +122,7 @@ for shot in scripts/screenshots/*.shot; do
     for mode in ${modes:-light dark}; do
         script="$RUN/$name-$mode.repro"
         # `front` first, so a window the scenario opens (Settings) ends up key.
-        { printf '%s\n' 'resizewindow 1200,750' front 'sleep 1000'; grep -v '^#' "$shot"
+        { printf '%s\n' "resizewindow ${size:-1200,750}" front 'sleep 1000'; grep -v '^#' "$shot"
           printf '%s\n' 'sleep 2500' logwindows 'sleep 1500' done; } > "$script"
         raw="$OUT/raw/$name-$mode"
         ok=""
@@ -118,8 +133,35 @@ for shot in scripts/screenshots/*.shot; do
         if [ -z "$ok" ]; then
             echo "FAIL  $name-$mode"; failed+=("$name-$mode"); continue
         fi
-        swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" "$raw"-*.png
+        if [ "$(header "$shot" compose)" = no ]; then
+            echo "ok    $name-$mode (raw only)"; continue
+        fi
+        swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" \
+            ${offset:+--offset "$offset"} "$raw"-*.png
         echo "ok    $name-$mode"
+        shots=$((shots + 1))
+    done
+done
+
+# Combined shots: the key window of each listed shot (its last raw capture),
+# in order, on one canvas. Runs after the captures, from whatever raw/ holds.
+for shot in scripts/screenshots/*.shot; do
+    name="$(basename "$shot" .shot)"
+    [[ -n "$PATTERN" && "$name" != *$PATTERN* ]] && continue
+    parts="$(header "$shot" combine)"
+    [ -n "$parts" ] || continue
+    offset="$(header "$shot" offset)"
+    modes="$(header "$shot" modes)"
+    for mode in ${modes:-light dark}; do
+        windows=()
+        for part in $parts; do
+            last="$(ls "$OUT/raw/$part-$mode"-*.png 2>/dev/null | tail -1)"
+            [ -n "$last" ] || { echo "FAIL  $name-$mode  (no capture of $part)"; failed+=("$name-$mode"); continue 2; }
+            windows+=("$last")
+        done
+        swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" \
+            ${offset:+--offset "$offset"} "${windows[@]}"
+        echo "ok    $name-$mode (combined)"
         shots=$((shots + 1))
     done
 done
