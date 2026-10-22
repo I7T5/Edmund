@@ -3,6 +3,39 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2026-10-21
+
+Thanks to @foxyfox for their first contribution!
+
+### Added
+- Inspector in right sidebar (#403, #404)
+- Faster rendering for first switch to Read mode (#386 @arthurlee116)
+- Tables: Row or column selection with pill (#389)
+- Tables: Drag row or column pill to move (#389)
+- Tables: Cut/Copy/Paste cells (#389)
+- Tables: Auto-format / align table upon leave; manual formatting at Edit > Align Table Source (#389)
+- Settings > Appearance > Manage… sheet (#401)
+- macOS Helpbook; help buttons in Settings panes (#395, #404)
+
+### Changed
+- App Menu > View > Show Web Inspector instead of Inspect Reader (#404)
+- Settings > Appearance: Changing a font no longer changes the font theme; the menu shows Custom (Unsaved) until you choose a theme again (#401)
+- Settings > Appearance: A|A button replaces the font size stepper (#401)
+- Settings > Appearance: Fonts by script moved to Manage… (#401)
+- Settings > Appearance: New Font Theme… saves current fonts (#401)
+- Top padding, left insets, and minor cosmetic tweaks for multiple panes (#400)
+- Reordered items in Settings > General (#399)
+- Disabled More extensions button in Extensions (#399)
+
+### Fixed
+- Quick Look (#390 @foxyfox) (#402 @i7t5)
+- Code block labels are now never chopped from the top (#396)
+- Code block copy buttons don't reappear if cursor is not hovering over (#396)
+- Tables: Typing in a cell near the top or bottom of window no longer scrolls view (#397)
+- Tables: View no longer jumps by table's height after you click into a table (#397)
+- Tables: Deleting several emptied rows or columns with Delete now undoes in one step (#389)
+- Settings > Appearance: Deleting a font theme restyles open documents once instead of twice (#401)
+
 ## [0.8.2] - 2026-10-05
 
 ### Added
