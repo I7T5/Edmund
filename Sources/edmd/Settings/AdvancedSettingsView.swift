@@ -13,6 +13,10 @@ struct AdvancedSettingsView: View {
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 18) {
+            // Only the Sparkle builds update themselves. The App Store build has
+            // no updater, so the toggle would do nothing there, and App Review
+            // rejects self-update controls (guideline 2.4.5(vii)).
+            #if canImport(Sparkle)
             GridRow {
                 Text("Software updates:")
                     .gridColumnAlignment(.trailing)
@@ -20,11 +24,12 @@ struct AdvancedSettingsView: View {
                     Toggle("Automatically check for updates", isOn: $autoCheckUpdates)
                 }
             }
-            
+
             GridRow {
                 Divider().gridCellColumns(2)
             }
-            
+            #endif
+
             GridRow {
                 Text("Privacy & Security:")
                     .gridColumnAlignment(.trailing)
