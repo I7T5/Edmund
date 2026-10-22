@@ -230,6 +230,15 @@ for dest in "${BUNDLE}/Contents/Resources" "${APPEX}/Contents/Resources" \
         [ -e "$bundle" ] && cp -R "$bundle" "$dest/"
     done
     prune_math_fonts "$dest"
+    # SwiftPM writes SwiftMath's bundle an Info.plist with no CFBundleIdentifier,
+    # and App Store Connect rejects any bundle without one ("Missing Bundle
+    # Identifier"). Bundle IDs allow only letters, digits, '-' and '.'.
+    for plist in "$dest"/*.bundle/Info.plist; do
+        [ -e "$plist" ] || continue
+        /usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$plist" >/dev/null 2>&1 && continue
+        name="$(basename "$(dirname "$plist")" .bundle | tr '_' '-')"
+        /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.i7t5.edmund.${name}" "$plist"
+    done
 done
 
 # Code sign the bundle as a properly *sealed* bundle — not just the binary.
