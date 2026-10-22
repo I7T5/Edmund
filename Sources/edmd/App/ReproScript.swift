@@ -30,6 +30,7 @@ import ScreenCaptureKit
 ///                     recentering, so a block can be driven off-screen)
 ///   logsel            log the current selection
 ///   viewmode          toggle Edit ↔ Read via the same action as ⌘E
+///   webinspector      View ▸ Show Web Inspector (⌥⌘I): Read mode, inspector up
 ///   fullscreen        enter full screen (its own Space, so a run doesn't sit over
 ///                     the desktop); `sleep` ~3000 after it for the animation
 ///   find on|off|replace  open/close the find bar (⌘F's own handler) without
@@ -346,6 +347,8 @@ enum ReproScript {
                     doc.toggleViewMode(nil)
                     Log.info("repro viewmode toggled", category: .app)
                 }
+            case "webinspector":
+                scheduleDoc(after: delay) { doc in doc.toggleReaderInspector(nil) }
             case "find":
                 // Opens/closes the find bar through the same handler ⌘F fires.
                 // `find on|off|replace`. The AX route (ui-harness.sh open-find)
