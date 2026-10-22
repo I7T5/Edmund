@@ -1,0 +1,4 @@
+# doc: misc/marketing/screenshot-docs/Edmund.md
+# The find bar seeds its field from a one-line selection.
+select Markdown
+find replace

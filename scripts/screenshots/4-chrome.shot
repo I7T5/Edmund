@@ -1,0 +1,5 @@
+# doc: misc/marketing/screenshot-docs/Edmund.md
+# Every toolbar item, the format bar, the status bar and the inspector.
+# args: -settings.edit.showFormatBar YES -statusBar.configured YES -statusBar.autoHide NO -statusBar.isShown YES -statusBar.showWords YES -statusBar.showCharacters YES -statusBar.showLocation YES -statusBar.showLine YES -statusBar.showLineEnding YES "-NSToolbar Configuration MainToolbar3" '{ "TB Is Shown" = 1; "TB Display Mode" = 2; "TB Size Mode" = 1; "TB Item Identifiers" = (format, checklist, table, image, link, share, NSToolbarFlexibleSpaceItem, viewMode, inspector); }'
+caret Write in Markdown
+inspector

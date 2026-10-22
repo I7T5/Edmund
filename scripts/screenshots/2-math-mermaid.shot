@@ -1,0 +1,5 @@
+# doc: misc/marketing/screenshot-docs/Math and Mermaid.md
+# args: -settings.extensions.enabledIDs '(mermaid, "advanced-math")'
+caret And diagrams
+# Mermaid renders asynchronously.
+sleep 3000
