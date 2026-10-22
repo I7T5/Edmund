@@ -72,6 +72,9 @@ if [ "$VARIANT" = "mas" ]; then
     for key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUEnableInstallerLauncherService; do
         plutil -remove "$key" "${BUNDLE}/Contents/Info.plist"
     done
+    # Only HTTPS and system crypto: exempt from export documentation, so App
+    # Store Connect stops asking at every upload.
+    plutil -insert ITSAppUsesNonExemptEncryption -bool NO "${BUNDLE}/Contents/Info.plist"
 fi
 cp Resources/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
 # First-sandboxed-launch migration of Application Support/Edmund into the
