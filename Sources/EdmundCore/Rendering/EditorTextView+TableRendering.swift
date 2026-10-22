@@ -249,19 +249,27 @@ extension EditorTextView {
                             result.addAttribute(.kern, value: amount,
                                                 range: NSRange(location: lineOffset + idx, length: 1))
                         }
+                        // Only the slack past the column's `2 * cellHPad`
+                        // gutter is aligned. The borders stand a pad left of
+                        // each column boundary, so the gutter always goes
+                        // after the text: spent as slack, it put right-aligned
+                        // text against its right border and centered text a
+                        // pad right of centre. The same text area as a
+                        // wrapped cell's `contentWidth`.
                         // A wrapped cell's slack always goes after it: the pad
                         // only reserves the column (its characters are hidden
                         // and the visible text is drawn separately, aligned
                         // per line), so keeping them at the column start keeps
                         // them inside the column they belong to.
+                        let slack = max(0, padding - 2 * cellHPad)
+                        let lead: CGFloat
                         switch overflow ? .left : layout.aligns[ci] {
-                        case .left:   kern(padding, at: trailingIdx)
-                        case .right:  kern(padding, at: leadingIdx)
-                        case .center:
-                            let half = (padding / 2).rounded()
-                            kern(half, at: leadingIdx)
-                            kern(padding - half, at: trailingIdx)
+                        case .left:   lead = 0
+                        case .right:  lead = slack
+                        case .center: lead = (slack / 2).rounded()
                         }
+                        if lead > 0.5 { kern(lead, at: leadingIdx) }
+                        kern(padding - lead, at: trailingIdx)
                     }
                 }
 

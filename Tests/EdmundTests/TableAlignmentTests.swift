@@ -60,6 +60,26 @@ struct TableAlignmentRenderTests {
         #expect((kern(at: start, in: styled) ?? 0) > 0.5)
     }
 
+    /// The column's borders stand `cellHPad` left of each column boundary, so
+    /// its text area ends `2 * cellHPad` short of the column's width. Spending
+    /// that gutter as alignment slack put a right-aligned cell flush against
+    /// its right border and a centered one a pad right of centre.
+    @Test("Right and center columns keep the gutter after the widest cell",
+          arguments: ["--:", ":-:"])
+    func gutterStaysTrailing(marker: String) {
+        let editor = makeEditor()
+        let styled = editor.styleBlock("| a | b |\n|\(marker)|---|\n| wide | y |",
+                                       cursorPosition: nil)
+        let s = styled.string as NSString
+        let start = lastRowStart(styled)
+        let wide = s.range(of: "wide", options: .backwards)
+        let gutter = 2 * editor.bodyFont.pointSize * 0.3
+        // The widest cell has no slack to align: nothing goes before it...
+        #expect((kern(at: start, in: styled) ?? 0) < 0.5)
+        // ...and the whole gutter goes after it (on the space before `|`).
+        #expect(abs((kern(at: wide.upperBound, in: styled) ?? 0) - gutter) < 0.5)
+    }
+
     @Test("Left-aligned column does NOT kern the leading pipe")
     func leftAlign() {
         let editor = makeEditor()
