@@ -59,6 +59,8 @@ import ScreenCaptureKit
 ///   handlemenu row|column  open a table handle's menu via its real hit test
 ///   clickhandle row|column [center|chevron] [clicks]  click a table handle
 ///                     through mouseDown (a menu it opens is modal)
+///   draghandle row|column <points> [ms]  drag the caret's row or column pill
+///                     that far along its axis, in real time (for recordings)
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
 ///   selectcells r0,c0,r1,c1  select that block of table cells
 ///   ime <text>        compose <text> as marked text (NSTextInputClient)
@@ -620,6 +622,16 @@ enum ReproScript {
                     report("repro clickhandle \(arg) " + editor.debugClickTableHandle(
                         column: words.first == "column",
                         chevron: words.count > 1 && words[1] == "chevron", clicks: clicks))
+                }
+            case "draghandle":
+                schedule(after: delay) { editor in
+                    let words = arg.split(separator: " ").map(String.init)
+                    guard words.count >= 2, let distance = Double(words[1]) else {
+                        report("repro draghandle: want row|column <points> [ms]"); return
+                    }
+                    let ms = words.count > 2 ? Double(words[2]) ?? 1200 : 1200
+                    report("repro draghandle " + editor.debugDragTableHandle(
+                        column: words[0] == "column", distance: distance, duration: ms / 1000))
                 }
             case "cellmenu":
                 // The right-click menu for the cell holding <needle>, through

@@ -1464,6 +1464,46 @@ extension EditorTextView {
         return out
     }
 
+    /// Drags the caret's row or column pill `distance` points along its axis
+    /// over `duration` seconds through the real `mouseDown`. Unlike `debugDrag`,
+    /// which lands the whole gesture in one frame, each drag event is posted by
+    /// its own timer in the common modes, so it fires inside the pill's tracking
+    /// loop (`nextEvent` runs the event-tracking mode) and the lift and the bar
+    /// animate as under a pointer — what a screen recording needs.
+    public func debugDragTableHandle(column wantsColumn: Bool, distance: CGFloat,
+                                     duration: TimeInterval) -> String {
+        let axis: TableHandle.Axis = wantsColumn ? .column : .row
+        guard let window, let handle = tableHandles().first(where: { $0.axis == axis }),
+              let down = debugMouseEvent(at: NSPoint(x: handle.rect.midX, y: handle.rect.midY)) else {
+            return "no \(wantsColumn ? "column" : "row") handle"
+        }
+        let start = NSPoint(x: handle.rect.midX, y: handle.rect.midY)
+        let number = window.windowNumber
+        let steps = max(1, Int(duration * 60))
+        for i in 0...steps {
+            let t = CGFloat(i) / CGFloat(steps)
+            let eased = t * t * (3 - 2 * t)
+            let location = convert(NSPoint(x: start.x + (wantsColumn ? distance * eased : 0),
+                                           y: start.y + (wantsColumn ? 0 : distance * eased)), to: nil)
+            let type: NSEvent.EventType = i == steps ? .leftMouseUp : .leftMouseDragged
+            // The drop waits a beat after the last move, as a hand would.
+            let delay = duration * Double(t) + (i == steps ? 0.25 : 0)
+            let timer = Timer(timeInterval: delay, repeats: false) { _ in
+                MainActor.assumeIsolated {
+                    guard let event = NSEvent.mouseEvent(
+                        with: type, location: location, modifierFlags: [],
+                        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: number,
+                        context: nil, eventNumber: 0, clickCount: 1,
+                        pressure: type == .leftMouseUp ? 0 : 1) else { return }
+                    NSApp.postEvent(event, atStart: false)
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        mouseDown(with: down)
+        return "\(wantsColumn ? "column" : "row") by \(distance) ranges=\(selectedRanges.map(\.rangeValue))"
+    }
+
     /// Clicks every cell of every table at five points across its width and
     /// reports only what came out wrong: a caret that left the cell it was
     /// clicked in, or one that stopped short of the cell's text when the click
