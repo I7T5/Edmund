@@ -12,6 +12,7 @@ import ScreenCaptureKit
 /// Accessibility permission. Commands, one per line:
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
+///   select <needle>   select the first occurrence of <needle>
 ///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
 ///   hovercopy <n>     put the pointer on the copy button of the code block at n
 ///   copycode <n>      press the copy button of the code block at offset n
@@ -40,7 +41,8 @@ import ScreenCaptureKit
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
 ///                     webview scrollTop) for mode-switch harness debugging
 ///   logtoolbar        log every toolbar item's identifier and enabled state
-///   logwindows        log each visible window's id, for `screencapture -l`
+///   logwindows        log each visible window's id and whether it is key, for
+///                     `screencapture -l`
 ///   helpbutton <pane> open Settings on the pane with that toolbar label and
 ///                     click its Help (?) button; PASS when the button exists
 ///                     (opens Tips, which takes focus)
@@ -102,6 +104,15 @@ enum ReproScript {
                         return
                     }
                     editor.setSelectedRange(NSRange(location: r.location, length: 0))
+                }
+            case "select":
+                schedule(after: delay) { editor in
+                    let r = (editor.rawSource as NSString).range(of: arg)
+                    guard r.location != NSNotFound else {
+                        verdict("select", false, "needle not found: \(arg)")
+                        return
+                    }
+                    editor.setSelectedRange(r)
                 }
             case "caretoff":
                 // Absolute-offset caret move (arrow-key-like: fromMouse=false).
@@ -440,11 +451,13 @@ enum ReproScript {
                 // `NSWindow.windowNumber` is the CGWindowID `screencapture -l`
                 // takes. Reporting it is the only way to grab a window from a
                 // script here: a freshly built tool has no Screen Recording grant
-                // of its own, so it cannot look the id up from outside.
+                // of its own, so it cannot look the id up from outside. `key=`
+                // lets scripts/screenshots.sh retry when macOS refused `front`'s
+                // activation (the window would capture with grey traffic lights).
                 schedule(after: delay) { _ in
                     for window in NSApp?.windows ?? [] where window.isVisible {
                         report("repro window \(window.windowNumber) " +
-                               "\(type(of: window)) frame=\(window.frame)")
+                               "\(type(of: window)) key=\(window.isKeyWindow) frame=\(window.frame)")
                     }
                 }
             case "helpbutton":
