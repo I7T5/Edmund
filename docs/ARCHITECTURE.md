@@ -1218,8 +1218,10 @@ Notable subsystems:
   `docs/architecture/reader-and-export.md`. Still deferred in Edit mode:
   reference links/definitions, blockquote lazy continuation,
   entity-reference styling, the 2-trailing-space hard-break span.
-- **Edit-mode table alignment** distributes each cell's slack via `.kern`,
-  putting the right/center "before" pad on the cell's *hidden* leading pipe
+- **Edit-mode table alignment** distributes each cell's slack past the
+  column's `2 * cellHPad` gutter via `.kern` (the gutter always trails the
+  text, because the borders stand a pad left of each column boundary),
+  putting the right/center "before" share on the cell's *hidden* leading pipe
   (kern still adds advance on a 0.01pt glyph) —
   `EditorTextView+TableRendering.swift`. Column widths are clamped to the
   available line width (`distributeColumnWidths`,

@@ -4,9 +4,10 @@ import AppKit
 @testable import EdmundCore
 
 // GFM table column alignment (`:--`/`:-:`/`--:`) applied in the live editor.
-// The non-active render distributes each cell's slack via `.kern`: left pads
-// after content, right pads before it (on the leading hidden pipe), center
-// splits. The kern *location* encodes the alignment.
+// The non-active render distributes each cell's slack past the column's
+// `2 * cellHPad` gutter via `.kern`: left pads after content, right pads before
+// it (on the leading hidden pipe), center splits; the gutter always goes after.
+// The kern *location* encodes the alignment.
 
 @Suite("Table column alignment — parsing")
 struct TableAlignmentParseTests {
