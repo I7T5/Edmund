@@ -221,12 +221,14 @@ extension EditorTextView {
                     }
                 }
 
-                // Kern-pad each cell to its column width, distributing the slack
-                // by column alignment (skip separator). Left pads after content;
-                // right pads before it (kern on the cell's leading hidden pipe,
-                // which still adds advance though it's near-zero-width); center
-                // splits the slack. Kern adds advance *after* a glyph, so the
-                // "before" kern goes on the char preceding the cell content.
+                // Kern-pad each cell to its column width (skip separator). Only
+                // the slack past the column's `2 * cellHPad` gutter follows the
+                // column alignment: left puts it all after the content, right
+                // puts it before (kern on the cell's leading hidden pipe, which
+                // still adds advance though it's near-zero-width), center splits
+                // it. The gutter always goes after the content. Kern adds
+                // advance *after* a glyph, so the "before" kern goes on the char
+                // preceding the cell content.
                 if i != 1, i < layout.rowCells.count {
                     for ci in 0..<min(layout.rowCells[i].count, numCols) {
                         let cr = layout.rowCells[i][ci]
@@ -249,19 +251,26 @@ extension EditorTextView {
                             result.addAttribute(.kern, value: amount,
                                                 range: NSRange(location: lineOffset + idx, length: 1))
                         }
+                        // Align only the slack past the column's `2 * cellHPad`
+                        // gutter; the gutter always goes after the text. The
+                        // borders sit a pad left of each column boundary, so
+                        // this keeps the text inside the same area as a
+                        // wrapped cell's `contentWidth`.
+                        //
                         // A wrapped cell's slack always goes after it: the pad
                         // only reserves the column (its characters are hidden
                         // and the visible text is drawn separately, aligned
                         // per line), so keeping them at the column start keeps
                         // them inside the column they belong to.
+                        let slack = max(0, padding - 2 * cellHPad)
+                        let lead: CGFloat
                         switch overflow ? .left : layout.aligns[ci] {
-                        case .left:   kern(padding, at: trailingIdx)
-                        case .right:  kern(padding, at: leadingIdx)
-                        case .center:
-                            let half = (padding / 2).rounded()
-                            kern(half, at: leadingIdx)
-                            kern(padding - half, at: trailingIdx)
+                        case .left:   lead = 0
+                        case .right:  lead = slack
+                        case .center: lead = (slack / 2).rounded()
                         }
+                        if lead > 0.5 { kern(lead, at: leadingIdx) }
+                        kern(padding - lead, at: trailingIdx)
                     }
                 }
 
@@ -364,9 +373,8 @@ extension EditorTextView {
         // screen — the overflow gets wrapped (below) instead. Columns
         // that already fit their fair share keep their natural width.
         let minColWidth = bodyFont.pointSize * 3
-        // Leave the row some slack at the container edge. A right- or
-        // center-aligned column kerns its pad *before* its text, so the
-        // cell's real glyphs sit at the very end of the row's advance;
+        // Leave the row some slack at the container edge. The row's closing
+        // pipe is a real glyph that sits after the last cell's whole pad;
         // filling the container exactly then force-wraps the row, because
         // a trailing pad may hang past the edge but glyphs may not. Same
         // reason `applyOverlay` caps its kern short of the full width.
