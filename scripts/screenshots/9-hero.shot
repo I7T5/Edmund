@@ -1,5 +1,6 @@
 # The editor in dark and light, overlapping, like the README's first image.
+# The 800-point preview windows scale up further than 1-editor's.
 # expect: Markdown editor, About the name
 # modes: light
-# combine: 1-editor@dark 1-editor@light
-# layout: 0.38,0.4 0.62,0.6
+# combine: 7b-preview@dark 7b-preview@light
+# layout: 0.36,0.38 0.65,0.63

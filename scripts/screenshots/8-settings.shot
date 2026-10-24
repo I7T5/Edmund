@@ -1,7 +1,7 @@
 # Three Settings panes, every one readable: Edit, the tallest, on the left;
 # Themes above General on the right, General in front.
 # expect: General, Themes, Edit
-# Settings labels are 13 pt and cannot zoom; three panes fit at about 1×.
-# legible: 26
+# Settings labels are 13 pt and cannot zoom; three panes fit at about 0.95×.
+# legible: 24
 # combine: 8c-settings-edit 8b-settings-themes 8a-settings-general
-# layout: 0.285,0.52 0.72,0.32 0.72,0.69
+# layout: 0.29,0.52 0.71,0.33 0.71,0.67

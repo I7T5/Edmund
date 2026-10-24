@@ -484,6 +484,8 @@ enum ReproScript {
                 schedule(after: delay) { _ in
                     guard parts.count == 2 else { report("repro settingspane: <png> <pane>"); return }
                     openSettingsPane(parts[1]) { window, _ in
+                        // No focus ring on the pane's first control in a screenshot.
+                        window.makeFirstResponder(nil)
                         guard let view = window.contentView,
                               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
                         view.cacheDisplay(in: view.bounds, to: rep)

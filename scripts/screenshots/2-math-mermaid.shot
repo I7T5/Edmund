@@ -1,6 +1,8 @@
 # doc: misc/marketing/screenshot-docs/Math and Mermaid.md
 # expect: Math and Mermaid, Narnia
-# window: 820,620
+# window: 720,640
+# Mermaid's labels don't follow the editor's zoom and pull the median down.
+# legible: 32
 # args: -settings.extensions.enabledIDs '(mermaid, "advanced-math")'
 zoom in
 zoom in

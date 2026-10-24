@@ -1,4 +1,5 @@
 # The same document in Source mode and in live preview.
 # expect: Markdown editor, About the name
-# combine: 7a-source 7b-preview
+# Source in front: whole Markdown lines are the point; shot 1 is the preview.
+# combine: 7b-preview 7a-source
 # offset: 0.2,0.1
