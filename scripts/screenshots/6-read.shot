@@ -1,6 +1,6 @@
 # doc: misc/marketing/screenshot-docs/GFM and Obsidian.md
 # expect: Brother, Wikilinks
-# window: 760,680
+# window: 700,725
 # The whole page, footnote included, at some cost in size: cropped at the
 # image, it read as broken.
 # legible: 30
