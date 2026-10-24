@@ -215,7 +215,7 @@ for shot in scripts/screenshots/*.shot; do
         # The waits are short to keep the screen takeover short; a shot that
         # renders asynchronously (Mermaid, Read mode) sleeps on its own.
         { printf '%s\n' front 'sleep 300' "resizewindow ${size:-960,600}" 'sleep 300'; grep -v '^#' "$shot"
-          printf '%s\n' 'sleep 300' 'scroll 0' 'readscroll 0'
+          printf '%s\n' 'sleep 300' 'scroll top' 'readscroll 0'
           # Ask for focus again right before the shot: cheaper than a relaunch
           # when macOS refused the first `front`. Not over a Settings window.
           grep -q '^settingspane' "$shot" || printf '%s\n' front

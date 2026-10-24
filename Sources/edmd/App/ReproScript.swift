@@ -27,7 +27,7 @@ import ScreenCaptureKit
 ///   enter             press Return (insertNewline: list continuation, table rows)
 ///   shiftenter        press Shift-Return as a real key event (list soft break)
 ///   tab / backtab     indent / dedent the selected list line(s)
-///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
+///   scroll <y>|top    scroll the clip view to y (bypasses the caret/typewriter
 ///                     recentering, so a block can be driven off-screen)
 ///   logsel            log the current selection
 ///   viewmode          toggle Edit ↔ Read via the same action as ⌘E
@@ -326,6 +326,9 @@ enum ReproScript {
                 // `scroll(to:)` posts boundsDidChange, same as a real drag/wheel
                 // scroll, so promotion/idle-drain react exactly as they would live.
                 schedule(after: delay) { editor in
+                    // "scroll top": the document's real top, below a top
+                    // content inset (the format bar) that y=0 would scroll under.
+                    if arg == "top" { editor.scrollToBeginningOfDocument(nil); return }
                     guard let clipView = editor.enclosingScrollView?.contentView else { return }
                     let y = CGFloat(Double(arg) ?? 0)
                     let proposed = NSRect(origin: NSPoint(x: 0, y: y), size: clipView.bounds.size)
