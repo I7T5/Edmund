@@ -1,8 +1,9 @@
-# Tables edited in place: a column selected by its pill, Markdown typed in a
-# cell, and a row being dragged. The columns are left, centre and right
-# aligned, which shows while the table is being edited.
+# Tables edited in place, side by side in dark mode: a column selected by its
+# pill with its menu open, and Markdown typed in a cell, with copy and paste
+# to spreadsheets named below the table. The columns are left, centre and
+# right aligned, which shows while the table is being edited.
 # expect: Peter, Susan, Lucy, Queen
-# Three windows fit at a little less scale than one.
 # legible: 38
-# combine: 3a-table-column 3b-table-typing 3c-table-drag
-# layout: 0.27,0.34 0.73,0.34 0.5,0.68
+# modes: dark
+# combine: 3a-table-column 3b-table-typing
+# offset: 0.48,0

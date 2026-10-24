@@ -54,6 +54,8 @@
 #                      ($SHOTS_MODES=dark redoes one mode)
 #   # expect: a, b     words rate.swift checks are on screen (feature coverage)
 #   # legible: <px>    rate.swift's text-height floor for this shot (default 40)
+#   # stack: yes       capture all the app's windows as one (a menu open over
+#                      its document; scripts/screenshots/stack.swift)
 #   # delay: <s>       take the shot this long after the scenario's own
 #                      `logwindows` (mid-drag: the drag blocks the app)
 #
@@ -99,6 +101,7 @@ RUN="$(mktemp -d)"
 # Compiled once: `swift <script>` recompiles on every call, ~5 s each.
 swiftc -O scripts/screenshots/compose.swift -o "$RUN/compose" 2>&1 | grep error
 swiftc -O scripts/screenshots/rate.swift -o "$RUN/rate" 2>&1 | grep error
+swiftc -O scripts/screenshots/stack.swift -o "$RUN/stack" 2>&1 | grep error
 
 # Whole seconds since the last keyboard or mouse input.
 idle() { ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print int($NF / 1e9); exit}'; }
@@ -163,6 +166,8 @@ capture() {
                 got=0
             elif [ "$(idle)" -lt $((SECONDS - started)) ]; then
                 echo "      input during the shot; discarded"   # it may have landed in the doc
+            elif [ -n "${STACK:-}" ]; then
+                "$RUN/stack" "$prefix-1.png" "$pid" $(grep '^repro window .* key=true' "$log" | awk '{print $3}') && got=0
             elif grep -q '^repro window .* key=true' "$log"; then
                 local n=0 wid
                 for wid in $(grep '^repro window .* key=false' "$log" | awk '{print $3}') \
@@ -204,7 +209,7 @@ for shot in scripts/screenshots/*.shot; do
     size="$(header "$shot" window)"
     offset="$(header "$shot" offset)"; layout="$(header "$shot" layout)"
     eval "set -- $(header "$shot" args)"
-    MANUAL="$(header "$shot" manual)"; DELAY="$(header "$shot" delay)"
+    MANUAL="$(header "$shot" manual)"; DELAY="$(header "$shot" delay)"; STACK="$(header "$shot" stack)"
     # Manual shots wait for a person, so only a run that names them takes them.
     [[ -n "$MANUAL" && ${#PATTERNS[@]} -eq 0 ]] && { echo "skip  $name (manual: scripts/screenshots.sh $name)"; continue; }
     if [ ! -f "$doc" ]; then

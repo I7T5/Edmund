@@ -1,7 +1,12 @@
 # doc: misc/marketing/screenshot-docs/The Pevensies.md
 # compose: no
+# modes: dark
 # window: 520,420
-# A column selected by its pill.
+# A column selected by its pill, with the pill's menu open. The menu is modal
+# and a window of its own: the windows are logged before it opens, and the
+# shot, document and menu together, is taken once it is up.
+# stack: yes
+# delay: 1.5
 zoom in
 zoom in
 zoom in
@@ -9,3 +14,7 @@ sleep 500
 caret Peter
 sleep 500
 clickhandle column
+sleep 500
+scroll 0
+logwindows
+handlemenu column
