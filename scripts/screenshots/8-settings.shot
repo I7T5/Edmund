@@ -1,9 +1,9 @@
 # Three Settings panes overlapping, after MarkEdit's Settings shot: General in
-# front at the top left, Themes behind it at the top right, Edit at the back
-# below both. The point is a neat stack, not every control; overlap lets the
-# group scale up.
-# expect: General, Themes
+# front at the top left, Edit behind it on the right, Themes at the bottom;
+# every title bar shows. The point is a neat stack, not every control;
+# overlap lets the group scale up.
+# expect: General, Themes, Edit
 # Settings labels are 13 pt and cannot zoom.
 # legible: 24
 # combine: 8c-settings-edit 8b-settings-themes 8a-settings-general
-# layout: 0.45,0.63 0.65,0.36 0.33,0.33
+# layout: 0.66,0.4 0.47,0.71 0.33,0.33
