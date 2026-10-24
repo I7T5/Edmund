@@ -326,11 +326,13 @@ enum ReproScript {
                 // `scroll(to:)` posts boundsDidChange, same as a real drag/wheel
                 // scroll, so promotion/idle-drain react exactly as they would live.
                 schedule(after: delay) { editor in
-                    // "scroll top": the document's real top, below a top
-                    // content inset (the format bar) that y=0 would scroll under.
-                    if arg == "top" { editor.scrollToBeginningOfDocument(nil); return }
                     guard let clipView = editor.enclosingScrollView?.contentView else { return }
-                    let y = CGFloat(Double(arg) ?? 0)
+                    // "scroll top": the top of the scroll range, -contentInsets.top,
+                    // so the document rests below the format bar rather than
+                    // under it. Not scrollToBeginningOfDocument: that stops as
+                    // soon as the first character is anywhere in view.
+                    let y = arg == "top" ? -(editor.enclosingScrollView?.contentInsets.top ?? 0)
+                                         : CGFloat(Double(arg) ?? 0)
                     let proposed = NSRect(origin: NSPoint(x: 0, y: y), size: clipView.bounds.size)
                     let clamped = clipView.constrainBoundsRect(proposed)
                     clipView.scroll(to: clamped.origin)
@@ -444,6 +446,12 @@ enum ReproScript {
                           "clipY=\(sv?.contentView.bounds.origin.y ?? -1) " +
                           "winKey=\(editor.window?.isKeyWindow ?? false) " +
                           "occl=\(editor.window?.occlusionState.contains(.visible) ?? false)")
+                    report("repro state clipY=\(sv?.contentView.bounds.origin.y ?? -1) " +
+                           "insetTop=\(sv?.contentInsets.top ?? -1) " +
+                           "clipInsetTop=\(sv?.contentView.contentInsets.top ?? -1) " +
+                           "clipAuto=\(sv?.contentView.automaticallyAdjustsContentInsets ?? false) " +
+                           "svFrame=\(sv?.frame ?? .zero) " +
+                           "textOriginY=\(editor.textContainerOrigin.y)")
                     let off = editor.topmostVisibleCharacterOffset()
                     let line = off.map { editor.line(forOffset: $0) }
                     let spans = ReadModeAnchors.topLevelBlockSpans(for: editor.rawSource)

@@ -8,3 +8,6 @@
 # args: -settings.edit.showFormatBar YES -statusBar.configured YES -statusBar.autoHide NO -statusBar.isShown YES -statusBar.showWords YES -statusBar.showCharacters YES -statusBar.showLocation YES -statusBar.showLine YES -statusBar.showLineEnding YES "-NSToolbar Configuration MainToolbar3" '{ "TB Is Shown" = 1; "TB Display Mode" = 2; "TB Size Mode" = 1; "TB Item Identifiers" = (format, checklist, table, image, link, share, NSToolbarFlexibleSpaceItem, viewMode, inspector); }'
 caret come back to a Narnia
 inspector
+# Opening the inspector scrolls the document 16 pt after a moment (an app
+# bug); let it, so the runner's scroll to the top comes after.
+sleep 1000
