@@ -562,24 +562,52 @@ extension EditorTextView {
         return first.union(last)
     }
 
+    /// Places the box around a cell, row or column selection. It is drawn by
+    /// `TableSelectionOverlay`, a view above the text, not in this background
+    /// pass: the table's borders are drawn by the layout fragments, which sit
+    /// above the background, so every border the box crossed drew over it
+    /// (plainly in dark mode, whose border gray is opaque).
     private func drawTableCellSelection(in dirty: NSRect) {
-        guard let box = tableCellSelectionBox(), box.intersects(dirty) else { return }
-        // Square corners, and the stroke centred on the box's own edge rather
-        // than inset within it: the box stands *on* the cell borders, so it
-        // reads as those borders thickening rather than as a second rectangle
-        // drawn just inside them. A radius would leave a gap at every corner it
-        // shares with them.
-        accentColor.setStroke()
-        let path = NSBezierPath(rect: box)
-        path.lineWidth = Self.tableCellSelectionLineWidth
-        path.stroke()
-        accentColor.setFill()
-        for point in tableCellSelectionDots(box) {
-            NSBezierPath(ovalIn: NSRect(x: point.x - tableCellDotRadius,
-                                        y: point.y - tableCellDotRadius,
-                                        width: tableCellDotRadius * 2,
-                                        height: tableCellDotRadius * 2)).fill()
+        // Here because this pass always knows the box's current geometry; the
+        // view work itself waits for the pass to end; see `placeTableSelectionOverlay`.
+        let box = tableCellSelectionBox()
+        let dots = box.map { tableCellSelectionDots($0) } ?? []
+        let radius = tableCellDotRadius, color = accentColor
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                self?.placeTableSelectionOverlay(box: box, dots: dots, dotRadius: radius, color: color)
+            }
         }
+    }
+
+    /// Moves, refills or hides the overlay. Not done inside the draw pass that
+    /// computes it: adding a subview or changing a frame mid-display is
+    /// AppKit's to refuse.
+    func placeTableSelectionOverlay(box: NSRect?, dots: [NSPoint], dotRadius: CGFloat, color: NSColor) {
+        guard let box else {
+            tableSelectionOverlay?.isHidden = true
+            return
+        }
+        let overlay = tableSelectionOverlay ?? {
+            let view = TableSelectionOverlay(frame: .zero)
+            tableSelectionOverlay = view
+            return view
+        }()
+        // Above the fragment views, which TextKit adds as it lays out.
+        if subviews.last !== overlay { addSubview(overlay, positioned: .above, relativeTo: nil) }
+        let margin = max(Self.tableCellSelectionLineWidth, dotRadius) + 1
+        let frame = box.insetBy(dx: -margin, dy: -margin)
+        let inside = box.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        let localDots = dots.map { NSPoint(x: $0.x - frame.minX, y: $0.y - frame.minY) }
+        guard overlay.isHidden || overlay.frame != frame || overlay.box != inside || overlay.dots != localDots
+                || overlay.dotRadius != dotRadius || overlay.color != color else { return }
+        overlay.frame = frame
+        overlay.box = inside
+        overlay.dots = localDots
+        overlay.dotRadius = dotRadius
+        overlay.color = color
+        overlay.isHidden = false
+        overlay.needsDisplay = true
     }
 
     /// 7.5pt across at the default size, measured off the Notes recording at
@@ -1236,6 +1264,45 @@ public final class TableHandleElement: NSAccessibilityElement {
         return MainActor.assumeIsolated {
             guard let editor, let handle else { return false }
             return editor.pressTableHandle(handle)
+        }
+    }
+}
+
+/// The box around a table cell selection and its two drag dots, in a view of
+/// its own so it draws above the layout fragments that draw the table's
+/// borders. Sized to the box, not the text view, so its backing store stays
+/// small. Clicks pass through to the text view, which hit-tests the dots.
+final class TableSelectionOverlay: NSView {
+    var box = NSRect.zero
+    var dots: [NSPoint] = []
+    var dotRadius: CGFloat = 0
+    var color = NSColor.controlAccentColor
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // Square corners, and the stroke centred on the box's own edge rather
+        // than inset within it: the box stands *on* the cell borders, so it
+        // reads as those borders thickening rather than as a second rectangle
+        // drawn just inside them. A radius would leave a gap at every corner it
+        // shares with them.
+        color.setStroke()
+        let path = NSBezierPath(rect: box)
+        path.lineWidth = EditorTextView.tableCellSelectionLineWidth
+        path.stroke()
+        color.setFill()
+        for point in dots {
+            NSBezierPath(ovalIn: NSRect(x: point.x - dotRadius, y: point.y - dotRadius,
+                                        width: dotRadius * 2, height: dotRadius * 2)).fill()
         }
     }
 }
