@@ -5,7 +5,9 @@
 // fraction of the canvas right of and below the one before it — a cascade, or
 // side by side — and the group as a whole is centred and scaled to fit.
 // --layout "x,y x,y …" instead puts each window's centre at that fraction of
-// the canvas. No alpha in the output: App Store Connect rejects it.
+// the canvas. --scale s pins the windows' scale instead of fitting the group
+// (it prints the scale it used). No alpha in the output: App Store Connect
+// rejects it.
 //
 // One set of shots serves the App Store, the README and edmund.md. On its own
 // it composes hand-taken captures too (⇧⌘4, Space, click a window — shadow
@@ -14,7 +16,7 @@
 //       --background ~/Pictures/wall.jpg dark.png light.png
 //
 // Usage: swift scripts/screenshots/compose.swift <out.png> light|dark [--size WxH]
-//            [--offset dx,dy | --layout "x,y …"] [--background image] <window.png>...
+//            [--offset dx,dy | --layout "x,y …"] [--scale s] [--background image] <window.png>...
 import AppKit
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -28,6 +30,7 @@ var step = CGPoint.zero
 var background: NSImage?
 var layout: [CGPoint] = []
 var size = NSSize(width: 2880, height: 1800)
+var fixedScale: Double?
 while let flag = args.first, flag.hasPrefix("--") {
     if flag == "--size" {
         let wh = args[1].split(separator: "x").compactMap { Double($0) }
@@ -42,6 +45,8 @@ while let flag = args.first, flag.hasPrefix("--") {
         }
     } else if flag == "--background" {
         background = NSImage(contentsOfFile: args[1])
+    } else if flag == "--scale" {
+        fixedScale = Double(args[1])
     }
     args.removeFirst(2)
 }
@@ -70,6 +75,10 @@ for (window, centre) in zip(windows, centres) {
                 (size.width * 0.92 / 2 - abs(centre.x - size.width / 2)) * 2 / p.width,
                 (size.height * 0.92 / 2 - abs(centre.y - size.height / 2)) * 2 / p.height)
 }
+// --scale pins the size instead, so a layout can spread its windows without
+// shrinking them; a window may then run past the 4% margin.
+if let fixedScale { scale = fixedScale }
+print(String(format: "scale %.3f", scale))
 
 // No alpha channel: App Store Connect rejects screenshots that have one.
 let canvas = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),

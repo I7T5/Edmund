@@ -16,6 +16,8 @@
 #                      canvas from the one before (cascade, side by side)
 #   # layout: x,y x,y… each window's centre as a fraction of the canvas, for
 #                      arrangements a cascade can't make
+#   # scale: s         the windows' scale, instead of the largest that fits
+#                      (spread a layout without shrinking its windows)
 #   # compose: no      capture only, for use by a combined shot
 #   # combine: <shot>...  no run of its own: the key windows of those shots'
 #                      captures, in order, on one canvas (with # offset:)
@@ -197,7 +199,7 @@ for shot in scripts/screenshots/*.shot; do
     doc="$DOC_ROOT/$(header "$shot" doc)"
     modes="${SHOTS_MODES:-$(header "$shot" modes)}"
     size="$(header "$shot" window)"
-    offset="$(header "$shot" offset)"; layout="$(header "$shot" layout)"
+    offset="$(header "$shot" offset)"; layout="$(header "$shot" layout)"; scale="$(header "$shot" scale)"
     eval "set -- $(header "$shot" args)"
     MANUAL="$(header "$shot" manual)"
     # Manual shots wait for a person, so only a run that names them takes them.
@@ -241,7 +243,7 @@ for shot in scripts/screenshots/*.shot; do
             echo "ok    $name-$mode (raw only)"; continue
         fi
         "$RUN/compose" "$OUT/$name-$mode.png" "$mode" ${SIZE:+--size "$SIZE"} \
-            ${offset:+--offset "$offset"} ${layout:+--layout "$layout"} ${BACKGROUND:+--background "$BACKGROUND"} "$raw"-*.png
+            ${offset:+--offset "$offset"} ${layout:+--layout "$layout"} ${scale:+--scale "$scale"} ${BACKGROUND:+--background "$BACKGROUND"} "$raw"-*.png
         echo "ok    $name-$mode"
         shots=$((shots + 1)); made+=("$OUT/$name-$mode.png")
     done
@@ -254,7 +256,7 @@ for shot in scripts/screenshots/*.shot; do
     wanted "$name" || continue
     parts="$(header "$shot" combine)"
     [ -n "$parts" ] || continue
-    offset="$(header "$shot" offset)"; layout="$(header "$shot" layout)"
+    offset="$(header "$shot" offset)"; layout="$(header "$shot" layout)"; scale="$(header "$shot" scale)"
     modes="$(header "$shot" modes)"
     for mode in ${modes:-light}; do
         windows=()
@@ -266,7 +268,7 @@ for shot in scripts/screenshots/*.shot; do
             windows+=("$last")
         done
         "$RUN/compose" "$OUT/$name-$mode.png" "$mode" ${SIZE:+--size "$SIZE"} \
-            ${offset:+--offset "$offset"} ${layout:+--layout "$layout"} ${BACKGROUND:+--background "$BACKGROUND"} "${windows[@]}"
+            ${offset:+--offset "$offset"} ${layout:+--layout "$layout"} ${scale:+--scale "$scale"} ${BACKGROUND:+--background "$BACKGROUND"} "${windows[@]}"
         echo "ok    $name-$mode (combined)"
         shots=$((shots + 1)); made+=("$OUT/$name-$mode.png")
     done
