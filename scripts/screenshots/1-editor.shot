@@ -1,6 +1,6 @@
 # doc: misc/marketing/screenshot-docs/Edmund.md
 # expect: Markdown editor, About the name
-# window: 960,500
+# window: 960,540
 # Live preview, with the line under the caret showing its Markdown: a
 # heading, so the revealed "##" is big enough to notice.
 caret About the name
