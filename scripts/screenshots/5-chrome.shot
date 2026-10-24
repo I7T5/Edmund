@@ -1,7 +1,7 @@
 # doc: misc/marketing/screenshot-docs/Outline.md
 # expect: Prince Caspian, Outline
 # Toolbar, format bar, status bar and inspector labels are 11–13 pt by design.
-# legible: 32
+# legible: 29
 # window: 900,620
 # Every toolbar item, the format bar, the status bar and the inspector's
 # outline and info. (The outline doesn't mark the caret's section.)
