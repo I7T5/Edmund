@@ -22,6 +22,7 @@ import ScreenCaptureKit
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
+///   save              File ▸ Save (clears "Edited" after typing)
 ///   backspace <n>     press delete n times (300ms apart)
 ///   enter             press Return (insertNewline: list continuation, table rows)
 ///   shiftenter        press Shift-Return as a real key event (list soft break)
@@ -1130,6 +1131,9 @@ enum ReproScript {
                     if arg.isEmpty { editor.unmarkText() }
                     else { editor.insertText(arg, replacementRange: NSRange(location: NSNotFound, length: 0)) }
                 }
+            case "save":
+                // Clears "Edited" from the title after `type`, for screenshots.
+                scheduleDoc(after: delay) { doc in doc.save(nil) }
             case "undo":
                 schedule(after: delay) { editor in editor.undo(nil) }
             case "redo":

@@ -1,0 +1,15 @@
+# doc: misc/marketing/screenshot-docs/The Pevensies.md
+# compose: no
+# window: 520,420
+# A row mid-drag. The drag ties up the app until it ends, so the windows are
+# logged before it starts and the shot is taken 1.5 s into it.
+# delay: 1.5
+zoom in
+zoom in
+zoom in
+sleep 500
+caret Lucy
+scroll 0
+sleep 500
+logwindows
+draghandle row -30 4000

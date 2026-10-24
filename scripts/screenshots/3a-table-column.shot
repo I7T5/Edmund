@@ -1,0 +1,11 @@
+# doc: misc/marketing/screenshot-docs/The Pevensies.md
+# compose: no
+# window: 520,420
+# A column selected by its pill.
+zoom in
+zoom in
+zoom in
+sleep 500
+caret Peter
+sleep 500
+clickhandle column
