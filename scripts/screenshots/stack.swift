@@ -5,10 +5,10 @@
 // of the document window alone leaves it out.
 //
 // Usage: stack.swift <out.png> <pid> <window id>...
-// The given windows (the document's, from `logwindows`) plus whatever of the
-// process is on screen (the menu). The document window can sit on a Space
-// that isn't showing, which the on-screen list leaves out but
-// `screencapture -l` still draws.
+// The given windows (the document's, from `logwindows`) plus the process's
+// menus. The document window can sit on a Space that isn't showing, which an
+// on-screen window list leaves out but `screencapture -l` still draws.
+// STACK_DEBUG=1 prints every window of the process.
 import AppKit
 
 let args = CommandLine.arguments
@@ -18,11 +18,19 @@ guard args.count >= 3, let pid = Int32(args[2]) else {
 }
 let given = Set(args.dropFirst(3).compactMap { Int($0) })
 let info = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
+if ProcessInfo.processInfo.environment["STACK_DEBUG"] != nil {
+    for w in info where (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid {
+        print(w[kCGWindowNumber as String] ?? "?", "layer", w[kCGWindowLayer as String] ?? "?",
+              "onscreen", w[kCGWindowIsOnscreen as String] ?? "-", w[kCGWindowBounds as String] ?? "")
+    }
+}
 // Back to front: the list comes front to back.
 let mine = info.filter { window in
     guard (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
           let id = (window[kCGWindowNumber as String] as? NSNumber)?.intValue else { return false }
-    return given.contains(id) || (window[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue == true
+    // kCGWindowIsOnscreen comes back unset here, so pick menus by their level.
+    let layer = (window[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+    return given.contains(id) || layer == Int(CGWindowLevelForKey(.popUpMenuWindow))
 }.reversed()
 
 struct Layer { var image: NSBitmapImageRep; var frame: CGRect; var inset: CGPoint }

@@ -1,9 +1,9 @@
-# Tables edited in place, side by side in dark mode: a column selected by its
+# Tables edited in place, side by side, light then dark: a column selected by its
 # pill with its menu open, and Markdown typed in a cell, with copy and paste
 # to spreadsheets named below the table. The columns are left, centre and
 # right aligned, which shows while the table is being edited.
 # expect: Peter, Susan, Lucy, Queen
 # legible: 38
-# modes: dark
-# combine: 3a-table-column 3b-table-typing
+# modes: light
+# combine: 3b-table-typing@light 3a-table-column@dark
 # offset: 0.48,0
