@@ -1,7 +1,8 @@
 # doc: misc/marketing/screenshot-docs/GFM and Obsidian.md
 # expect: Brother, Wikilinks
-# window: 900,640
+# window: 760,720
 # Read mode on its own: with the Web Inspector beside it the shot was half
 # developer tools, too small to read.
+zoom in
 viewmode
 sleep 3000

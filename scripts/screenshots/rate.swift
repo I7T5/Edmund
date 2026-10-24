@@ -1,5 +1,5 @@
-// Scores composed screenshots on what can be measured: format (2880×1800, no
-// alpha), legibility (OCR'd text height), feature coverage (the shot's
+// Scores composed screenshots on what can be measured: format ($SHOTS_SIZE,
+// default 2880×1800; no alpha), legibility (OCR'd text height), feature coverage (the shot's
 // `# expect:` words are on screen), a stray "Edited" title, and clutter (how
 // many separate text blocks compete for attention). Judging taste is the
 // screenshot-rater agent's job; this is the part a script can do.
@@ -14,6 +14,8 @@ import Vision
 // measure 30–46 (rescaled to 2880); Edmund's first 0.8.3 set, with
 // 1200-point windows, measured 29–38.
 let defaultLegible = 40.0
+// The canvas compose.swift was asked for (screenshots.sh exports it).
+let expectedSize = ProcessInfo.processInfo.environment["SHOTS_SIZE"] ?? "2880x1800"
 // More text blocks than this and the eye has nowhere to land.
 let busyBlocks = 70
 
@@ -38,7 +40,7 @@ for path in args {
     guard let rep = NSImage(contentsOfFile: path)?.representations.first as? NSBitmapImageRep,
           let cg = rep.cgImage else { print("FAIL \(path): unreadable"); failed = true; continue }
     var problems: [String] = []
-    if rep.pixelsWide != 2880 || rep.pixelsHigh != 1800 { problems.append("size \(rep.pixelsWide)×\(rep.pixelsHigh)") }
+    if "\(rep.pixelsWide)x\(rep.pixelsHigh)" != expectedSize { problems.append("size \(rep.pixelsWide)×\(rep.pixelsHigh)") }
     if rep.hasAlpha { problems.append("has alpha") }
 
     let request = VNRecognizeTextRequest()

@@ -21,6 +21,8 @@
 # and stacks them, key window on top, on a 2880×1800 canvas
 # (scripts/screenshots/compose.swift): $SHOTS_BACKGROUND, default the current
 # desktop picture, or a plain gradient with SHOTS_BACKGROUND=none.
+# $SHOTS_SIZE (WxH, default 2880x1800, the App Store's) sizes the canvas; the
+# same shots serve the README and edmund.md.
 # $SHOTS_SRC builds the app from another source tree (default this repo), e.g.
 # one with an unmerged fix the shots should show.
 #
@@ -61,6 +63,7 @@ mkdir -p "$OUT/raw"
 BACKGROUND="${SHOTS_BACKGROUND:-$(osascript -e 'tell application "System Events" to get picture of current desktop' 2>/dev/null)}"
 [ "$BACKGROUND" = none ] && BACKGROUND=""
 SRC="${SHOTS_SRC:-$ROOT}"
+SIZE="${SHOTS_SIZE:-}"; export SHOTS_SIZE="${SIZE:-2880x1800}"   # rate.swift checks it
 
 echo "== building shots bundle from $SRC"
 (cd "$SRC" && swift build 2>&1 | grep -E "error:|Build complete" | tail -2)
@@ -179,7 +182,7 @@ for shot in scripts/screenshots/*.shot; do
         if [ "$(header "$shot" compose)" = no ]; then
             echo "ok    $name-$mode (raw only)"; continue
         fi
-        swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" \
+        swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" ${SIZE:+--size "$SIZE"} \
             ${offset:+--offset "$offset"} ${layout:+--layout "$layout"} ${BACKGROUND:+--background "$BACKGROUND"} "$raw"-*.png
         echo "ok    $name-$mode"
         shots=$((shots + 1))
@@ -198,11 +201,13 @@ for shot in scripts/screenshots/*.shot; do
     for mode in ${modes:-light dark}; do
         windows=()
         for part in $parts; do
-            last="$(ls "$OUT/raw/$part-$mode"-*.png 2>/dev/null | tail -1)"
+            # <shot>@<mode> pins a part's mode: a light and a dark window together.
+            pmode="${part#*@}"; [ "$pmode" = "$part" ] && pmode="$mode"
+            last="$(ls "$OUT/raw/${part%@*}-$pmode"-*.png 2>/dev/null | tail -1)"
             [ -n "$last" ] || { echo "FAIL  $name-$mode  (no capture of $part)"; failed+=("$name-$mode"); continue 2; }
             windows+=("$last")
         done
-        swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" \
+        swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" ${SIZE:+--size "$SIZE"} \
             ${offset:+--offset "$offset"} ${layout:+--layout "$layout"} ${BACKGROUND:+--background "$BACKGROUND"} "${windows[@]}"
         echo "ok    $name-$mode (combined)"
         shots=$((shots + 1))

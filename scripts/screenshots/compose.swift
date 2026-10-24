@@ -1,17 +1,25 @@
 // Places window captures (with their shadows, from `screencapture -l`) on a
 // soft gradient, or on --background's image (scaled to fill, centre-cropped),
-// at the Mac App Store's 2880×1800 screenshot size. Windows stack in order, all
-// at one scale. With --offset dx,dy each window sits that fraction of the
-// canvas right of and below the one before it — a cascade, or side by side —
-// and the group as a whole is centred and scaled to fit. --layout "x,y x,y …"
-// instead puts each window's centre at that fraction of the canvas.
+// at the Mac App Store's 2880×1800 screenshot size or --size's. Windows stack
+// in order, all at one scale. With --offset dx,dy each window sits that
+// fraction of the canvas right of and below the one before it — a cascade, or
+// side by side — and the group as a whole is centred and scaled to fit.
+// --layout "x,y x,y …" instead puts each window's centre at that fraction of
+// the canvas. No alpha in the output: App Store Connect rejects it.
 //
-// Usage: swift scripts/screenshots/compose.swift <out.png> light|dark [--offset dx,dy | --layout "x,y …"] [--background image] <window.png>...
+// One set of shots serves the App Store, the README and edmund.md. On its own
+// it composes hand-taken captures too (⇧⌘4, Space, click a window — shadow
+// included), e.g. a light and a dark window side by side for the README:
+//   swift scripts/screenshots/compose.swift hero.png light --layout "0.38,0.42 0.62,0.58" \
+//       --background ~/Pictures/wall.jpg dark.png light.png
+//
+// Usage: swift scripts/screenshots/compose.swift <out.png> light|dark [--size WxH]
+//            [--offset dx,dy | --layout "x,y …"] [--background image] <window.png>...
 import AppKit
 
 var args = Array(CommandLine.arguments.dropFirst())
 guard args.count >= 3 else {
-    FileHandle.standardError.write("usage: compose.swift <out.png> light|dark [--offset dx,dy | --layout \"x,y …\"] [--background image] <window.png>...\n".data(using: .utf8)!)
+    FileHandle.standardError.write("usage: compose.swift <out.png> light|dark [--size WxH] [--offset dx,dy | --layout \"x,y …\"] [--background image] <window.png>...\n".data(using: .utf8)!)
     exit(2)
 }
 let out = args.removeFirst()
@@ -19,8 +27,12 @@ let dark = args.removeFirst() == "dark"
 var step = CGPoint.zero
 var background: NSImage?
 var layout: [CGPoint] = []
+var size = NSSize(width: 2880, height: 1800)
 while let flag = args.first, flag.hasPrefix("--") {
-    if flag == "--offset" {
+    if flag == "--size" {
+        let wh = args[1].split(separator: "x").compactMap { Double($0) }
+        size = NSSize(width: wh[0], height: wh[1])
+    } else if flag == "--offset" {
         let parts = args[1].split(separator: ",").compactMap { Double($0) }
         step = CGPoint(x: parts[0], y: parts[1])
     } else if flag == "--layout" {
@@ -34,7 +46,6 @@ while let flag = args.first, flag.hasPrefix("--") {
     args.removeFirst(2)
 }
 let windows = args.map { NSImage(contentsOfFile: $0)! }
-let size = NSSize(width: 2880, height: 1800)
 
 // Pixels, not points: an NSImage from a Retina capture reports half its size.
 func pixels(_ image: NSImage) -> NSSize {
@@ -51,8 +62,8 @@ let centres = windows.indices.map { i in
 // The largest scale that keeps every window 4% inside each edge. Up to 1.6×: a
 // small window scaled up is how the text gets big enough to read in the Store
 // (Settings can't zoom), and a 2× capture at 1.6× is still sharper than the
-// Store ever displays it.
-var scale = 1.6
+// Store ever displays it. A larger --size raises the cap with it.
+var scale = 1.6 * size.width / 2880
 for (window, centre) in zip(windows, centres) {
     let p = pixels(window)
     scale = min(scale,

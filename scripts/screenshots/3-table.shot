@@ -1,6 +1,6 @@
 # doc: misc/marketing/screenshot-docs/The Pevensies.md
 # expect: Peter, Susan, Lucy, Edmund
-# window: 560,360
+# window: 640,380
 # A table row selected by its pill, edited in place. Its last column is
 # right-aligned, so the caret in the table shows right and centre alignment.
 zoom in

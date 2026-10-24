@@ -1,0 +1,5 @@
+# The editor in dark and light, overlapping, like the README's first image.
+# expect: Markdown editor, About the name
+# modes: light
+# combine: 1-editor@dark 1-editor@light
+# layout: 0.38,0.4 0.62,0.6

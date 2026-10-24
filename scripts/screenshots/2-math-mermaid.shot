@@ -1,6 +1,6 @@
 # doc: misc/marketing/screenshot-docs/Math and Mermaid.md
 # expect: Math and Mermaid, Narnia
-# window: 820,540
+# window: 820,620
 # args: -settings.extensions.enabledIDs '(mermaid, "advanced-math")'
 zoom in
 zoom in
