@@ -116,7 +116,10 @@ capture() {
                 # A manual shot: the maintainer sets it up, then creates $GO.
                 rm -f "$GO"
                 echo "      waiting: $MANUAL — then: touch '$GO'"
-                until [ -e "$GO" ]; do kill -0 "$pid" 2>/dev/null || break; sleep 0.3; done
+                until [ -e "$GO" ]; do
+                    kill -0 "$pid" 2>/dev/null || { echo "      the app quit before the shot"; return 2; }
+                    sleep 0.3
+                done
                 rm -f "$GO"
                 local n=0 wid
                 for wid in $(grep '^repro window ' "$log" | awk '{print $3}'); do
@@ -167,13 +170,15 @@ for shot in scripts/screenshots/*.shot; do
         script="$RUN/$name-$mode.repro"
         # `front` first, so a window the scenario opens (Settings) ends up key.
         { printf '%s\n' "resizewindow ${size:-960,600}" front 'sleep 1000'; grep -v '^#' "$shot"
-          if [ -n "$MANUAL" ]; then printf '%s\n' logwindows 'sleep 3600000' done
+          # A manual shot waits up to a day for its person; `done` quits the app.
+          if [ -n "$MANUAL" ]; then printf '%s\n' logwindows 'sleep 86400000' done
           else printf '%s\n' 'sleep 2500' logwindows 'sleep 1500' done; fi; } > "$script"
         raw="$OUT/raw/$name-$mode"
         GO=""; [ -n "$MANUAL" ] && GO="$OUT/raw/$name-$mode.go"
         ok=""
         for attempt in 1 2 3 4 5; do
-            capture "$doc" "$script" "$raw" -settings.appearance.mode "$mode" "$@" && { ok=1; break; }
+            capture "$doc" "$script" "$raw" -settings.appearance.mode "$mode" "$@"
+            case $? in 0) ok=1; break ;; 2) break ;; esac
             echo "      $name-$mode: window not active (attempt $attempt), retrying"
         done
         if [ -z "$ok" ]; then
