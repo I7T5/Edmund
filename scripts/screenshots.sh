@@ -102,7 +102,7 @@ capture() {
     # someone is using another app.
     open -n "$ROOT/$APP" --args "$doc" -debug.reproScript "$script" \
         -debug.disableUpdater YES -NSAppSleepDisabled YES -ApplePersistenceIgnoreState YES \
-        -EditorTypewriterMode NO "$@"
+        -EditorTypewriterMode NO -NSTextInsertionPointBlinkPeriodOn 100000 -NSTextInsertionPointBlinkPeriodOff 1 "$@"
     local pid="" got=1
     for _ in $(seq 1 50); do
         pid="$(pgrep -n -f "$ROOT/$APP/Contents/MacOS/edmd")" && break

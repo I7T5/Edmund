@@ -1,6 +1,8 @@
 # The editor in dark and light, overlapping, like the README's first image.
 # The 800-point preview windows scale up further than 1-editor's.
 # expect: Markdown editor, About the name
+# Two overlapping windows fit at a little less scale than one.
+# legible: 36
 # modes: light
 # combine: 7b-preview@dark 7b-preview@light
 # layout: 0.36,0.38 0.65,0.63

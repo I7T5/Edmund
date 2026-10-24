@@ -1,6 +1,6 @@
 # doc: misc/marketing/screenshot-docs/The Pevensies.md
 # expect: Peter, Susan, Lucy, Edmund
-# window: 520,380
+# window: 520,420
 # A table row selected by its pill, edited in place. The columns are left,
 # centre and right aligned, which shows only while the table is being edited.
 zoom in
