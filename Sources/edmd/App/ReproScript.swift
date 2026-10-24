@@ -990,6 +990,10 @@ enum ReproScript {
                     window.orderFrontRegardless()
                     NSApp.activate(ignoringOtherApps: true)
                     window.makeKeyAndOrderFront(nil)
+                    // Activation finishes asynchronously and can then move the
+                    // window to the active Space's screen; look again after it.
+                    moveToRetinaScreen(window)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { moveToRetinaScreen(window) }
                     report("repro front t=\(EditorTextView.debugMs())")
                 }
             case "indicators":
