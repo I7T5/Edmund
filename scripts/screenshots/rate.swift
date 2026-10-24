@@ -36,6 +36,7 @@ func header(_ key: String, for png: String) -> String? {
 }
 
 var failed = false
+var below: [String] = []   // shot names, without the mode
 for path in args {
     guard let rep = NSImage(contentsOfFile: path)?.representations.first as? NSBitmapImageRep,
           let cg = rep.cgImage else { print("FAIL \(path): unreadable"); failed = true; continue }
@@ -69,11 +70,18 @@ for path in args {
     let coverage = wants.isEmpty ? 30 : Double(wants.count - missing.count) / Double(wants.count) * 30
     let calm = lines.count <= busyBlocks ? 20 : max(0, 20 - Double(lines.count - busyBlocks) / 2)
     let score = problems.isEmpty ? Int((legibility + coverage + calm).rounded()) : 0
-    if !problems.isEmpty || !missing.isEmpty || median < legibleHeight { failed = true }
+    if !problems.isEmpty || !missing.isEmpty || median < legibleHeight {
+        failed = true
+        var name = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+        for suffix in ["-light", "-dark"] where name.hasSuffix(suffix) { name = String(name.dropLast(suffix.count)) }
+        if !below.contains(name) { below.append(name) }
+    }
 
     print(String(format: "%3d  %@  text %.0fpx (want ≥%.0f)  blocks %d%@%@", score,
                  (path as NSString).lastPathComponent, median, legibleHeight, lines.count,
                  missing.isEmpty ? "" : "  missing: \(missing.joined(separator: ", "))",
                  problems.isEmpty ? "" : "  FAIL: \(problems.joined(separator: "; "))"))
 }
+// For `scripts/screenshots.sh --failed`.
+if !below.isEmpty { print("below: \(below.joined(separator: " "))") }
 exit(failed ? 1 : 0)

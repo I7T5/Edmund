@@ -486,6 +486,7 @@ enum ReproScript {
                     openSettingsPane(parts[1]) { window, _ in
                         // No focus ring on the pane's first control in a screenshot.
                         window.makeFirstResponder(nil)
+                        moveToRetinaScreen(window)
                         guard let view = window.contentView,
                               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
                         view.cacheDisplay(in: view.bounds, to: rep)
@@ -687,6 +688,7 @@ enum ReproScript {
                     var frame = window.frame
                     frame.size = NSSize(width: n[0], height: n[1])
                     window.setFrame(frame, display: true)
+                    moveToRetinaScreen(window)
                     report("repro resizewindow \(window.frame.size)")
                 }
             case "menuitems":
@@ -1281,6 +1283,16 @@ enum ReproScript {
             }
             body(window, button)
         }
+    }
+
+    /// Centres `window` on a Retina screen when it sits on a 1x one: there
+    /// `screencapture` gets half the pixels, and screenshots need them all.
+    private static func moveToRetinaScreen(_ window: NSWindow) {
+        guard (window.screen?.backingScaleFactor ?? 2) < 2,
+              let retina = NSScreen.screens.first(where: { $0.backingScaleFactor >= 2 }) else { return }
+        let size = window.frame.size
+        window.setFrameOrigin(NSPoint(x: retina.visibleFrame.midX - size.width / 2,
+                                      y: retina.visibleFrame.midY - size.height / 2))
     }
 
     /// SwiftUI's HelpLink draws as an AppKit help-bezel button.
