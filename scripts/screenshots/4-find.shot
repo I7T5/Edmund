@@ -1,0 +1,4 @@
+# doc: misc/marketing/screenshot-docs/Find and Replace.md
+# expect: Turkish delight, Replace
+# window: 900,540
+# manual: ⌥⌘F, search "Turkish delight", replace with "Turkish Delight", click the window's text so it is key

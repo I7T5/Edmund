@@ -8,16 +8,21 @@
 #   # doc: <path>      document to open, relative to the repo root (or $SHOTS_DOC_ROOT)
 #   # args: <flags>    extra launch arguments, shell-quoted (settings, toolbar layout)
 #   # modes: <list>    default "light dark"
-#   # window: w,h      window size in points, default 1200,750
+#   # window: w,h      window size in points, default 960,600
 #   # offset: dx,dy    with several windows, shift each by this fraction of the
 #                      canvas from the one before (cascade, side by side)
+#   # layout: x,y x,y… each window's centre as a fraction of the canvas, for
+#                      arrangements a cascade can't make
 #   # compose: no      capture only, for use by a combined shot
 #   # combine: <shot>...  no run of its own: the key windows of those shots'
 #                      captures, in order, on one canvas (with # offset:)
 # The runner sizes the window and brings it to the front before
 # the scenario, then `screencapture -l`s every visible window with its shadow
-# and stacks them, key window on top, on a 2880×1800 gradient
-# (scripts/screenshots/compose.swift).
+# and stacks them, key window on top, on a 2880×1800 canvas
+# (scripts/screenshots/compose.swift): $SHOTS_BACKGROUND, default the current
+# desktop picture, or a plain gradient with SHOTS_BACKGROUND=none.
+# $SHOTS_SRC builds the app from another source tree (default this repo), e.g.
+# one with an unmerged fix the shots should show.
 #
 # Output: $SHOTS_OUT (default misc/screenshots/<version>/):
 # raw/<name>-<mode>-<n>.png (one window + shadow, transparent) and
@@ -33,10 +38,15 @@
 # off so the document starts at the top.
 #
 # Activation: `front` has to make Edmund the active app, or the window captures
-# with grey traffic lights and a smaller shadow. macOS refuses that while you
-# are typing in another app, so leave the machine alone during a run; a refused
-# capture is retried up to 3 times. Anything that only draws fully in the key
-# window (find's yellow match highlights, selection colour) needs an idle machine.
+# with grey traffic lights and a smaller shadow. Each shot waits for 3 s with no
+# keyboard or mouse input before it launches (keys typed while it is key land
+# in the document), and a refused activation is retried up to 5 times.
+#
+#   # manual: <what to do>   the runner sets the window up, prints this, and
+#                      captures once `touch`ed — for states only a person can
+#                      reach. Taken only when named: scripts/screenshots.sh 4-find
+#   # expect: a, b     words rate.swift checks are on screen (feature coverage)
+#   # legible: <px>    rate.swift's text-height floor for this shot (default 40)
 #
 # compose.swift also works on its own, on captures you take by hand
 # (⇧⌘4, Space, click a window — shadow included).
@@ -48,10 +58,13 @@ DOC_ROOT="${SHOTS_DOC_ROOT:-$ROOT}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)"
 OUT="${SHOTS_OUT:-$ROOT/misc/screenshots/$VERSION}"
 mkdir -p "$OUT/raw"
+BACKGROUND="${SHOTS_BACKGROUND:-$(osascript -e 'tell application "System Events" to get picture of current desktop' 2>/dev/null)}"
+[ "$BACKGROUND" = none ] && BACKGROUND=""
+SRC="${SHOTS_SRC:-$ROOT}"
 
-echo "== building shots bundle"
-swift build 2>&1 | grep -E "error:|Build complete" | tail -2
-BIN="$(swift build --show-bin-path)"
+echo "== building shots bundle from $SRC"
+(cd "$SRC" && swift build 2>&1 | grep -E "error:|Build complete" | tail -2)
+BIN="$(cd "$SRC" && swift build --show-bin-path)"
 APP="build/EdmundShots.app"
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Info.plist "$APP/Contents/Info.plist"
@@ -76,15 +89,39 @@ capture() {
     # Factory settings every run: the toolbar layout, window frame and panes
     # one shot leaves behind would otherwise show up in the next.
     defaults delete com.i7t5.edmund.shots >/dev/null 2>&1
-    "$ROOT/$APP/Contents/MacOS/edmd" "$doc" -debug.reproScript "$script" \
+    # The shot takes the key window: keys typed elsewhere meanwhile land in the
+    # document (title "Edited", stray letters). Wait for 3 s of no input.
+    until [ "$(ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print int($NF / 1e9); exit}')" -ge 3 ]; do
+        sleep 0.5
+    done
+    # Through LaunchServices, not exec: macOS lets an app it launched take
+    # activation, while an exec'd binary's `front` is refused whenever
+    # someone is using another app.
+    open -n "$ROOT/$APP" --args "$doc" -debug.reproScript "$script" \
         -debug.disableUpdater YES -NSAppSleepDisabled YES -ApplePersistenceIgnoreState YES \
-        -EditorTypewriterMode NO "$@" >/dev/null 2>&1 &
-    local pid=$! got=1
+        -EditorTypewriterMode NO "$@"
+    local pid="" got=1
+    for _ in $(seq 1 50); do
+        pid="$(pgrep -n -f "$ROOT/$APP/Contents/MacOS/edmd")" && break
+        sleep 0.1
+    done
     for _ in $(seq 1 600); do
         kill -0 "$pid" 2>/dev/null || break
         if grep -q '^repro window ' "$log" 2>/dev/null; then
             sleep 0.2   # every window's line is in
-            if grep -q '^repro window .* key=true' "$log"; then
+            if [ -n "${GO:-}" ]; then
+                # A manual shot: the maintainer sets it up, then creates $GO.
+                rm -f "$GO"
+                echo "      waiting: $MANUAL — then: touch '$GO'"
+                until [ -e "$GO" ]; do kill -0 "$pid" 2>/dev/null || break; sleep 0.3; done
+                rm -f "$GO"
+                local n=0 wid
+                for wid in $(grep '^repro window ' "$log" | awk '{print $3}'); do
+                    n=$((n + 1))
+                    screencapture -x -l "$wid" "$prefix-$n.png"
+                done
+                got=0
+            elif grep -q '^repro window .* key=true' "$log"; then
                 local n=0 wid
                 for wid in $(grep '^repro window .* key=false' "$log" | awk '{print $3}') \
                            $(grep '^repro window .* key=true' "$log" | awk '{print $3}'); do
@@ -97,7 +134,8 @@ capture() {
         fi
         sleep 0.1
     done
-    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+    kill "$pid" 2>/dev/null
+    while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done
     return $got
 }
 
@@ -111,8 +149,11 @@ for shot in scripts/screenshots/*.shot; do
     doc="$DOC_ROOT/$(header "$shot" doc)"
     modes="$(header "$shot" modes)"
     size="$(header "$shot" window)"
-    offset="$(header "$shot" offset)"
+    offset="$(header "$shot" offset)"; layout="$(header "$shot" layout)"
     eval "set -- $(header "$shot" args)"
+    MANUAL="$(header "$shot" manual)"
+    # Manual shots wait for a person, so only a run that names them takes them.
+    [[ -n "$MANUAL" && -z "$PATTERN" ]] && { echo "skip  $name (manual: scripts/screenshots.sh $name)"; continue; }
     if [ ! -f "$doc" ]; then
         echo "FAIL  $name  (doc missing: $doc)"; failed+=("$name"); continue
     fi
@@ -122,11 +163,13 @@ for shot in scripts/screenshots/*.shot; do
     for mode in ${modes:-light dark}; do
         script="$RUN/$name-$mode.repro"
         # `front` first, so a window the scenario opens (Settings) ends up key.
-        { printf '%s\n' "resizewindow ${size:-1200,750}" front 'sleep 1000'; grep -v '^#' "$shot"
-          printf '%s\n' 'sleep 2500' logwindows 'sleep 1500' done; } > "$script"
+        { printf '%s\n' "resizewindow ${size:-960,600}" front 'sleep 1000'; grep -v '^#' "$shot"
+          if [ -n "$MANUAL" ]; then printf '%s\n' logwindows 'sleep 3600000' done
+          else printf '%s\n' 'sleep 2500' logwindows 'sleep 1500' done; fi; } > "$script"
         raw="$OUT/raw/$name-$mode"
+        GO=""; [ -n "$MANUAL" ] && GO="$OUT/raw/$name-$mode.go"
         ok=""
-        for attempt in 1 2 3; do
+        for attempt in 1 2 3 4 5; do
             capture "$doc" "$script" "$raw" -settings.appearance.mode "$mode" "$@" && { ok=1; break; }
             echo "      $name-$mode: window not active (attempt $attempt), retrying"
         done
@@ -137,7 +180,7 @@ for shot in scripts/screenshots/*.shot; do
             echo "ok    $name-$mode (raw only)"; continue
         fi
         swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" \
-            ${offset:+--offset "$offset"} "$raw"-*.png
+            ${offset:+--offset "$offset"} ${layout:+--layout "$layout"} ${BACKGROUND:+--background "$BACKGROUND"} "$raw"-*.png
         echo "ok    $name-$mode"
         shots=$((shots + 1))
     done
@@ -150,7 +193,7 @@ for shot in scripts/screenshots/*.shot; do
     [[ -n "$PATTERN" && "$name" != *$PATTERN* ]] && continue
     parts="$(header "$shot" combine)"
     [ -n "$parts" ] || continue
-    offset="$(header "$shot" offset)"
+    offset="$(header "$shot" offset)"; layout="$(header "$shot" layout)"
     modes="$(header "$shot" modes)"
     for mode in ${modes:-light dark}; do
         windows=()
@@ -160,7 +203,7 @@ for shot in scripts/screenshots/*.shot; do
             windows+=("$last")
         done
         swift scripts/screenshots/compose.swift "$OUT/$name-$mode.png" "$mode" \
-            ${offset:+--offset "$offset"} "${windows[@]}"
+            ${offset:+--offset "$offset"} ${layout:+--layout "$layout"} ${BACKGROUND:+--background "$BACKGROUND"} "${windows[@]}"
         echo "ok    $name-$mode (combined)"
         shots=$((shots + 1))
     done
@@ -168,4 +211,6 @@ done
 
 echo ""
 echo "== $shots screenshots in $OUT"
+echo "== ratings (scripts/screenshots/rate.swift)"
+swift scripts/screenshots/rate.swift scripts/screenshots "$OUT"/*${PATTERN}*.png || failed+=(rating)
 [ ${#failed[@]} -eq 0 ] || { echo "failed: ${failed[*]}"; exit 1; }

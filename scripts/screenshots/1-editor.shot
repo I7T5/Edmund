@@ -1,3 +1,5 @@
 # doc: misc/marketing/screenshot-docs/Edmund.md
+# expect: Markdown editor, About the name
+# window: 960,560
 # Live preview, with the line under the caret showing its Markdown.
 caret Markdown editor that

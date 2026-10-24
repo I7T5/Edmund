@@ -1,5 +1,5 @@
 # doc: misc/marketing/screenshot-docs/Edmund.md
 # compose: no
-# window: 900,640
+# window: 800,520
 # args: -settings.view.sourceMode YES
 # No caret move: in Source mode it marks the document Edited (app bug).

@@ -1,5 +1,10 @@
 # doc: misc/marketing/screenshot-docs/Math and Mermaid.md
+# expect: Math and Mermaid, Narnia
+# window: 820,540
 # args: -settings.extensions.enabledIDs '(mermaid, "advanced-math")'
+zoom in
+zoom in
+zoom in
 caret And diagrams
 # Mermaid renders asynchronously.
 sleep 3000
