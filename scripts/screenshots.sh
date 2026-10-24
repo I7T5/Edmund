@@ -10,7 +10,7 @@
 # header of Sources/edmd/App/ReproScript.swift) that sets up one state. Headers:
 #   # doc: <path>      document to open, relative to the repo root (or $SHOTS_DOC_ROOT)
 #   # args: <flags>    extra launch arguments, shell-quoted (settings, toolbar layout)
-#   # modes: <list>    default "light dark"
+#   # modes: <list>    default "light"; "light dark" for a pair's parts
 #   # window: w,h      window size in points, default 960,600
 #   # offset: dx,dy    with several windows, shift each by this fraction of the
 #                      canvas from the one before (cascade, side by side)
@@ -205,10 +205,8 @@ for shot in scripts/screenshots/*.shot; do
     if [ ! -f "$doc" ]; then
         echo "FAIL  $name  (doc missing: $doc)"; failed+=("$name"); continue
     fi
-    # Documents autosave in place: open a copy of the doc's folder (images too).
-    rm -rf "$RUN/$name-docs"; cp -R "$(dirname "$doc")" "$RUN/$name-docs"
-    doc="$RUN/$name-docs/$(basename "$doc")"
-    for mode in ${modes:-light dark}; do
+    src="$doc"; doc="$RUN/$name-docs/$(basename "$src")"
+    for mode in ${modes:-light}; do
         script="$RUN/$name-$mode.repro"
         # `front` first, so a window the scenario opens (Settings) ends up key,
         # and before the resize: it can move the window to the screen in use,
@@ -228,6 +226,10 @@ for shot in scripts/screenshots/*.shot; do
         GO=""; [ -n "$MANUAL" ] && GO="$OUT/raw/$name-$mode.go"
         ok=""
         for attempt in 1 2 3 4 5; do
+            # Documents autosave in place: each attempt opens a fresh copy of
+            # the doc's folder (images too), so a discarded one's stray keys
+            # don't carry over.
+            rm -rf "$RUN/$name-docs"; cp -R "$(dirname "$src")" "$RUN/$name-docs"
             capture "$doc" "$script" "$raw" -settings.appearance.mode "$mode" "$@"
             case $? in 0) ok=1; break ;; 2) break ;; esac
             echo "      $name-$mode: no clean shot (attempt $attempt), retrying"
@@ -254,7 +256,7 @@ for shot in scripts/screenshots/*.shot; do
     [ -n "$parts" ] || continue
     offset="$(header "$shot" offset)"; layout="$(header "$shot" layout)"
     modes="$(header "$shot" modes)"
-    for mode in ${modes:-light dark}; do
+    for mode in ${modes:-light}; do
         windows=()
         for part in $parts; do
             # <shot>@<mode> pins a part's mode: a light and a dark window together.

@@ -1,6 +1,8 @@
-# doc: misc/marketing/screenshot-docs/Edmund.md
+# The editor in light and dark together, like MarkEdit's first shot: light in
+# front at the top left, dark behind at the bottom right.
 # expect: Markdown editor, About the name
-# window: 960,540
-# Live preview, with the line under the caret showing its Markdown: a
-# heading, so the revealed "##" is big enough to notice.
-caret About the name
+# Two windows fit at a little less scale than one (MarkEdit's pair: 33 px).
+# legible: 36
+# modes: light
+# combine: 1a-editor@dark 1a-editor@light
+# layout: 0.63,0.6 0.37,0.4
