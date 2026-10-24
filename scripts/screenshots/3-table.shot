@@ -1,5 +1,5 @@
-# Tables edited in place, side by side, light then dark: a column selected by its
-# pill with its menu open, and Markdown typed in a cell, with copy and paste
+# Tables edited in place, side by side, light then dark: Markdown typed in a
+# cell, and a column selected by its pill with dragging and copy and paste
 # to spreadsheets named below the table. The columns are left, centre and
 # right aligned, which shows while the table is being edited.
 # expect: Peter, Susan, Lucy, Queen
