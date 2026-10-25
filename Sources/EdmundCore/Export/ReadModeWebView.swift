@@ -356,7 +356,9 @@ public final class ReadModeWebView: WKWebView {
     // document-controlled ever reaches `evaluateJavaScript`.
 
     /// Scrolls so the block anchored at source `line` sits at the viewport top,
-    /// offset `fraction` (0–1) into the block's rendered height.
+    /// offset `fraction` (0–1) into the block's rendered height. The start of
+    /// the first block is the top of the page instead, so entering Read mode
+    /// from the top of a document keeps the page's top padding.
     public func setScrollPosition(line: Int, fraction: Double) {
         let clamped = min(max(fraction, 0), 1)
         // QUIRK: wrapped in an IIFE — each `evaluateJavaScript` runs as a new
@@ -367,6 +369,7 @@ public final class ReadModeWebView: WKWebView {
         (function() { \
         var el = document.getElementById('edmund-l\(line)'); \
         if (el) { var se = document.scrollingElement; \
+        if (\(clamped == 0) && el === document.querySelector('[id^="edmund-l"]')) { se.scrollTop = 0; return; } \
         se.scrollTop = el.getBoundingClientRect().top + se.scrollTop + \(String(describing: clamped)) * el.offsetHeight; } \
         })()
         """
