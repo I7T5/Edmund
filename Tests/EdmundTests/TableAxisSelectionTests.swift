@@ -71,6 +71,41 @@ struct TableAxisSelectionTests {
         #expect(picked == ["c2", "b", "d"])
     }
 
+    /// The table's borders are drawn by the layout fragments, above the text
+    /// view's own background pass, so a box drawn there had them crossing it.
+    @Test("The selection box draws above the table borders, in a view of its own")
+    func selectionBoxDrawsAboveTheBorders() throws {
+        let editor = loadEditor(doc)
+        caret(editor, to: "b")
+        editor.selectTableAxis(for: try #require(handle(editor, .column)))
+        let box = try #require(editor.tableCellSelectionBox())
+        // The box's own area: the headless editor has no visible rect.
+        let area = box.insetBy(dx: -20, dy: -20)
+        func redraw() {
+            guard let rep = editor.bitmapImageRepForCachingDisplay(in: area) else { return }
+            editor.cacheDisplay(in: area, to: rep)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        redraw()
+        let overlay = try #require(editor.tableSelectionOverlay)
+        #expect(!overlay.isHidden)
+        #expect(overlay.superview === editor)
+        // Above every sibling by its layer, not by subview order.
+        let others = editor.subviews.filter { $0 !== overlay }.compactMap { $0.layer?.zPosition }
+        #expect((overlay.layer?.zPosition ?? 0) > (others.max() ?? 0))
+        #expect(overlay.frame.contains(box))
+
+        // Redraws place it without adding it again.
+        let count = editor.subviews.count
+        redraw()
+        redraw()
+        #expect(editor.subviews.count == count)
+
+        caret(editor, to: "Intro")
+        redraw()
+        #expect(overlay.isHidden)
+    }
+
     /// Notes turns the clicked pill into a tab standing on the selection box
     /// and keeps the other axis's pill where the caret was.
     @Test("A selected row wears a tab, and the column pill stays")

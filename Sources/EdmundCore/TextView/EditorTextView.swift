@@ -657,6 +657,11 @@ public class EditorTextView: NSTextView {
     var copiedCodeLink: CADisplayLink?
     var copiedGlyphView: CopiedGlyphView?
 
+    /// Draws the box around a table cell selection above the table's borders.
+    /// See EditorTextView+TableHandles.
+    var tableSelectionOverlay: TableSelectionOverlay?
+    var tableSelectionOverlayPending = false
+
     /// The copy buttons' accessibility elements, by block index, kept so
     /// VoiceOver's focus survives a redraw. See EditorTextView+CodeCopyButton.
     var codeCopyButtonElements: [Int: CodeCopyButtonElement] = [:]
