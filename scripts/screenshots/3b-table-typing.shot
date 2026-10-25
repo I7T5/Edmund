@@ -1,0 +1,14 @@
+# doc: misc/marketing/screenshot-docs/The Pevensies.md
+# compose: no
+# modes: light
+# window: 520,470
+# Typing in a cell: the Markdown renders as you type, inside the table.
+zoom in
+zoom in
+zoom in
+sleep 500
+caret Lucy
+sleep 300
+type **Queen** 
+sleep 500
+save

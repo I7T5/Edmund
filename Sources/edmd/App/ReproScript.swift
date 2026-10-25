@@ -12,6 +12,7 @@ import ScreenCaptureKit
 /// Accessibility permission. Commands, one per line:
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
+///   select <needle>   select the first occurrence of <needle>
 ///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
 ///   hovercopy <n>     put the pointer on the copy button of the code block at n
 ///   copycode <n>      press the copy button of the code block at offset n
@@ -21,14 +22,16 @@ import ScreenCaptureKit
 ///   selectoff <n> <len>  select an absolute range (chrome that reacts to a
 ///                     selection, not just a caret)
 ///   type <text>       type text, one key event per character
+///   save              File ▸ Save (clears "Edited" after typing)
 ///   backspace <n>     press delete n times (300ms apart)
 ///   enter             press Return (insertNewline: list continuation, table rows)
 ///   shiftenter        press Shift-Return as a real key event (list soft break)
 ///   tab / backtab     indent / dedent the selected list line(s)
-///   scroll <y>        scroll the clip view to y (bypasses the caret/typewriter
+///   scroll <y>|top    scroll the clip view to y (bypasses the caret/typewriter
 ///                     recentering, so a block can be driven off-screen)
 ///   logsel            log the current selection
 ///   viewmode          toggle Edit ↔ Read via the same action as ⌘E
+///   webinspector      View ▸ Show Web Inspector (⌥⌘I): Read mode, inspector up
 ///   fullscreen        enter full screen (its own Space, so a run doesn't sit over
 ///                     the desktop); `sleep` ~3000 after it for the animation
 ///   find on|off|replace  open/close the find bar (⌘F's own handler) without
@@ -38,15 +41,18 @@ import ScreenCaptureKit
 ///   readeval <js>     evaluate JavaScript in the Read-mode webview, report the result
 ///   readsnapshot <path>  render the Read-mode webview to a PNG
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
-///                     webview scrollTop) for mode-switch harness debugging
+///                     webview scrollTop) for mode-switch harness debugging, and
+///                     report the clip origin, scroll insets and text origin
 ///   logtoolbar        log every toolbar item's identifier and enabled state
-///   logwindows        log each visible window's id, for `screencapture -l`
+///   logwindows        log each visible window's id and whether it is key, for
+///                     `screencapture -l`
 ///   helpbutton <pane> open Settings on the pane with that toolbar label and
 ///                     click its Help (?) button; PASS when the button exists
 ///                     (opens Tips, which takes focus)
-///   settingspane <png> <pane>  open Settings on that pane, log its Help
-///                     button's insets, render the content view to <png>;
-///                     takes no focus
+///   settingspane <png> <pane>  open Settings on that pane, clear its first
+///                     responder (no focus ring), move it to a Retina screen,
+///                     log its Help button's insets, render the content view
+///                     to <png>; takes no focus
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   inspector         toggle the inspector from the first responder, as the
 ///                     toolbar button and View menu item reach it
@@ -57,6 +63,8 @@ import ScreenCaptureKit
 ///   handlemenu row|column  open a table handle's menu via its real hit test
 ///   clickhandle row|column [center|chevron] [clicks]  click a table handle
 ///                     through mouseDown (a menu it opens is modal)
+///   draghandle row|column <points> [ms]  drag the caret's row or column pill
+///                     that far along its axis, in real time (for recordings)
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
 ///   selectcells r0,c0,r1,c1  select that block of table cells
 ///   ime <text>        compose <text> as marked text (NSTextInputClient)
@@ -73,7 +81,7 @@ import ScreenCaptureKit
 ///   assertinvariants  storage == rawSource, blocks rebuild it, no open marked text
 ///   assertsourceorig  document equals what it opened with
 ///   assertsourcefile <f>  document equals file <f> (relative to the script)
-/// An unknown command, or a caret/bypassdelete needle that isn't found, FAILs.
+/// An unknown command, or a caret/select/bypassdelete needle that isn't found, FAILs.
 /// Run whole suites with `scripts/repro.sh` (Tests/Repro/).
 @MainActor
 enum ReproScript {
@@ -102,6 +110,15 @@ enum ReproScript {
                         return
                     }
                     editor.setSelectedRange(NSRange(location: r.location, length: 0))
+                }
+            case "select":
+                schedule(after: delay) { editor in
+                    let r = (editor.rawSource as NSString).range(of: arg)
+                    guard r.location != NSNotFound else {
+                        verdict("select", false, "needle not found: \(arg)")
+                        return
+                    }
+                    editor.setSelectedRange(r)
                 }
             case "caretoff":
                 // Absolute-offset caret move (arrow-key-like: fromMouse=false).
@@ -312,7 +329,12 @@ enum ReproScript {
                 // scroll, so promotion/idle-drain react exactly as they would live.
                 schedule(after: delay) { editor in
                     guard let clipView = editor.enclosingScrollView?.contentView else { return }
-                    let y = CGFloat(Double(arg) ?? 0)
+                    // "scroll top": the top of the scroll range, -contentInsets.top,
+                    // so the document rests below the format bar rather than
+                    // under it. Not scrollToBeginningOfDocument: that stops as
+                    // soon as the first character is anywhere in view.
+                    let y = arg == "top" ? -(editor.enclosingScrollView?.contentInsets.top ?? 0)
+                                         : CGFloat(Double(arg) ?? 0)
                     let proposed = NSRect(origin: NSPoint(x: 0, y: y), size: clipView.bounds.size)
                     let clamped = clipView.constrainBoundsRect(proposed)
                     clipView.scroll(to: clamped.origin)
@@ -333,6 +355,8 @@ enum ReproScript {
                     doc.toggleViewMode(nil)
                     Log.info("repro viewmode toggled", category: .app)
                 }
+            case "webinspector":
+                scheduleDoc(after: delay) { doc in doc.toggleReaderInspector(nil) }
             case "find":
                 // Opens/closes the find bar through the same handler ⌘F fires.
                 // `find on|off|replace`. The AX route (ui-harness.sh open-find)
@@ -424,6 +448,12 @@ enum ReproScript {
                           "clipY=\(sv?.contentView.bounds.origin.y ?? -1) " +
                           "winKey=\(editor.window?.isKeyWindow ?? false) " +
                           "occl=\(editor.window?.occlusionState.contains(.visible) ?? false)")
+                    report("repro state clipY=\(sv?.contentView.bounds.origin.y ?? -1) " +
+                           "insetTop=\(sv?.contentInsets.top ?? -1) " +
+                           "clipInsetTop=\(sv?.contentView.contentInsets.top ?? -1) " +
+                           "clipAuto=\(sv?.contentView.automaticallyAdjustsContentInsets ?? false) " +
+                           "svFrame=\(sv?.frame ?? .zero) " +
+                           "textOriginY=\(editor.textContainerOrigin.y)")
                     let off = editor.topmostVisibleCharacterOffset()
                     let line = off.map { editor.line(forOffset: $0) }
                     let spans = ReadModeAnchors.topLevelBlockSpans(for: editor.rawSource)
@@ -440,11 +470,13 @@ enum ReproScript {
                 // `NSWindow.windowNumber` is the CGWindowID `screencapture -l`
                 // takes. Reporting it is the only way to grab a window from a
                 // script here: a freshly built tool has no Screen Recording grant
-                // of its own, so it cannot look the id up from outside.
+                // of its own, so it cannot look the id up from outside. `key=`
+                // lets scripts/screenshots.sh retry when macOS refused `front`'s
+                // activation (the window would capture with grey traffic lights).
                 schedule(after: delay) { _ in
                     for window in NSApp?.windows ?? [] where window.isVisible {
                         report("repro window \(window.windowNumber) " +
-                               "\(type(of: window)) frame=\(window.frame)")
+                               "\(type(of: window)) key=\(window.isKeyWindow) frame=\(window.frame)")
                     }
                 }
             case "helpbutton":
@@ -466,6 +498,9 @@ enum ReproScript {
                 schedule(after: delay) { _ in
                     guard parts.count == 2 else { report("repro settingspane: <png> <pane>"); return }
                     openSettingsPane(parts[1]) { window, _ in
+                        // No focus ring on the pane's first control in a screenshot.
+                        window.makeFirstResponder(nil)
+                        moveToRetinaScreen(window)
                         guard let view = window.contentView,
                               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
                         view.cacheDisplay(in: view.bounds, to: rep)
@@ -608,6 +643,16 @@ enum ReproScript {
                         column: words.first == "column",
                         chevron: words.count > 1 && words[1] == "chevron", clicks: clicks))
                 }
+            case "draghandle":
+                schedule(after: delay) { editor in
+                    let words = arg.split(separator: " ").map(String.init)
+                    guard words.count >= 2, let distance = Double(words[1]) else {
+                        report("repro draghandle: want row|column <points> [ms]"); return
+                    }
+                    let ms = words.count > 2 ? Double(words[2]) ?? 1200 : 1200
+                    report("repro draghandle " + editor.debugDragTableHandle(
+                        column: words[0] == "column", distance: distance, duration: ms / 1000))
+                }
             case "cellmenu":
                 // The right-click menu for the cell holding <needle>, through
                 // `menu(for:)` — so the cell outline and the appended Table
@@ -648,7 +693,9 @@ enum ReproScript {
             case "resizewindow":
                 // "resizewindow w,h" — the window geometry is part of the
                 // repro: column widths, and therefore the pad each cell
-                // carries, come out of the content width.
+                // carries, come out of the content width. A window on a 1x
+                // screen also moves to a Retina one, so on a Mac with a 1x
+                // display attached the screen is part of the repro too.
                 schedule(after: delay) { editor in
                     let n = arg.split(separator: ",").compactMap { Double($0) }
                     guard n.count == 2, let window = editor.window else {
@@ -657,6 +704,7 @@ enum ReproScript {
                     var frame = window.frame
                     frame.size = NSSize(width: n[0], height: n[1])
                     window.setFrame(frame, display: true)
+                    moveToRetinaScreen(window)
                     report("repro resizewindow \(window.frame.size)")
                 }
             case "menuitems":
@@ -958,6 +1006,10 @@ enum ReproScript {
                     window.orderFrontRegardless()
                     NSApp.activate(ignoringOtherApps: true)
                     window.makeKeyAndOrderFront(nil)
+                    // Activation finishes asynchronously and can then move the
+                    // window to the active Space's screen; look again after it.
+                    moveToRetinaScreen(window)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { moveToRetinaScreen(window) }
                     report("repro front t=\(EditorTextView.debugMs())")
                 }
             case "indicators":
@@ -1094,6 +1146,9 @@ enum ReproScript {
                     if arg.isEmpty { editor.unmarkText() }
                     else { editor.insertText(arg, replacementRange: NSRange(location: NSNotFound, length: 0)) }
                 }
+            case "save":
+                // Clears "Edited" from the title after `type`, for screenshots.
+                scheduleDoc(after: delay) { doc in doc.save(nil) }
             case "undo":
                 schedule(after: delay) { editor in editor.undo(nil) }
             case "redo":
@@ -1251,6 +1306,16 @@ enum ReproScript {
             }
             body(window, button)
         }
+    }
+
+    /// Centres `window` on a Retina screen when it sits on a 1x one: there
+    /// `screencapture` gets half the pixels, and screenshots need them all.
+    private static func moveToRetinaScreen(_ window: NSWindow) {
+        guard (window.screen?.backingScaleFactor ?? 2) < 2,
+              let retina = NSScreen.screens.first(where: { $0.backingScaleFactor >= 2 }) else { return }
+        let size = window.frame.size
+        window.setFrameOrigin(NSPoint(x: retina.visibleFrame.midX - size.width / 2,
+                                      y: retina.visibleFrame.midY - size.height / 2))
     }
 
     /// SwiftUI's HelpLink draws as an AppKit help-bezel button.

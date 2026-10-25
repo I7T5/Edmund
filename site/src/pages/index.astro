@@ -5,30 +5,18 @@ import DisclosureItem from "../components/DisclosureItem.astro";
 import ExpandableScreenshot from "../components/ExpandableScreenshot.astro";
 import ComparisonTable from "../components/ComparisonTable.astro";
 import FeaturesCardGrid from "../components/FeaturesCardGrid.astro";
+// Written by scripts/screenshots-publish.sh.
+import screenshotList from "../data/screenshots.json";
 
 
 const base = import.meta.env.BASE_URL.endsWith("/")
   ? import.meta.env.BASE_URL
   : `${import.meta.env.BASE_URL}/`;
 
-const screenshots = [
-  {
-    src: `${base}assets/v0.1.0_basic.png`,
-    alt: "Edmund editing a Markdown document with inline preview",
-  },
-  {
-    src: `${base}assets/v0.1.0_gfm-syntax.png`,
-    alt: "Edmund rendering GitHub Flavored Markdown syntax",
-  },
-  {
-    src: `${base}assets/v0.1.0_more-syntax.png`,
-    alt: "Edmund showing additional Markdown syntax support",
-  },
-  {
-    src: `${base}assets/v0.1.0_read-mode.png`,
-    alt: "Edmund in read mode with the document content aligned beside the editor",
-  },
-];
+const screenshots = screenshotList.map(({ file, alt }) => ({
+  src: `${base}assets/screenshots/${file}`,
+  alt,
+}));
 
 const videoId = "hero-video";
 ---

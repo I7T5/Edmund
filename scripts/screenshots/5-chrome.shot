@@ -1,0 +1,15 @@
+# doc: misc/marketing/screenshot-docs/Outline.md
+# alt: Toolbar, format bar, status bar and the inspector's outline
+# expect: Prince Caspian, Outline
+# Toolbar, format bar, status bar and inspector labels are 11–13 pt by design.
+# legible: 29
+# window: 900,620
+# Every toolbar item, the format bar, the status bar and the inspector's
+# outline and info. (The outline doesn't mark the caret's section.)
+# args: -settings.edit.showFormatBar YES -statusBar.configured YES -statusBar.autoHide NO -statusBar.isShown YES -statusBar.showWords YES -statusBar.showCharacters YES -statusBar.showLocation YES -statusBar.showLine YES -statusBar.showLineEnding YES "-NSToolbar Configuration MainToolbar3" '{ "TB Is Shown" = 1; "TB Display Mode" = 2; "TB Size Mode" = 1; "TB Item Identifiers" = (format, checklist, table, image, link, share, NSToolbarFlexibleSpaceItem, viewMode, inspector); }'
+caret come back to a Narnia
+inspector
+# The document once scrolled 16 pt a moment after the inspector opened, seen
+# only while a 1x second display was attached (not reproduced on one Retina
+# screen); wait it out so the runner's scroll to the top comes after.
+sleep 1000

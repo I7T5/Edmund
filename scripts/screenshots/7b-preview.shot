@@ -1,0 +1,8 @@
+# doc: misc/marketing/screenshot-docs/Edmund.md
+# compose: no
+# window: 800,520
+# The back window of 7-source: no caret to draw the eye.
+# The caret sits on the blank line after the title (no syntax revealed) and
+# stays in its off phase.
+# args: -NSTextInsertionPointBlinkPeriodOn 1 -NSTextInsertionPointBlinkPeriodOff 100000
+caretoff 9

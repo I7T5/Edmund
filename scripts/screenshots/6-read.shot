@@ -1,0 +1,12 @@
+# doc: misc/marketing/screenshot-docs/GFM and Obsidian.md
+# alt: Read mode
+# expect: Wikilinks, Edmund Pevensie
+# window: 700,595
+# The whole page, footnote included, at some cost in size: cropped at the
+# image, it read as broken.
+# legible: 30
+# Read mode on its own: with the Web Inspector beside it the shot was half
+# developer tools, too small to read.
+zoom in
+viewmode
+sleep 1500

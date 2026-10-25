@@ -1,0 +1,5 @@
+# doc: misc/marketing/screenshot-docs/Edmund.md
+# compose: no
+# window: 800,520
+# args: -settings.view.sourceMode YES
+# No caret move: the front window's caret stays at the top.
