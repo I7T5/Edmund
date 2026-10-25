@@ -34,13 +34,25 @@ See [my blog post](https://i7t5.com/posts/2026-06-26-edmund/) for more of the mo
 
 ## Screenshots
 
-![Basic usage screenshot in light and dark mode](docs/assets/v0.1.0_basic.png)
+<!-- screenshots -->
 
-![GFM syntax screenshot in edit mode](docs/assets/v0.1.0_gfm-syntax.png)
+![Live preview in light and dark mode](docs/assets/screenshots/1-editor.png)
 
-![Non-GFM and math syntax screenshot in edit mode](docs/assets/v0.1.0_more-syntax.png)
+![Inline and display math, and a Mermaid diagram](docs/assets/screenshots/2-math-mermaid.png)
 
-![Basic usage in read mode and inspector](docs/assets/v0.1.0_read-mode.png)
+![Typing in a table cell, and a selected table column](docs/assets/screenshots/3-table.png)
+
+![Find and Replace](docs/assets/screenshots/4-find.png)
+
+![Toolbar, format bar, status bar and the inspector's outline](docs/assets/screenshots/5-chrome.png)
+
+![Read mode](docs/assets/screenshots/6-read.png)
+
+![The same document in Source mode and in live preview](docs/assets/screenshots/7-source.png)
+
+![General, Edit and Themes settings](docs/assets/screenshots/8-settings.png)
+
+<!-- /screenshots -->
 
 
 ## Installation
