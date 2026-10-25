@@ -222,9 +222,9 @@ enum HTMLTheme {
       color: var(--fg);
       background: var(--bg);
       margin: 0;
-      /* The top matches Edit mode's 18pt above the first line
-         (textContainerOrigin), so switching modes keeps the first line in
-         place; the bottom keeps room past the last block. */
+      /* Top matches Edit mode's contentBaseVerticalInset (18pt), so the first
+         line stays put when switching modes; the bottom keeps room past the
+         last block. */
       padding: 18px 24px 48px;
     }
     .page { max-width: var(--page-max-width); margin: 0 auto; }

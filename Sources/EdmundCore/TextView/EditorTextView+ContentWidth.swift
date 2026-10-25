@@ -15,7 +15,9 @@ extension EditorTextView {
     static let contentBaseInset: CGFloat = 24
 
     /// Padding above the first line and below the last one, outside typewriter
-    /// scroll. `Document` seeds the text view with this value.
+    /// scroll. `Document` seeds the text view with this value. Read mode's body
+    /// top padding (`HTMLTheme`, 18px) mirrors it so switching modes keeps the
+    /// first line in place; change both together.
     public static let contentBaseVerticalInset: CGFloat = 18
 
     /// Reserves scrolling room past the document's ends: half a viewport below
