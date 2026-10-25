@@ -1,22 +1,33 @@
 ---
-description: Take App Store / README / site screenshots of the real app, light and dark (runs scripts/screenshots.sh), then rate them
-argument-hint: [pattern] e.g. settings — default all automatic shots
-allowed-tools: Bash(scripts/screenshots.sh:*)
+description: Take, review and publish screenshots of the real app for the App Store, the README and edmund.md (scripts/screenshots.sh, scripts/screenshots-publish.sh)
+argument-hint: [pattern] e.g. 3-table — default every automatic shot
+allowed-tools: Bash(scripts/screenshots.sh:*), Bash(scripts/screenshots-publish.sh:*), Bash(touch:*)
 ---
 
-Run `scripts/screenshots.sh $ARGUMENTS`. Its header documents the `.shot`
-format; the shots themselves are `scripts/screenshots/*.shot`.
+Screenshots are taken when the maintainer asks, not every release. The header
+of `scripts/screenshots.sh` documents the `.shot` format; the shots are
+`scripts/screenshots/*.shot`.
 
-- Tell the maintainer before starting: each shot takes focus for a few
-  seconds. The runner waits for 3 s without keyboard or mouse input before
-  each launch, so it only moves while they pause.
-- Manual shots (`# manual:`, e.g. 4-find) run only when named. Start one in
-  the background, tell the maintainer what the `waiting:` line asks, and
-  `touch` the file it names once they say it's set up.
+1. **Take.** `scripts/screenshots.sh $ARGUMENTS`. Tell the maintainer first:
+   each shot takes focus for a few seconds; the runner waits for 3 s without
+   keyboard or mouse input before each one and discards a shot with input
+   during it. Manual shots (`# manual:`, e.g. 4-find) run only when named:
+   tell the maintainer what the `waiting:` line asks; the shot is the next
+   screenshot they take (or `touch` the file it names).
+2. **Review one shot at a time.** Read rate.swift's lines, look at the PNG
+   yourself, and show it to the maintainer. Iterate on that shot alone
+   (`.shot` window size, zoom, layout, scale; `--compose-only` for layout
+   changes, which takes no screen) until they approve it, then the next.
+   The screenshot-rater agent gives a second opinion when asked.
+3. **Publish.** Once every shot is approved: `scripts/screenshots-publish.sh`.
+   It archives the previous set to `misc/archive/`, copies the shots with an
+   `# alt:` header to `docs/assets/screenshots/` and
+   `site/public/assets/screenshots/`, and rewrites the site's
+   `site/src/data/screenshots.json` and the README's list between
+   `<!-- screenshots -->` and `<!-- /screenshots -->`.
+
 - The documents live in `misc/marketing/screenshot-docs/` (untracked, the
-  maintainer's writing). Edit copies there only with their go-ahead.
-- After a run, read rate.swift's lines, then hand the composed PNGs to the
-  screenshot-rater agent. Iterate on `.shot` files (window size, zoom,
-  layout) until every shot scores ≥ 8; look at every PNG yourself too.
+  maintainer's writing). Edit them only with the maintainer's go-ahead.
 - Output goes to `misc/screenshots/<version>/` unless `SHOTS_OUT` is set;
-  `SHOTS_SIZE` and `SHOTS_BACKGROUND` change the canvas.
+  `SHOTS_SIZE` and `SHOTS_BACKGROUND` change the canvas; `SHOTS_SRC` builds
+  from another tree (e.g. one with unmerged fixes merged in).

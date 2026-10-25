@@ -21,7 +21,7 @@ import AppKit
 
 var args = Array(CommandLine.arguments.dropFirst())
 guard args.count >= 3 else {
-    FileHandle.standardError.write("usage: compose.swift <out.png> light|dark [--size WxH] [--offset dx,dy | --layout \"x,y …\"] [--background image] <window.png>...\n".data(using: .utf8)!)
+    FileHandle.standardError.write("usage: compose.swift <out.png> light|dark [--size WxH] [--offset dx,dy | --layout \"x,y …\"] [--scale s] [--background image] <window.png>...\n".data(using: .utf8)!)
     exit(2)
 }
 let out = args.removeFirst()

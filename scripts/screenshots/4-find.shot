@@ -1,4 +1,5 @@
 # doc: misc/marketing/screenshot-docs/Find and Replace.md
+# alt: Find and Replace
 # expect: Turkish delight, Replace
 # window: 900,540
 # manual: ⌥⌘F, search "Turkish delight", click the window so the first match highlights yellow

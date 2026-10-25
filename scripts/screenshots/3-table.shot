@@ -2,6 +2,7 @@
 # cell, and a column selected by its pill with dragging and copy and paste
 # to spreadsheets named below the table. The columns are left, centre and
 # right aligned, which shows while the table is being edited.
+# alt: Typing in a table cell, and a selected table column
 # expect: Peter, Susan, Lucy, Queen
 # legible: 38
 # modes: light

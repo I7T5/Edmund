@@ -2,6 +2,7 @@
 # front at the top left, Edit behind it on the right, Themes at the bottom.
 # The point is a neat stack, not every control. Spread across the canvas at a
 # fixed scale (that of the tighter fit), so the windows keep their size.
+# alt: General, Edit and Themes settings
 # expect: General, Themes, Edit
 # Settings labels are 13 pt and cannot zoom.
 # legible: 21

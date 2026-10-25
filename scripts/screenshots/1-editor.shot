@@ -1,5 +1,6 @@
 # The editor in light and dark together, like MarkEdit's first shot: light in
 # front at the top left, dark behind at the bottom right.
+# alt: Live preview in light and dark mode
 # expect: Markdown editor, About the name
 # Two windows fit at a little less scale than one (MarkEdit's pair: 33 px).
 # legible: 36

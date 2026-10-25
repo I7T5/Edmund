@@ -1,10 +1,15 @@
 #!/bin/bash
-# Marketing / App Store screenshots of the real app, light and dark.
+# App Store, README and site screenshots of the real app.
 #
 # Usage: scripts/screenshots.sh [pattern...]   e.g. scripts/screenshots.sh 3-table settings
 #        scripts/screenshots.sh --failed       the shots the last rating put below the bar
+#        scripts/screenshots.sh --compose-only [pattern...]
+#                                              recompose from raw/ without launching the app
+#                                              (layout, scale, background changes)
 # Only the named shots launch the app. Naming a combined shot retakes its
 # parts; naming a part recomposes the combined shots built from it.
+# Once every shot is approved, scripts/screenshots-publish.sh puts the set
+# where the README and edmund.md show it.
 #
 # Each scripts/screenshots/<name>.shot is a ReproScript scenario (commands:
 # header of Sources/edmd/App/ReproScript.swift) that sets up one state. Headers:
@@ -20,7 +25,17 @@
 #                      (spread a layout without shrinking its windows)
 #   # compose: no      capture only, for use by a combined shot
 #   # combine: <shot>...  no run of its own: the key windows of those shots'
-#                      captures, in order, on one canvas (with # offset:)
+#                      captures, in order, on one canvas (with # offset:);
+#                      <shot>@light / @dark pins a part's mode
+#   # manual: <what to do>   the runner sets the window up, prints this, and
+#                      takes the next screenshot you make (⇧⌘4, Space, click)
+#                      — for states only a person can reach or time. Taken
+#                      only when named: scripts/screenshots.sh 4-find
+#                      ($SHOTS_MODES=dark redoes one mode)
+#   # expect: a, b     words rate.swift checks are on screen (feature coverage)
+#   # legible: <px>    rate.swift's text-height floor for this shot (default 40)
+#   # alt: <text>      publish this shot, with this description (see
+#                      scripts/screenshots-publish.sh)
 # The runner sizes the window and brings it to the front before
 # the scenario, then `screencapture -l`s every visible window with its shadow
 # and stacks them, key window on top, on a 2880×1800 canvas
@@ -47,15 +62,8 @@
 # Activation: `front` has to make Edmund the active app, or the window captures
 # with grey traffic lights and a smaller shadow. Each shot waits for 3 s with no
 # keyboard or mouse input before it launches (keys typed while it is key land
-# in the document), and a refused activation is retried up to 5 times.
-#
-#   # manual: <what to do>   the runner sets the window up, prints this, and
-#                      takes the next screenshot you make (⇧⌘4, Space, click)
-#                      — for states only a person can reach or time. Taken
-#                      only when named: scripts/screenshots.sh 4-find
-#                      ($SHOTS_MODES=dark redoes one mode)
-#   # expect: a, b     words rate.swift checks are on screen (feature coverage)
-#   # legible: <px>    rate.swift's text-height floor for this shot (default 40)
+# in the document). A failed attempt (refused activation, or input during the
+# shot) is retried, up to 5 attempts in all.
 #
 # compose.swift also works on its own, on captures you take by hand
 # (⇧⌘4, Space, click a window — shadow included).
@@ -66,6 +74,8 @@ DOC_ROOT="${SHOTS_DOC_ROOT:-$ROOT}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)"
 OUT="${SHOTS_OUT:-$ROOT/misc/screenshots/$VERSION}"
 mkdir -p "$OUT/raw"
+COMPOSE_ONLY=""
+[ "${1:-}" = --compose-only ] && { COMPOSE_ONLY=1; shift; }
 PATTERNS=("$@")
 # --failed: the shots the last run's rating put below the bar.
 [ "${PATTERNS[0]:-}" = --failed ] && read -ra PATTERNS < "$OUT/.failed"
@@ -79,21 +89,23 @@ BACKGROUND="${SHOTS_BACKGROUND:-$(osascript -e 'tell application "System Events"
 SRC="${SHOTS_SRC:-$ROOT}"
 SIZE="${SHOTS_SIZE:-}"; export SHOTS_SIZE="${SIZE:-2880x1800}"   # rate.swift checks it
 
-echo "== building shots bundle from $SRC"
-(cd "$SRC" && swift build 2>&1 | grep -E "error:|Build complete" | tail -2)
-BIN="$(cd "$SRC" && swift build --show-bin-path)"
 APP="build/EdmundShots.app"
-rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp Info.plist "$APP/Contents/Info.plist"
-plutil -replace CFBundleIdentifier -string com.i7t5.edmund.shots "$APP/Contents/Info.plist"
-cp "$BIN/edmd" "$APP/Contents/MacOS/edmd"
-[ -d "$BIN/Sparkle.framework" ] && cp -R "$BIN/Sparkle.framework" "$APP/Contents/MacOS/"
-for bundle in "$BIN"/*.bundle; do [ -e "$bundle" ] && cp -R "$bundle" "$APP/"; done
-cp Resources/AppIcon.icns "$APP/Contents/Resources/"
-cp -R Resources/Edmund.help "$APP/Contents/Resources/"
-# The accent colour lives in the asset catalog; without it controls draw blue.
-xcrun actool Resources/Assets.xcassets --compile "$APP/Contents/Resources" --platform macosx \
-    --minimum-deployment-target 14.0 --output-partial-info-plist "$(mktemp)" >/dev/null
+if [ -z "$COMPOSE_ONLY" ]; then
+    echo "== building shots bundle from $SRC"
+    (cd "$SRC" && swift build 2>&1 | grep -E "error:|Build complete" | tail -2)
+    BIN="$(cd "$SRC" && swift build --show-bin-path)"
+    rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+    cp Info.plist "$APP/Contents/Info.plist"
+    plutil -replace CFBundleIdentifier -string com.i7t5.edmund.shots "$APP/Contents/Info.plist"
+    cp "$BIN/edmd" "$APP/Contents/MacOS/edmd"
+    [ -d "$BIN/Sparkle.framework" ] && cp -R "$BIN/Sparkle.framework" "$APP/Contents/MacOS/"
+    for bundle in "$BIN"/*.bundle; do [ -e "$bundle" ] && cp -R "$bundle" "$APP/"; done
+    cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+    cp -R Resources/Edmund.help "$APP/Contents/Resources/"
+    # The accent colour lives in the asset catalog; without it controls draw blue.
+    xcrun actool Resources/Assets.xcassets --compile "$APP/Contents/Resources" --platform macosx \
+        --minimum-deployment-target 14.0 --output-partial-info-plist "$(mktemp)" >/dev/null
+fi
 
 RUN="$(mktemp -d)"
 # Compiled once: `swift <script>` recompiles on every call, ~5 s each.
@@ -203,8 +215,8 @@ for shot in scripts/screenshots/*.shot; do
     eval "set -- $(header "$shot" args)"
     MANUAL="$(header "$shot" manual)"
     # Manual shots wait for a person, so only a run that names them takes them.
-    [[ -n "$MANUAL" && ${#PATTERNS[@]} -eq 0 ]] && { echo "skip  $name (manual: scripts/screenshots.sh $name)"; continue; }
-    if [ ! -f "$doc" ]; then
+    [[ -n "$MANUAL" && ${#PATTERNS[@]} -eq 0 && -z "$COMPOSE_ONLY" ]] && { echo "skip  $name (manual: scripts/screenshots.sh $name)"; continue; }
+    if [ -z "$COMPOSE_ONLY" ] && [ ! -f "$doc" ]; then
         echo "FAIL  $name  (doc missing: $doc)"; failed+=("$name"); continue
     fi
     src="$doc"; doc="$RUN/$name-docs/$(basename "$src")"
@@ -227,7 +239,9 @@ for shot in scripts/screenshots/*.shot; do
         raw="$OUT/raw/$name-$mode"
         GO=""; [ -n "$MANUAL" ] && GO="$OUT/raw/$name-$mode.go"
         ok=""
-        for attempt in 1 2 3 4 5; do
+        if [ -n "$COMPOSE_ONLY" ]; then
+            ls "$raw"-*.png >/dev/null 2>&1 && ok=1 || echo "      $name-$mode: nothing in raw/ to compose"
+        else for attempt in 1 2 3 4 5; do
             # Documents autosave in place: each attempt opens a fresh copy of
             # the doc's folder (images too), so a discarded one's stray keys
             # don't carry over.
@@ -235,7 +249,7 @@ for shot in scripts/screenshots/*.shot; do
             capture "$doc" "$script" "$raw" -settings.appearance.mode "$mode" "$@"
             case $? in 0) ok=1; break ;; 2) break ;; esac
             echo "      $name-$mode: no clean shot (attempt $attempt), retrying"
-        done
+        done; fi
         if [ -z "$ok" ]; then
             echo "FAIL  $name-$mode"; failed+=("$name-$mode"); continue
         fi

@@ -41,16 +41,18 @@ import ScreenCaptureKit
 ///   readeval <js>     evaluate JavaScript in the Read-mode webview, report the result
 ///   readsnapshot <path>  render the Read-mode webview to a PNG
 ///   logstate          NSLog view-swap state (mode, hidden flags, clip y,
-///                     webview scrollTop) for mode-switch harness debugging
+///                     webview scrollTop) for mode-switch harness debugging, and
+///                     report the clip origin, scroll insets and text origin
 ///   logtoolbar        log every toolbar item's identifier and enabled state
 ///   logwindows        log each visible window's id and whether it is key, for
 ///                     `screencapture -l`
 ///   helpbutton <pane> open Settings on the pane with that toolbar label and
 ///                     click its Help (?) button; PASS when the button exists
 ///                     (opens Tips, which takes focus)
-///   settingspane <png> <pane>  open Settings on that pane, log its Help
-///                     button's insets, render the content view to <png>;
-///                     takes no focus
+///   settingspane <png> <pane>  open Settings on that pane, clear its first
+///                     responder (no focus ring), move it to a Retina screen,
+///                     log its Help button's insets, render the content view
+///                     to <png>; takes no focus
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   inspector         toggle the inspector from the first responder, as the
 ///                     toolbar button and View menu item reach it
@@ -79,7 +81,7 @@ import ScreenCaptureKit
 ///   assertinvariants  storage == rawSource, blocks rebuild it, no open marked text
 ///   assertsourceorig  document equals what it opened with
 ///   assertsourcefile <f>  document equals file <f> (relative to the script)
-/// An unknown command, or a caret/bypassdelete needle that isn't found, FAILs.
+/// An unknown command, or a caret/select/bypassdelete needle that isn't found, FAILs.
 /// Run whole suites with `scripts/repro.sh` (Tests/Repro/).
 @MainActor
 enum ReproScript {
@@ -691,7 +693,9 @@ enum ReproScript {
             case "resizewindow":
                 // "resizewindow w,h" — the window geometry is part of the
                 // repro: column widths, and therefore the pad each cell
-                // carries, come out of the content width.
+                // carries, come out of the content width. A window on a 1x
+                // screen also moves to a Retina one, so on a Mac with a 1x
+                // display attached the screen is part of the repro too.
                 schedule(after: delay) { editor in
                     let n = arg.split(separator: ",").compactMap { Double($0) }
                     guard n.count == 2, let window = editor.window else {

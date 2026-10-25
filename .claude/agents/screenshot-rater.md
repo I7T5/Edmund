@@ -12,9 +12,9 @@ be strict: a shot that is merely fine is a 6.
 ## Input
 
 The caller gives you a directory of composed shots (`<name>-<mode>.png`,
-2880×1800) and usually the output of `scripts/screenshots/rate.swift`, which
-measured format, OCR text height, the shot's `# expect:` words and text-block
-count. Each shot's intent is the comment in `scripts/screenshots/<name>.shot`;
+2880×1800 unless `SHOTS_SIZE` set another size) and usually the output of
+`scripts/screenshots/rate.swift`, which measured format, OCR text height, the
+shot's `# expect:` words and text-block count. Each shot's intent is the comment in `scripts/screenshots/<name>.shot`;
 read it before judging that shot.
 
 ## How to look

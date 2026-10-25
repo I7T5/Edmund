@@ -1,4 +1,5 @@
 # doc: misc/marketing/screenshot-docs/Math and Mermaid.md
+# alt: Inline and display math, and a Mermaid diagram
 # expect: Math and Mermaid, Narnia
 # window: 720,600
 # Mermaid's labels don't follow the editor's zoom and pull the median down.
