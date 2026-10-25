@@ -216,6 +216,15 @@ cp ".build/release/${TH_NAME}" "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
 strip_binary "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
 cp Resources/ThumbnailInfo.plist "${THUMB_APPEX}/Contents/Info.plist"
 
+# Each appex carries the app's version and build: App Store Connect flags any
+# mismatch (ITMS-90473), so the appex plists don't keep their own.
+for key in CFBundleShortVersionString CFBundleVersion; do
+    value="$(/usr/libexec/PlistBuddy -c "Print :$key" Info.plist)"
+    for plist in "${APPEX}/Contents/Info.plist" "${THUMB_APPEX}/Contents/Info.plist"; do
+        plutil -replace "$key" -string "$value" "$plist"
+    done
+done
+
 # SwiftPM resource bundles (EdmundCore's themes and syntaxes, SwiftMath's math
 # fonts) go in Contents/Resources of the app and of each appex, *before*
 # signing, so they are sealed. Never at a bundle root: notarization rejects
