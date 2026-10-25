@@ -176,7 +176,10 @@ Line-accurate in both directions:
   content JS disabled and the CSP: both gate only *page content* JS;
   API-injected JS is a separate trusted channel, so the sandbox is
   unchanged. The JS is static templates interpolating only Swift-computed
-  numbers.
+  numbers. (first block, fraction 0) sets `scrollTop` to 0, the page top,
+  rather than the block's top at the viewport top, so entering Read mode
+  from the top of a document keeps the body's top padding; an internal link
+  to the first block's line lands there too.
 - `Document` maps the editor side with `topmostVisibleCharacterOffset()` /
   `line(forOffset:)` / `offset(forLine:)` / `scrollCharacterToTop(_:)`.
   Entry and exit use the same `lineCount` denominator, so an untouched
