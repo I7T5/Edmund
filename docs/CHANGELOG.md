@@ -3,6 +3,13 @@
 All notable changes will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-10-25
+
+### Fixed
+- Tables: Right alignment displays with consistent paddings and cell borders (#407)
+- Tables: Row/Col selection highlight is now overlaid on top of cell borders in dark mode (#409)
+- Read mode opens at the top of the page when you switch from the top of a document (#408)
+
 ## [0.8.3] - 2026-10-21
 
 Thanks to @foxyfox for their first contribution!
