@@ -1,0 +1,10 @@
+[
+  { "file": "1-editor.png", "alt": "Live preview in light and dark mode" },
+  { "file": "2-math-mermaid.png", "alt": "Inline and display math, and a Mermaid diagram" },
+  { "file": "3-table.png", "alt": "Typing in a table cell, and a selected table column" },
+  { "file": "4-find.png", "alt": "Find and Replace" },
+  { "file": "5-chrome.png", "alt": "Toolbar, format bar, status bar and the inspector's outline" },
+  { "file": "6-read.png", "alt": "Read mode" },
+  { "file": "7-source.png", "alt": "The same document in Source mode and in live preview" },
+  { "file": "8-settings.png", "alt": "General, Edit and Themes settings" }
+]
