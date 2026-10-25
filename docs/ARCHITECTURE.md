@@ -22,7 +22,14 @@ swift test --filter Callout # one suite
 ./scripts/build-app.sh      # builds build/Edmund.app — SANDBOXED (release + bundles + icon + codesign)
 ./scripts/build-app.sh --variant adhoc   # unsandboxed dev build (ReproScript / CGEvent driver)
 ./scripts/build-app.sh --variant mas     # Mac App Store: sandboxed, no Sparkle, no SU* keys (still ad-hoc signed)
+./scripts/screenshots.sh [names|--failed|--compose-only]  # App Store / README / site shots from scripts/screenshots/*.shot into misc/screenshots/<version>/; local only
+./scripts/screenshots-publish.sh         # approved shots → docs/assets/screenshots, site, README list; archives the old set
 ```
+
+`screenshots.sh` builds `build/EdmundShots.app` with its own bundle id
+(`com.i7t5.edmund.shots`), so it starts from factory settings and never
+touches the real app's preferences. `/screenshots` describes the take →
+review one shot at a time → publish loop.
 
 Run the app for visual checks (gotchas in §8):
 ```bash
@@ -643,6 +650,10 @@ Notable subsystems:
 
 ### Running & verifying the app
 
+- **ReproScript moves windows to a Retina screen.** `front`, `resizewindow`
+  and `settingspane` move a window that sits on a 1x screen to a Retina one
+  (a 1x capture has half the pixels), so on a Mac with a 1x display attached
+  the window's screen, and so its geometry, differs from where AppKit put it.
 - **`open Edmund.app` foregrounds a running instance** instead of
   relaunching. `pkill -x edmd` first, or launch the binary directly
   (`build/Edmund.app/Contents/MacOS/edmd file.md &`).
