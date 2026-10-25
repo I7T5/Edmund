@@ -660,6 +660,7 @@ public class EditorTextView: NSTextView {
     /// Draws the box around a table cell selection above the table's borders.
     /// See EditorTextView+TableHandles.
     var tableSelectionOverlay: TableSelectionOverlay?
+    var tableSelectionOverlayPending = false
 
     /// The copy buttons' accessibility elements, by block index, kept so
     /// VoiceOver's focus survives a redraw. See EditorTextView+CodeCopyButton.

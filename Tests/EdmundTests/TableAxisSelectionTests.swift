@@ -89,8 +89,17 @@ struct TableAxisSelectionTests {
         redraw()
         let overlay = try #require(editor.tableSelectionOverlay)
         #expect(!overlay.isHidden)
-        #expect(editor.subviews.last === overlay)   // above every fragment view
+        #expect(overlay.superview === editor)
+        // Above every sibling by its layer, not by subview order.
+        let others = editor.subviews.filter { $0 !== overlay }.compactMap { $0.layer?.zPosition }
+        #expect((overlay.layer?.zPosition ?? 0) > (others.max() ?? 0))
         #expect(overlay.frame.contains(box))
+
+        // Redraws place it without adding it again.
+        let count = editor.subviews.count
+        redraw()
+        redraw()
+        #expect(editor.subviews.count == count)
 
         caret(editor, to: "Intro")
         redraw()

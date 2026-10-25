@@ -266,8 +266,9 @@ extension EditorTextView {
 
     // MARK: - Drawing
 
-    /// Draws the handles and the box around a multi-cell selection. Called from
-    /// `drawBackground(in:)`. The handles ride the pass's shared geometry (they
+    /// Draws the handles, and places the overlay that draws the box around a
+    /// cell selection (`TableSelectionOverlay`, above the fragment views).
+    /// Called from `drawBackground(in:)`. The handles ride the pass's shared geometry (they
     /// were already computed for the `</>` button's pill dodge); nil builds a
     /// fresh set.
     func drawTableHandles(in dirty: NSRect, chrome: MarginChromeGeometry? = nil) {
@@ -568,33 +569,40 @@ extension EditorTextView {
     /// above the background, so every border the box crossed drew over it
     /// (plainly in dark mode, whose border gray is opaque).
     private func drawTableCellSelection(in dirty: NSRect) {
-        // Here because this pass always knows the box's current geometry; the
-        // view work itself waits for the pass to end; see `placeTableSelectionOverlay`.
-        let box = tableCellSelectionBox()
-        let dots = box.map { tableCellSelectionDots($0) } ?? []
-        let radius = tableCellDotRadius, color = accentColor
-        RunLoop.main.perform { [weak self] in
+        // Triggered from this pass because it runs whenever the box can have
+        // moved. The view changes wait until the pass ends: AppKit does not
+        // allow adding a subview or changing a frame during display. One
+        // placement per run-loop turn however many passes run, none while
+        // there is no selection and no box showing, and in common modes so
+        // the box keeps up while the scroller knob is dragged.
+        guard !tableSelectionOverlayPending,
+              tableSelectionBoxBlock != nil || tableSelectionOverlay?.isHidden == false else { return }
+        tableSelectionOverlayPending = true
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
             MainActor.assumeIsolated {
-                self?.placeTableSelectionOverlay(box: box, dots: dots, dotRadius: radius, color: color)
+                self?.tableSelectionOverlayPending = false
+                self?.placeTableSelectionOverlay()
             }
         }
     }
 
-    /// Moves, refills or hides the overlay. Not done inside the draw pass that
-    /// computes it: adding a subview or changing a frame mid-display is
-    /// AppKit's to refuse.
-    func placeTableSelectionOverlay(box: NSRect?, dots: [NSPoint], dotRadius: CGFloat, color: NSColor) {
-        guard let box else {
+    /// Moves, refills or hides the overlay to match the current selection.
+    func placeTableSelectionOverlay() {
+        guard let box = tableCellSelectionBox() else {
             tableSelectionOverlay?.isHidden = true
             return
         }
+        let dots = tableCellSelectionDots(box)
+        let dotRadius = tableCellDotRadius, color = accentColor
         let overlay = tableSelectionOverlay ?? {
             let view = TableSelectionOverlay(frame: .zero)
             tableSelectionOverlay = view
             return view
         }()
-        // Above the fragment views, which TextKit adds as it lays out.
-        if subviews.last !== overlay { addSubview(overlay, positioned: .above, relativeTo: nil) }
+        // Added once. The layer's zPosition, not the subview order, keeps it
+        // above the fragment views TextKit adds later, so placing it never
+        // re-adds it (a re-add invalidates the view and draws again).
+        if overlay.superview !== self { addSubview(overlay) }
         let margin = max(Self.tableCellSelectionLineWidth, dotRadius) + 1
         let frame = box.insetBy(dx: -margin, dy: -margin)
         let inside = box.offsetBy(dx: -frame.minX, dy: -frame.minY)
@@ -1281,6 +1289,10 @@ final class TableSelectionOverlay: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         setAccessibilityElement(false)
+        // Above its siblings whatever their order, so TextKit adding fragment
+        // views after it doesn't bury it.
+        wantsLayer = true
+        layer?.zPosition = 100
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }

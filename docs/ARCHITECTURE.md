@@ -143,6 +143,13 @@ rawSource ─BlockParser─▶ [Block] ─SyntaxHighlighter─▶ spans ─style
     bullets/checkboxes, callout header icon+name image, custom-title callout
     icon (path). The anchor glyph is hidden and `.kern` reserves the
     drawing's advance width (same trick as the table renderer).
+- **Drawing layers.** `drawBackground(in:)` paints under TextKit 2's fragment
+  views, so anything a fragment draws (table borders, every `.blockDecoration`)
+  covers it. Chrome that must sit on top needs a view of its own above them:
+  non-hit-testing, with a layer `zPosition` above its siblings (TextKit adds
+  fragment views after it), and placed on the next run-loop turn in common
+  modes, never during the draw pass. `TableSelectionOverlay`
+  (`EditorTextView+TableHandles.swift`) is the pattern.
 - **Hiding** text = `hiddenFont` (≈0.01pt) + clear `foregroundColor` — how
   delimiters and in-source markers vanish without changing the string.
 - **Dark-mode chrome palette** (`+ListRendering.swift`): the system semantic
