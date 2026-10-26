@@ -397,10 +397,10 @@ func writeClip(_ path: String, frames: Int, draw: (Int, CGContext) -> Void) asyn
     await writer.finishWriting()
 }
 
-func text(_ s: String, _ ctx: CGContext, size: Double = 60) {
+func text(_ s: String, _ ctx: CGContext, size: Double = 60, at point: NSPoint = NSPoint(x: 200, y: 450)) {
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
-    (s as NSString).draw(at: NSPoint(x: 200, y: 450), withAttributes: [.font: NSFont.systemFont(ofSize: size)])
+    (s as NSString).draw(at: point, withAttributes: [.font: NSFont.systemFont(ofSize: size)])
     NSGraphicsContext.restoreGraphicsState()
 }
 
@@ -424,11 +424,23 @@ func selftest() async throws {
     try await writeClip(dir + "rushed.mp4", frames: typed.count * 3 + 30) { i, ctx in
         text(String(typed.prefix(i / 3 + 1)), ctx)
     }
+    // Review: Finder's menu bar for 2 s, then Edmund's, then its flow.
+    try await writeClip(dir + "review.mp4", frames: 180) { i, ctx in
+        text(i < 60 ? "Finder   File   Edit   View" : "Edmund   File   Edit   Format", ctx, size: 24,
+             at: NSPoint(x: 20, y: 868))
+        if i >= 60 { text(i < 120 ? "Save As:  notes.md" : "Settings   Open   Read   Print", ctx) }
+    }
+    try await writeClip(dir + "nolaunch.mp4", frames: 90) { _, ctx in
+        text("Edmund   File   Edit   Format", ctx, size: 24, at: NSPoint(x: 20, y: 868))
+    }
+    let review = await rateReview(dir + "review.mp4", markers: defaultMarkers)
+    let nolaunch = await rateReview(dir + "nolaunch.mp4", markers: defaultMarkers)
     let good = await rateClip(dir + "good.mp4", recDir: nil)
     let still = await rateClip(dir + "still.mp4", recDir: nil)
     let flash = await rateClip(dir + "flash.mp4", recDir: nil)
     let rushed = await rateClip(dir + "rushed.mp4", recDir: nil)
-    for (n, r) in [("good", good), ("still", still), ("flash", flash), ("rushed", rushed)] { print(n, r) }
+    for (n, r) in [("good", good), ("still", still), ("flash", flash), ("rushed", rushed),
+                   ("review", review), ("nolaunch", nolaunch)] { print(n, r) }
     func has(_ r: Report, _ s: String) -> Bool { r.warns.contains { $0.contains(s) } }
     var ok = true
     func check(_ c: Bool, _ what: String) { if !c { print("SELFTEST FAIL: \(what)"); ok = false } }
@@ -438,6 +450,9 @@ func selftest() async throws {
     check(has(flash, "one-frame flash at 2.00s"), "flash clip: flash at 2.00s")
     check(has(rushed, "lead-in") && has(rushed, "end hold"), "rushed clip: lead-in and end hold")
     check(FileManager.default.fileExists(atPath: dir + "good-sheet.png"), "sheet written")
+    check(review.fails.isEmpty && review.facts.contains("Edmund frontmost from 2s"), "review: starts before launch")
+    check(!has(review, "flow never shows"), "review: every marker seen")
+    check(nolaunch.fails.contains { $0.contains("doesn't start before launch") }, "nolaunch: fails")
     print(ok ? "selftest ok" : "selftest FAILED")
     exit(ok ? 0 : 1)
 }
