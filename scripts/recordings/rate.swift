@@ -246,7 +246,10 @@ func rateClip(_ path: String, recDir: String?) async -> Report {
     if size != wantSize { r.fails.append("size \(size), want \(wantSize)") }
     if abs(s.fps - 30) > 0.5 { r.fails.append(String(format: "%.1f fps, want 30", s.fps)) }
     if s.codec != "avc1" { r.fails.append("codec \(s.codec), want H.264") }
-    if !length.contains(s.duration) {
+    // A clip's App Store render is a part; the 15–30 s rule is for the
+    // `# combine:` preview made of them.
+    let part = store && recDir.flatMap { header("combine", recDir: $0, clip: path) } == nil
+    if !part && !length.contains(s.duration) {
         r.fails.append(String(format: "%.1f s, want %.0f–%.0f", s.duration, length.lowerBound, length.upperBound))
     }
     if store && !s.hasAudio { r.fails.append("no audio track") }

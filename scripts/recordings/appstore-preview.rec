@@ -1,0 +1,4 @@
+# combine: 1-live-preview
+# modes: light
+# The Mac App Store app preview: clips' App Store renders back to back. It
+# has to run 15–30 s; add clips (each with # appstore: yes) until it does.
