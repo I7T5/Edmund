@@ -1085,15 +1085,11 @@ enum ReproScript {
                     Task.detached(priority: .userInitiated) {
                         let output = BurstOutput(dir: dir)
                         do {
-                            // A window `front` is still moving to another screen
-                            // is missing from the list for a moment: ask again.
-                            var content = try await SCShareableContent.excludingDesktopWindows(
-                                false, onScreenWindowsOnly: true)
-                            for _ in 0 ..< 20 where !content.windows.contains(where: { $0.windowID == wid }) {
-                                try await Task.sleep(nanoseconds: 100_000_000)
-                                content = try await SCShareableContent.excludingDesktopWindows(
-                                    false, onScreenWindowsOnly: true)
-                            }
+                            // All windows, not just on-screen ones: a window
+                            // `front` is moving between screens or Spaces drops
+                            // out of the on-screen list, sometimes for seconds.
+                            let content = try await SCShareableContent.excludingDesktopWindows(
+                                false, onScreenWindowsOnly: !recording)
                             guard let target = content.windows.first(where: { $0.windowID == wid }) else {
                                 throw NSError(domain: "repro", code: 1,
                                               userInfo: [NSLocalizedDescriptionKey: "window \(wid) not shareable"])
