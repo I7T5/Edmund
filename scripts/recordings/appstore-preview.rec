@@ -1,4 +1,4 @@
-# combine: 1-live-preview
+# combine: 0-tour
 # modes: light
-# The Mac App Store app preview: clips' App Store renders back to back. It
-# has to run 15–30 s; add clips (each with # appstore: yes) until it does.
+# The Mac App Store app preview: the tour, one take. It has to run 15–30 s.
+# A combine list of several clips (each with # appstore: yes) also works.

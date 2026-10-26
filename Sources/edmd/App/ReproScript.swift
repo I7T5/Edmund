@@ -12,6 +12,7 @@ import ScreenCaptureKit
 /// Accessibility permission. Commands, one per line:
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
+///   caretafter <needle>  … after it (typing at a line's end, on camera)
 ///   select <needle>   select the first occurrence of <needle>
 ///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
 ///   hovercopy <n>     put the pointer on the copy button of the code block at n
@@ -104,14 +105,15 @@ enum ReproScript {
             switch cmd {
             case "sleep":
                 delay += (Double(arg) ?? 0) / 1000
-            case "caret":
+            case "caret", "caretafter":
+                let after = cmd == "caretafter"
                 schedule(after: delay) { editor in
                     let r = (editor.rawSource as NSString).range(of: arg)
                     guard r.location != NSNotFound else {
-                        verdict("caret", false, "needle not found: \(arg)")
+                        verdict(cmd, false, "needle not found: \(arg)")
                         return
                     }
-                    editor.setSelectedRange(NSRange(location: r.location, length: 0))
+                    editor.setSelectedRange(NSRange(location: after ? NSMaxRange(r) : r.location, length: 0))
                 }
             case "select":
                 schedule(after: delay) { editor in

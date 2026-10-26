@@ -38,7 +38,8 @@ let huntJump = 0.4
 // A cut: this fraction of the frame replaced in one frame.
 let cutFraction = 0.3
 // Output targets: site clips (README, edmund.md) and the App Store app preview.
-let siteSize = "1440x900", siteLength = 3.0 ... 15.0
+// A site clip may be a tour, as long as a preview.
+let siteSize = "1440x900", siteLength = 3.0 ... 30.0
 let storeSize = "1920x1080", storeLength = 15.0 ... 30.0
 // App Review: launch to quit, the typical flow.
 let reviewLength = 60.0 ... 300.0, reviewDeadGap = 8.0, reviewLegible = 12.0
@@ -295,9 +296,10 @@ func rateClip(_ path: String, recDir: String?) async -> Report {
     } else {
         r.warns.append("nothing moves"); flow = 0
     }
-    // Pace.
-    let pace = max(0, 15 - 5 * Double(m.cuts.count))
-    if !m.cuts.isEmpty { r.warns.append("cut at " + m.cuts.map { String(format: "%.1fs", $0) }.joined(separator: ", ")) }
+    // Pace. `# cuts: n` allows that many on purpose (⌘E to Read mode).
+    let allowed = recDir.flatMap { header("cuts", recDir: $0, clip: path) }.flatMap(Int.init) ?? 0
+    let pace = max(0, 15 - 5 * Double(max(0, m.cuts.count - allowed)))
+    if m.cuts.count > allowed { r.warns.append("cut at " + m.cuts.map { String(format: "%.1fs", $0) }.joined(separator: ", ")) }
 
     let legibility = min(1, min(textHeight, actionHeight) / legible) * 35
     let coverage = wants.isEmpty ? 15 : Double(wants.count - missing.count) / Double(wants.count) * 15
