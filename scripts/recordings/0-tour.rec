@@ -1,5 +1,5 @@
 # doc: misc/marketing/screenshot-docs/GFM and Obsidian.md
-# window: 900,680
+# window: 860,640
 # modes: light
 # length: 15500
 # appstore: yes
@@ -18,12 +18,13 @@ type Write a ==tour== of [[Edmund]]
 sleep 700
 enter
 enter
+enter
 type Euler, in one line: $e^{i\pi} + 1 = 0$
 sleep 1000
 caretafter Lucy
 sleep 300
 type  the **Valiant**
-sleep 1200
+sleep 400
 save
 sleep 300
 viewmode

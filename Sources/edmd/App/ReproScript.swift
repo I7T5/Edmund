@@ -3,6 +3,7 @@ import AppKit
 import EdmundCore
 import WebKit
 import ScreenCaptureKit
+import VideoToolbox
 
 /// In-process repro driver: `-debug.reproScript <path>` replays a keystroke
 /// script against the front document through the real AppKit key-event path
@@ -1084,24 +1085,48 @@ enum ReproScript {
                     Task.detached(priority: .userInitiated) {
                         let output = BurstOutput(dir: dir)
                         do {
-                            let content = try await SCShareableContent.excludingDesktopWindows(
+                            // A window `front` is still moving to another screen
+                            // is missing from the list for a moment: ask again.
+                            var content = try await SCShareableContent.excludingDesktopWindows(
                                 false, onScreenWindowsOnly: true)
+                            for _ in 0 ..< 20 where !content.windows.contains(where: { $0.windowID == wid }) {
+                                try await Task.sleep(nanoseconds: 100_000_000)
+                                content = try await SCShareableContent.excludingDesktopWindows(
+                                    false, onScreenWindowsOnly: true)
+                            }
                             guard let target = content.windows.first(where: { $0.windowID == wid }) else {
                                 throw NSError(domain: "repro", code: 1,
                                               userInfo: [NSLocalizedDescriptionKey: "window \(wid) not shareable"])
                             }
-                            let filter = SCContentFilter(desktopIndependentWindow: target)
+                            var filter = SCContentFilter(desktopIndependentWindow: target)
                             let config = SCStreamConfiguration()
                             config.width = Int(target.frame.width * scale)
                             config.height = Int(target.frame.height * scale)
                             if recording {
-                                // With shadows on, contentRect grows to take
-                                // them in.
-                                config.ignoreShadowsSingleWindow = false
-                                config.shouldBeOpaque = false
-                                config.backgroundColor = .clear
-                                config.width = Int(filter.contentRect.width * scale)
-                                config.height = Int(filter.contentRect.height * scale)
+                                // Not a window or app filter: those badge the
+                                // window's title bar with macOS's "being shared"
+                                // pill, over the traffic lights. The display
+                                // minus every other app (this one's popovers
+                                // and menus stay), cropped to the window and its
+                                // shadow (56 pt at the sides, 38 above, 74 below:
+                                // `screencapture -l`'s margins). The shadow comes
+                                // out over opaque black (shouldBeOpaque, a clear
+                                // background and VideoToolbox's conversion don't
+                                // change that); recordings.sh takes it from a still.
+                                let me = ProcessInfo.processInfo.processIdentifier
+                                guard let display = content.displays.first(where: { $0.frame.intersects(target.frame) }) else {
+                                    throw NSError(domain: "repro", code: 2,
+                                                  userInfo: [NSLocalizedDescriptionKey: "no display to film"])
+                                }
+                                filter = SCContentFilter(display: display,
+                                                         excludingApplications: content.applications.filter { $0.processID != me },
+                                                         exceptingWindows: [])
+                                let rect = CGRect(x: target.frame.minX - display.frame.minX - 56,
+                                                  y: target.frame.minY - display.frame.minY - 38,
+                                                  width: target.frame.width + 112, height: target.frame.height + 112)
+                                config.sourceRect = rect
+                                config.width = Int(rect.width * scale)
+                                config.height = Int(rect.height * scale)
                             }
                             config.showsCursor = false
                             config.captureResolution = .best
@@ -1437,7 +1462,6 @@ enum ReproScript {
 /// the process-uptime ms at delivery — the clock the caret trace uses.
 private final class BurstOutput: NSObject, SCStreamOutput, @unchecked Sendable {
     private let dir: String
-    private let context = CIContext()
     private let lock = NSLock()
     private(set) var frames = 0
     private(set) var written = 0
@@ -1449,8 +1473,9 @@ private final class BurstOutput: NSObject, SCStreamOutput, @unchecked Sendable {
         guard type == .screen, let buffer = sampleBuffer.imageBuffer else { return }
         let ms = EditorTextView.debugMs()
         lock.lock(); let n = frames; frames += 1; lock.unlock()
-        let image = CIImage(cvPixelBuffer: buffer)
-        guard let cg = context.createCGImage(image, from: image.extent),
+        var image: CGImage?
+        VTCreateCGImageFromCVPixelBuffer(buffer, options: nil, imageOut: &image)
+        guard let cg = image,
               let dest = CGImageDestinationCreateWithURL(
                 URL(fileURLWithPath: "\(dir)/\(String(format: "%04d", n))-\(ms).png") as CFURL,
                 "public.png" as CFString, 1, nil) else { return }

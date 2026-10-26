@@ -91,8 +91,8 @@ header() { sed -n "s/^# $2: *//p" "$1" | head -1; }
 # film <doc> <script> <raw dir> <length ms> [args...] → 0 filmed, 1 retry, 2 give up.
 film() {
     local doc="$1" script="$2" raw="$3" length="$4"; shift 4
-    local log="$script.log"
-    rm -rf "$log" "$raw"
+    local log="$script.log" plate="$raw-plate.png" wid
+    rm -rf "$log" "$raw" "$plate"
     defaults delete $ID >/dev/null 2>&1
     until [ "$(idle)" -ge 3 ]; do sleep 0.5; done
     local started=$SECONDS
@@ -108,6 +108,13 @@ film() {
     # The app's own start-up (1.5 s), the setup, then the clip.
     for _ in $(seq 1 $((length / 100 + 600))); do
         kill -0 "$pid" 2>/dev/null || { echo "      the app quit"; break; }
+        # The shadow plate: one still of the key window, shadow and alpha as
+        # screencapture takes them (the stream's shadow is on opaque black).
+        # Only its shadow, corners and outline are used, so any moment will do.
+        if [ ! -f "$plate" ] && grep -q '^repro window .* key=true' "$log" 2>/dev/null; then
+            wid="$(grep '^repro window .* key=true' "$log" | awk '{print $3}' | tail -1)"
+            screencapture -x -l "$wid" "$plate"
+        fi
         if grep -q 'declined TCC' "$log" 2>/dev/null; then
             echo "      Screen Recording is off for $ID: System Settings ▸ Privacy & Security ▸"
             echo "      Screen & System Audio Recording ▸ allow edmd ($ROOT/$APP), then rerun"
@@ -121,6 +128,8 @@ film() {
                 echo "      Edmund wasn't active (grey traffic lights); discarded"
             elif [ "$(ls "$raw" 2>/dev/null | wc -l)" -lt 2 ]; then
                 echo "      no frames"
+            elif [ ! -f "$plate" ]; then
+                echo "      no shadow plate"
             else
                 got=0
             fi
@@ -138,9 +147,12 @@ film() {
 # background at the size and scale a screenshot would get; 30 fps constant.
 encode() {
     local raw="$1" out="$2" size="$3" mode="$4" length="$5" scale="$6" audio="${7:-}"
-    local first wh list="$RUN/frames.txt" bg="$RUN/bg.png" clear="$RUN/clear.png"
+    local first wh list="$RUN/frames.txt" bg="$RUN/bg.png" clear="$RUN/clear.png" plate="$raw-plate.png"
+    dims() { sips -g pixelWidth -g pixelHeight "$1" | awk '/pixelWidth/ {w=$2} /pixelHeight/ {h=$2} END {print w "x" h}'; }
     first="$(ls "$raw"/*.png | head -1)"
-    wh="$(sips -g pixelWidth -g pixelHeight "$first" | awk '/pixelWidth/ {w=$2} /pixelHeight/ {h=$2} END {print w "x" h}')"
+    wh="$(dims "$first")"
+    # record crops to screencapture's shadow margins, so the two line up.
+    [ "$(dims "$plate")" = "$wh" ] || { echo "      plate $(dims "$plate") ≠ frames $wh"; return 1; }
     ffmpeg -v error -y -f lavfi -i "color=c=black@0:s=$wh,format=rgba" -frames:v 1 "$clear"
     # compose.swift on a clear window of the frame's size: the background,
     # and the scale it would draw the window at.
@@ -156,11 +168,18 @@ encode() {
                   printf "file '\''%s'\''\nduration %.3f\n", f[i], d / 1000 }
               printf "file '\''%s'\''\n", f[NR] }' > "$list"
     local a=() m=()
-    [ -n "$audio" ] && { a=(-f lavfi -i anullsrc=r=48000:cl=stereo); m=(-map 2:a -c:a aac -b:a 128k -shortest); }
+    [ -n "$audio" ] && { a=(-f lavfi -i anullsrc=r=48000:cl=stereo); m=(-map 3:a -c:a aac -b:a 128k -shortest); }
+    # The window: each frame inside the plate's opaque outline (alpha from the
+    # plate), laid on the plate for its shadow and rounded corners; then
+    # scaled and centred on the background. -t ends it: the looped plate
+    # keeps alphamerge from ever reaching the end.
     # ${x[@]+…}: bash 3.2 calls an empty array unbound under set -u.
-    ffmpeg -v error -y -loop 1 -i "$bg" -f concat -safe 0 -i "$list" ${a[@]+"${a[@]}"} -filter_complex \
-        "[1:v]scale=iw*$s:ih*$s:flags=lanczos[w];[0:v][w]overlay=(W-w)/2:(H-h)/2:shortest=1,fps=30,format=yuv420p[v]" \
-        -map "[v]" ${m[@]+"${m[@]}"} -c:v libx264 -preset slow -crf 18 -profile:v high -movflags +faststart -r 30 "$out"
+    ffmpeg -v error -y -loop 1 -i "$bg" -f concat -safe 0 -i "$list" -loop 1 -framerate 60 -i "$plate" \
+        ${a[@]+"${a[@]}"} -filter_complex \
+        "[2:v]format=rgba,split[p][pm];[pm]alphaextract,lut=y='if(gte(val,250),255,0)'[m];
+         [1:v]format=rgb24[f];[f][m]alphamerge[fa];[p][fa]overlay=0:0:shortest=1[pw];
+         [pw]scale=iw*$s:ih*$s:flags=lanczos[w];[0:v][w]overlay=(W-w)/2:(H-h)/2:shortest=1,fps=30,format=yuv420p[v]" \
+        -map "[v]" ${m[@]+"${m[@]}"} -t "$(echo "scale=3; $length / 1000" | bc)" -c:v libx264 -preset slow -crf 18 -profile:v high -movflags +faststart -r 30 "$out"
 }
 
 clips=0; failed=(); made=()
@@ -184,7 +203,9 @@ for rec in scripts/recordings/*.rec; do
         # state are logged before the clip, so the check doesn't film.
         { printf '%s\n' front 'sleep 300' "resizewindow ${size:-960,600}" 'sleep 300' 'scroll top'
           sed '/^# --- record ---/,$d' "$rec" | grep -v '^#'
-          printf '%s\n' 'sleep 300' front 'sleep 400' logwindows "record $length,$raw"
+          # 1 s: `front` can move the window to another screen, and the
+          # stream can't find it until the move is done.
+          printf '%s\n' 'sleep 300' front 'sleep 1000' logwindows "record $length,$raw"
           sed '1,/^# --- record ---/d' "$rec" | grep -v '^#'; } > "$script"
         ok=""
         if [ -n "$COMPOSE_ONLY" ]; then
@@ -197,7 +218,8 @@ for rec in scripts/recordings/*.rec; do
         done; fi
         [ -n "$ok" ] || { echo "FAIL  $name-$mode"; failed+=("$name-$mode"); continue; }
         base="$OUT/$name-$mode"
-        encode "$raw" "$base.mp4" 1440x900 "$mode" "$length" "$scale"
+        encode "$raw" "$base.mp4" 1440x900 "$mode" "$length" "$scale" ||
+            { echo "FAIL  $name-$mode (encode)"; failed+=("$name-$mode"); continue; }
         made+=("$base.mp4")
         if [ "$(header "$rec" appstore)" = yes ]; then
             encode "$raw" "$base-appstore.mp4" 1920x1080 "$mode" "$length" "$scale" audio
