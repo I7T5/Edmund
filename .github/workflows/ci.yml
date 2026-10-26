@@ -78,6 +78,25 @@ jobs:
         shell: bash
         run: swift test 2>&1 | tee test.log
 
+      # The suite occasionally dies with "unexpected signal code 11" (about 1 run
+      # in 50 since 2026-09). Parallel output is buffered, so the last test
+      # printed is not the one that crashed. ReportCrash writes the stack to
+      # DiagnosticReports; keep it.
+      - name: Crash reports
+        if: failure() && steps.filter.outputs.code == 'true'
+        shell: bash
+        run: |
+          mkdir -p crashes
+          find ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports \
+            -name '*.ips' -mmin -30 -exec cp {} crashes/ \; 2>/dev/null || true
+          ls -l crashes
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.filter.outputs.code == 'true'
+        with:
+          name: crash-reports
+          path: crashes/
+          if-no-files-found: ignore
+
       # Zero warnings in our own code. A grep rather than -warnings-as-errors:
       # -Xswiftc reaches the remote dependencies too. The fresh checkout gives
       # every source a new mtime, so all of ours recompile despite the .build
