@@ -1,30 +1,66 @@
-# doc: misc/marketing/screenshot-docs/GFM and Obsidian.md
-# window: 860,640
+# blank: The Wardrobe.md
+# window: 820,640
 # modes: light
-# length: 15500
+# length: 25000
 # appstore: yes
+# loop: yes
 # cuts: 1
-# expect: tour, Edmund, Valiant
-# alt: A tour of Edmund: a checklist item with a highlight and a wikilink, inline math, a table cell, then Read mode.
-# The App Store preview: one take, top to bottom, each beat rendering as it is
-# typed: list continuation with ==highlight== and [[wikilink]], inline math,
-# bold in a table cell, then ⌘E to Read mode (the one cut) and a held end.
+# expect: Wardrobe
+# alt: A tour of Edmund: a heading, a sentence with bold and italic, a table filled in with Tab, a pasted image, then Read mode.
+# The App Store preview and the site's tour: one take from a blank page,
+# each beat rendering as it is typed — heading, a line with bold and italic,
+# a table from Format ▸ Table filled in with Tab, a pasted picture and its
+# alt text — then ⌘E to Read mode (the one cut), held, and the encoder fades
+# back to the blank page so it loops.
 zoom in
-caretafter Turkish delight, eventually
 # --- record ---
 sleep 1000
-enter
-type Write a ==tour== of [[Edmund]]
-sleep 700
+type # The Wardrobe
 enter
 enter
-enter
-type Euler, in one line: $e^{i\pi} + 1 = 0$
-sleep 1000
-caretafter Lucy
 sleep 300
-type  the **Valiant**
+type Lucy found it first: a **wardrobe** full of coats, and *snow* beyond them.
+enter
+enter
 sleep 400
-save
+action formatTable:
+sleep 500
+select Header 1
+type Pevensie
+sleep 150
+tab
+type Title
+sleep 150
+tab
+type Gift
+sleep 150
+tab
+type Peter
+sleep 150
+tab
+type the Magnificent
+sleep 150
+tab
+type a sword
+sleep 150
+tab
+type Lucy
+sleep 150
+tab
+type the Valiant
+sleep 150
+tab
+type a cordial
+sleep 400
+caretend
+enter
 sleep 300
+pasteimage {root}/misc/marketing/screenshot-docs/turkish-delight.jpg
+sleep 600
+type Turkish delight
+sleep 300
+enter
+sleep 1500
+save
+sleep 200
 viewmode

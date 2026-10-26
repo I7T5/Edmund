@@ -68,6 +68,8 @@ import VideoToolbox
 ///   draghandle row|column <points> [ms]  drag the caret's row or column pill
 ///                     that far along its axis, in real time (for recordings)
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
+///   action <selector>  send a menu command (`action formatTable:`)
+///   pasteimage <file>  paste that image as ⌘V would; the clipboard is restored
 ///   record <ms>,<dir>  film the window, shadow included, for <ms> ms to
 ///                     dir/NNNN-<uptime ms>.png (scripts/recordings.sh)
 ///   selectcells r0,c0,r1,c1  select that block of table cells
@@ -1225,6 +1227,38 @@ enum ReproScript {
             case "save":
                 // Clears "Edited" from the title after `type`, for screenshots.
                 scheduleDoc(after: delay) { doc in doc.save(nil) }
+            case "action":
+                // "action formatTable:" — a menu command by selector, up the
+                // responder chain from the editor, as its menu item sends it
+                // when the editor has focus (sendAction(to: nil) would start
+                // from whichever window is key, maybe not this one).
+                schedule(after: delay) { editor in
+                    verdict("action", editor.tryToPerform(NSSelectorFromString(arg), with: nil), arg)
+                }
+            case "pasteimage":
+                // "pasteimage <file>" — Edit ▸ Paste with that image on the
+                // clipboard. The clipboard is the user's: what was on it goes
+                // back a second later, once the paste has read it.
+                schedule(after: delay) { editor in
+                    guard let image = NSImage(contentsOfFile: arg) else {
+                        verdict("pasteimage", false, "no image at \(arg)"); return
+                    }
+                    let board = NSPasteboard.general
+                    let saved = (board.pasteboardItems ?? []).map { item in
+                        item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+                    }
+                    board.clearContents()
+                    board.writeObjects([image])
+                    editor.paste(nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        board.clearContents()
+                        board.writeObjects(saved.map { pairs in
+                            let item = NSPasteboardItem()
+                            for (type, data) in pairs { item.setData(data, forType: type) }
+                            return item
+                        })
+                    }
+                }
             case "undo":
                 schedule(after: delay) { editor in editor.undo(nil) }
             case "redo":

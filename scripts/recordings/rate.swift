@@ -102,6 +102,7 @@ struct Sampled {
     var sheet: [(Double, CGImage)] = []   // 12 frames for the contact sheet
     var ocrFrames: [(Double, CGImage)] = []
     var last: CGImage?
+    var held: CGImage?   // the last frame before a loop's 0.6 s fade back
     var size = CGSize.zero
     var duration = 0.0, fps = 0.0, codec = "", hasAudio = false
 }
@@ -137,6 +138,7 @@ func sample(_ url: URL, rate: Double, ocrEvery: Double? = nil) async throws -> S
         s.times.append(t); s.thumbs.append(thumb(image))
         if sheetAt.contains(index) { s.sheet.append((t, image)) }
         if let every = ocrEvery, t >= nextOCR { s.ocrFrames.append((t, image)); nextOCR = t + every }
+        if t <= s.duration - 0.7 { s.held = image }
         s.last = image
     }
     return s
@@ -258,8 +260,13 @@ func rateClip(_ path: String, recDir: String?) async -> Report {
     let m = analyse(s)
     writeSheet(s, changes: m.changes, to: (path as NSString).deletingPathExtension + "-sheet.png")
 
+    // A `# loop: yes` clip fades back to its first frame in its last 0.6 s:
+    // its result is the frame held before the fade.
+    let loops = recDir.flatMap { header("loop", recDir: $0, clip: path) } == "yes"
+    let result = loops ? (s.held ?? last) : last
+
     // Visibility: text height at 2880 wide, overall and where the action is.
-    let lines = ocr(last)
+    let lines = ocr(result)
     let toCanvas = 2880 / Double(last.width)
     let legible = recDir.flatMap { header("legible", recDir: $0, clip: path) }.flatMap(Double.init) ?? defaultLegible
     let textHeight = median(lines.map { $0.height * toCanvas })
@@ -283,11 +290,17 @@ func rateClip(_ path: String, recDir: String?) async -> Report {
     }
     if !m.flashes.isEmpty { r.warns.append("one-frame flash at " + m.flashes.map { String(format: "%.2fs", $0) }.joined(separator: ", ")) }
 
-    // Flow.
+    // Flow. A loop ends as it began, so a looping player shows no jump; its
+    // end hold is the still before the fade.
     var flow = 25.0
-    if let first = m.firstMove, let lastMove = m.lastMove {
+    if loops, let a = s.thumbs.first, let b = s.thumbs.last, change(a, b).count >= movingPixels {
+        r.warns.append("doesn't loop: the last frame differs from the first"); flow -= 8
+    }
+    let end = loops ? s.duration - 0.6 : s.duration
+    let lastBeforeEnd = Array(zip(s.times, m.moving)).last { $0.1 && $0.0 < end - 0.1 }?.0
+    if let first = m.firstMove, let lastMove = lastBeforeEnd ?? m.lastMove {
         if first < leadIn { r.warns.append(String(format: "lead-in %.1fs, want ≥%.1f", first, leadIn)); flow -= 5 }
-        let hold = s.duration - lastMove
+        let hold = end - lastMove
         if hold < endHold { r.warns.append(String(format: "end hold %.1fs, want ≥%.1f", hold, endHold)); flow -= 8 }
         if m.longestStill > deadGap {
             r.warns.append(String(format: "dead gap %.1fs at %.1fs", m.longestStill, m.longestStillAt)); flow -= 7

@@ -15,6 +15,11 @@
 # # scale:, # expect:, # legible:, # alt:. And:
 #   # length: <ms>     how long to film, from the marker (required)
 #   # appstore: yes    also render the App Store app preview (1920×1080)
+#   # blank: <name>    start from a new empty file of that name, not # doc:
+#   # loop: yes        the last 0.6 s fade into the first frame, so the clip
+#                      ends as it began; rate.swift checks it does
+#   # cuts: <n>        cuts on purpose (⌘E to Read mode), not held against it
+# {root} in a command is $SHOTS_DOC_ROOT: `pasteimage {root}/misc/…/photo.jpg`.
 #   # combine: <rec>...  no run of its own: the App Store previews of those clips
 #                      back to back, for the preview's 15–30 s
 #
@@ -179,7 +184,15 @@ encode() {
         "[2:v]format=rgba,split[p][pm];[pm]alphaextract,lut=y='if(gte(val,250),255,0)'[m];
          [1:v]format=rgb24[f];[f][m]alphamerge[fa];[p][fa]overlay=0:0:shortest=1[pw];
          [pw]scale=iw*$s:ih*$s:flags=lanczos[w];[0:v][w]overlay=(W-w)/2:(H-h)/2:shortest=1,fps=30,format=yuv420p[v]" \
-        -map "[v]" ${m[@]+"${m[@]}"} -t "$(echo "scale=3; $length / 1000" | bc)" -c:v libx264 -preset slow -crf 18 -profile:v high -movflags +faststart -r 30 "$out"
+        -map "[v]" ${m[@]+"${m[@]}"} -t "$(echo "scale=3; $length / 1000" | bc)" -c:v libx264 -preset slow -crf 18 -profile:v high -movflags +faststart -r 30 "$out" || return 1
+    [ "$LOOP" = yes ] || return 0
+    # Loop: the last 0.6 s fade into the first frame, so the clip ends where it
+    # starts and a looping player shows no jump. Same length; audio kept.
+    ffmpeg -v error -y -i "$out" -frames:v 1 -update 1 "$RUN/first.png" &&
+    ffmpeg -v error -y -i "$out" -loop 1 -framerate 30 -t 0.6 -i "$RUN/first.png" -filter_complex \
+        "[0:v]settb=AVTB,fps=30[a];[1:v]settb=AVTB,fps=30,format=yuv420p[b];[a][b]xfade=transition=fade:duration=0.6:offset=$(echo "scale=3; $length / 1000 - 0.6" | bc),format=yuv420p[v]" \
+        -map "[v]" -map '0:a?' -c:a copy -c:v libx264 -preset slow -crf 18 -profile:v high -movflags +faststart -r 30 "$RUN/loop.mp4" &&
+    mv "$RUN/loop.mp4" "$out"
 }
 
 clips=0; failed=(); made=()
@@ -187,31 +200,36 @@ for rec in scripts/recordings/*.rec; do
     name="$(basename "$rec" .rec)"
     wanted "$name" || continue
     [ -n "$(header "$rec" combine)" ] && continue
-    length="$(header "$rec" length)"
+    length="$(header "$rec" length)"; LOOP="$(header "$rec" loop)"
     [ -n "$length" ] || { echo "FAIL  $name  (no # length:)"; failed+=("$name"); continue; }
+    # `# blank: <name>` starts from a new empty file of that name instead.
+    blank="$(header "$rec" blank)"
     doc="$DOC_ROOT/$(header "$rec" doc)"
     size="$(header "$rec" window)"; scale="$(header "$rec" scale)"
     eval "set -- $(header "$rec" args)"
-    if [ -z "$COMPOSE_ONLY" ] && [ ! -f "$doc" ]; then
+    if [ -z "$COMPOSE_ONLY$blank" ] && [ ! -f "$doc" ]; then
         echo "FAIL  $name  (doc missing: $doc)"; failed+=("$name"); continue
     fi
-    src="$doc"; doc="$RUN/$name-docs/$(basename "$src")"
+    src="$doc"; doc="$RUN/$name-docs/${blank:-$(basename "$src")}"
     for mode in ${SHOTS_MODES:-$(header "$rec" modes)}; do
         raw="$OUT/raw/$name-$mode"; script="$RUN/$name-$mode.repro"
         # Set up off camera, ask for focus again, log whether the window is
         # key (traffic lights in colour), then film. The window's id and key
         # state are logged before the clip, so the check doesn't film.
+        # {root} in a command stands for $SHOTS_DOC_ROOT (`pasteimage {root}/…`).
         { printf '%s\n' front 'sleep 300' "resizewindow ${size:-960,600}" 'sleep 300' 'scroll top'
           sed '/^# --- record ---/,$d' "$rec" | grep -v '^#'
           # 1 s: `front` can move the window to another screen, and the
           # stream can't find it until the move is done.
           printf '%s\n' 'sleep 300' front 'sleep 1000' logwindows "record $length,$raw"
-          sed '1,/^# --- record ---/d' "$rec" | grep -v '^#'; } > "$script"
+          sed '1,/^# --- record ---/d' "$rec" | grep -v '^#'; } | sed "s|{root}|$DOC_ROOT|g" > "$script"
         ok=""
         if [ -n "$COMPOSE_ONLY" ]; then
             ls "$raw"/*.png >/dev/null 2>&1 && ok=1 || echo "      $name-$mode: nothing in raw/"
         else for attempt in 1 2 3 4 5; do
-            rm -rf "$RUN/$name-docs"; cp -R "$(dirname "$src")" "$RUN/$name-docs"
+            rm -rf "$RUN/$name-docs"
+            if [ -n "$blank" ]; then mkdir "$RUN/$name-docs"; : > "$doc"
+            else cp -R "$(dirname "$src")" "$RUN/$name-docs"; fi
             film "$doc" "$script" "$raw" "$length" -settings.appearance.mode "$mode" "$@"
             case $? in 0) ok=1; break ;; 2) break ;; esac
             echo "      $name-$mode: no clean clip (attempt $attempt), retrying"
