@@ -66,6 +66,8 @@ import ScreenCaptureKit
 ///   draghandle row|column <points> [ms]  drag the caret's row or column pill
 ///                     that far along its axis, in real time (for recordings)
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
+///   record <ms>,<dir>  film the window, shadow included, for <ms> ms to
+///                     dir/NNNN-<uptime ms>.png (scripts/recordings.sh)
 ///   selectcells r0,c0,r1,c1  select that block of table cells
 ///   ime <text>        compose <text> as marked text (NSTextInputClient)
 ///   imecommit [text]  commit the composition as <text> (empty: as marked)
@@ -1052,7 +1054,7 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     report("repro indicators " + editor.debugInsertionIndicators())
                 }
-            case "burst":
+            case "burst", "record":
                 // "burst ms,interval,dir" — capture ONLY the document window
                 // (a ScreenCaptureKit stream filtered to this window id; nothing
                 // else on screen is included) for `ms` ms, at most one frame per
@@ -1060,17 +1062,23 @@ enum ReproScript {
                 // a frame whenever the window repaints, so a single-frame paint
                 // a still screenshot cannot catch lands as its own file. Needs
                 // Screen Recording for the bundle.
+                // "record ms,dir" — the same at up to 60 fps, with the window's
+                // shadow on a transparent background, like `screencapture -l`:
+                // frames for scripts/recordings.sh. The stream sees the window
+                // even while another covers it.
+                let recording = cmd == "record"
                 schedule(after: delay) { editor in
-                    let parts = arg.split(separator: ",", maxSplits: 2).map(String.init)
-                    guard parts.count == 3, let total = Double(parts[0]),
-                          let interval = Double(parts[1]), let window = editor.window else {
-                        report("repro burst: want ms,interval,dir"); return
+                    let parts = arg.split(separator: ",", maxSplits: recording ? 1 : 2).map(String.init)
+                    guard parts.count == (recording ? 2 : 3), let total = Double(parts[0]),
+                          let interval = recording ? 16 : Double(parts[1]), let window = editor.window else {
+                        report(recording ? "repro record: want ms,dir" : "repro burst: want ms,interval,dir")
+                        return
                     }
-                    let dir = parts[2]
+                    let dir = parts[parts.count - 1]
                     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
                     let wid = CGWindowID(window.windowNumber)
                     let scale = window.backingScaleFactor
-                    report("repro burst started wid=\(wid)")
+                    report("repro \(cmd) started wid=\(wid)")
                     Task.detached(priority: .userInitiated) {
                         let output = BurstOutput(dir: dir)
                         do {
@@ -1084,6 +1092,15 @@ enum ReproScript {
                             let config = SCStreamConfiguration()
                             config.width = Int(target.frame.width * scale)
                             config.height = Int(target.frame.height * scale)
+                            if recording {
+                                // With shadows on, contentRect grows to take
+                                // them in.
+                                config.ignoreShadowsSingleWindow = false
+                                config.shouldBeOpaque = false
+                                config.backgroundColor = .clear
+                                config.width = Int(filter.contentRect.width * scale)
+                                config.height = Int(filter.contentRect.height * scale)
+                            }
                             config.showsCursor = false
                             config.captureResolution = .best
                             config.minimumFrameInterval = CMTime(value: CMTimeValue(max(1, interval)), timescale: 1000)
@@ -1096,11 +1113,11 @@ enum ReproScript {
                             try await stream.stopCapture()
                         } catch {
                             let text = "\(error)"
-                            await MainActor.run { report("repro burst error \(text)") }
+                            await MainActor.run { report("repro \(cmd) error \(text)") }
                         }
                         let frames = output.frames, ok = output.written
                         await MainActor.run {
-                            report("repro burst done frames=\(frames) written=\(ok) dir=\(dir)")
+                            report("repro \(cmd) done frames=\(frames) written=\(ok) dir=\(dir)")
                         }
                     }
                 }
