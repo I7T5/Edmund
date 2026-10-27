@@ -14,7 +14,7 @@
 # back to the blank page so it loops.
 zoom in
 # --- record ---
-sleep 1000
+sleep 1300
 type # The Wardrobe
 enter
 enter
@@ -60,7 +60,7 @@ sleep 600
 type Turkish delight
 sleep 300
 enter
-sleep 1500
+sleep 800
 save
 sleep 200
 viewmode

@@ -16,7 +16,7 @@
 #   # length: <ms>     how long to film, from the marker (required)
 #   # appstore: yes    also render the App Store app preview (1920×1080)
 #   # blank: <name>    start from a new empty file of that name, not # doc:
-#   # loop: yes        the last 0.6 s fade into the first frame, so the clip
+#   # loop: yes        the last 0.7 s fade into the first frame, so the clip
 #                      ends as it began; rate.swift checks it does
 #   # cuts: <n>        cuts on purpose (⌘E to Read mode), not held against it
 # {root} in a command is $SHOTS_DOC_ROOT: `pasteimage {root}/misc/…/photo.jpg`.
@@ -186,11 +186,12 @@ encode() {
          [pw]scale=iw*$s:ih*$s:flags=lanczos[w];[0:v][w]overlay=(W-w)/2:(H-h)/2:shortest=1,fps=30,format=yuv420p[v]" \
         -map "[v]" ${m[@]+"${m[@]}"} -t "$(echo "scale=3; $length / 1000" | bc)" -c:v libx264 -preset slow -crf 18 -profile:v high -movflags +faststart -r 30 "$out" || return 1
     [ "$LOOP" = yes ] || return 0
-    # Loop: the last 0.6 s fade into the first frame, so the clip ends where it
-    # starts and a looping player shows no jump. Same length; audio kept.
+    # Loop: a 0.6 s fade into the first frame, then 0.1 s of it (xfade's last
+    # frame stops short of the end), so the clip ends exactly where it starts
+    # and a looping player shows no jump. Same length; audio kept.
     ffmpeg -v error -y -i "$out" -frames:v 1 -update 1 "$RUN/first.png" &&
-    ffmpeg -v error -y -i "$out" -loop 1 -framerate 30 -t 0.6 -i "$RUN/first.png" -filter_complex \
-        "[0:v]settb=AVTB,fps=30[a];[1:v]settb=AVTB,fps=30,format=yuv420p[b];[a][b]xfade=transition=fade:duration=0.6:offset=$(echo "scale=3; $length / 1000 - 0.6" | bc),format=yuv420p[v]" \
+    ffmpeg -v error -y -i "$out" -loop 1 -framerate 30 -t 0.7 -i "$RUN/first.png" -filter_complex \
+        "[0:v]settb=AVTB,fps=30[a];[1:v]settb=AVTB,fps=30,format=yuv420p[b];[a][b]xfade=transition=fade:duration=0.6:offset=$(echo "scale=3; $length / 1000 - 0.7" | bc),format=yuv420p[v]" \
         -map "[v]" -map '0:a?' -c:a copy -c:v libx264 -preset slow -crf 18 -profile:v high -movflags +faststart -r 30 "$RUN/loop.mp4" &&
     mv "$RUN/loop.mp4" "$out"
 }

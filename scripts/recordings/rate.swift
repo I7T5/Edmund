@@ -35,6 +35,8 @@ let leadIn = 0.4, endHold = 1.5, deadGap = 2.0
 // The eye has to hunt when consecutive actions are this far apart (fraction
 // of the canvas diagonal).
 let huntJump = 0.4
+// A `# loop: yes` clip's last seconds: recordings.sh's fade to the first frame.
+let loopFade = 0.7
 // A cut: this fraction of the frame replaced in one frame.
 let cutFraction = 0.3
 // Output targets: site clips (README, edmund.md) and the App Store app preview.
@@ -102,7 +104,7 @@ struct Sampled {
     var sheet: [(Double, CGImage)] = []   // 12 frames for the contact sheet
     var ocrFrames: [(Double, CGImage)] = []
     var last: CGImage?
-    var held: CGImage?   // the last frame before a loop's 0.6 s fade back
+    var held: CGImage?   // the last frame before a loop's fade back
     var size = CGSize.zero
     var duration = 0.0, fps = 0.0, codec = "", hasAudio = false
 }
@@ -138,7 +140,7 @@ func sample(_ url: URL, rate: Double, ocrEvery: Double? = nil) async throws -> S
         s.times.append(t); s.thumbs.append(thumb(image))
         if sheetAt.contains(index) { s.sheet.append((t, image)) }
         if let every = ocrEvery, t >= nextOCR { s.ocrFrames.append((t, image)); nextOCR = t + every }
-        if t <= s.duration - 0.7 { s.held = image }
+        if t <= s.duration - loopFade - 0.1 { s.held = image }
         s.last = image
     }
     return s
@@ -296,13 +298,14 @@ func rateClip(_ path: String, recDir: String?) async -> Report {
     if loops, let a = s.thumbs.first, let b = s.thumbs.last, change(a, b).count >= movingPixels {
         r.warns.append("doesn't loop: the last frame differs from the first"); flow -= 8
     }
-    let end = loops ? s.duration - 0.6 : s.duration
+    let end = loops ? s.duration - loopFade : s.duration
     let lastBeforeEnd = Array(zip(s.times, m.moving)).last { $0.1 && $0.0 < end - 0.1 }?.0
     if let first = m.firstMove, let lastMove = lastBeforeEnd ?? m.lastMove {
         if first < leadIn { r.warns.append(String(format: "lead-in %.1fs, want ≥%.1f", first, leadIn)); flow -= 5 }
         let hold = end - lastMove
         if hold < endHold { r.warns.append(String(format: "end hold %.1fs, want ≥%.1f", hold, endHold)); flow -= 8 }
-        if m.longestStill > deadGap {
+        // A loop's still before its fade is its end hold, not a gap.
+        if m.longestStill > deadGap, !(loops && m.longestStillAt + m.longestStill >= end - 0.2) {
             r.warns.append(String(format: "dead gap %.1fs at %.1fs", m.longestStill, m.longestStillAt)); flow -= 7
         }
         if !m.hunts.isEmpty { r.warns.append("eye jumps across the canvas at " + m.hunts.map { String(format: "%.1fs", $0) }.joined(separator: ", ")); flow -= 5 }
