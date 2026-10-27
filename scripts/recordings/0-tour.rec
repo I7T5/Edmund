@@ -60,7 +60,7 @@ sleep 600
 type Turkish delight
 sleep 300
 enter
-sleep 800
+sleep 1400
 save
 sleep 200
 viewmode
