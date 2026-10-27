@@ -19,6 +19,10 @@
 #   # loop: yes        the last 0.7 s fade into the first frame, so the clip
 #                      ends as it began; rate.swift checks it does
 #   # cuts: <n>        cuts on purpose (⌘E to Read mode), not held against it
+#   # typing: human [seed] [wpm]  type the filmed lines with a person's rhythm:
+#                      the human-typing skill's humantype ($HUMANTYPE, default
+#                      ~/.claude/skills/human-typing/humantype.swift) expands
+#                      each `type` line key by key; same seed, same take
 # {root} in a command is $SHOTS_DOC_ROOT: `pasteimage {root}/misc/…/photo.jpg`.
 #   # combine: <rec>...  no run of its own: the App Store previews of those clips
 #                      back to back, for the preview's 15–30 s
@@ -87,6 +91,7 @@ if [ -z "$COMPOSE_ONLY" ]; then
 fi
 
 RUN="$(mktemp -d)"
+HUMANTYPE="${HUMANTYPE:-$HOME/.claude/skills/human-typing/humantype.swift}"
 swiftc -O scripts/screenshots/compose.swift -o "$RUN/compose" 2>&1 | grep error
 swiftc -O scripts/recordings/rate.swift -o "$RUN/rate" 2>&1 | grep error
 
@@ -212,6 +217,16 @@ for rec in scripts/recordings/*.rec; do
         echo "FAIL  $name  (doc missing: $doc)"; failed+=("$name"); continue
     fi
     src="$doc"; doc="$RUN/$name-docs/${blank:-$(basename "$src")}"
+    # `# typing: human [seed] [wpm]`: the filmed `type` lines, key by key.
+    read -r tmode tseed twpm <<< "$(header "$rec" typing)"
+    humanize() { cat; }
+    if [ "${tmode:-}" = human ]; then
+        if [ ! -x "$RUN/humantype" ] && ! swiftc -O "$HUMANTYPE" -o "$RUN/humantype" 2>/dev/null; then
+            echo "      no humantype at $HUMANTYPE: typing at a steady pace"
+        else
+            humanize() { "$RUN/humantype" expand --seed "${tseed:-1}" --wpm "${twpm:-90}" --builtin 80; }
+        fi
+    fi
     for mode in ${SHOTS_MODES:-$(header "$rec" modes)}; do
         raw="$OUT/raw/$name-$mode"; script="$RUN/$name-$mode.repro"
         # Set up off camera, ask for focus again, log whether the window is
@@ -223,7 +238,7 @@ for rec in scripts/recordings/*.rec; do
           # 1 s: `front` can move the window to another screen, and the
           # stream can't find it until the move is done.
           printf '%s\n' 'sleep 300' front 'sleep 1000' logwindows "record $length,$raw"
-          sed '1,/^# --- record ---/d' "$rec" | grep -v '^#'; } | sed "s|{root}|$DOC_ROOT|g" > "$script"
+          sed '1,/^# --- record ---/d' "$rec" | grep -v '^#' | humanize; } | sed "s|{root}|$DOC_ROOT|g" > "$script"
         ok=""
         if [ -n "$COMPOSE_ONLY" ]; then
             ls "$raw"/*.png >/dev/null 2>&1 && ok=1 || echo "      $name-$mode: nothing in raw/"

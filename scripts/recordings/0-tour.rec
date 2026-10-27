@@ -1,9 +1,10 @@
 # blank: The Wardrobe.md
 # window: 820,640
 # modes: light
-# length: 25000
+# length: 29500
 # appstore: yes
 # loop: yes
+# typing: human 1 110
 # cuts: 1
 # expect: Wardrobe
 # alt: A tour of Edmund: a heading, a sentence with bold and italic, a table filled in with Tab, a pasted image, then Read mode.
@@ -19,7 +20,7 @@ type # The Wardrobe
 enter
 enter
 sleep 300
-type Lucy found it first: a **wardrobe** full of coats, and *snow* beyond them.
+type Lucy found a **wardrobe** full of coats, and *snow*.
 enter
 enter
 sleep 400
