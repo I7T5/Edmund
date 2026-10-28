@@ -71,8 +71,13 @@ ID=com.i7t5.edmund.recordings
 APP="build/EdmundRecordings.app"
 if [ -z "$COMPOSE_ONLY" ]; then
     echo "== building recordings bundle from $SRC"
-    (cd "$SRC" && swift build 2>&1 | grep -E "error:|Build complete" | tail -2)
-    BIN="$(cd "$SRC" && swift build --show-bin-path)"
+    # Optimized, with the DEBUG-only ReproScript driver: a debug build's
+    # restyle per key outlasts the gap between keys, so typing falls seconds
+    # behind its script. Own scratch path: build-app.sh's release builds have
+    # no driver, and sharing would rebuild everything each switch.
+    build=(swift build -c release -Xswiftc -DDEBUG --scratch-path .build/recordings)
+    (cd "$SRC" && "${build[@]}" 2>&1 | grep -E "error:|Build complete" | tail -2)
+    BIN="$(cd "$SRC" && "${build[@]}" --show-bin-path)"
     rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
     cp Info.plist "$APP/Contents/Info.plist"
     plutil -replace CFBundleIdentifier -string $ID "$APP/Contents/Info.plist"
