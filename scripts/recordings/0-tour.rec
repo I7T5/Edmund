@@ -28,28 +28,20 @@ action formatTable:
 sleep 500
 select Header 1
 type Pevensie
-sleep 150
 tab
 type Title
-sleep 150
 tab
 type Gift
-sleep 150
 tab
 type Peter
-sleep 150
 tab
 type the Magnificent
-sleep 150
 tab
 type a sword
-sleep 150
 tab
 type Lucy
-sleep 150
 tab
 type the Valiant
-sleep 150
 tab
 type a cordial
 sleep 400
