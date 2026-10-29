@@ -206,6 +206,26 @@ encode() {
     mv "$RUN/loop.mp4" "$out"
 }
 
+# Filming takes the screen and discards a clip on any input, so ask first,
+# as /verify-live's live-verifier does (same alert, same wording rules: a
+# question for the title, the action on the button, Cancel the default so a
+# stray Return starts nothing). About 15 s a clip besides its length:
+# launch, setup, the 3 s with no input; the upper bound allows a retry each.
+if [ -z "$COMPOSE_ONLY" ]; then
+    ms=0
+    for rec in scripts/recordings/*.rec; do
+        wanted "$(basename "$rec" .rec)" && [ -z "$(header "$rec" combine)" ] || continue
+        modes=(${SHOTS_MODES:-$(header "$rec" modes)})
+        ms=$(( ms + ${#modes[@]} * ($(header "$rec" length) + 15000) ))
+    done
+    a=$(( (ms + 59999) / 60000 )); b=$(( a * 2 ))
+    answer="$(osascript -e "display dialog \"An Edmund window will open on your desktop and come to the front. A key press or click during a clip films it again, so please don't touch the mouse or keyboard.\n\nThis takes about $a to $b minutes. Edmund opens only for the recordings and quits afterwards.\" with title \"Start the Edmund recordings?\" with icon note buttons {\"Cancel\", \"Start Recording\"} default button \"Cancel\" cancel button \"Cancel\" giving up after 180" 2>&1)"
+    case "$answer" in
+        *"button returned:Start Recording"*"gave up:false"*) ;;
+        *) echo "== not started (${answer:-no answer})"; exit 1 ;;
+    esac
+fi
+
 clips=0; failed=(); made=()
 for rec in scripts/recordings/*.rec; do
     name="$(basename "$rec" .rec)"
