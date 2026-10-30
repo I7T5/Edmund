@@ -111,10 +111,13 @@
             <string>openInEdmund</string>
             <key>NSRequiredContext</key>
             <dict/>
+            <!-- public.folder: a folder opens as a folder window, so Finder's
+                 context menu offers this on folders too. -->
             <key>NSSendFileTypes</key>
             <array>
                 <string>net.daringfireball.markdown</string>
                 <string>public.plain-text</string>
+                <string>public.folder</string>
             </array>
         </dict>
         <dict>

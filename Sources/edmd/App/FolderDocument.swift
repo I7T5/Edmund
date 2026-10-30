@@ -353,6 +353,13 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
         return true
     }
 
+    #if DEBUG
+    /// ReproScript `foldersidebar`: the divider where a drag would leave it.
+    func reproSetSidebarWidth(_ width: CGFloat) {
+        split.splitView.setPosition(width, ofDividerAt: 0)
+    }
+    #endif
+
     func showPlaceholder() {
         setContent(Self.placeholder(), toolbar: Self.emptyToolbar(delegate: self))
     }

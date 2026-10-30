@@ -196,6 +196,21 @@ struct FolderDocumentTests {
         #expect(a.inspectorItem.isCollapsed == start)
     }
 
+    /// Finder routes a folder to Edmund only through Info.plist: the Dock and
+    /// Finder drops by the document type, its context menu by the service.
+    @Test("Info.plist opens folders: a document type and the Open in Edmund service")
+    func infoPlistTakesFolders() throws {
+        let plistURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Info.plist")
+        let plist = try #require(NSDictionary(contentsOf: plistURL) as? [String: Any])
+        let types = try #require(plist["CFBundleDocumentTypes"] as? [[String: Any]])
+        #expect(types.contains { ($0["LSItemContentTypes"] as? [String])?.contains("public.folder") == true })
+        let services = try #require(plist["NSServices"] as? [[String: Any]])
+        let open = try #require(services.first { $0["NSMessage"] as? String == "openInEdmund" })
+        #expect((open["NSSendFileTypes"] as? [String])?.contains("public.folder") == true)
+    }
+
     @Test("Dimmed files can't be selected; folders and text files can")
     func dimmedNotSelectable() throws {
         let url = try makeFolder(["a.md": "", "pic.png": "", "main.swift": ""])

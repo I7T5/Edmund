@@ -134,6 +134,17 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
     /// titlebar's inset at the top on its own.
     override func viewDidLayout() {
         super.viewDidLayout()
+        // The column to the visible width, by hand: column autoresizing never
+        // narrows it once the sidebar shrinks, so long names were clipped at
+        // the edge instead of truncated (CotEditor does the same, FB20309978).
+        // Less what the outline adds around its column (the source list's
+        // row insets, 32pt measured): a column the list's full width still
+        // ran the cell 16pt past the visible edge.
+        if let column = outlineView.tableColumns.first {
+            let overhead = outlineView.frame.width - column.width
+            let width = max(column.minWidth, scroll.contentView.frame.width - overhead)
+            if column.width != width { column.width = width }
+        }
         let height = footer.fittingSize.height
         if view.additionalSafeAreaInsets.bottom != height {
             view.additionalSafeAreaInsets = NSEdgeInsets(top: 0, left: 0, bottom: height, right: 0)

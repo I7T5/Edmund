@@ -615,6 +615,21 @@ enum ReproScript {
                     report("repro folderopen \(arg) current=\(folder.current?.displayName ?? "nil") " +
                            "open=\(folder.files.count) edited=\(folder.files.filter(\.isDocumentEdited).count)")
                 }
+            case "foldersidebar":
+                // Moves the sidebar's divider to <arg> points, as a drag does,
+                // and reports the outline column's width against the list's.
+                scheduleFolder(after: delay) { folder in
+                    folder.windowController.reproSetSidebarWidth(CGFloat(Double(arg) ?? 220))
+                    let browser = folder.windowController.fileBrowser
+                    browser.view.layoutSubtreeIfNeeded()
+                    let column = browser.outlineView.tableColumns.first?.width ?? 0
+                    let list = browser.outlineView.enclosingScrollView?.contentView.frame.width ?? 0
+                    let outline = browser.outlineView
+                    let cell = outline.numberOfRows > 0 ? outline.view(atColumn: 0, row: 0, makeIfNecessary: false) : nil
+                    let cellMaxX = cell.map { $0.convert($0.bounds, to: outline).maxX } ?? 0
+                    report("repro foldersidebar \(arg) column=\(column) list=\(list) " +
+                           "outline=\(outline.frame.width) cellMaxX=\(cellMaxX) spacing=\(outline.intercellSpacing.width)")
+                }
             case "folderfilter":
                 // Types <arg> into the sidebar's filter (empty: clears it) and
                 // lists the rows it leaves.
