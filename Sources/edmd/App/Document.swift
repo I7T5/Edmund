@@ -19,6 +19,12 @@ class Document: NSDocument, HeadingNavigable {
     private weak var viewModeItem: NSToolbarItem?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
+    /// The folder window showing this file, if it was opened from one.
+    weak var folder: FolderDocument?
+    /// A file's toolbar in a folder window: the usual items after the
+    /// sidebar's toggle. Its own identifier, so the two layouts are saved apart.
+    static let folderToolbarID = "FolderToolbar1"
+
     /// Builds and owns the formatting toolbar items (see `FormatToolbar`).
     private var formatToolbar: FormatToolbar!
 
@@ -118,6 +124,8 @@ class Document: NSDocument, HeadingNavigable {
     override func updateChangeCount(_ change: NSDocument.ChangeType) {
         super.updateChangeCount(change)
         let restorable = isWorthRestoring
+        // A folder window restores as the folder, whatever its files hold.
+        guard folder == nil else { folder?.updateEditedState(); return }
         for controller in windowControllers where controller.window?.isRestorable != restorable {
             controller.window?.isRestorable = restorable
         }
@@ -323,7 +331,7 @@ class Document: NSDocument, HeadingNavigable {
         inspectorItem.minimumThickness = 180
         inspectorItem.maximumThickness = 360
         inspectorItem.isCollapsed = true
-        let split = NSSplitViewController()
+        let split = EditorSplitViewController()
         split.addSplitViewItem(NSSplitViewItem(viewController: editorPane))
         split.addSplitViewItem(inspectorItem)
         // Open/closed and width carry over to the next window and launch.
@@ -614,6 +622,9 @@ class Document: NSDocument, HeadingNavigable {
 
     /// Called after makeWindowControllers when opening an existing file.
     override func showWindows() {
+        // A file left with unsaved changes in a folder window has no window
+        // controller; showing it means switching that window back to it.
+        if let folder, windowControllers.isEmpty { folder.show(self); return }
         super.showWindows()
         adoptPendingContent()
         // Deferred to here because the warning is a sheet: by the time the content
@@ -704,6 +715,7 @@ class Document: NSDocument, HeadingNavigable {
     override func close() {
         fileWatcher?.cancel()
         fileWatcher = nil
+        folder?.fileDidClose(self)
         super.close()
     }
 
@@ -1441,11 +1453,15 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID)
+        sidebarItems(toolbar) + FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID)
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID)
+        sidebarItems(toolbar) + FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID)
+    }
+
+    private func sidebarItems(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbar.identifier == Self.folderToolbarID ? [.toggleSidebar, .sidebarTrackingSeparator] : []
     }
 
     func toolbar(_ toolbar: NSToolbar,
@@ -1468,6 +1484,18 @@ extension Document: NSToolbarDelegate {
         item.action = #selector(toggleViewMode(_:))
         refreshViewModeButton()
         return item
+    }
+}
+
+// MARK: - Editor split
+
+/// The editor pane and inspector split. It has no sidebar, so it declines
+/// `toggleSidebar:`: as the first split view controller in the responder
+/// chain it would otherwise take the action, and the menu item's validation,
+/// from the folder window's split around it (`FolderWindowController`).
+final class EditorSplitViewController: NSSplitViewController {
+    override func responds(to selector: Selector!) -> Bool {
+        selector == #selector(toggleSidebar(_:)) ? false : super.responds(to: selector)
     }
 }
 

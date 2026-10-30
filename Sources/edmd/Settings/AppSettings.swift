@@ -84,6 +84,8 @@ enum AppSettings {
         static let startupAction = "settings.general.startupAction"
         static let autoSaveWithVersions = "settings.general.autoSaveWithVersions"
         static let quitWhenAllWindowsClosed = "settings.general.quitWhenAllWindowsClosed"
+        // A folder window's sidebar, toggled from its context menu (no pane).
+        static let folderShowsHiddenFiles = "settings.folder.showsHiddenFiles"
         static let appearanceMode = "settings.appearance.mode"
         static let maxContentWidthCm = "settings.appearance.maxContentWidthCm"
         // "cm" / "in" override the locale default for the content-width control.
@@ -342,6 +344,12 @@ enum AppSettings {
     static var quitWhenAllWindowsClosed: Bool {
         get { UserDefaults.standard.bool(forKey: Key.quitWhenAllWindowsClosed) }
         set { UserDefaults.standard.set(newValue, forKey: Key.quitWhenAllWindowsClosed) }
+    }
+
+    /// Whether folder windows list dot-files and Finder-hidden files.
+    static var folderShowsHiddenFiles: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.folderShowsHiddenFiles) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.folderShowsHiddenFiles) }
     }
 
     static var appearanceMode: AppearanceMode {

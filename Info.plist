@@ -78,6 +78,21 @@
                 <string>public.plain-text</string>
             </array>
         </dict>
+        <!-- Folders open as a folder window with a file sidebar
+             (FolderDocument). Without this entry the Dock and Finder refuse
+             a dropped folder. -->
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Folder</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.folder</string>
+            </array>
+        </dict>
     </array>
     <!-- Every service needs an NSRequiredContext, even an empty one: without
          the key macOS parses the entry (it shows up in `pbs -dump` and the

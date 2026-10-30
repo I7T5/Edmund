@@ -12,7 +12,7 @@ class DocumentController: NSDocumentController {
     // MARK: - Type Registration
 
     override var documentClassNames: [String] {
-        ["Document"]
+        ["Document", "FolderDocument"]
     }
 
     override var defaultType: String? {
@@ -20,10 +20,19 @@ class DocumentController: NSDocumentController {
     }
 
     override func documentClass(forType typeName: String) -> AnyClass? {
-        Document.self
+        typeName == FolderDocument.typeName ? FolderDocument.self : Document.self
     }
 
     override func typeForContents(of url: URL) throws -> String {
+        Self.contentType(of: url)
+    }
+
+    /// Static so `FolderDocument` can type its files without going through
+    /// `NSDocumentController.shared`, which in tests may not be this class.
+    static func contentType(of url: URL) -> String {
+        if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+            return FolderDocument.typeName
+        }
         let ext = url.pathExtension.lowercased()
         if ext == "md" || ext == "markdown" || ext == "mdown" || ext == "mkd" {
             return "net.daringfireball.markdown"
@@ -40,7 +49,8 @@ class DocumentController: NSDocumentController {
     override func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
+        // A folder opens as a folder window (FolderDocument).
+        panel.canChooseDirectories = true
         panel.canChooseFiles = true
         // Allow all files — our read(from:ofType:) handles UTF-8 decoding.
         panel.allowedContentTypes = []
@@ -88,6 +98,36 @@ class DocumentController: NSDocumentController {
                 self.closeLastUntouchedUntitledWindow(keeping: document)
             }
             completionHandler(document, alreadyOpen, error)
+        }
+    }
+
+    // MARK: - Folder Window Restoration
+
+    /// A folder window comes back as the folder, with the file it was showing
+    /// (see `FolderWindowController.window(_:willEncodeRestorableState:)`).
+    /// Every other window is AppKit's to restore.
+    override class func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier,
+                                      state: NSCoder,
+                                      completionHandler: @escaping (NSWindow?, Error?) -> Void) {
+        guard let bookmark = state.decodeObject(of: NSData.self,
+                                                forKey: FolderWindowController.bookmarkKey) as Data? else {
+            super.restoreWindow(withIdentifier: identifier, state: state, completionHandler: completionHandler)
+            return
+        }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope,
+                                 relativeTo: nil, bookmarkDataIsStale: &stale) else {
+            completionHandler(nil, CocoaError(.fileNoSuchFile))
+            return
+        }
+        // Held for the session, like FolderAccess's grants.
+        _ = url.startAccessingSecurityScopedResource()
+        let current = state.decodeObject(of: NSString.self, forKey: FolderWindowController.currentFileKey) as String?
+        shared.openDocument(withContentsOf: url, display: false) { document, _, error in
+            guard let folder = document as? FolderDocument else { completionHandler(nil, error); return }
+            if folder.windowController == nil { folder.makeWindowControllers() }
+            if let current { folder.open(url.appendingPathComponent(current)) }
+            completionHandler(folder.windowController.window, nil)
         }
     }
 

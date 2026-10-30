@@ -54,15 +54,19 @@ public final class FolderItem {
         cachedChildren = readChildren(reusing: old)
     }
 
-    /// The loaded node for `url`, if it sits in an already-read part of the tree.
-    public func node(at url: URL) -> FolderItem? {
-        let path = url.standardizedFileURL.path
-        if self.url.standardizedFileURL.path == path { return self }
-        guard let cachedChildren else { return nil }
-        for child in cachedChildren where path.hasPrefix(child.url.standardizedFileURL.path) {
-            if let found = child.node(at: url) { return found }
+    /// The loaded item for `url`, if it sits in an already-read part of the tree.
+    /// Symlinks are resolved on both sides: FSEvents reports real paths
+    /// (/private/var/…) for a folder opened through a link (/var/…).
+    public func item(at url: URL) -> FolderItem? {
+        let target = url.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        let base = self.url.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        guard target.starts(with: base) else { return nil }
+        var item = self
+        for name in target.dropFirst(base.count) {
+            guard let next = item.cachedChildren?.first(where: { $0.name == name }) else { return nil }
+            item = next
         }
-        return nil
+        return item
     }
 
     /// The nodes to show for a filename filter: those whose name contains

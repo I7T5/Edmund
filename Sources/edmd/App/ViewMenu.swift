@@ -69,6 +69,13 @@ enum ViewMenu {
         viewMenu.addItem(MenuCommand(id: "view.toggleInspector", group: "View",
                                      title: "Show Inspector",
                                      action: #selector(Document.toggleInspectorShown(_:))).makeItem())
+        // A folder window's file browser. AppKit's own action, so the split
+        // view controller enables it only where there is a sidebar and
+        // retitles it Show/Hide. ⌃⌘S, the system's shortcut for it.
+        viewMenu.addItem(MenuCommand(id: "view.toggleSidebar", group: "View",
+                                     title: "Show Sidebar",
+                                     action: #selector(NSSplitViewController.toggleSidebar(_:)),
+                                     shortcut: Shortcut(key: "s", modifiers: [.control, .command])).makeItem())
         viewMenu.addItem(.separator())
 
         // The status bar, as a pair like the toolbar's above: Show/Hide

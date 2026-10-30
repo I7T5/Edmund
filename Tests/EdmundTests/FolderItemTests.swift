@@ -72,6 +72,6 @@ struct FolderItemTests {
         root.reload()
         #expect(names(root.children(showingHidden: false)).contains("c.md"))
         #expect(root.children(showingHidden: false).first === docs)
-        #expect(root.node(at: url.appendingPathComponent("docs")) === docs)
+        #expect(root.item(at: url.appendingPathComponent("docs")) === docs)
     }
 }
