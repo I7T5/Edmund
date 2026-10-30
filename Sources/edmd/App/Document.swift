@@ -45,7 +45,7 @@ class Document: NSDocument, HeadingNavigable {
     /// The right-hand inspector (outline + info) and its split item, which
     /// `toggleInspector(_:)` collapses and expands.
     private(set) var inspector: InspectorViewController!
-    private var inspectorItem: NSSplitViewItem!
+    private(set) var inspectorItem: NSSplitViewItem!
     private var inspectorCollapseObservation: NSKeyValueObservation?
 
     /// Editor character offset captured when entering Read mode (the topmost
@@ -327,11 +327,16 @@ class Document: NSDocument, HeadingNavigable {
         // split falls back to the minimum; a width the user drags to is saved
         // by the autosave below and wins over this.
         inspector.view.setFrameSize(NSSize(width: 200, height: contentBounds.height))
-        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
+        // In a folder window, a plain item: see EditorSplitViewController.
+        inspectorItem = folder == nil
+            ? NSSplitViewItem(inspectorWithViewController: inspector)
+            : NSSplitViewItem(viewController: inspector)
+        inspectorItem.canCollapse = true
         inspectorItem.minimumThickness = 180
         inspectorItem.maximumThickness = 360
         inspectorItem.isCollapsed = true
         let split = EditorSplitViewController()
+        if folder != nil { split.plainInspector = inspectorItem }
         split.addSplitViewItem(NSSplitViewItem(viewController: editorPane))
         split.addSplitViewItem(inspectorItem)
         // Open/closed and width carry over to the next window and launch.
@@ -1489,13 +1494,36 @@ extension Document: NSToolbarDelegate {
 
 // MARK: - Editor split
 
-/// The editor pane and inspector split. It has no sidebar, so it declines
-/// `toggleSidebar:`: as the first split view controller in the responder
-/// chain it would otherwise take the action, and the menu item's validation,
-/// from the folder window's split around it (`FolderWindowController`).
+/// The editor pane and inspector split.
+///
+/// In a folder window it sits inside the folder's split, first in the
+/// responder chain, so it declines `toggleSidebar:` (it has no sidebar) to
+/// let the action reach the folder's. And there its inspector is a plain
+/// item (`plainInspector`), toggled here: in a full-size-content window an
+/// inspector-*behaviour* item makes AppKit cut the toolbar short at its
+/// edge and leave a blank strip above it, where a document window's toolbar
+/// runs the full width.
 final class EditorSplitViewController: NSSplitViewController {
+    var plainInspector: NSSplitViewItem?
+
     override func responds(to selector: Selector!) -> Bool {
-        selector == #selector(toggleSidebar(_:)) ? false : super.responds(to: selector)
+        if selector == #selector(toggleSidebar(_:)) { return false }
+        // AppKit answers no for `toggleInspector:` without an inspector-
+        // behaviour item, so a plain one has to claim it. Responder-chain
+        // lookups run on the main thread.
+        if selector == #selector(toggleInspector(_:)),
+           MainActor.assumeIsolated({ plainInspector != nil }) { return true }
+        return super.responds(to: selector)
+    }
+
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(toggleInspector(_:)), plainInspector != nil { return true }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    override func toggleInspector(_ sender: Any?) {
+        guard let plainInspector else { super.toggleInspector(sender); return }
+        plainInspector.animator().isCollapsed.toggle()
     }
 }
 

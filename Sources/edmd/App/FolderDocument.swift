@@ -311,7 +311,12 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
         window.titlebarSeparatorStyle = .automatic
         window.contentViewController = split
         window.setFrameAutosaveName("EdmundFolderWindow")
-        if !window.setFrameUsingName("EdmundFolderWindow") { window.center() }
+        // A saved frame no screen shows any more (a display unplugged or
+        // rearranged) centres instead, as document windows do.
+        if !window.setFrameUsingName("EdmundFolderWindow")
+            || AppSettings.reachableFrame(window.frame, screens: NSScreen.screens.map(\.visibleFrame)) == nil {
+            window.center()
+        }
         // See DocumentWindowController: a window built in code gets no delegate.
         window.delegate = self
         window.folder = folder

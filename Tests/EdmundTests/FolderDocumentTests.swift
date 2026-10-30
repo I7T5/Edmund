@@ -172,6 +172,47 @@ struct FolderDocumentTests {
         #expect(abs(sidebarTop - content.bounds.height) < 1)
     }
 
+    /// An inspector-behaviour item would cut the toolbar short above it in
+    /// this full-size-content window; a plain one leaves it whole.
+    @Test("A folder window's inspector is a plain split item that still toggles")
+    func inspectorPlainItem() throws {
+        let url = try makeFolder(["a.md": "# A"])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        folder.open(url.appendingPathComponent("a.md"))
+        let a = try #require(folder.current)
+        #expect(a.inspectorItem.behavior == .default)
+
+        let window = try #require(folder.windowController.window)
+        let start = a.inspectorItem.isCollapsed
+        // The toolbar's info button, from the editor up the chain.
+        #expect(window.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleInspector(_:)),
+                                                    with: nil) == true)
+        settle(timeout: 2) { a.inspectorItem.isCollapsed != start }
+        #expect(a.inspectorItem.isCollapsed != start)
+        // View ▸ Show/Hide Inspector.
+        a.toggleInspectorShown(nil)
+        settle(timeout: 2) { a.inspectorItem.isCollapsed == start }
+        #expect(a.inspectorItem.isCollapsed == start)
+    }
+
+    @Test("Dimmed files can't be selected; folders and text files can")
+    func dimmedNotSelectable() throws {
+        let url = try makeFolder(["a.md": "", "pic.png": "", "main.swift": ""])
+        try FileManager.default.createDirectory(at: url.appendingPathComponent("sub"),
+                                                withIntermediateDirectories: false)
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        let browser = folder.windowController.fileBrowser
+        _ = browser.view
+        var selectable: [String: Bool] = [:]
+        for row in 0..<browser.outlineView.numberOfRows {
+            let item = try #require(browser.outlineView.item(atRow: row) as? FolderItem)
+            selectable[item.name] = browser.outlineView(browser.outlineView, shouldSelectItem: item)
+        }
+        #expect(selectable == ["sub": true, "a.md": true, "main.swift": false, "pic.png": false])
+    }
+
     @Test("The filter lists matches and the folders above them")
     func filtering() throws {
         let url = try makeFolder(["a.md": "", "b.md": ""])

@@ -45,6 +45,10 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         outlineView.headerView = nil
         outlineView.allowsMultipleSelection = false
         let column = NSTableColumn(identifier: .init("main"))
+        // The column tracks the sidebar's width, never the names': a long
+        // name truncates in its cell rather than widening the list.
+        column.resizingMask = .autoresizingMask
+        outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         outlineView.addTableColumn(column)
         outlineView.outlineTableColumn = column
         outlineView.dataSource = self
@@ -160,9 +164,9 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
     @objc private func showAddMenu(_ sender: NSButton) {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        for (title, symbol) in [("New File", "doc.badge.plus"), ("New Folder", "folder.badge.plus")] {
+        // Text only, like the app's other menus.
+        for title in ["New File", "New Folder"] {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             item.isEnabled = false
             menu.addItem(item)
         }
@@ -237,6 +241,13 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         children(of: item)[index]
     }
 
+    /// Dimmed files can't be selected: a click on one leaves the current
+    /// file's highlight where it is.
+    func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+        guard let item = item as? FolderItem else { return false }
+        return item.isDirectory || item.isEditable
+    }
+
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         (item as? FolderItem)?.isDirectory ?? false
     }
@@ -285,8 +296,10 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         // CotEditor's row (after Apple's sample code): a 17pt icon column
         // sharing the title's baseline, the title a system spacing after it.
         image.imageAlignment = .alignCenter
-        let trailing = text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2)
-        trailing.priority = .defaultLow
+        // Required, and the title gives way first: AppKit's middle
+        // truncation then shortens a name that doesn't fit.
+        let trailing = text.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -2)
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
             image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
             image.widthAnchor.constraint(equalToConstant: 17),
