@@ -158,6 +158,26 @@ extension EditorTextView {
         }
     }
 
+    // MARK: Continuity Camera
+    //
+    // "Import from iPhone or iPad" (Take Photo, Scan Documents, Add Sketch) is
+    // offered only to a responder that `validRequestor` says can read an image
+    // back. Stock NSTextView says no — `importsGraphics` is off — so claim the
+    // bitmap types here and route the result through the paste path: a PNG in
+    // `<doc>.assets/`, saving an untitled document first.
+
+    public override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?,
+                                        returnType: NSPasteboard.PasteboardType?) -> Any? {
+        if sendType == nil, isEditable, let returnType, [.png, .tiff].contains(returnType) {
+            return self
+        }
+        return super.validRequestor(forSendType: sendType, returnType: returnType)
+    }
+
+    public override func readSelection(from pboard: NSPasteboard) -> Bool {
+        handleImagePasteboard(pboard, at: nil, linkOnly: false) || super.readSelection(from: pboard)
+    }
+
     // MARK: Return inside an image token
 
     /// A plain Return inside an `![alt](path)` token (or `<img …>`, `![[embed]]`)
