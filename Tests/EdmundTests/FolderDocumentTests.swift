@@ -121,6 +121,42 @@ struct FolderDocumentTests {
         #expect(browser.outlineView.numberOfRows == 2)
     }
 
+    /// The editor's own split view controller comes first in the responder
+    /// chain; it must let the action through to the folder's.
+    @Test("Toggle Sidebar from the editor reaches the folder window's sidebar")
+    func toggleSidebar() throws {
+        let url = try makeFolder(["a.md": "# A"])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        folder.open(url.appendingPathComponent("a.md"))
+        let window = try #require(folder.windowController.window)
+        #expect(window.firstResponder === folder.current?.editor)
+
+        let sent = window.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)),
+                                                       with: nil) ?? false
+        #expect(sent)
+        settle(timeout: 2) { folder.windowController.sidebar.isCollapsed }
+        #expect(folder.windowController.sidebar.isCollapsed)
+    }
+
+    @Test("The editor sits below the toolbar while the sidebar runs full height")
+    func editorBelowToolbar() throws {
+        let url = try makeFolder(["a.md": "# A"])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        folder.open(url.appendingPathComponent("a.md"))
+        let window = try #require(folder.windowController.window)
+        window.layoutIfNeeded()
+        let content = try #require(window.contentView)
+        let scroll = try #require(folder.current?.editor.enclosingScrollView)
+        let editorTop = scroll.convert(scroll.bounds, to: content).maxY
+        let sidebarTop = folder.windowController.fileBrowser.view.convert(
+            folder.windowController.fileBrowser.view.bounds, to: content).maxY
+        #expect(content.safeAreaInsets.top > 0)
+        #expect(abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1)
+        #expect(abs(sidebarTop - content.bounds.height) < 1)
+    }
+
     @Test("The filter lists matches and the folders above them")
     func filtering() throws {
         let url = try makeFolder(["a.md": "", "b.md": ""])

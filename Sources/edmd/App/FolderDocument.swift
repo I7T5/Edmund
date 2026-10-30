@@ -236,6 +236,9 @@ final class FolderDocument: NSDocument {
             item.reload()
             windowController.fileBrowser.reload(item === root ? nil : item)
         }
+        // A reload drops the outline's selection, and saving the showing file
+        // is itself a change on disk.
+        windowController.fileBrowser.select(current?.fileURL)
     }
 
     /// Reached twice when the window closes with no file chosen: once from
@@ -264,19 +267,25 @@ private final class CloseReview: NSObject {
 
 /// The folder window: the file browser as a sidebar, and either the current
 /// file's editor pane or a "No File Selected" placeholder beside it.
+///
+/// The content runs full height, so the sidebar's translucent material
+/// reaches up behind the toolbar, as in Finder and Mail. The other side
+/// (`BelowToolbarController`) keeps the editor below the toolbar, where its
+/// status, find and format bars are laid out to be.
 final class FolderWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
 
     private unowned let folder: FolderDocument
     let fileBrowser: FileBrowserViewController
     private let split = NSSplitViewController()
-    private var contentItem: NSSplitViewItem
+    private let content = BelowToolbarController()
+    private(set) var sidebar: NSSplitViewItem!
 
     init(folder: FolderDocument) {
         self.folder = folder
         fileBrowser = FileBrowserViewController(root: folder.root)
         let window = FolderWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.minSize = NSSize(width: 520, height: 400)
         // One file at a time, switched from the sidebar; tabs would be a
@@ -284,20 +293,21 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
         window.tabbingMode = .disallowed
         window.backgroundColor = .textBackgroundColor
 
-        let sidebar = NSSplitViewItem(sidebarWithViewController: fileBrowser)
+        sidebar = NSSplitViewItem(sidebarWithViewController: fileBrowser)
         sidebar.minimumThickness = 160
         sidebar.maximumThickness = 400
         fileBrowser.view.setFrameSize(NSSize(width: 220, height: 600))
-        contentItem = NSSplitViewItem(viewController: Self.placeholder())
+        content.show(Self.placeholder())
         split.addSplitViewItem(sidebar)
-        split.addSplitViewItem(contentItem)
+        split.addSplitViewItem(NSSplitViewItem(viewController: content))
         split.splitView.autosaveName = "EdmundFolderSidebar"
         split.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 600)
         super.init(window: window)
 
         window.toolbar = Self.emptyToolbar(delegate: self)
         window.toolbarStyle = .unified
-        window.titlebarSeparatorStyle = .line
+        // Automatic: a line across the content side only, none over the sidebar.
+        window.titlebarSeparatorStyle = .automatic
         window.contentViewController = split
         window.setFrameAutosaveName("EdmundFolderWindow")
         if !window.setFrameUsingName("EdmundFolderWindow") { window.center() }
@@ -311,15 +321,15 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     /// The size a file's editor pane is built at.
-    var contentBounds: NSRect { contentItem.viewController.view.bounds }
+    var contentBounds: NSRect {
+        let bounds = content.view.bounds
+        return NSRect(x: 0, y: 0, width: bounds.width,
+                      height: bounds.height - content.view.safeAreaInsets.top)
+    }
 
     func setContent(_ pane: NSViewController, toolbar: NSToolbar) {
-        guard pane !== contentItem.viewController else { return }
-        let item = NSSplitViewItem(viewController: pane)
-        pane.view.frame = contentItem.viewController.view.frame
-        split.removeSplitViewItem(contentItem)
-        split.addSplitViewItem(item)
-        contentItem = item
+        guard pane !== content.child else { return }
+        content.show(pane)
         window?.toolbar = toolbar
     }
 
@@ -413,6 +423,31 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         nil   // both default items are AppKit's own
+    }
+}
+
+/// The content side of a folder window: shows one view controller at a time,
+/// pinned below the toolbar (the safe area's top) though its own view runs
+/// up behind it.
+final class BelowToolbarController: NSViewController {
+    private(set) var child: NSViewController?
+
+    override func loadView() { view = NSView() }
+
+    func show(_ controller: NSViewController) {
+        child?.view.removeFromSuperview()
+        child?.removeFromParent()
+        addChild(controller)
+        let shown = controller.view
+        shown.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(shown)
+        NSLayoutConstraint.activate([
+            shown.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            shown.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            shown.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            shown.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        child = controller
     }
 }
 

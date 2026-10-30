@@ -1,5 +1,6 @@
 import AppKit
 import EdmundCore
+import UniformTypeIdentifiers
 
 // MARK: - File browser
 
@@ -60,6 +61,15 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         filterField.action = #selector(filterChanged(_:))
         filterField.controlSize = .small
         filterField.translatesAutoresizingMaskIntoConstraints = false
+        // The filter glyph, not the magnifier: this narrows the list in view
+        // rather than searching (Finder's and Xcode's sidebar filters). After
+        // `controlSize`, which resets the cell's button images.
+        if let button = (filterField.cell as? NSSearchFieldCell)?.searchButtonCell {
+            let glyph = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle",
+                                accessibilityDescription: "Filter")
+            button.image = glyph
+            button.alternateImage = glyph
+        }
 
         let view = NSView()
         view.addSubview(scroll)
@@ -155,13 +165,20 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         let id = NSUserInterfaceItemIdentifier("FileCell")
         let cell = outlineView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? makeCell(id)
         cell.textField?.stringValue = item.name
-        let image = NSWorkspace.shared.icon(forFile: item.url.path)
-        image.size = NSSize(width: 16, height: 16)
-        cell.imageView?.image = image
-        let dimmed = !item.isDirectory && !item.isEditable
-        cell.textField?.textColor = dimmed ? .secondaryLabelColor : .labelColor
-        cell.imageView?.alphaValue = dimmed ? 0.5 : 1
+        cell.imageView?.image = NSImage(systemSymbolName: Self.symbol(for: item), accessibilityDescription: nil)
+        // Dimmed as a whole rather than recoloured: a source list tints its
+        // own text in an inactive window, and a fixed secondary colour came
+        // out darker there than the rows it was meant to sit behind.
+        cell.alphaValue = !item.isDirectory && !item.isEditable ? 0.45 : 1
         return cell
+    }
+
+    /// Symbols, as a sidebar's icons are, rather than Finder's file icons.
+    static func symbol(for item: FolderItem) -> String {
+        if item.isDirectory { return "folder" }
+        if item.isEditable { return "doc.text" }
+        let type = UTType(filenameExtension: item.url.pathExtension)
+        return type?.conforms(to: .image) == true ? "photo" : "doc"
     }
 
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {

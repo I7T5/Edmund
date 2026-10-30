@@ -606,6 +606,27 @@ enum ReproScript {
                     report("repro outlineclick \(arg) index=\(node.index)")
                     doc.inspector.onSelectHeading?(node.index)
                 }
+            case "folderopen":
+                // A folder window's sidebar click on <arg>, a path relative to
+                // the folder. Later commands then drive the file it shows.
+                scheduleFolder(after: delay) { folder in
+                    guard let root = folder.fileURL else { return }
+                    folder.open(root.appendingPathComponent(arg))
+                    report("repro folderopen \(arg) current=\(folder.current?.displayName ?? "nil") " +
+                           "open=\(folder.files.count) edited=\(folder.files.filter(\.isDocumentEdited).count)")
+                }
+            case "folderfilter":
+                // Types <arg> into the sidebar's filter (empty: clears it) and
+                // lists the rows it leaves.
+                scheduleFolder(after: delay) { folder in
+                    let browser = folder.windowController.fileBrowser
+                    browser.filterField.stringValue = arg
+                    browser.filterChanged(nil)
+                    let rows = (0..<browser.outlineView.numberOfRows).compactMap {
+                        (browser.outlineView.item(atRow: $0) as? FolderItem)?.name
+                    }
+                    report("repro folderfilter '\(arg)' rows=\(rows)")
+                }
             case "clickrow":
                 scheduleDoc(after: delay) { _ in
                     guard let row = findInPopover({ ($0 as? FormatPopoverRow)?.item.title == arg })
@@ -1264,7 +1285,7 @@ enum ReproScript {
     private static func scheduleDoc(after: TimeInterval,
                                     _ body: @escaping @MainActor (Document) -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + after) {
-            guard let doc = NSDocumentController.shared.documents.first as? Document else {
+            guard let doc = scriptDocument else {
                 report("repro: no document yet"); return
             }
             body(doc)
@@ -1338,9 +1359,28 @@ enum ReproScript {
     private static func schedule(after: TimeInterval,
                                  _ body: @escaping @MainActor (EditorTextView) -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + after) {
-            guard let doc = NSDocumentController.shared.documents.first as? Document,
-                  let editor = doc.editor else { return }
+            guard let doc = scriptDocument, let editor = doc.editor else { return }
             body(editor)
+        }
+    }
+
+    /// The document the script drives: the first one open, or, for a folder
+    /// window, the file it is showing.
+    private static var scriptDocument: Document? {
+        switch NSDocumentController.shared.documents.first {
+        case let doc as Document: doc
+        case let folder as FolderDocument: folder.current
+        default: nil
+        }
+    }
+
+    private static func scheduleFolder(after: TimeInterval,
+                                       _ body: @escaping @MainActor (FolderDocument) -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + after) {
+            guard let folder = NSDocumentController.shared.documents.first as? FolderDocument else {
+                report("repro: no folder window"); return
+            }
+            body(folder)
         }
     }
 
