@@ -272,7 +272,8 @@ private final class CloseReview: NSObject {
 /// reaches up behind the toolbar, as in Finder and Mail. The other side
 /// (`BelowToolbarController`) keeps the editor below the toolbar, where its
 /// status, find and format bars are laid out to be.
-final class FolderWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+final class FolderWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
+                                    NSMenuItemValidation {
 
     private unowned let folder: FolderDocument
     let fileBrowser: FileBrowserViewController
@@ -331,6 +332,20 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
         guard pane !== content.child else { return }
         content.show(pane)
         window?.toolbar = toolbar
+    }
+
+    /// View ▸ Show/Hide Sidebar. Ours, not AppKit's `toggleSidebar(_:)`, only
+    /// so the menu item can be retitled: the split view controller never
+    /// retitles one (the inspector's item works the same way).
+    @objc func toggleFolderSidebar(_ sender: Any?) {
+        split.toggleSidebar(sender)
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleFolderSidebar(_:)) {
+            menuItem.title = sidebar.isCollapsed ? "Show Sidebar" : "Hide Sidebar"
+        }
+        return true
     }
 
     func showPlaceholder() {

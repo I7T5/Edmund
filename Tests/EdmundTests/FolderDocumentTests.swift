@@ -131,12 +131,27 @@ struct FolderDocumentTests {
         folder.open(url.appendingPathComponent("a.md"))
         let window = try #require(folder.windowController.window)
         #expect(window.firstResponder === folder.current?.editor)
+        // Relative to the start: the split's autosave carries the state over
+        // from earlier runs. Toggled twice, so it is left as found.
+        let sidebar = folder.windowController.sidebar!
+        let start = sidebar.isCollapsed
 
         let sent = window.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)),
                                                        with: nil) ?? false
         #expect(sent)
-        settle(timeout: 2) { folder.windowController.sidebar.isCollapsed }
-        #expect(folder.windowController.sidebar.isCollapsed)
+        settle(timeout: 2) { sidebar.isCollapsed != start }
+        #expect(sidebar.isCollapsed != start)
+
+        // The View menu's item, through the same chain, retitled for the state.
+        let item = NSMenuItem(title: "", action: #selector(FolderWindowController.toggleFolderSidebar(_:)),
+                              keyEquivalent: "")
+        _ = folder.windowController.validateMenuItem(item)
+        #expect(item.title == (sidebar.isCollapsed ? "Show Sidebar" : "Hide Sidebar"))
+        #expect(window.firstResponder?.tryToPerform(item.action!, with: nil) == true)
+        settle(timeout: 2) { sidebar.isCollapsed == start }
+        #expect(sidebar.isCollapsed == start)
+        _ = folder.windowController.validateMenuItem(item)
+        #expect(item.title == (start ? "Show Sidebar" : "Hide Sidebar"))
     }
 
     @Test("The editor sits below the toolbar while the sidebar runs full height")
