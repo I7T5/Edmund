@@ -1070,6 +1070,18 @@ Notable subsystems:
   has no sidebar and would swallow the toolbar's `.toggleSidebar` item; it is
   an `EditorSplitViewController`, which declines the action in
   `responds(to:)`, so it reaches the folder window's split.
+- **An inspector-behaviour split item cuts the toolbar short in a
+  full-size-content window.** AppKit ends the toolbar's items at the
+  inspector's edge and paints the strip above it in the window's background
+  colour, wherever the item sits, even below the toolbar in a nested split
+  (a document window, without `.fullSizeContentView`, keeps the toolbar
+  whole). Neither lifting the item into the window's split (it then runs
+  full height: `allowsFullHeightLayout` is already on) nor a backdrop behind
+  it helps; the strip is the titlebar's. A folder window therefore builds
+  the inspector as a plain `NSSplitViewItem(viewController:)`
+  (`Document.makeEditorPane` when `folder != nil`), and
+  `EditorSplitViewController` claims `toggleInspector:` for it: AppKit's
+  split controller answers no to that selector when it has no inspector item.
 - **FSEvents callbacks must be nonisolated statics.** A closure written
   inside a `@MainActor` class is main-actor isolated, and Swift 6 traps
   (`dispatch_assert_queue_fail`) when FSEvents calls it on its queue — the
