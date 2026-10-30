@@ -31,13 +31,17 @@ public final class FolderItem {
     }
 
     /// Whether the editor opens this file. `Document` reads any file as UTF-8
-    /// text, so this is about what is worth opening: Markdown, anything typed
-    /// as text, and extensionless files (README, LICENSE, Makefile).
+    /// text, so this is about what is worth opening: Markdown, plain text and
+    /// extensionless files (README, LICENSE). Not source code, JSON or the
+    /// like: the editor would render it as Markdown, `#` comments as headings.
     public var isEditable: Bool {
         guard !isDirectory else { return false }
         let ext = url.pathExtension.lowercased()
         if ext.isEmpty || Self.markdownExtensions.contains(ext) { return true }
-        return UTType(filenameExtension: ext)?.conforms(to: .text) ?? false
+        guard let type = UTType(filenameExtension: ext) else { return false }
+        // Source code is plain text to UTType (public.source-code conforms
+        // to public.plain-text), so it has to be ruled out by name.
+        return type.conforms(to: .plainText) && !type.conforms(to: .sourceCode)
     }
 
     /// Folders first, then names in Finder order ("2" before "10").

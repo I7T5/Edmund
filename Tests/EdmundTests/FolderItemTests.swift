@@ -43,6 +43,18 @@ struct FolderItemTests {
                              "image.png": false, "README": true])
     }
 
+    @Test("Plain text opens; source code, JSON and scripts are not editable")
+    func codeIsNotEditable() {
+        func editable(_ name: String) -> Bool {
+            FolderItem(url: URL(fileURLWithPath: "/nowhere/\(name)")).isEditable
+        }
+        #expect(editable("notes.txt"))
+        #expect(editable("post.markdown"))
+        for name in ["main.swift", "app.py", "index.js", "data.json", "build.sh", "page.html"] {
+            #expect(!editable(name), "\(name)")
+        }
+    }
+
     @Test("A filter keeps matches and the folders leading to them")
     func filterKeepsAncestors() throws {
         let root = FolderItem(url: try makeTree())

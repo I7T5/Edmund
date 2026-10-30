@@ -29,8 +29,19 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// The bar along the bottom: the add button and the filter field, laid
+    /// over the list (which scrolls under it) on the sidebar's material, as
+    /// Xcode's navigator filter and CotEditor's file browser have it.
+    private let footer = NSVisualEffectView()
+    /// Shown only while rows are hidden under the footer.
+    private let footerSeparator = NSBox()
+    private let scroll = NSScrollView()
+
     override func loadView() {
         outlineView.style = .sourceList
+        // The system's sidebar row size (System Settings ▸ Appearance ▸
+        // Sidebar icon size), as CotEditor leaves it, rather than a fixed one.
+        outlineView.rowSizeStyle = .default
         outlineView.headerView = nil
         outlineView.allowsMultipleSelection = false
         let column = NSTableColumn(identifier: .init("main"))
@@ -46,24 +57,27 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         outlineView.menu = makeContextMenu()
         outlineView.setAccessibilityLabel("Files")
 
-        let scroll = NSScrollView()
         scroll.documentView = outlineView
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(listDidScroll(_:)),
+            name: NSView.boundsDidChangeNotification, object: scroll.contentView)
 
         filterField.placeholderString = "Filter"
         filterField.sendsSearchStringImmediately = false
         filterField.sendsWholeSearchString = false
+        filterField.focusRingType = .none
         filterField.delegate = self
         filterField.target = self
         filterField.action = #selector(filterChanged(_:))
-        filterField.controlSize = .small
-        filterField.translatesAutoresizingMaskIntoConstraints = false
+        filterField.setAccessibilityLabel("File browser filter")
         // The filter glyph, not the magnifier: this narrows the list in view
-        // rather than searching (Finder's and Xcode's sidebar filters). After
-        // `controlSize`, which resets the cell's button images.
+        // rather than searching (Finder's and Xcode's sidebar filters). Set
+        // after any `controlSize` change, which resets the cell's images.
         if let button = (filterField.cell as? NSSearchFieldCell)?.searchButtonCell {
             let glyph = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle",
                                 accessibilityDescription: "Filter")
@@ -71,20 +85,89 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
             button.alternateImage = glyph
         }
 
+        // The sidebar's own material, blending behind the window, so the bar
+        // reads as more sidebar and the rows scrolling under it disappear.
+        footer.material = .sidebar
+        footer.blendingMode = .behindWindow
+        footer.translatesAutoresizingMaskIntoConstraints = false
+        let bar = NSStackView(views: [makeAddButton(), filterField])
+        bar.orientation = .horizontal
+        bar.alignment = .centerY
+        // CotEditor's footer insets.
+        bar.edgeInsets = NSEdgeInsets(top: 6, left: 7, bottom: 6, right: 7)
+        bar.setHuggingPriority(.required, for: .vertical)
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        footer.addSubview(bar)
+        footerSeparator.boxType = .separator
+        footerSeparator.translatesAutoresizingMaskIntoConstraints = false
+        footer.addSubview(footerSeparator)
+
         let view = NSView()
         view.addSubview(scroll)
-        view.addSubview(filterField)
+        view.addSubview(footer)
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: filterField.topAnchor, constant: -6),
-            filterField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            filterField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
-            filterField.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            bar.topAnchor.constraint(equalTo: footer.topAnchor),
+            bar.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: footer.trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: footer.bottomAnchor),
+            footerSeparator.topAnchor.constraint(equalTo: footer.topAnchor),
+            footerSeparator.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
+            footerSeparator.trailingAnchor.constraint(equalTo: footer.trailingAnchor),
         ])
         self.view = view
         outlineView.reloadData()
+    }
+
+    /// The list scrolls under the footer: inset its content by the footer's
+    /// height, through the safe area, so the scroll view still adds the
+    /// titlebar's inset at the top on its own.
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let height = footer.fittingSize.height
+        if view.additionalSafeAreaInsets.bottom != height {
+            view.additionalSafeAreaInsets = NSEdgeInsets(top: 0, left: 0, bottom: height, right: 0)
+        }
+        updateFooterSeparator()
+    }
+
+    @objc private func listDidScroll(_ notification: Notification) {
+        updateFooterSeparator()
+    }
+
+    private func updateFooterSeparator() {
+        let clip = scroll.contentView
+        let hidden = outlineView.frame.height - clip.bounds.maxY + clip.contentInsets.bottom
+        footerSeparator.alphaValue = hidden > 0.5 ? 1 : 0
+    }
+
+    /// The + pull-down. A placeholder for now: New File and New Folder come
+    /// with the file operations, so both are listed but disabled.
+    private func makeAddButton() -> NSButton {
+        let button = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")!,
+                              target: self, action: #selector(showAddMenu(_:)))
+        button.isBordered = false
+        button.setAccessibilityLabel("Add")
+        return button
+    }
+
+    @objc private func showAddMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for (title, symbol) in [("New File", "doc.badge.plus"), ("New Folder", "folder.badge.plus")] {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+        // Above the button, as CotEditor's (the button's view is not flipped).
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.maxY + 4), in: sender)
     }
 
     // MARK: - Updates
@@ -166,6 +249,7 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         let cell = outlineView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? makeCell(id)
         cell.textField?.stringValue = item.name
         cell.imageView?.image = NSImage(systemSymbolName: Self.symbol(for: item), accessibilityDescription: nil)
+            ?? NSImage(systemSymbolName: "doc", accessibilityDescription: nil)   // macOS 14 lacks some
         // Dimmed as a whole rather than recoloured: a source list tints its
         // own text in an inactive window, and a fixed secondary colour came
         // out darker there than the rows it was meant to sit behind.
@@ -173,12 +257,17 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         return cell
     }
 
-    /// Symbols, as a sidebar's icons are, rather than Finder's file icons.
+    /// Symbols, as a sidebar's icons are, rather than Finder's file icons;
+    /// CotEditor's set, by kind.
     static func symbol(for item: FolderItem) -> String {
         if item.isDirectory { return "folder" }
-        if item.isEditable { return "doc.text" }
-        let type = UTType(filenameExtension: item.url.pathExtension)
-        return type?.conforms(to: .image) == true ? "photo" : "doc"
+        guard let type = UTType(filenameExtension: item.url.pathExtension) else { return "document" }
+        if type.conforms(to: .image) { return "photo" }
+        if type.conforms(to: .movie) { return "film" }
+        if type.conforms(to: .audio) { return "music.note" }
+        if type.conforms(to: .archive) { return "zipper.page" }
+        if type.conforms(to: .unixExecutable) { return "apple.terminal.fill" }
+        return "document"
     }
 
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
@@ -193,13 +282,17 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         }
         cell.imageView = image
         cell.textField = text
+        // CotEditor's row (after Apple's sample code): a 17pt icon column
+        // sharing the title's baseline, the title a system spacing after it.
+        image.imageAlignment = .alignCenter
+        let trailing = text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2)
+        trailing.priority = .defaultLow
         NSLayoutConstraint.activate([
-            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
-            image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            image.widthAnchor.constraint(equalToConstant: 16),
-            image.heightAnchor.constraint(equalToConstant: 16),
-            text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 5),
-            text.trailingAnchor.constraint(equalTo: cell.trailingAnchor),
+            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+            image.widthAnchor.constraint(equalToConstant: 17),
+            image.firstBaselineAnchor.constraint(equalTo: text.firstBaselineAnchor),
+            text.leadingAnchor.constraint(equalToSystemSpacingAfter: image.trailingAnchor, multiplier: 1),
+            trailing,
             text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
