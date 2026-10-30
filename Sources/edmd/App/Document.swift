@@ -166,6 +166,53 @@ class Document: NSDocument, HeadingNavigable {
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 
+        makeEditor(width: windowWidth, height: windowHeight)
+
+        window.toolbar = makeToolbar(identifier: "MainToolbar3")
+        window.toolbarStyle = .unified
+        window.titlebarSeparatorStyle = .line
+
+        window.contentViewController = makeEditorPane(bounds: window.contentView!.bounds)
+
+        // Restore the last window's frame, size and origin (the toolbar is now installed, so
+        // the frame is final). Applied as a frame, not a contentRect, so it
+        // round-trips exactly with what windowDidResize/windowDidMove save. No
+        // saved origin, or one no screen shows any more: center.
+        if let savedSize {
+            window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
+        }
+        if let origin = savedOrigin,
+           let frame = AppSettings.reachableFrame(
+            NSRect(origin: origin, size: window.frame.size),
+            screens: NSScreen.screens.map(\.visibleFrame)) {
+            window.setFrameOrigin(frame.origin)
+        } else {
+            window.center()
+        }
+        // On the next run-loop turn: AppKit posts the resize/move notifications
+        // for the frames set above after this returns, and they must not save.
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated { self?.savesWindowFrame = true }
+        }
+
+        let wc = DocumentWindowController(window: window)
+        addWindowController(wc)
+        // Assigned by hand: NSWindowController only makes itself the window's
+        // delegate on the nib-loading path, and this window is built in code, so
+        // `init(window:)` leaves `delegate` nil — which silently killed the
+        // full-screen toolbar auto-hide (the delegate method below was never
+        // called). Safe to point at the controller: NSWindowController itself
+        // implements none of NSWindowDelegate, so nothing else changes hands —
+        // in particular the undo manager still comes from the window, not the
+        // document.
+        window.delegate = wc
+        attach(to: window)
+    }
+
+    /// Builds the TextKit 2 editor: the first of the pieces
+    /// `makeWindowControllers` assembles, which a folder window
+    /// (`FolderDocument`) assembles into its own window instead.
+    func makeEditor(width windowWidth: CGFloat, height windowHeight: CGFloat) {
         // Build the TextKit 2 text system chain (viewport-based layout).
         editor = EditorTextView.makeTextKit2(
             frame: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -203,7 +250,11 @@ class Document: NSDocument, HeadingNavigable {
         editor.onReadScrollToLine = { [weak self] line in
             self?.readView?.setScrollPosition(line: line, fraction: 0)
         }
+    }
 
+    /// The document toolbar. Only after `makeEditor`: assigning it to a window
+    /// synchronously vends its items, which read the editor.
+    func makeToolbar(identifier: NSToolbar.Identifier) -> NSToolbar {
         // Toolbar holds the formatting items plus the right-aligned view-mode
         // toggle and inspector button (and gives the titlebar extra height for
         // roomy traffic lights). Set it only after `editor` exists — assigning
@@ -214,7 +265,7 @@ class Document: NSDocument, HeadingNavigable {
         // MainToolbar3 is what makes the inspector button appear for existing
         // users; it also discards any layout they customized under MainToolbar2.
         formatToolbar = FormatToolbar(document: self)
-        let toolbar = NSToolbar(identifier: "MainToolbar3")
+        let toolbar = NSToolbar(identifier: identifier)
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
@@ -223,12 +274,13 @@ class Document: NSDocument, HeadingNavigable {
         // window, the leading one absorbed all 1077pt of slack and the trailing
         // one got nothing. This is the API that actually centres.
         toolbar.centeredItemIdentifiers = FormatToolbar.centeredIdentifiers
-        window.toolbar = toolbar
-        window.toolbarStyle = .unified
-        window.titlebarSeparatorStyle = .line
+        return toolbar
+    }
 
+    /// The editor pane (text, status, find and format bars) beside the
+    /// inspector, as a split view controller sized to `contentBounds`.
+    func makeEditorPane(bounds contentBounds: NSRect) -> NSSplitViewController {
         let statusBarHeight: CGFloat = 22
-        let contentBounds = window.contentView!.bounds
 
         // The text view fills the editor pane; the status bar floats over its
         // bottom edge, revealed on hover.
@@ -277,7 +329,6 @@ class Document: NSDocument, HeadingNavigable {
         // Open/closed and width carry over to the next window and launch.
         split.splitView.autosaveName = "EdmundInspector"
         split.view.frame = contentBounds
-        window.contentViewController = split
         // The outline and Info are only kept current while they are showing;
         // catch both up whenever the inspector opens.
         inspectorCollapseObservation = inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
@@ -312,6 +363,12 @@ class Document: NSDocument, HeadingNavigable {
             self, selector: #selector(editorSelectionDidChange(_:)),
             name: NSTextView.didChangeSelectionNotification, object: editor
         )
+        return split
+    }
+
+    /// Wires the document to the window it is shown in. Paired with
+    /// `detach(from:)` when a folder window switches to another file.
+    func attach(to window: NSWindow) {
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidResize(_:)),
             name: NSWindow.didResizeNotification, object: window
@@ -341,38 +398,6 @@ class Document: NSDocument, HeadingNavigable {
             name: NSWindow.didExitFullScreenNotification, object: window
         )
 
-        // Restore the last window's frame, size and origin (the toolbar is now installed, so
-        // the frame is final). Applied as a frame, not a contentRect, so it
-        // round-trips exactly with what windowDidResize/windowDidMove save. No
-        // saved origin, or one no screen shows any more: center.
-        if let savedSize {
-            window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
-        }
-        if let origin = savedOrigin,
-           let frame = AppSettings.reachableFrame(
-            NSRect(origin: origin, size: window.frame.size),
-            screens: NSScreen.screens.map(\.visibleFrame)) {
-            window.setFrameOrigin(frame.origin)
-        } else {
-            window.center()
-        }
-        // On the next run-loop turn: AppKit posts the resize/move notifications
-        // for the frames set above after this returns, and they must not save.
-        RunLoop.main.perform { [weak self] in
-            MainActor.assumeIsolated { self?.savesWindowFrame = true }
-        }
-
-        let wc = DocumentWindowController(window: window)
-        addWindowController(wc)
-        // Assigned by hand: NSWindowController only makes itself the window's
-        // delegate on the nib-loading path, and this window is built in code, so
-        // `init(window:)` leaves `delegate` nil — which silently killed the
-        // full-screen toolbar auto-hide (the delegate method below was never
-        // called). Safe to point at the controller: NSWindowController itself
-        // implements none of NSWindowDelegate, so nothing else changes hands —
-        // in particular the undo manager still comes from the window, not the
-        // document.
-        window.delegate = wc
         window.makeFirstResponder(editor)
         applyToolbarVisibility()
         refreshFormatBar()
@@ -381,6 +406,10 @@ class Document: NSDocument, HeadingNavigable {
         // Honor the persisted source-mode preference for the editing view.
         if AppSettings.sourceMode { setViewMode(.source) }
         updateStatusBar()
+    }
+
+    func detach(from window: NSWindow) {
+        NotificationCenter.default.removeObserver(self, name: nil, object: window)
     }
 
     @objc private func windowDidResize(_ notification: Notification) {
