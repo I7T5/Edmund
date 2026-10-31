@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>EdmundOpenFolder</string>
+    <key>CFBundleDisplayName</key>
+    <string>Open in Edmund</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.i7t5.edmund.openfolder</string>
+    <key>CFBundleExecutable</key>
+    <string>EdmundOpenFolder</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <!-- An action extension (com.apple.ui-services, a view controller as
+         principal class) that shows no UI. The Finder keys put it in
+         right-click ▸ Quick Actions and the preview pane; the activation
+         rule offers it on folders only. -->
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.ui-services</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>EdmundOpenFolderAction</string>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <key>NSExtensionActivationRule</key>
+            <string>SUBQUERY(extensionItems, $item, SUBQUERY($item.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.folder").@count &gt;= 1).@count &gt;= 1</string>
+            <key>NSExtensionServiceAllowsFinderPreviewItem</key>
+            <true/>
+            <key>NSExtensionServiceAllowsTouchBarItem</key>
+            <false/>
+            <key>NSExtensionServiceFinderPreviewLabel</key>
+            <string>Open in Edmund</string>
+            <key>NSExtensionServiceFinderPreviewIconName</key>
+            <string>AppIcon</string>
+            <key>NSExtensionServiceRoleType</key>
+            <string>NSExtensionServiceRoleTypeViewer</string>
+        </dict>
+    </dict>
+</dict>
+</plist>

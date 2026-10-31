@@ -209,6 +209,17 @@ struct FolderDocumentTests {
         let services = try #require(plist["NSServices"] as? [[String: Any]])
         let open = try #require(services.first { $0["NSMessage"] as? String == "openInEdmund" })
         #expect((open["NSSendFileTypes"] as? [String])?.contains("public.folder") == true)
+
+        // The Quick Action appex: an action extension shown in Finder, on folders.
+        let actionURL = plistURL.deletingLastPathComponent()
+            .appendingPathComponent("Resources/OpenFolderInfo.plist")
+        let action = try #require(NSDictionary(contentsOf: actionURL) as? [String: Any])
+        let ext = try #require(action["NSExtension"] as? [String: Any])
+        #expect(ext["NSExtensionPointIdentifier"] as? String == "com.apple.ui-services")
+        #expect(ext["NSExtensionPrincipalClass"] as? String == "EdmundOpenFolderAction")
+        let attributes = try #require(ext["NSExtensionAttributes"] as? [String: Any])
+        #expect(attributes["NSExtensionServiceAllowsFinderPreviewItem"] as? Bool == true)
+        #expect((attributes["NSExtensionActivationRule"] as? String)?.contains("public.folder") == true)
     }
 
     @Test("Dimmed files can't be selected; folders and text files can")
