@@ -10,8 +10,9 @@ import EdmundCore
 /// controller moves to whichever file is showing, so Save, Revert, menu
 /// validation and sheets reach that file through the usual
 /// `windowControllers.first` route, with no forwarding here. A file switched
-/// away from stays open, in `files`, only while it has unsaved changes; the
-/// window asks about each of those when it closes (`FolderWindow`).
+/// away from stays open, in `files`, while it is among the last few shown or
+/// has unsaved changes; the window asks about each of the latter when it
+/// closes (`FolderWindow`).
 final class FolderDocument: NSDocument {
 
     static let typeName = "public.folder"
@@ -21,8 +22,11 @@ final class FolderDocument: NSDocument {
     override class func isNativeType(_ name: String) -> Bool { name == typeName }
 
     private(set) var root: FolderItem!
-    /// Open files: the one showing and any left with unsaved changes.
+    /// Open files, least recently shown first: the one showing, the last few
+    /// shown, and any with unsaved changes however many.
     private(set) var files: [Document] = []
+    /// How many files stay open without unsaved changes.
+    static let keptFiles = 8
     private(set) weak var current: Document?
     /// Each open file's editor pane and toolbar, built once and reused when
     /// the window switches back to it.
@@ -72,7 +76,6 @@ final class FolderDocument: NSDocument {
             let document = try Document(contentsOf: url, ofType: DocumentController.contentType(of: url))
             document.folder = self
             controller.addDocument(document)
-            files.append(document)
             show(document)
         } catch {
             presentError(error, modalFor: windowController.window!, delegate: nil,
@@ -86,11 +89,19 @@ final class FolderDocument: NSDocument {
         if let old = current {
             old.detach(from: window)
             old.removeWindowController(windowController)
-            if !old.isDocumentEdited { old.close() }
         } else {
             removeWindowController(windowController)
         }
         current = document
+        // Most recent last. Rendering a long file is most of a switch (about
+        // half a second for ARCHITECTURE.md in a debug build), so the last few
+        // stay open and switching back costs nothing.
+        files.removeAll { $0 === document }
+        files.append(document)
+        while files.count > Self.keptFiles,
+              let stale = files.first(where: { !$0.isDocumentEdited && $0 !== document }) {
+            stale.close()   // fileDidClose drops it from files
+        }
 
         let key = ObjectIdentifier(document)
         if views[key] == nil {

@@ -41,33 +41,36 @@ struct FolderDocumentTests {
                 == "net.daringfireball.markdown")
     }
 
-    @Test("Switching files closes a clean one and keeps one with unsaved changes")
+    @Test("Switching files keeps the last few open, and every one with unsaved changes")
     func switching() throws {
-        let url = try makeFolder(["a.md": "# A", "b.md": "# B", "c.md": "# C"])
+        let names = (0...FolderDocument.keptFiles + 1).map { "\($0).md" }
+        let url = try makeFolder(Dictionary(uniqueKeysWithValues: names.map { ($0, "# \($0)") }))
         let folder = try openFolder(url)
         defer { folder.windowController.window?.close() }
 
-        folder.open(url.appendingPathComponent("a.md"))
-        let a = try #require(folder.current)
-        #expect(a.editor.string == "# A")
-        #expect(folder.windowController.document === a)
+        folder.open(url.appendingPathComponent(names[0]))
+        let first = try #require(folder.current)
+        #expect(first.editor.string == "# 0.md")
+        #expect(folder.windowController.document === first)
+        first.updateChangeCount(.changeDone)
 
-        folder.open(url.appendingPathComponent("b.md"))
-        let b = try #require(folder.current)
-        #expect(b !== a)
-        #expect(!folder.files.contains { $0 === a })
-        #expect(folder.windowController.document === b)
+        folder.open(url.appendingPathComponent(names[1]))
+        let second = try #require(folder.current)
+        #expect(folder.windowController.document === second)
 
-        b.updateChangeCount(.changeDone)
-        folder.open(url.appendingPathComponent("c.md"))
-        #expect(folder.files.contains { $0 === b })
+        // Back to a kept file: the same document and editor, not a re-read.
+        let editor = first.editor
+        folder.open(url.appendingPathComponent(names[0]))
+        #expect(folder.current === first)
+        #expect(first.editor === editor)
+
+        // One more than the limit: the least recently shown clean file goes,
+        // the edited one stays though it is older.
+        for name in names.dropFirst(2) { folder.open(url.appendingPathComponent(name)) }
+        #expect(folder.files.count == FolderDocument.keptFiles)
+        #expect(!folder.files.contains { $0 === second })
+        #expect(folder.files.contains { $0 === first })
         #expect(folder.windowController.window?.isDocumentEdited == true)
-
-        // Back to the edited file: the same document and editor, not a re-read.
-        let editor = b.editor
-        folder.open(url.appendingPathComponent("b.md"))
-        #expect(folder.current === b)
-        #expect(b.editor === editor)
     }
 
     @Test("Each file has its own undo history")
