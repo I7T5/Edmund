@@ -1,5 +1,5 @@
 import AppKit
-import UniformTypeIdentifiers
+import os
 
 /// Finder's Quick Action "Open in Edmund" on folders (right-click ▸ Quick
 /// Actions, and the preview pane's button). An action extension
@@ -28,10 +28,16 @@ final class OpenFolderAction: NSViewController {
         let providers = (context.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }
         let found = FoundURLs()
         let group = DispatchGroup()
-        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+        // Whatever type the item is registered under: Finder hands a folder
+        // over as `public.folder`, not `public.file-url`, so asking only for
+        // a file URL found nothing and the action silently did nothing.
+        for provider in providers {
+            guard let type = provider.registeredTypeIdentifiers.first else { continue }
+            Self.log.info("attachment types: \(provider.registeredTypeIdentifiers, privacy: .public)")
             group.enter()
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                if let url { found.append(url) }
+            provider.loadItem(forTypeIdentifier: type, options: nil) { item, error in
+                if let url = Self.url(from: item) { found.append(url) }
+                else { Self.log.error("no URL in \(type, privacy: .public): \(String(describing: error), privacy: .public)") }
                 group.leave()
             }
         }
@@ -39,11 +45,26 @@ final class OpenFolderAction: NSViewController {
         // provider has answered, on the main queue.
         nonisolated(unsafe) let context = context
         group.notify(queue: .main) {
-            if let app = Self.containingApp, !found.urls.isEmpty {
-                NSWorkspace.shared.open(found.urls, withApplicationAt: app,
-                                        configuration: NSWorkspace.OpenConfiguration())
+            let urls = found.urls
+            Self.log.info("opening \(urls.count) item(s) in \(Self.containingApp?.path ?? "nil", privacy: .public)")
+            if let app = Self.containingApp, !urls.isEmpty {
+                NSWorkspace.shared.open(urls, withApplicationAt: app,
+                                        configuration: NSWorkspace.OpenConfiguration()) { _, error in
+                    if let error { Self.log.error("open failed: \(error, privacy: .public)") }
+                }
             }
             context.completeRequest(returningItems: nil)
+        }
+    }
+
+    private nonisolated static let log = Logger(subsystem: "com.i7t5.edmund.openfolder", category: "action")
+
+    /// An item provider's payload as a file URL: a URL, or its data form.
+    private nonisolated static func url(from item: NSSecureCoding?) -> URL? {
+        switch item {
+        case let url as URL: url
+        case let data as Data: URL(dataRepresentation: data, relativeTo: nil)
+        default: nil
         }
     }
 
