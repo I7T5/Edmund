@@ -217,8 +217,6 @@ strip_binary "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
 cp Resources/ThumbnailInfo.plist "${THUMB_APPEX}/Contents/Info.plist"
 
 # Finder's "Open in Edmund" Quick Action on folders, assembled the same way.
-# The app icon goes in its Resources: NSExtensionServiceFinderPreviewIconName
-# names an image in the appex's own bundle.
 echo "Assembling Open in Edmund action extension..."
 OF_NAME="EdmundOpenFolder"
 OPEN_APPEX="${BUNDLE}/Contents/PlugIns/${OF_NAME}.appex"
@@ -226,7 +224,6 @@ mkdir -p "${OPEN_APPEX}/Contents/MacOS" "${OPEN_APPEX}/Contents/Resources"
 cp ".build/release/${OF_NAME}" "${OPEN_APPEX}/Contents/MacOS/${OF_NAME}"
 strip_binary "${OPEN_APPEX}/Contents/MacOS/${OF_NAME}"
 cp Resources/OpenFolderInfo.plist "${OPEN_APPEX}/Contents/Info.plist"
-cp Resources/AppIcon.icns "${OPEN_APPEX}/Contents/Resources/AppIcon.icns"
 
 # Each appex carries the app's version and build: App Store Connect flags any
 # mismatch (ITMS-90473), so the appex plists don't keep their own.

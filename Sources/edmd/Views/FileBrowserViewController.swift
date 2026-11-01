@@ -83,8 +83,12 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         // rather than searching (Finder's and Xcode's sidebar filters). Set
         // after any `controlSize` change, which resets the cell's images.
         if let button = (filterField.cell as? NSSearchFieldCell)?.searchButtonCell {
+            // Dimmed like the placeholder, as Xcode's and CotEditor's: a
+            // palette colour, since the cell draws a template image in full
+            // label colour. Dynamic, so it follows the appearance.
             let glyph = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle",
-                                accessibilityDescription: "Filter")
+                                accessibilityDescription: "Filter")?
+                .withSymbolConfiguration(.init(paletteColors: [.secondaryLabelColor]))
             button.image = glyph
             button.alternateImage = glyph
         }
@@ -168,6 +172,9 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         let button = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")!,
                               target: self, action: #selector(showAddMenu(_:)))
         button.isBordered = false
+        // Full label colour: the bar's one action reads brighter than the
+        // filter's dimmed glyph beside it.
+        button.contentTintColor = .labelColor
         button.setAccessibilityLabel("Add")
         return button
     }

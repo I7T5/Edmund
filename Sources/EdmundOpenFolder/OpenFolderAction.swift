@@ -19,8 +19,12 @@ final class OpenFolderAction: NSViewController {
         view = NSView(frame: .zero)
     }
 
-    override func beginRequest(with context: NSExtensionContext) {
-        super.beginRequest(with: context)
+    /// `nonisolated`: the host calls this on an XPC reply queue, not the main
+    /// thread, and the main-actor isolation this override would otherwise
+    /// inherit from NSViewController traps there (`dispatch_assert_queue_fail`,
+    /// the first live run's crash). Main is reached below, for the work that
+    /// needs it.
+    nonisolated override func beginRequest(with context: NSExtensionContext) {
         let providers = (context.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }
         let found = FoundURLs()
         let group = DispatchGroup()
@@ -31,23 +35,21 @@ final class OpenFolderAction: NSViewController {
                 group.leave()
             }
         }
-        // The context isn't Sendable; it is touched again only on main, once
-        // every provider has answered.
+        // The context isn't Sendable; it is touched again only once every
+        // provider has answered, on the main queue.
         nonisolated(unsafe) let context = context
         group.notify(queue: .main) {
-            MainActor.assumeIsolated {
-                if let app = Self.containingApp, !found.urls.isEmpty {
-                    NSWorkspace.shared.open(found.urls, withApplicationAt: app,
-                                            configuration: NSWorkspace.OpenConfiguration())
-                }
-                context.completeRequest(returningItems: nil)
+            if let app = Self.containingApp, !found.urls.isEmpty {
+                NSWorkspace.shared.open(found.urls, withApplicationAt: app,
+                                        configuration: NSWorkspace.OpenConfiguration())
             }
+            context.completeRequest(returningItems: nil)
         }
     }
 
     /// Edmund.app, three levels above this appex
     /// (Edmund.app/Contents/PlugIns/EdmundOpenFolder.appex).
-    static var containingApp: URL? {
+    nonisolated static var containingApp: URL? {
         let app = Bundle.main.bundleURL
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         return app.pathExtension == "app" ? app : nil
