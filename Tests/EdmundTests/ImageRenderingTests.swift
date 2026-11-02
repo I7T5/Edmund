@@ -6,15 +6,21 @@ import AppKit
 @MainActor
 struct ImageRenderingTests {
 
-    /// Writes a solid PNG to a temp file and returns its absolute path
-    /// (absolute so resolution doesn't need a document directory).
-    private func tempPNGPath(size: NSSize = NSSize(width: 24, height: 16)) -> String {
-        let img = NSImage(size: size)
-        img.lockFocus()
+    /// Writes a solid PNG of `size` pixels at `dpi` to a temp file and returns
+    /// its absolute path (absolute so resolution doesn't need a document
+    /// directory). Built from an explicit bitmap: `lockFocus` would save 2×
+    /// pixels on a Retina Mac.
+    private func tempPNGPath(size: NSSize = NSSize(width: 24, height: 16), dpi: CGFloat = 72) -> String {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width),
+                                   pixelsHigh: Int(size.height), bitsPerSample: 8,
+                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         NSColor.systemBlue.setFill()
         NSRect(origin: .zero, size: size).fill()
-        img.unlockFocus()
-        let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
+        NSGraphicsContext.restoreGraphicsState()
+        rep.size = NSSize(width: size.width * 72 / dpi, height: size.height * 72 / dpi)
         let data = rep.representation(using: .png, properties: [:])!
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("md-img-test-\(UUID().uuidString).png")
@@ -94,6 +100,15 @@ struct ImageRenderingTests {
 
         let natural = editor.imageOverlay(destination: path)
         #expect(natural?.bounds.size == CGSize(width: 24, height: 16))
+    }
+
+    @Test("A high-dpi image takes its pixel size, as in Read mode, not its dpi-scaled size")
+    func naturalSizeIgnoresDPI() {
+        let editor = makeEditor()
+        let path = tempPNGPath(size: NSSize(width: 120, height: 80), dpi: 300)
+        #expect(NSImage(contentsOfFile: path)?.size.width ?? 0 < 30)   // dpi-scaled: 28.8 pt
+        let overlay = editor.imageOverlay(destination: path)
+        #expect(overlay?.bounds.size == CGSize(width: 120, height: 80))
     }
 
     @Test("Missing local image shows a blocked-image placeholder overlay, not just alt text")

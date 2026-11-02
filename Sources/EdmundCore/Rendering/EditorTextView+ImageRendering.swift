@@ -248,7 +248,7 @@ extension EditorTextView {
     /// `height` override the natural size first (one alone scales the other
     /// proportionally); the max-width clamp still applies after.
     private func scaledOverlay(image: NSImage, width: Int? = nil, height: Int? = nil) -> FragmentOverlay? {
-        var size = image.size
+        var size = Self.naturalSize(of: image)
         guard size.width > 0, size.height > 0 else { return nil }
 
         switch (width, height) {
@@ -266,6 +266,17 @@ extension EditorTextView {
         }
         return FragmentOverlay(image: image,
                                bounds: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+    }
+
+    /// An image's size before any clamp: its pixels, one point each, as Read
+    /// mode's WebKit (and Obsidian, GitHub) lays it out. `NSImage.size` honours
+    /// the file's dpi instead, so a 1200 px photo saved at 300 dpi was 288 pt
+    /// here and full width in Read mode. Vector images (PDF, SVG) have no
+    /// pixels and keep their own size.
+    static func naturalSize(of image: NSImage) -> NSSize {
+        let bitmaps = image.representations.filter { $0.pixelsWide > 0 && $0.pixelsHigh > 0 }
+        guard let largest = bitmaps.max(by: { $0.pixelsWide < $1.pixelsWide }) else { return image.size }
+        return NSSize(width: largest.pixelsWide, height: largest.pixelsHigh)
     }
 
     /// Draws "icon  reason" into one image (same technique as the callout
