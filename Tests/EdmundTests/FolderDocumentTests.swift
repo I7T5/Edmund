@@ -164,10 +164,16 @@ struct FolderDocumentTests {
         defer { folder.windowController.window?.close() }
         folder.open(url.appendingPathComponent("a.md"))
         let window = try #require(folder.windowController.window)
-        window.layoutIfNeeded()
         let content = try #require(window.contentView)
         let scroll = try #require(folder.current?.editor.enclosingScrollView)
-        let editorTop = scroll.convert(scroll.bounds, to: content).maxY
+        var editorTop: CGFloat { scroll.convert(scroll.bounds, to: content).maxY }
+        // On a headless CI runner the safe-area guide reaches the content
+        // side a layout pass or two after the toolbar's inset appears, so
+        // wait for it rather than judge the first pass.
+        settle(timeout: 3) {
+            content.layoutSubtreeIfNeeded()
+            return abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1
+        }
         let sidebarTop = folder.windowController.fileBrowser.view.convert(
             folder.windowController.fileBrowser.view.bounds, to: content).maxY
         #expect(content.safeAreaInsets.top > 0)
