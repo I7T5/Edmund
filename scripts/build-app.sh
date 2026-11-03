@@ -216,11 +216,21 @@ cp ".build/release/${TH_NAME}" "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
 strip_binary "${THUMB_APPEX}/Contents/MacOS/${TH_NAME}"
 cp Resources/ThumbnailInfo.plist "${THUMB_APPEX}/Contents/Info.plist"
 
+# Finder's "Open in Edmund" Quick Action on folders, assembled the same way.
+echo "Assembling Open in Edmund action extension..."
+OF_NAME="EdmundOpenFolder"
+OPEN_APPEX="${BUNDLE}/Contents/PlugIns/${OF_NAME}.appex"
+mkdir -p "${OPEN_APPEX}/Contents/MacOS" "${OPEN_APPEX}/Contents/Resources"
+cp ".build/release/${OF_NAME}" "${OPEN_APPEX}/Contents/MacOS/${OF_NAME}"
+strip_binary "${OPEN_APPEX}/Contents/MacOS/${OF_NAME}"
+cp Resources/OpenFolderInfo.plist "${OPEN_APPEX}/Contents/Info.plist"
+
 # Each appex carries the app's version and build: App Store Connect flags any
 # mismatch (ITMS-90473), so the appex plists don't keep their own.
 for key in CFBundleShortVersionString CFBundleVersion; do
     value="$(/usr/libexec/PlistBuddy -c "Print :$key" Info.plist)"
-    for plist in "${APPEX}/Contents/Info.plist" "${THUMB_APPEX}/Contents/Info.plist"; do
+    for plist in "${APPEX}/Contents/Info.plist" "${THUMB_APPEX}/Contents/Info.plist" \
+                 "${OPEN_APPEX}/Contents/Info.plist"; do
         plutil -replace "$key" -string "$value" "$plist"
     done
 done
@@ -271,6 +281,8 @@ codesign --force --sign - --entitlements Resources/QuickLook.entitlements \
     --identifier "com.i7t5.edmund.quicklook" "$APPEX"
 codesign --force --sign - --entitlements Resources/Thumbnail.entitlements \
     --identifier "com.i7t5.edmund.thumbnail" "$THUMB_APPEX"
+codesign --force --sign - --entitlements Resources/OpenFolder.entitlements \
+    --identifier "com.i7t5.edmund.openfolder" "$OPEN_APPEX"
 # The sandboxed variants sign with no --identifier override: the signing id
 # names the container (~/Library/Containers/<id>) and keys the automatic
 # preferences migration, so it must equal the Info.plist bundle id. The ad-hoc

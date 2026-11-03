@@ -19,6 +19,12 @@ class Document: NSDocument, HeadingNavigable {
     private weak var viewModeItem: NSToolbarItem?
     private static let viewModeItemID = NSToolbarItem.Identifier("viewMode")
 
+    /// The folder window showing this file, if it was opened from one.
+    weak var folder: FolderDocument?
+    /// A file's toolbar in a folder window: the usual items after the
+    /// sidebar's toggle. Its own identifier, so the two layouts are saved apart.
+    static let folderToolbarID = "FolderToolbar1"
+
     /// Builds and owns the formatting toolbar items (see `FormatToolbar`).
     private var formatToolbar: FormatToolbar!
 
@@ -39,7 +45,7 @@ class Document: NSDocument, HeadingNavigable {
     /// The right-hand inspector (outline + info) and its split item, which
     /// `toggleInspector(_:)` collapses and expands.
     private(set) var inspector: InspectorViewController!
-    private var inspectorItem: NSSplitViewItem!
+    private(set) var inspectorItem: NSSplitViewItem!
     private var inspectorCollapseObservation: NSKeyValueObservation?
 
     /// Editor character offset captured when entering Read mode (the topmost
@@ -118,6 +124,8 @@ class Document: NSDocument, HeadingNavigable {
     override func updateChangeCount(_ change: NSDocument.ChangeType) {
         super.updateChangeCount(change)
         let restorable = isWorthRestoring
+        // A folder window restores as the folder, whatever its files hold.
+        guard folder == nil else { folder?.updateEditedState(); return }
         for controller in windowControllers where controller.window?.isRestorable != restorable {
             controller.window?.isRestorable = restorable
         }
@@ -166,6 +174,53 @@ class Document: NSDocument, HeadingNavigable {
         window.minSize = NSSize(width: 320, height: 400)
         window.backgroundColor = NSColor.textBackgroundColor
 
+        makeEditor(width: windowWidth, height: windowHeight)
+
+        window.toolbar = makeToolbar(identifier: "MainToolbar3")
+        window.toolbarStyle = .unified
+        window.titlebarSeparatorStyle = .line
+
+        window.contentViewController = makeEditorPane(bounds: window.contentView!.bounds)
+
+        // Restore the last window's frame, size and origin (the toolbar is now installed, so
+        // the frame is final). Applied as a frame, not a contentRect, so it
+        // round-trips exactly with what windowDidResize/windowDidMove save. No
+        // saved origin, or one no screen shows any more: center.
+        if let savedSize {
+            window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
+        }
+        if let origin = savedOrigin,
+           let frame = AppSettings.reachableFrame(
+            NSRect(origin: origin, size: window.frame.size),
+            screens: NSScreen.screens.map(\.visibleFrame)) {
+            window.setFrameOrigin(frame.origin)
+        } else {
+            window.center()
+        }
+        // On the next run-loop turn: AppKit posts the resize/move notifications
+        // for the frames set above after this returns, and they must not save.
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated { self?.savesWindowFrame = true }
+        }
+
+        let wc = DocumentWindowController(window: window)
+        addWindowController(wc)
+        // Assigned by hand: NSWindowController only makes itself the window's
+        // delegate on the nib-loading path, and this window is built in code, so
+        // `init(window:)` leaves `delegate` nil — which silently killed the
+        // full-screen toolbar auto-hide (the delegate method below was never
+        // called). Safe to point at the controller: NSWindowController itself
+        // implements none of NSWindowDelegate, so nothing else changes hands —
+        // in particular the undo manager still comes from the window, not the
+        // document.
+        window.delegate = wc
+        attach(to: window)
+    }
+
+    /// Builds the TextKit 2 editor: the first of the pieces
+    /// `makeWindowControllers` assembles, which a folder window
+    /// (`FolderDocument`) assembles into its own window instead.
+    func makeEditor(width windowWidth: CGFloat, height windowHeight: CGFloat) {
         // Build the TextKit 2 text system chain (viewport-based layout).
         editor = EditorTextView.makeTextKit2(
             frame: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
@@ -203,7 +258,11 @@ class Document: NSDocument, HeadingNavigable {
         editor.onReadScrollToLine = { [weak self] line in
             self?.readView?.setScrollPosition(line: line, fraction: 0)
         }
+    }
 
+    /// The document toolbar. Only after `makeEditor`: assigning it to a window
+    /// synchronously vends its items, which read the editor.
+    func makeToolbar(identifier: NSToolbar.Identifier) -> NSToolbar {
         // Toolbar holds the formatting items plus the right-aligned view-mode
         // toggle and inspector button (and gives the titlebar extra height for
         // roomy traffic lights). Set it only after `editor` exists — assigning
@@ -214,7 +273,7 @@ class Document: NSDocument, HeadingNavigable {
         // MainToolbar3 is what makes the inspector button appear for existing
         // users; it also discards any layout they customized under MainToolbar2.
         formatToolbar = FormatToolbar(document: self)
-        let toolbar = NSToolbar(identifier: "MainToolbar3")
+        let toolbar = NSToolbar(identifier: identifier)
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
@@ -223,12 +282,13 @@ class Document: NSDocument, HeadingNavigable {
         // window, the leading one absorbed all 1077pt of slack and the trailing
         // one got nothing. This is the API that actually centres.
         toolbar.centeredItemIdentifiers = FormatToolbar.centeredIdentifiers
-        window.toolbar = toolbar
-        window.toolbarStyle = .unified
-        window.titlebarSeparatorStyle = .line
+        return toolbar
+    }
 
+    /// The editor pane (text, status, find and format bars) beside the
+    /// inspector, as a split view controller sized to `contentBounds`.
+    func makeEditorPane(bounds contentBounds: NSRect) -> NSSplitViewController {
         let statusBarHeight: CGFloat = 22
-        let contentBounds = window.contentView!.bounds
 
         // The text view fills the editor pane; the status bar floats over its
         // bottom edge, revealed on hover.
@@ -267,17 +327,21 @@ class Document: NSDocument, HeadingNavigable {
         // split falls back to the minimum; a width the user drags to is saved
         // by the autosave below and wins over this.
         inspector.view.setFrameSize(NSSize(width: 200, height: contentBounds.height))
-        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
+        // In a folder window, a plain item: see EditorSplitViewController.
+        inspectorItem = folder == nil
+            ? NSSplitViewItem(inspectorWithViewController: inspector)
+            : NSSplitViewItem(viewController: inspector)
+        inspectorItem.canCollapse = true
         inspectorItem.minimumThickness = 180
         inspectorItem.maximumThickness = 360
         inspectorItem.isCollapsed = true
-        let split = NSSplitViewController()
+        let split = EditorSplitViewController()
+        if folder != nil { split.plainInspector = inspectorItem }
         split.addSplitViewItem(NSSplitViewItem(viewController: editorPane))
         split.addSplitViewItem(inspectorItem)
         // Open/closed and width carry over to the next window and launch.
         split.splitView.autosaveName = "EdmundInspector"
         split.view.frame = contentBounds
-        window.contentViewController = split
         // The outline and Info are only kept current while they are showing;
         // catch both up whenever the inspector opens.
         inspectorCollapseObservation = inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
@@ -312,6 +376,12 @@ class Document: NSDocument, HeadingNavigable {
             self, selector: #selector(editorSelectionDidChange(_:)),
             name: NSTextView.didChangeSelectionNotification, object: editor
         )
+        return split
+    }
+
+    /// Wires the document to the window it is shown in. Paired with
+    /// `detach(from:)` when a folder window switches to another file.
+    func attach(to window: NSWindow) {
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowDidResize(_:)),
             name: NSWindow.didResizeNotification, object: window
@@ -341,38 +411,9 @@ class Document: NSDocument, HeadingNavigable {
             name: NSWindow.didExitFullScreenNotification, object: window
         )
 
-        // Restore the last window's frame, size and origin (the toolbar is now installed, so
-        // the frame is final). Applied as a frame, not a contentRect, so it
-        // round-trips exactly with what windowDidResize/windowDidMove save. No
-        // saved origin, or one no screen shows any more: center.
-        if let savedSize {
-            window.setFrame(NSRect(origin: window.frame.origin, size: savedSize), display: false)
-        }
-        if let origin = savedOrigin,
-           let frame = AppSettings.reachableFrame(
-            NSRect(origin: origin, size: window.frame.size),
-            screens: NSScreen.screens.map(\.visibleFrame)) {
-            window.setFrameOrigin(frame.origin)
-        } else {
-            window.center()
-        }
-        // On the next run-loop turn: AppKit posts the resize/move notifications
-        // for the frames set above after this returns, and they must not save.
-        RunLoop.main.perform { [weak self] in
-            MainActor.assumeIsolated { self?.savesWindowFrame = true }
-        }
-
-        let wc = DocumentWindowController(window: window)
-        addWindowController(wc)
-        // Assigned by hand: NSWindowController only makes itself the window's
-        // delegate on the nib-loading path, and this window is built in code, so
-        // `init(window:)` leaves `delegate` nil — which silently killed the
-        // full-screen toolbar auto-hide (the delegate method below was never
-        // called). Safe to point at the controller: NSWindowController itself
-        // implements none of NSWindowDelegate, so nothing else changes hands —
-        // in particular the undo manager still comes from the window, not the
-        // document.
-        window.delegate = wc
+        // Back on screen in a folder window (`detach` stopped it), unless the
+        // file was left in Read mode, which keeps the editor stopped itself.
+        if !scrollView.isHidden { editor.isEditorPresentationActive = true }
         window.makeFirstResponder(editor)
         applyToolbarVisibility()
         refreshFormatBar()
@@ -381,6 +422,14 @@ class Document: NSDocument, HeadingNavigable {
         // Honor the persisted source-mode preference for the editing view.
         if AppSettings.sourceMode { setViewMode(.source) }
         updateStatusBar()
+    }
+
+    /// A folder window switching to another file. The editor stays alive
+    /// (`FolderDocument.keptFiles`) but stops its idle styling and prefetch,
+    /// which would otherwise compete with the file now showing.
+    func detach(from window: NSWindow) {
+        editor.isEditorPresentationActive = false
+        NotificationCenter.default.removeObserver(self, name: nil, object: window)
     }
 
     @objc private func windowDidResize(_ notification: Notification) {
@@ -585,6 +634,10 @@ class Document: NSDocument, HeadingNavigable {
 
     /// Called after makeWindowControllers when opening an existing file.
     override func showWindows() {
+        // A file a folder window keeps open (recently shown, or with unsaved
+        // changes) has no window controller; showing it means switching that
+        // window back to it.
+        if let folder, windowControllers.isEmpty { folder.show(self); return }
         super.showWindows()
         adoptPendingContent()
         // Deferred to here because the warning is a sheet: by the time the content
@@ -675,6 +728,7 @@ class Document: NSDocument, HeadingNavigable {
     override func close() {
         fileWatcher?.cancel()
         fileWatcher = nil
+        folder?.fileDidClose(self)
         super.close()
     }
 
@@ -1185,6 +1239,15 @@ class Document: NSDocument, HeadingNavigable {
         window?.toolbar?.isVisible = AppSettings.showToolbar
     }
 
+    /// The open files a settings change restyles. Folder windows first close
+    /// the files they keep only for a quick switch back
+    /// (`FolderDocument.dropKeptFiles`), so a theme change doesn't restyle up
+    /// to seven files per window that nobody is looking at.
+    static var restylableDocuments: [Document] {
+        for case let folder as FolderDocument in NSDocumentController.shared.documents { folder.dropKeptFiles() }
+        return NSDocumentController.shared.documents.compactMap { $0 as? Document }
+    }
+
     /// View ▸ Always Show Toolbar in Full Screen, unchecked: in full screen,
     /// slide the toolbar away with the menu bar until the pointer reaches the
     /// top of the screen. The menu item is the inverse of `autoHideToolbar`.
@@ -1412,11 +1475,15 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID)
+        sidebarItems(toolbar) + FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID)
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID)
+        sidebarItems(toolbar) + FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID)
+    }
+
+    private func sidebarItems(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbar.identifier == Self.folderToolbarID ? [.toggleSidebar, .sidebarTrackingSeparator] : []
     }
 
     func toolbar(_ toolbar: NSToolbar,
@@ -1439,6 +1506,41 @@ extension Document: NSToolbarDelegate {
         item.action = #selector(toggleViewMode(_:))
         refreshViewModeButton()
         return item
+    }
+}
+
+// MARK: - Editor split
+
+/// The editor pane and inspector split.
+///
+/// In a folder window it sits inside the folder's split, first in the
+/// responder chain, so it declines `toggleSidebar:` (it has no sidebar) to
+/// let the action reach the folder's. And there its inspector is a plain
+/// item (`plainInspector`), toggled here: in a full-size-content window an
+/// inspector-*behaviour* item makes AppKit cut the toolbar short at its
+/// edge and leave a blank strip above it, where a document window's toolbar
+/// runs the full width.
+final class EditorSplitViewController: NSSplitViewController {
+    var plainInspector: NSSplitViewItem?
+
+    override func responds(to selector: Selector!) -> Bool {
+        if selector == #selector(toggleSidebar(_:)) { return false }
+        // AppKit answers no for `toggleInspector:` without an inspector-
+        // behaviour item, so a plain one has to claim it. Responder-chain
+        // lookups run on the main thread.
+        if selector == #selector(toggleInspector(_:)),
+           MainActor.assumeIsolated({ plainInspector != nil }) { return true }
+        return super.responds(to: selector)
+    }
+
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(toggleInspector(_:)), plainInspector != nil { return true }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    override func toggleInspector(_ sender: Any?) {
+        guard let plainInspector else { super.toggleInspector(sender); return }
+        plainInspector.animator().isCollapsed.toggle()
     }
 }
 

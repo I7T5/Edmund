@@ -50,6 +50,12 @@ let package = Package(
             name: "EdmundThumbnail",
             dependencies: ["EdmundCore"],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]),
+        // Finder's "Open in Edmund" Quick Action on folders: a headless action
+        // extension, assembled the same way. No EdmundCore: it only hands the
+        // folder to the app.
+        .executableTarget(
+            name: "EdmundOpenFolder",
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]),
         .testTarget(
             name: "EdmundTests",
             dependencies: ["EdmundCore", "edmd"]),

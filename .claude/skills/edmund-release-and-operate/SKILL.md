@@ -160,9 +160,10 @@ when the old script signed only the bare binary.
 
 1. `codesign --force --deep --sign - Sparkle.framework` (nested XPC helpers
    must be signed before macOS will launch them),
-2. sign the Quick Look preview and thumbnail appexes with
-   `Resources/QuickLook.entitlements` and `Resources/Thumbnail.entitlements`
-   respectively,
+2. sign the Quick Look preview, thumbnail and Open in Edmund appexes with
+   `Resources/QuickLook.entitlements`, `Resources/Thumbnail.entitlements` and
+   `Resources/OpenFolder.entitlements` respectively (`mas-package.sh` leaves
+   the last out unless a `com.i7t5.edmund.openfolder` profile exists),
    copy the SwiftPM resource bundles into each appex root (same accessor rule as
    step 3; in `Contents/Resources` every preview crashed, #388), then
    seal the outer `.app` **without `--deep`** (entitlements and identifier vary

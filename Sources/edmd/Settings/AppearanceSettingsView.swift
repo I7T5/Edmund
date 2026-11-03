@@ -300,7 +300,7 @@ struct AppearanceSettingsView: View {
     /// Pushes a content-width change to every open editor live, converting cm
     /// to points using each editor's window screen PPI (or main screen as fallback).
     private func applyContentWidthToOpenDocuments() {
-        for case let document as Document in NSDocumentController.shared.documents {
+        for document in Document.restylableDocuments {
             let screen = document.editor?.window?.screen ?? NSScreen.main
             guard let screen else { continue }
             document.editor?.maxContentWidthPoints = screen.cmToPoints(maxContentWidthCm)
