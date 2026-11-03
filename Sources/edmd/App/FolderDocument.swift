@@ -476,10 +476,15 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
 }
 
 /// The content side of a folder window: shows one view controller at a time,
-/// pinned below the toolbar (the safe area's top) though its own view runs
-/// up behind it.
+/// pinned below the toolbar though its own view runs up behind it.
+///
+/// By the window's `contentLayoutRect`, not this view's safe area: inside a
+/// split item on macOS 14 the safe area never took the toolbar's inset, so
+/// the editor's first lines sat under the toolbar (CI's macOS 14 runner;
+/// macOS 15 was fine).
 final class BelowToolbarController: NSViewController {
     private(set) var child: NSViewController?
+    private var top: NSLayoutConstraint?
 
     override func loadView() { view = NSView() }
 
@@ -490,13 +495,29 @@ final class BelowToolbarController: NSViewController {
         let shown = controller.view
         shown.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(shown)
+        let top = shown.topAnchor.constraint(equalTo: view.topAnchor, constant: toolbarInset)
         NSLayoutConstraint.activate([
-            shown.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            top,
             shown.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             shown.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             shown.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        self.top = top
         child = controller
+    }
+
+    /// How far the toolbar (and title bar) reach down into this view.
+    private var toolbarInset: CGFloat {
+        guard let window = view.window else { return 0 }
+        let topInWindow = view.convert(view.bounds, to: nil).maxY
+        return max(0, topInWindow - window.contentLayoutRect.maxY)
+    }
+
+    /// Follows the toolbar as it shows, hides or changes size.
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let inset = toolbarInset
+        if let top, top.constant != inset { top.constant = inset }
     }
 }
 
