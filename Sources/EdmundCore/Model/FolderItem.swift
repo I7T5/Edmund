@@ -9,8 +9,12 @@ import UniformTypeIdentifiers
 public final class FolderItem {
     public let url: URL
     public let isDirectory: Bool
+    public let isHidden: Bool
     public private(set) weak var parent: FolderItem?
     private var cachedChildren: [FolderItem]?
+    /// `cachedChildren` less the hidden ones: the outline asks for each child
+    /// by index, so filtering on every call made a listing quadratic.
+    private var cachedVisibleChildren: [FolderItem]?
 
     /// Never listed, hidden files shown or not: Finder litter and the
     /// repository database, which nobody browses to edit.
@@ -21,14 +25,13 @@ public final class FolderItem {
     public init(url: URL, parent: FolderItem? = nil) {
         self.url = url
         self.parent = parent
-        isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        // Read once: a directory listing prefetches both keys (`readChildren`).
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isHiddenKey])
+        isDirectory = values?.isDirectory ?? false
+        isHidden = url.lastPathComponent.hasPrefix(".") || values?.isHidden == true
     }
 
     public var name: String { url.lastPathComponent }
-
-    public var isHidden: Bool {
-        name.hasPrefix(".") || (try? url.resourceValues(forKeys: [.isHiddenKey]))?.isHidden == true
-    }
 
     /// Whether the editor opens this file. `Document` reads any file as UTF-8
     /// text, so this is about what is worth opening: Markdown, plain text and
@@ -48,7 +51,9 @@ public final class FolderItem {
     public func children(showingHidden: Bool) -> [FolderItem] {
         guard isDirectory else { return [] }
         if cachedChildren == nil { cachedChildren = readChildren(reusing: []) }
-        return showingHidden ? cachedChildren! : cachedChildren!.filter { !$0.isHidden }
+        if showingHidden { return cachedChildren! }
+        if cachedVisibleChildren == nil { cachedVisibleChildren = cachedChildren!.filter { !$0.isHidden } }
+        return cachedVisibleChildren!
     }
 
     /// Re-reads this folder's entries, keeping the nodes that are still there
@@ -56,6 +61,23 @@ public final class FolderItem {
     public func reload() {
         guard isDirectory, let old = cachedChildren else { return }
         cachedChildren = readChildren(reusing: old)
+        cachedVisibleChildren = nil
+    }
+
+    /// The first name in `folder` nothing is using, numbered as Finder numbers
+    /// new items: "Untitled.md", then "Untitled 2.md", "Untitled 3.md", ….
+    public static func freeURL(in folder: URL, base: String, extension ext: String) -> URL {
+        func url(_ name: String) -> URL {
+            let named = folder.appendingPathComponent(name)
+            return ext.isEmpty ? named : named.appendingPathExtension(ext)
+        }
+        var candidate = url(base)
+        var number = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = url("\(base) \(number)")
+            number += 1
+        }
+        return candidate
     }
 
     /// The loaded item for `url`, if it sits in an already-read part of the tree.
@@ -78,12 +100,17 @@ public final class FolderItem {
     /// folder that matches by its own name brings all its contents.
     /// Returns nil for an empty query, meaning "no filter".
     ///
-    /// ponytail: walks (and reads) the whole tree synchronously; move off the
-    /// main thread if large folders make typing lag.
-    public func filter(_ query: String, showingHidden: Bool) -> Set<ObjectIdentifier>? {
+    /// Gives up past `limit` entries, read or not, so a folder holding a
+    /// node_modules can't stall typing: matches beyond it go unlisted.
+    /// ponytail: synchronous with a budget; a cancellable walk off the main
+    /// thread if partial results in huge trees turn out to matter.
+    public func filter(_ query: String, showingHidden: Bool, limit: Int = 20_000) -> Set<ObjectIdentifier>? {
         guard !query.isEmpty else { return nil }
         var shown = Set<ObjectIdentifier>()
+        var budget = limit
         func visit(_ node: FolderItem) -> Bool {
+            guard budget > 0 else { return false }
+            budget -= 1
             if node.name.localizedCaseInsensitiveContains(query) {
                 markAll(node)
                 return true
@@ -95,7 +122,8 @@ public final class FolderItem {
         }
         func markAll(_ node: FolderItem) {
             shown.insert(ObjectIdentifier(node))
-            guard node.isDirectory else { return }
+            budget -= 1
+            guard node.isDirectory, budget > 0 else { return }
             node.children(showingHidden: showingHidden).forEach(markAll)
         }
         for child in children(showingHidden: showingHidden) { _ = visit(child) }

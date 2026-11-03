@@ -411,6 +411,9 @@ class Document: NSDocument, HeadingNavigable {
             name: NSWindow.didExitFullScreenNotification, object: window
         )
 
+        // Back on screen in a folder window (`detach` stopped it), unless the
+        // file was left in Read mode, which keeps the editor stopped itself.
+        if !scrollView.isHidden { editor.isEditorPresentationActive = true }
         window.makeFirstResponder(editor)
         applyToolbarVisibility()
         refreshFormatBar()
@@ -421,7 +424,11 @@ class Document: NSDocument, HeadingNavigable {
         updateStatusBar()
     }
 
+    /// A folder window switching to another file. The editor stays alive
+    /// (`FolderDocument.keptFiles`) but stops its idle styling and prefetch,
+    /// which would otherwise compete with the file now showing.
     func detach(from window: NSWindow) {
+        editor.isEditorPresentationActive = false
         NotificationCenter.default.removeObserver(self, name: nil, object: window)
     }
 
@@ -1229,6 +1236,15 @@ class Document: NSDocument, HeadingNavigable {
     func applyToolbarVisibility() {
         let window = windowControllers.first?.window
         window?.toolbar?.isVisible = AppSettings.showToolbar
+    }
+
+    /// The open files a settings change restyles. Folder windows first close
+    /// the files they keep only for a quick switch back
+    /// (`FolderDocument.dropKeptFiles`), so a theme change doesn't restyle up
+    /// to seven files per window that nobody is looking at.
+    static var restylableDocuments: [Document] {
+        for case let folder as FolderDocument in NSDocumentController.shared.documents { folder.dropKeptFiles() }
+        return NSDocumentController.shared.documents.compactMap { $0 as? Document }
     }
 
     /// View ▸ Always Show Toolbar in Full Screen, unchecked: in full screen,

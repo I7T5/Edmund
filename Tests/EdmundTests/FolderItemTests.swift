@@ -86,4 +86,37 @@ struct FolderItemTests {
         #expect(root.children(showingHidden: false).first === docs)
         #expect(root.item(at: url.appendingPathComponent("docs")) === docs)
     }
+
+    @Test("Reload re-lists the visible entries too, hidden ones still left out")
+    func reloadRefreshesVisible() throws {
+        let url = try makeTree()
+        let root = FolderItem(url: url)
+        _ = root.children(showingHidden: false)
+        try Data().write(to: url.appendingPathComponent("c.md"))
+        try Data().write(to: url.appendingPathComponent(".c.md"))
+        root.reload()
+        let shown = names(root.children(showingHidden: false))
+        #expect(shown.contains("c.md"))
+        #expect(!shown.contains(".c.md"))
+        #expect(names(root.children(showingHidden: true)).contains(".c.md"))
+    }
+
+    @Test("A filter stops at its entry budget")
+    func filterBudget() throws {
+        let url = try makeTree()
+        // Visit order: docs, guide.md, notes, deep.md, then the root's files.
+        let all = try #require(FolderItem(url: url).filter("a10", showingHidden: false))
+        #expect(all.count == 1)
+        let cut = try #require(FolderItem(url: url).filter("a10", showingHidden: false, limit: 3))
+        #expect(cut.isEmpty)
+    }
+
+    @Test("New items take the first free name, numbered as Finder numbers them")
+    func freeNames() throws {
+        let url = try makeTree()
+        #expect(FolderItem.freeURL(in: url, base: "Untitled", extension: "md").lastPathComponent == "Untitled.md")
+        try Data().write(to: url.appendingPathComponent("Untitled.md"))
+        #expect(FolderItem.freeURL(in: url, base: "Untitled", extension: "md").lastPathComponent == "Untitled 2.md")
+        #expect(FolderItem.freeURL(in: url, base: "docs", extension: "").lastPathComponent == "docs 2")
+    }
 }

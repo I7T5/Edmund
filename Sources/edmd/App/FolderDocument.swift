@@ -134,6 +134,15 @@ final class FolderDocument: NSDocument {
         document.close()
     }
 
+    /// Closes the files kept for a quick switch back (neither showing nor
+    /// edited), ahead of a settings change: restyling them off screen costs
+    /// more than reading one back when it is next shown.
+    func dropKeptFiles() {
+        for document in files where document !== current && !document.isDocumentEdited {
+            document.close()
+        }
+    }
+
     /// Called from `Document.close()`.
     func fileDidClose(_ document: Document) {
         files.removeAll { $0 === document }
@@ -242,11 +251,13 @@ final class FolderDocument: NSDocument {
     /// already read are reloaded; the rest are read fresh when expanded.
     func directoriesDidChange(_ urls: [URL]) {
         guard let root else { return }
+        var changed: [FolderItem?] = []
         for url in urls {
             guard let item = root.item(at: url), item.isDirectory else { continue }
             item.reload()
-            windowController.fileBrowser.reload(item === root ? nil : item)
+            changed.append(item === root ? nil : item)
         }
+        if !changed.isEmpty { windowController.fileBrowser.reload(changed) }
         // A reload drops the outline's selection, and saving the showing file
         // is itself a change on disk.
         windowController.fileBrowser.select(current?.fileURL)

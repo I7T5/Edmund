@@ -624,7 +624,7 @@ enum AppSettings {
     /// a theme swap needs the same full restyle an appearance flip does.
     @MainActor static func applyThemesToOpenDocuments() {
         applyThemes()
-        for case let document as Document in NSDocumentController.shared.documents {
+        for document in Document.restylableDocuments {
             guard let editor = document.editor else { continue }
             // Fonts before colors: a theme may override the font, and
             // `applyChromeColors` bakes it into `typingAttributes`.
@@ -816,7 +816,7 @@ enum AppSettings {
     /// and toolbar visibility), for live changes from the Settings window and
     /// the View menu.
     @MainActor static func applyEditSettingsToOpenDocuments() {
-        for case let document as Document in NSDocumentController.shared.documents {
+        for document in Document.restylableDocuments {
             if let editor = document.editor { applyEditSettings(to: editor) }
             document.applyToolbarVisibility()
             document.refreshFormatBar()

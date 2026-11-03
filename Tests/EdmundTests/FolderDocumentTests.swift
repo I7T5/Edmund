@@ -242,6 +242,63 @@ struct FolderDocumentTests {
         #expect(selectable == ["sub": true, "a.md": true, "main.swift": false, "pic.png": false])
     }
 
+    @Test("A file switched away from stops its background styling until it shows again")
+    func hiddenFileStopsStyling() throws {
+        let url = try makeFolder(["a.md": "# A", "b.md": "# B"])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        folder.open(url.appendingPathComponent("a.md"))
+        let a = try #require(folder.current)
+        folder.open(url.appendingPathComponent("b.md"))
+        #expect(!a.editor.isEditorPresentationActive)
+        #expect(folder.current?.editor.isEditorPresentationActive == true)
+        folder.open(url.appendingPathComponent("a.md"))
+        #expect(a.editor.isEditorPresentationActive)
+    }
+
+    @Test("A settings change closes the kept files, not the showing or edited ones")
+    func settingsDropKeptFiles() throws {
+        let url = try makeFolder(["a.md": "# A", "b.md": "# B", "c.md": "# C"])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        folder.open(url.appendingPathComponent("a.md"))
+        let a = try #require(folder.current)
+        a.updateChangeCount(.changeDone)
+        folder.open(url.appendingPathComponent("b.md"))
+        let b = try #require(folder.current)
+        folder.open(url.appendingPathComponent("c.md"))
+        let c = try #require(folder.current)
+
+        // What `Document.restylableDocuments` does for each registered folder.
+        folder.dropKeptFiles()
+        #expect(folder.files.count == 2)
+        #expect(folder.files.contains { $0 === a } && folder.files.contains { $0 === c })
+        #expect(!folder.files.contains { $0 === b })
+    }
+
+    @Test("New File and New Folder create Finder-numbered items; the new file opens")
+    func newItems() throws {
+        let url = try makeFolder(["a.md": ""])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        let browser = folder.windowController.fileBrowser
+        _ = browser.view
+
+        browser.newFile(nil)
+        #expect(folder.current?.fileURL?.lastPathComponent == "Untitled.md")
+        browser.newFile(nil)
+        #expect(folder.current?.fileURL?.lastPathComponent == "Untitled 2.md")
+        #expect(FileManager.default.fileExists(atPath: url.appendingPathComponent("Untitled.md").path))
+
+        // The selection is now a file at the top, so the folder goes there too.
+        browser.newFolder(nil)
+        var isFolder: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: url.appendingPathComponent("untitled folder").path,
+                                               isDirectory: &isFolder) && isFolder.boolValue)
+        let selected = browser.outlineView.item(atRow: browser.outlineView.selectedRow) as? FolderItem
+        #expect(selected?.name == "untitled folder")
+    }
+
     @Test("The filter lists matches and the folders above them")
     func filtering() throws {
         let url = try makeFolder(["a.md": "", "b.md": ""])

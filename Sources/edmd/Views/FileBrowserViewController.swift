@@ -84,12 +84,19 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         // after any `controlSize` change, which resets the cell's images.
         if let button = (filterField.cell as? NSSearchFieldCell)?.searchButtonCell {
             // Half-strength against the field, as CotEditor's measures: a
-            // template draws in full label colour here (contrast 0.8), and
+            // template draws in full label color here (contrast 0.8), and
             // the cell halves a palette image's ink, so secondaryLabelColor
             // came out at 0.2. Black at 0.75 lands on CotEditor's 0.5.
+            // Increase Contrast gets full ink, as the system's label colors
+            // strengthen there.
             let ink = NSColor(name: nil) { appearance in
-                appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                    ? .white.withAlphaComponent(0.68) : .black.withAlphaComponent(0.75)
+                switch appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua,
+                                                   .accessibilityHighContrastDarkAqua]) {
+                case .darkAqua: .white.withAlphaComponent(0.68)
+                case .accessibilityHighContrastDarkAqua: .white
+                case .accessibilityHighContrastAqua: .black
+                default: .black.withAlphaComponent(0.75)
+                }
             }
             let glyph = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle",
                                 accessibilityDescription: "Filter")?
@@ -154,7 +161,9 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
             let width = max(column.minWidth, scroll.contentView.frame.width - overhead)
             if column.width != width { column.width = width }
         }
-        let height = footer.fittingSize.height
+        // The laid-out height, not `fittingSize`, which re-solved the
+        // footer's constraints on every pass of a live resize or divider drag.
+        let height = footer.frame.height
         if view.additionalSafeAreaInsets.bottom != height {
             view.additionalSafeAreaInsets = NSEdgeInsets(top: 0, left: 0, bottom: height, right: 0)
         }
@@ -171,41 +180,73 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         footerSeparator.alphaValue = hidden > 0.5 ? 1 : 0
     }
 
-    /// The + pull-down. A placeholder for now: New File and New Folder come
-    /// with the file operations, so both are listed but disabled.
+    /// The + pull-down: New File and New Folder.
     private func makeAddButton() -> NSButton {
         let button = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")!,
                               target: self, action: #selector(showAddMenu(_:)))
         button.isBordered = false
-        // Full label colour: the bar's one action reads brighter than the
+        // Full label color: the bar's one action reads brighter than the
         // filter's dimmed glyph beside it.
         button.contentTintColor = .labelColor
         button.setAccessibilityLabel("Add")
+        button.toolTip = "New File or Folder"
         return button
     }
 
     @objc private func showAddMenu(_ sender: NSButton) {
         let menu = NSMenu()
-        menu.autoenablesItems = false
         // Text only, like the app's other menus.
-        for title in ["New File", "New Folder"] {
-            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            menu.addItem(item)
-        }
+        menu.addItem(withTitle: "New File", action: #selector(newFile(_:)), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "New Folder", action: #selector(newFolder(_:)), keyEquivalent: "").target = self
         // Above the button, as CotEditor's (the button's view is not flipped).
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.maxY + 4), in: sender)
     }
 
+    @objc func newFile(_ sender: Any?) {
+        create(named: "Untitled", extension: "md", isFolder: false)
+    }
+
+    @objc func newFolder(_ sender: Any?) {
+        create(named: "untitled folder", extension: "", isFolder: true)
+    }
+
+    /// Creates the file or folder in the selected folder, the folder of the
+    /// selected file, or the top folder, under the first free name Finder
+    /// would give it ("Untitled 2.md"). A new file opens; a new folder is
+    /// selected.
+    private func create(named base: String, extension ext: String, isFolder: Bool) {
+        let selected = outlineView.selectedRow >= 0 ? outlineView.item(atRow: outlineView.selectedRow) as? FolderItem : nil
+        let parent = selected.map { $0.isDirectory ? $0 : ($0.parent ?? root) } ?? root
+        let url = FolderItem.freeURL(in: parent.url, base: base, extension: ext)
+        do {
+            if isFolder {
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+            } else {
+                try Data().write(to: url, options: .withoutOverwriting)
+            }
+        } catch {
+            presentError(error)
+            return
+        }
+        // Now, rather than when FSEvents reports it a moment later.
+        parent.reload()
+        reload([parent === root ? nil : parent])
+        if parent !== root { outlineView.expandItem(parent) }
+        if isFolder { select(url) } else { onOpen?(url) }
+    }
+
     // MARK: - Updates
 
-    /// Re-lists `item`'s children (nil: the whole tree) after a change on disk.
-    func reload(_ item: FolderItem?) {
+    /// Re-lists each item's children (nil: the whole tree) after a change on
+    /// disk. A batch at a time: under a filter each reload is a walk of the
+    /// whole tree, which a checkout touching hundreds of folders would repeat.
+    func reload(_ items: [FolderItem?]) {
         guard isViewLoaded else { return }
+        rows = [:]
         if filtered != nil {
             applyFilter()
         } else {
-            outlineView.reloadItem(item, reloadChildren: true)
+            for item in items { outlineView.reloadItem(item, reloadChildren: true) }
         }
     }
 
@@ -242,16 +283,24 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
 
     private func applyFilter() {
         filtered = root.filter(filterField.stringValue, showingHidden: showsHidden)
+        rows = [:]
         outlineView.reloadData()
         // Every match in view, so the filter is a search and not a puzzle.
         if filtered != nil { outlineView.expandItem(nil, expandChildren: true) }
     }
 
+    /// Each folder's rows, filtered once: the outline asks for every child
+    /// by index. Emptied whenever the listing or the filter changes.
+    private var rows: [ObjectIdentifier: [FolderItem]] = [:]
+
     private func children(of item: Any?) -> [FolderItem] {
         let folder = item as? FolderItem ?? root
+        let key = ObjectIdentifier(folder)
+        if let cached = rows[key] { return cached }
         let all = folder.children(showingHidden: showsHidden)
-        guard let filtered else { return all }
-        return all.filter { filtered.contains(ObjectIdentifier($0)) }
+        let shown = filtered.map { filtered in all.filter { filtered.contains(ObjectIdentifier($0)) } } ?? all
+        rows[key] = shown
+        return shown
     }
 
     // MARK: - NSOutlineViewDataSource
@@ -284,8 +333,8 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         cell.textField?.stringValue = item.name
         cell.imageView?.image = NSImage(systemSymbolName: Self.symbol(for: item), accessibilityDescription: nil)
             ?? NSImage(systemSymbolName: "doc", accessibilityDescription: nil)   // macOS 14 lacks some
-        // Dimmed as a whole rather than recoloured: a source list tints its
-        // own text in an inactive window, and a fixed secondary colour came
+        // Dimmed as a whole rather than recolored: a source list tints its
+        // own text in an inactive window, and a fixed secondary color came
         // out darker there than the rows it was meant to sit behind.
         cell.alphaValue = !item.isDirectory && !item.isEditable ? 0.45 : 1
         return cell
@@ -391,7 +440,7 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         AppSettings.folderShowsHiddenFiles.toggle()
         // Every folder window lists the same way.
         for case let folder as FolderDocument in NSDocumentController.shared.documents {
-            folder.windowController?.fileBrowser.reload(nil)
+            folder.windowController?.fileBrowser.reload([nil])
         }
     }
 
