@@ -65,7 +65,12 @@ as one continuous box or bar across its fragments. Two non-obvious rules:
   *preceding* fragment. Painting the decoration over the full frame height
   would flood callout color onto the empty line; `decorationDrawHeight`
   detects the absorbed line and stops the fill at the last real content
-  line plus `bottomPad`.
+  line plus `bottomPad`. A table that ends the document has the same line in
+  its last row, laid out at the container's left without the row's indent
+  (it pulls the frame's minX left of the text), and TextKit gives that last
+  paragraph no `paragraphSpacing`. The `.tableRow` draw and `tableGrid`
+  shift by `decorationTextOffsetX` and use `tableRowDrawHeight`
+  (`decorationDrawHeight` plus the row's `paragraphSpacing`).
 
 ### `.fragmentOverlay` (character-level)
 

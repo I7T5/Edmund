@@ -74,8 +74,8 @@ extension EditorTextView {
                     == .orderedAscending else { return false }
             var frame = fragment.layoutFragmentFrame
             // The last row at the document's end also holds the document's
-            // empty last line; the row is what was drawn (see
-            // `decorationTextOffsetX`).
+            // empty last line; use the rect the row draws
+            // (`decorationTextOffsetX`, `tableRowDrawHeight`), not the frame.
             if let decorated = fragment as? DecoratedTextLayoutFragment {
                 let dx = decorated.decorationTextOffsetX
                 frame = NSRect(x: frame.minX + dx, y: frame.minY,
