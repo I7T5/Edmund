@@ -1702,6 +1702,14 @@ extension EditorTextView {
                     let frame = fragment.layoutFragmentFrame
                     geometry = "y=\(frame.minY) h=\(frame.height)"
                         + " ruleAt=\(frame.minY + frame.height)"
+                    if let decorated = fragment as? DecoratedTextLayoutFragment {
+                        geometry += " drawH=\(decorated.tableRowDrawHeight)"
+                            + " dx=\(decorated.decorationTextOffsetX)"
+                    }
+                    geometry += " lines=" + fragment.textLineFragments.map {
+                        "[\($0.characterRange.length) y=\($0.typographicBounds.minY)"
+                            + " h=\($0.typographicBounds.height)]"
+                    }.joined()
                 }
                 out.append("  line \(line) \(flags) \(geometry)")
                 line += 1

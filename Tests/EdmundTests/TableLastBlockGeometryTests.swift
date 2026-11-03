@@ -11,8 +11,14 @@ import AppKit
 @Suite("Table as last block — last row lines up")
 struct TableLastBlockGeometryTests {
 
-    @MainActor private func grid(_ source: String) -> TableGrid? {
+    @MainActor private func grid(_ source: String, font: String? = nil, size: CGFloat = 16) -> TableGrid? {
         let e = makeEditor()
+        if let font {
+            var theme = e.theme
+            theme.fontName = font
+            theme.fontSize = size
+            e.applyTheme(theme)
+        }
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
                            styleMask: [.titled], backing: .buffered, defer: false)
         let scroll = NSScrollView(frame: win.contentLayoutRect)
@@ -26,11 +32,15 @@ struct TableLastBlockGeometryTests {
         return e.tableGrid(blockIndex: index, ensuringLayout: true)
     }
 
-    @Test("A trailing newline doesn't move or stretch the last row")
-    @MainActor func trailingNewlineKeepsLastRow() throws {
+    // The app's default serif and the odd sizes where line metrics round
+    // differently, not just the test default (system 16).
+    @Test("A trailing newline doesn't move or stretch the last row",
+          arguments: [(nil, 16), ("Iowan Old Style", 16), ("Iowan Old Style", 17),
+                      ("Helvetica", 15), ("Menlo", 13)] as [(String?, CGFloat)])
+    @MainActor func trailingNewlineKeepsLastRow(font: String?, size: CGFloat) throws {
         let table = "Intro\n\n| A | B |\n| --- | --- |\n| c | d |\n| e | f |"
-        let withNL = try #require(grid(table + "\n"))
-        let withoutNL = try #require(grid(table))
+        let withNL = try #require(grid(table + "\n", font: font, size: size))
+        let withoutNL = try #require(grid(table, font: font, size: size))
         #expect(withNL.columnEdges == withoutNL.columnEdges)
         #expect(withNL.rows.count == withoutNL.rows.count)
         for (a, b) in zip(withNL.rows, withoutNL.rows) {
