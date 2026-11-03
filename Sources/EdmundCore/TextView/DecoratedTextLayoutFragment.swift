@@ -309,6 +309,18 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         return max(0, full - emptyLineHeight)
     }
 
+    /// How far right of the frame's minX the text starts: 0, except when the
+    /// same absorbed empty line (see `decorationDrawHeight`) is here. It is
+    /// laid out at the container's left without the paragraph's indent, so it
+    /// drags the frame's minX left of the text — a table's last row at the
+    /// end of the document drew its borders one cell padding to the left.
+    var decorationTextOffsetX: CGFloat {
+        let lines = textLineFragments
+        guard lines.count > 1, let last = lines.last,
+              last.characterRange.length == 0 else { return 0 }
+        return max(0, lines.dropLast().map { $0.typographicBounds.minX }.min() ?? 0)
+    }
+
     override var layoutFragmentFrame: CGRect {
         var frame = super.layoutFragmentFrame
         // A row is never both a box and a table row, so at most one of these
@@ -640,8 +652,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                                 in context: CGContext, bottomInset: CGFloat = 0,
                                 topInset: CGFloat = 0) {
         let frame = layoutFragmentFrame
-        // Filled decorations (box, bar) stop above an absorbed trailing empty
-        // line; center-line decorations (rule, table) still use the full frame.
+        // Filled decorations (box, bar) and table rows stop above an absorbed
+        // trailing empty line; a rule still uses the full frame.
         let fillHeight = decorationDrawHeight
         // Fragment-local rect spanning the full text column for this fragment.
         let columnRect = CGRect(x: point.x + containerLeft, y: point.y,
@@ -697,7 +709,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator,
                        let bottomBorder, let topInset):
-            // Offsets are text-relative; the fragment's origin is the text start.
+            // Offsets are text-relative; the fragment's origin is the text start,
+            // unless an absorbed empty line widened the frame (and stretched it
+            // below the row) — the last row of a table at the document's end.
+            let point = CGPoint(x: point.x + decorationTextOffsetX, y: point.y)
+            let frame = CGRect(origin: frame.origin,
+                               size: CGSize(width: frame.width, height: fillHeight))
             let borderColor = chromeLineColor
             // Column borders are FILLED at exactly one device pixel rather than
             // stroked: a 1pt stroke straddling a pixel boundary lands on two
