@@ -34,11 +34,14 @@ struct TableLastBlockGeometryTests {
         #expect(withNL.columnEdges == withoutNL.columnEdges)
         #expect(withNL.rows.count == withoutNL.rows.count)
         for (a, b) in zip(withNL.rows, withoutNL.rows) {
-            #expect(abs(a.minX - b.minX) < 0.01 && abs(a.minY - b.minY) < 0.01
-                    && abs(a.height - b.height) < 0.01, "\(a) vs \(b)")
+            #expect(abs(a.minX - b.minX) < 0.01 && abs(a.minY - b.minY) < 0.01, "\(a) vs \(b)")
         }
-        // And the last row starts where the rows above it do.
+        // The last row starts where the rows above it do, and is as tall as
+        // the body row above it: the absorbed line is gone, the row's own
+        // spacing below its text is not.
         let rows = withNL.rows
         #expect(abs(rows[rows.count - 1].minX - rows[rows.count - 2].minX) < 0.01)
+        #expect(abs(rows[rows.count - 1].height - rows[rows.count - 2].height) < 0.01,
+                "last \(rows[rows.count - 1].height) vs above \(rows[rows.count - 2].height)")
     }
 }

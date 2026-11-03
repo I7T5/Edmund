@@ -321,6 +321,21 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         return max(0, lines.dropLast().map { $0.typographicBounds.minX }.min() ?? 0)
     }
 
+    /// A table row's height: `decorationDrawHeight`, plus, when that cut off an
+    /// absorbed empty line, the row's own spacing below its text — the last
+    /// paragraph of a document gets none from TextKit, and without it the last
+    /// row came out shorter than the rows above, its text on the bottom rule.
+    var tableRowDrawHeight: CGFloat {
+        let height = decorationDrawHeight
+        guard height < layoutFragmentFrame.height,
+              let paragraph = textElement as? NSTextParagraph,
+              paragraph.attributedString.length > 0,
+              let style = paragraph.attributedString.attribute(.paragraphStyle, at: 0,
+                                                               effectiveRange: nil) as? NSParagraphStyle
+        else { return height }
+        return min(layoutFragmentFrame.height, height + style.paragraphSpacing)
+    }
+
     override var layoutFragmentFrame: CGRect {
         var frame = super.layoutFragmentFrame
         // A row is never both a box and a table row, so at most one of these
@@ -714,7 +729,7 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
             // below the row) — the last row of a table at the document's end.
             let point = CGPoint(x: point.x + decorationTextOffsetX, y: point.y)
             let frame = CGRect(origin: frame.origin,
-                               size: CGSize(width: frame.width, height: fillHeight))
+                               size: CGSize(width: frame.width, height: tableRowDrawHeight))
             let borderColor = chromeLineColor
             // Column borders are FILLED at exactly one device pixel rather than
             // stroked: a 1pt stroke straddling a pixel boundary lands on two

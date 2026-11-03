@@ -79,7 +79,7 @@ extension EditorTextView {
             if let decorated = fragment as? DecoratedTextLayoutFragment {
                 let dx = decorated.decorationTextOffsetX
                 frame = NSRect(x: frame.minX + dx, y: frame.minY,
-                               width: frame.width - dx, height: decorated.decorationDrawHeight)
+                               width: frame.width - dx, height: decorated.tableRowDrawHeight)
             }
             if textOriginX == nil { textOriginX = frame.minX }
             rows.append(frame.offsetBy(dx: origin.x, dy: origin.y))
