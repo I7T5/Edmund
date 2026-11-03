@@ -1,10 +1,10 @@
 # blank: The Wardrobe.md
-# window: 820,640
+# window: 920,520
 # modes: light
 # length: 29500
 # appstore: yes
 # loop: yes
-# typing: human 1 110
+# typing: human 1 300
 # cuts: 1
 # expect: Wardrobe
 # alt: A tour of Edmund: a heading, a sentence with bold and italic, a table filled in with Tab, a pasted image, then Read mode.
@@ -19,11 +19,11 @@ sleep 1300
 type # The Wardrobe
 enter
 enter
-sleep 300
+sleep 700
 type Lucy found a **wardrobe** full of coats, and *snow*.
 enter
 enter
-sleep 400
+sleep 700
 action formatTable:
 sleep 500
 select Header 1
@@ -44,14 +44,14 @@ tab
 type the Valiant
 tab
 type cordial
-sleep 400
+sleep 600
 caretend
 enter
 sleep 300
 pasteimage {root}/misc/marketing/screenshot-docs/turkish-delight.jpg
 sleep 600
-type Turkish delight
-sleep 300
+type Turkish delight|220
+sleep 500
 enter
 sleep 1400
 save
