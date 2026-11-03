@@ -26,7 +26,10 @@ struct TableLastBlockGeometryTests {
         win.contentView = scroll
         win.makeFirstResponder(e)
         e.loadContent(source)
-        e.recompose(cursorInRaw: (source as NSString).length)
+        // The caret in the last row's last cell, as while typing there.
+        let caret = (source as NSString).range(of: "f", options: .backwards).location
+        e.setSelectedRange(NSRange(location: caret, length: 0))
+        e.recompose(cursorInRaw: caret)
         ensureFullLayout(e)
         guard let index = e.blocks.firstIndex(where: { $0.kind == .table }) else { return nil }
         return e.tableGrid(blockIndex: index, ensuringLayout: true)
