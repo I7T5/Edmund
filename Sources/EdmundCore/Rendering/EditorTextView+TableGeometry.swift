@@ -72,7 +72,15 @@ extension EditorTextView {
         tlm.enumerateTextLayoutFragments(from: range.location, options: options) { fragment in
             guard fragment.rangeInElement.location.compare(range.endLocation)
                     == .orderedAscending else { return false }
-            let frame = fragment.layoutFragmentFrame
+            var frame = fragment.layoutFragmentFrame
+            // The last row at the document's end also holds the document's
+            // empty last line; use the rect the row draws
+            // (`decorationTextOffsetX`, `tableRowDrawHeight`), not the frame.
+            if let decorated = fragment as? DecoratedTextLayoutFragment {
+                let dx = decorated.decorationTextOffsetX
+                frame = NSRect(x: frame.minX + dx, y: frame.minY,
+                               width: frame.width - dx, height: decorated.tableRowDrawHeight)
+            }
             if textOriginX == nil { textOriginX = frame.minX }
             rows.append(frame.offsetBy(dx: origin.x, dy: origin.y))
             return true

@@ -286,7 +286,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         }
     }
 
-    /// Height to actually paint a filled decoration (box / left bar) over,
+    /// Height to actually paint a filled decoration (box / left bar), list
+    /// guides and, via `tableRowDrawHeight`, table rows over,
     /// which is *not* always the full frame height. When a callout or quote is
     /// the last block AND the document ends with a newline, TextKit 2 folds the
     /// document's final empty line into this (the preceding) layout fragment
@@ -307,6 +308,32 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
         // exactly the absorbed empty line. Remove that, keep the bottomPad.
         let emptyLineHeight = max(0, super.layoutFragmentFrame.height - contentBottom)
         return max(0, full - emptyLineHeight)
+    }
+
+    /// How far right of the frame's minX the text starts: 0 unless the
+    /// fragment holds an absorbed empty last line (see `decorationDrawHeight`).
+    /// TextKit lays that line out at the container's left without the
+    /// paragraph's indent, which pulls the frame's minX left of the text.
+    var decorationTextOffsetX: CGFloat {
+        let lines = textLineFragments
+        guard lines.count > 1, let last = lines.last,
+              last.characterRange.length == 0 else { return 0 }
+        return max(0, lines.dropLast().map { $0.typographicBounds.minX }.min() ?? 0)
+    }
+
+    /// A table row's height: `decorationDrawHeight`, plus, when that cut off an
+    /// absorbed empty line, the row's own spacing below its text. TextKit
+    /// gives the document's last paragraph none, so without it the row is
+    /// shorter than the rows above and its text sits on the bottom rule.
+    var tableRowDrawHeight: CGFloat {
+        let height = decorationDrawHeight
+        guard height < layoutFragmentFrame.height,
+              let paragraph = textElement as? NSTextParagraph,
+              paragraph.attributedString.length > 0,
+              let style = paragraph.attributedString.attribute(.paragraphStyle, at: 0,
+                                                               effectiveRange: nil) as? NSParagraphStyle
+        else { return height }
+        return min(layoutFragmentFrame.height, height + style.paragraphSpacing)
     }
 
     override var layoutFragmentFrame: CGRect {
@@ -641,7 +668,8 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
                                 topInset: CGFloat = 0) {
         let frame = layoutFragmentFrame
         // Filled decorations (box, bar) stop above an absorbed trailing empty
-        // line; center-line decorations (rule, table) still use the full frame.
+        // line, table rows at their own height (`tableRowDrawHeight`); a rule
+        // still uses the full frame.
         let fillHeight = decorationDrawHeight
         // Fragment-local rect spanning the full text column for this fragment.
         let columnRect = CGRect(x: point.x + containerLeft, y: point.y,
@@ -697,7 +725,12 @@ final class DecoratedTextLayoutFragment: NSTextLayoutFragment {
 
         case .tableRow(let xOffsets, let width, let leftInset, let separator,
                        let bottomBorder, let topInset):
-            // Offsets are text-relative; the fragment's origin is the text start.
+            // Offsets are text-relative; the fragment's origin is the text start,
+            // unless an absorbed empty line widened the frame (and stretched it
+            // below the row) — the last row of a table at the document's end.
+            let point = CGPoint(x: point.x + decorationTextOffsetX, y: point.y)
+            let frame = CGRect(origin: frame.origin,
+                               size: CGSize(width: frame.width, height: tableRowDrawHeight))
             let borderColor = chromeLineColor
             // Column borders are FILLED at exactly one device pixel rather than
             // stroked: a 1pt stroke straddling a pixel boundary lands on two

@@ -142,7 +142,10 @@ it is the last `textLineFragment` of the previous fragment
 (`characterRange.length == 0`). Until the caret goes there its
 `typographicBounds` can overlap the line above (after an empty paragraph:
 measured y = 16, height 14 inside a 25 pt line). Clamp to the previous line's
-bottom before trusting it (`enumerateVisibleLineNumbers`).
+bottom before trusting it (`enumerateVisibleLineNumbers`). It is also laid out
+at the container's left without the paragraph's head indent, so the fragment's
+`layoutFragmentFrame.minX` sits left of the text: take the smallest
+`typographicBounds.minX` of the real lines (`decorationTextOffsetX`).
 
 ---
 
