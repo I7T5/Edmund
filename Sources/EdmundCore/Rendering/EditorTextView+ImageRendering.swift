@@ -268,11 +268,11 @@ extension EditorTextView {
                                bounds: CGRect(x: 0, y: 0, width: size.width, height: size.height))
     }
 
-    /// An image's size before any clamp: its pixels, one point each, as Read
-    /// mode's WebKit (and Obsidian, GitHub) lays it out. `NSImage.size` honours
-    /// the file's dpi instead, so a 1200 px photo saved at 300 dpi was 288 pt
-    /// here and full width in Read mode. Vector images (PDF, SVG) have no
-    /// pixels and keep their own size.
+    /// An image's size before declared sizes and the column clamp: its pixels,
+    /// one point each, as Read mode's WebKit (and Obsidian, GitHub) lays it
+    /// out. `NSImage.size` honours the file's dpi instead (a 1200 px photo at
+    /// 300 dpi would be 288 pt), which Read mode ignores. Vector images (PDF,
+    /// SVG) have no pixels and keep their own size.
     static func naturalSize(of image: NSImage) -> NSSize {
         let bitmaps = image.representations.filter { $0.pixelsWide > 0 && $0.pixelsHigh > 0 }
         guard let largest = bitmaps.max(by: { $0.pixelsWide < $1.pixelsWide }) else { return image.size }

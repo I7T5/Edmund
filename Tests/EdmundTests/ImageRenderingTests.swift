@@ -20,6 +20,8 @@ struct ImageRenderingTests {
         NSColor.systemBlue.setFill()
         NSRect(origin: .zero, size: size).fill()
         NSGraphicsContext.restoreGraphicsState()
+        // After drawing on purpose: the fill used 1 pt = 1 px; this only
+        // stamps the dpi into the PNG.
         rep.size = NSSize(width: size.width * 72 / dpi, height: size.height * 72 / dpi)
         let data = rep.representation(using: .png, properties: [:])!
         let url = FileManager.default.temporaryDirectory
