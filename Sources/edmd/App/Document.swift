@@ -634,8 +634,9 @@ class Document: NSDocument, HeadingNavigable {
 
     /// Called after makeWindowControllers when opening an existing file.
     override func showWindows() {
-        // A file left with unsaved changes in a folder window has no window
-        // controller; showing it means switching that window back to it.
+        // A file a folder window keeps open (recently shown, or with unsaved
+        // changes) has no window controller; showing it means switching that
+        // window back to it.
         if let folder, windowControllers.isEmpty { folder.show(self); return }
         super.showWindows()
         adoptPendingContent()

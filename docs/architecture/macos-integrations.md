@@ -10,12 +10,12 @@ integration is broken.
 
 Edmund is a native editor, so it should be reachable the native ways: from the
 right-click Services menu, from Shortcuts/Spotlight, and by pressing Space on a
-`.md` in Finder. Four of the five pieces reuse code that already exists — the
+`.md` in Finder. Four of the original five pieces reuse code that already exists — the
 Quick Look preview in particular is the HTML export's self-contained page
 (`DocumentHTML.full` via `QuickLookPage.html`), so a Finder preview uses the
 same HTML renderer as Read mode and export.
 
-## 2. The five pieces
+## 2. The six pieces
 
 | Piece | Files | Status |
 | --- | --- | --- |
@@ -24,6 +24,7 @@ same HTML renderer as Read mode and export.
 | **App Intents** | `edmd/App/Intents.swift` (+ `DocumentController.newDocument(withContent:)`) | Code correct; **Shortcuts discovery blocked** — see §3. |
 | **Quick Look preview** | `EdmundQuickLook` target, `Resources/QuickLookInfo.plist`, `Resources/QuickLook.entitlements`, assembled by `scripts/build-app.sh` | Data-based since 2026-10-20; live-verified on macOS 15.7.9 (Space-bar panel, light and dark). §4 is the history of the view-based design. |
 | **Quick Look thumbnail** | `EdmundThumbnail` target, `Resources/ThumbnailInfo.plist`, `Resources/Thumbnail.entitlements`, assembled by `scripts/build-app.sh` | Live-verified 2026-10-21 through Finder and `QLThumbnailGenerator`, macOS 15.7.9. `qlmanage -t` never calls it. |
+| **Open in Edmund (Finder Quick Action)** | `EdmundOpenFolder` target, `Resources/OpenFolderInfo.plist` (`com.apple.ui-services`, folders only), `Resources/OpenFolder.entitlements`, assembled by `scripts/build-app.sh`; `mas-package.sh` leaves it out until a `com.i7t5.edmund.openfolder` profile exists | Live-verified 2026-11-01 from Finder (right-click ▸ Quick Actions) with the signed sandboxed build in /Applications. Hands folders to the app through `NSWorkspace.open`, so the sandbox grants them as Open With does. |
 
 Shared plumbing:
 
@@ -144,7 +145,7 @@ successfully and the page completing (`didFinishLoadForFrame`,
 
 ### Signing order in `build-app.sh` (why it's the way it is)
 
-The two appexes (preview and thumbnail) are sealed inside the app, so they must
+The three appexes (preview, thumbnail, Open in Edmund folder action) are sealed inside the app, so they must
 be signed **before** the app, and the app must be sealed **without** `--deep` —
 a `--deep` outer sign re-signs every nested item with default flags, which
 strips each appex's sandbox entitlements and resets its identifier to the
