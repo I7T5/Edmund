@@ -1,18 +1,20 @@
 # blank: The Wardrobe.md
 # window: 920,520
 # modes: light
-# length: 24500
+# length: 28000
 # appstore: yes
 # loop: yes
 # typing: human 1 300
-# cuts: 1
+# cuts: 2
 # expect: Wardrobe
-# alt: A tour of Edmund: a heading, a sentence with bold and italic, a table filled in with Tab, a pasted image, then Read mode.
+# poster: 23000
+# alt: A tour of Edmund: a heading, a sentence with bold and italic, a table filled in with Tab, a pasted image, Read mode, then back to a blank page.
 # The App Store preview and the site's tour: one take from a blank page,
 # each beat rendering as it is typed — heading, a line with bold and italic,
 # a table from Format ▸ Table filled in with Tab, a pasted picture and its
-# alt text — then ⌘E to Read mode (the one cut), held, and the encoder fades
-# back to the blank page so it loops.
+# alt text — then ⌘E to Read mode (a cut), held, ⌘E back (the other cut),
+# Select All and Delete: it ends on the blank page it began with, so it loops.
+# The poster is Read mode.
 zoom in
 # --- record ---
 sleep 1300
@@ -57,3 +59,11 @@ sleep 1400
 save
 sleep 200
 viewmode
+sleep 2500
+viewmode
+sleep 700
+action selectAll:
+sleep 700
+backspace 1
+sleep 400
+save

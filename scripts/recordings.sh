@@ -19,6 +19,8 @@
 #   # loop: yes        the last 0.7 s fade into the first frame, so the clip
 #                      ends as it began; rate.swift checks it does
 #   # cuts: <n>        cuts on purpose (⌘E to Read mode), not held against it
+#   # poster: <ms>     the poster frame's time in the clip, for a clip whose
+#                      end isn't its result (default: the held result at the end)
 #   # typing: human [seed] [wpm]  type the filmed lines with a person's rhythm:
 #                      the human-typing skill's humantype ($HUMANTYPE, default
 #                      ~/.claude/skills/human-typing/humantype.swift) expands
@@ -286,7 +288,8 @@ for rec in scripts/recordings/*.rec; do
         fi
         # The result, held: a loop's last frame is its first again, before the fade.
         poster=0.1; [ "$LOOP" = yes ] && poster=0.9
-        ffmpeg -v error -y -sseof "-$poster" -i "$base.mp4" -frames:v 1 -update 1 "$base-poster.png"
+        at=(-sseof "-$poster"); [ -n "$(header "$rec" poster)" ] && at=(-ss "$(echo "scale=3; $(header "$rec" poster) / 1000" | bc)")
+        ffmpeg -v error -y "${at[@]}" -i "$base.mp4" -frames:v 1 -update 1 "$base-poster.png"
         [ -n "${REC_GIF:-}" ] && ffmpeg -v error -y -i "$base.mp4" -vf \
             "fps=15,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a" "$base.gif"
         echo "ok    $name-$mode"; clips=$((clips + 1))
