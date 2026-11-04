@@ -278,9 +278,6 @@ final class FolderDocument: NSDocument {
             changed.append(item === root ? nil : item)
         }
         if !changed.isEmpty { windowController.fileBrowser.reload(changed) }
-        // A reload drops the outline's selection, and saving the showing file
-        // is itself a change on disk.
-        windowController.fileBrowser.select(current?.fileURL)
     }
 
     /// Reached twice when the window closes with no file chosen: once from

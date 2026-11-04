@@ -661,6 +661,48 @@ enum ReproScript {
                     let r = target.view.convert(target.rect, to: editor)
                     report("repro folderpoint \(arg) at=\(Int(r.midX)),\(Int(r.midY))")
                 }
+            case "folderaction":
+                // In-process sidebar commands, for runs where real events
+                // can't be used: "new-file", "new-folder", "select:<name>",
+                // "rename:<name>" (starts the inline edit), "type:<text>" (into
+                // the field being edited), "commit", "cancel",
+                // "duplicate:<name>", "trash:<name>". Reports the rows after.
+                scheduleFolder(after: delay) { folder in
+                    let browser = folder.windowController.fileBrowser
+                    let outline = browser.outlineView
+                    @MainActor func row(_ name: String) -> FolderItem? {
+                        for index in 0..<outline.numberOfRows {
+                            if let item = outline.item(atRow: index) as? FolderItem, item.name == name { return item }
+                        }
+                        return nil
+                    }
+                    let (op, name) = arg.firstIndex(of: ":").map {
+                        (String(arg[..<$0]), String(arg[arg.index(after: $0)...]))
+                    } ?? (arg, "")
+                    let window = folder.windowController.window
+                    switch op {
+                    case "new-file": browser.newFile(nil)
+                    case "new-folder": browser.newFolder(nil)
+                    case "select":
+                        if let item = row(name) {
+                            outline.selectRowIndexes([outline.row(forItem: item)], byExtendingSelection: false)
+                        }
+                    case "rename": row(name).map(browser.beginRename)
+                    case "type":
+                        let editor = window?.firstResponder as? NSTextView
+                        editor?.insertText(name, replacementRange: editor?.selectedRange() ?? NSRange())
+                    case "commit": window?.makeFirstResponder(outline)
+                    case "cancel":
+                        (window?.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+                    case "duplicate": row(name).map(browser.duplicate)
+                    case "trash": row(name).map(browser.trash)
+                    default: report("repro folderaction: unknown \(arg)"); return
+                    }
+                    let rows = (0..<outline.numberOfRows).compactMap { (outline.item(atRow: $0) as? FolderItem)?.name }
+                    let selected = (outline.item(atRow: outline.selectedRow) as? FolderItem)?.name ?? "-"
+                    report("repro folderaction \(arg) current=\(folder.current?.displayName ?? "nil") " +
+                           "selected=\(selected) rows=\(rows.filter { !$0.hasPrefix("note-") })")
+                }
             case "realkey":
                 // "realkey down|up|return|escape|cmd-delete|text:<chars>" — REAL
                 // keyboard events at the HID tap, so an open menu, a field

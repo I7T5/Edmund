@@ -300,12 +300,22 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         field.drawsBackground = false
         field.stringValue = item.name
         guard keeping else { return }
-        do {
-            let url = try FolderItem.rename(item.url, to: name)
-            guard url != item.url else { return }
-            listChanged(in: [item.parent ?? root], select: url)
-        } catch {
-            presentError(error)
+        // Once the outline has finished ending the edit: reloading it from
+        // inside its own end-editing raised "NSTableView data re-entrancy"
+        // in a live window (rows animating), though never headless.
+        let source = item.url   // a URL, not the item: the closure must be Sendable
+        RunLoop.main.perform { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                do {
+                    let url = try FolderItem.rename(source, to: name)
+                    guard url != source else { return }
+                    let parent = self.root.item(at: source.deletingLastPathComponent()) ?? self.root
+                    self.listChanged(in: [parent], select: url)
+                } catch {
+                    self.presentError(error)
+                }
+            }
         }
     }
 
@@ -422,12 +432,16 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
     /// whole tree, which a checkout touching hundreds of folders would repeat.
     func reload(_ items: [FolderItem?]) {
         guard isViewLoaded else { return }
+        // A reload drops the outline's selection: keep the row that was
+        // selected (a new copy, say), else the showing file's.
+        let kept = selectedItem?.url ?? folder?.current?.fileURL
         rows = [:]
         if filtered != nil {
             applyFilter()
         } else {
             for item in items { outlineView.reloadItem(item, reloadChildren: true) }
         }
+        select(kept)
     }
 
     /// Reveals and selects `url`'s row, expanding the folders above it.

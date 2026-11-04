@@ -337,8 +337,8 @@ struct FolderDocumentTests {
         window.makeFirstResponder(browser.outlineView)   // ends the edit, as Return does
 
         let renamed = url.appendingPathComponent("renamed.md")
+        settle { a.fileURL?.lastPathComponent == "renamed.md" }   // the rename runs after the edit ends
         #expect(FileManager.default.fileExists(atPath: renamed.path))
-        settle { a.fileURL?.lastPathComponent == "renamed.md" }
         #expect(a.fileURL?.lastPathComponent == "renamed.md")
         #expect(window.subtitle == "renamed.md")
         #expect(row(browser, "renamed.md") != nil)
@@ -377,7 +377,10 @@ struct FolderDocumentTests {
         browser.duplicate(try #require(row(browser, "a.md")))
         let copy = url.appendingPathComponent("a copy.md")
         #expect((try? String(contentsOf: copy, encoding: .utf8)) == "text")
-        let selected = browser.outlineView.item(atRow: browser.outlineView.selectedRow) as? FolderItem
+        var selected: FolderItem? { browser.outlineView.item(atRow: browser.outlineView.selectedRow) as? FolderItem }
+        #expect(selected?.name == "a copy.md")
+        // FSEvents reports the copy a moment later; the selection stays on it.
+        folder.directoriesDidChange([url])
         #expect(selected?.name == "a copy.md")
     }
 
