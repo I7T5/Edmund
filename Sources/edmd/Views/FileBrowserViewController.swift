@@ -311,16 +311,31 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         // inside its own end-editing raised "NSTableView data re-entrancy"
         // in a live window (rows animating), though never headless.
         let source = item.url   // a URL, not the item: the closure must be Sendable
-        RunLoop.main.perform { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                do {
-                    let url = try FolderItem.rename(source, to: name)
-                    guard url != source else { return }
-                    let parent = self.root.item(at: source.deletingLastPathComponent()) ?? self.root
-                    self.listChanged(in: [parent], select: url)
-                } catch {
-                    self.presentError(error)
+        performFileOperation(reloading: [source.deletingLastPathComponent()]) {
+            let url = try FolderItem.rename(source, to: name)
+            return url == source ? nil : url
+        }
+    }
+
+    /// Runs `work` off the main thread, then reloads `folders` and selects
+    /// what it returns, back on main. A big copy, or a coordinated move kept
+    /// waiting by the open document it moves, would otherwise stall the
+    /// window. Takes and gives URLs only, so the work is Sendable.
+    private func performFileOperation(reloading folders: [URL],
+                                      _ work: @escaping @Sendable () throws -> URL?) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result { try work() }
+            // RunLoop, not DispatchQueue.main: tests drain the run loop.
+            RunLoop.main.perform { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let url):
+                        let items = folders.map { self.root.item(at: $0) ?? self.root }
+                        self.listChanged(in: items, select: url)
+                    case .failure(let error):
+                        self.presentError(error)
+                    }
                 }
             }
         }
@@ -340,12 +355,8 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
 
     /// Copies the item beside itself ("Notes copy.md") and selects the copy.
     func duplicate(_ item: FolderItem) {
-        do {
-            let copy = try FolderItem.duplicate(item.url)
-            listChanged(in: [item.parent ?? root], select: copy)
-        } catch {
-            presentError(error)
-        }
+        let url = item.url
+        performFileOperation(reloading: [url.deletingLastPathComponent()]) { try FolderItem.duplicate(url) }
     }
 
     /// Moves the item to the Trash, closing any file of it open here first.
@@ -370,6 +381,7 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
     // MARK: - Drag and drop
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        // Not while a name is being edited: a drag in the field selects text.
         guard let item = item as? FolderItem, renaming == nil else { return nil }
         return item.url as NSURL
     }
@@ -396,30 +408,29 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo,
                      item: Any?, childIndex index: Int) -> Bool {
-        let target = dropFolder(for: item)
+        let target = dropFolder(for: item).url
         let local = info.draggingSource as AnyObject? === outlineView
-        var changed = [target]
-        var last: URL?
-        for url in droppedURLs(info) {
-            do {
+        let urls = droppedURLs(info)
+        guard !urls.isEmpty else { return false }
+        // The sources' folders too: a move empties them.
+        let folders = [target] + (local ? urls.map { $0.deletingLastPathComponent() } : [])
+        performFileOperation(reloading: folders) {
+            var last: URL?
+            for url in urls {
                 if local {
-                    last = try FolderItem.move(url, into: target.url)
-                    if let source = root.item(at: url.deletingLastPathComponent()) { changed.append(source) }
+                    last = try FolderItem.move(url, into: target)
                 } else {
-                    let copy = target.url.appendingPathComponent(url.lastPathComponent)
+                    let copy = target.appendingPathComponent(url.lastPathComponent)
                     guard !FileManager.default.fileExists(atPath: copy.path) else {
                         throw FolderItem.OperationError.exists(url.lastPathComponent)
                     }
                     try FileManager.default.copyItem(at: url, to: copy)
                     last = copy
                 }
-            } catch {
-                presentError(error)
-                break
             }
+            return last
         }
-        listChanged(in: changed, select: last)
-        return last != nil
+        return true
     }
 
     private func droppedURLs(_ info: NSDraggingInfo) -> [URL] {

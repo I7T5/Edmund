@@ -376,8 +376,9 @@ struct FolderDocumentTests {
         _ = browser.view
         browser.duplicate(try #require(row(browser, "a.md")))
         let copy = url.appendingPathComponent("a copy.md")
-        #expect((try? String(contentsOf: copy, encoding: .utf8)) == "text")
         var selected: FolderItem? { browser.outlineView.item(atRow: browser.outlineView.selectedRow) as? FolderItem }
+        settle { selected?.name == "a copy.md" }   // the copy runs off the main thread
+        #expect((try? String(contentsOf: copy, encoding: .utf8)) == "text")
         #expect(selected?.name == "a copy.md")
         // FSEvents reports the copy a moment later; the selection stays on it.
         folder.directoriesDidChange([url])
