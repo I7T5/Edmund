@@ -45,6 +45,7 @@ Swift name) is what you pass as a launch arg.
 | `contentWidthUnit` | `settings.appearance.contentWidthUnit` | Display unit only (cm/in); the stored value is always cm |
 | `renderBlankLinesAsBreaks` | `settings.reading.renderBlankLinesAsBreaks` | Read-mode blank-line handling |
 | `sourceMode` | `settings.view.sourceMode` | When on, **Source replaces Edit** in the ⌘E toggle; honored on open |
+| `inspectorPane` | `settings.edit.inspectorPane` | Inspector's selected pane, `"outline"` (default) or `"info"`; shared by every window |
 | `showFormatBar` | `settings.edit.showFormatBar` | **Show the format bar** (View ▸ Show Format Bar, no shortcut; default on, off in Reading mode) |
 | `verboseEditorDiagnostics` | `settings.advanced.verboseEditorDiagnostics` | **Verbose editor trace** (default off in release, on in DEBUG; requires diagnosticLogging; see §4) |
 | `offerCrashReports` | `settings.advanced.offerCrashReports` | **Ask to report crashes on GitHub** (default on; the alert's "Don't ask again" clears it) |
@@ -168,6 +169,10 @@ comments allowed.
 | `bypassdelete <needle>` | simulate drag-move source deletion: `shouldChangeText` + storage mutation, **no `didChangeText`** |
 | `assertcaret <needle>` | log `PASS/FAIL` iff caret sits exactly before `<needle>` |
 | `logsel` | log selection, rawSource length, doc count |
+| `inspector` | toggle the inspector through the responder chain, as the toolbar button does; logs the View menu title |
+| `outline` | log the inspector's width, outline rows, Info name=value pairs and the selected pane |
+| `outlineclick <title>` | go to the outline heading titled `<title>` |
+| `inspectortab <info\|outline>` | show that inspector pane |
 
 Adding a command is ~10 lines in `ReproScript.swift`. Usage, soak patterns, and
 launch recipe: **edmund-live-repro-and-diagnostics**.

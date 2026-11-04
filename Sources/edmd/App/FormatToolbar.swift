@@ -10,9 +10,11 @@ import EdmundCore
 // to be upheld. Commands come from `FormatMenu`'s tables so a command defined
 // once shows up in the menu bar, in Settings ▸ Key Bindings, and here.
 //
-// Default order (misc/plans/prompts/format-bar.md):
-//   Format ▾ · Checklist · Table · Image ▾ · Link · (spacer) · View mode · Share
-//   │ Inspector
+// Default order (`defaultIdentifiers`):
+//   (spacer) · View mode │ (spacer) · Inspector
+// where │ is the inspector tracking separator. Format ▾ · Checklist · Table ·
+// Image ▾ · Link (centred when present) and Share are offered in Customize
+// Toolbar but not placed by default.
 //
 // `FormatToolbar` is an object rather than an enum because it has to *own* the
 // icon-row buttons' action targets, which `NSControl.target` only holds weakly.
