@@ -339,7 +339,12 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
         fileBrowser.view.setFrameSize(NSSize(width: 220, height: 600))
         content.show(Self.placeholder())
         split.addSplitViewItem(sidebar)
-        split.addSplitViewItem(NSSplitViewItem(viewController: content))
+        // A line over the file side, none over the sidebar (`.automatic`). Set
+        // here, not left to the window's `.automatic`: that draws it only once
+        // content scrolls under the toolbar, and the editor never does.
+        let contentItem = NSSplitViewItem(viewController: content)
+        contentItem.titlebarSeparatorStyle = .line
+        split.addSplitViewItem(contentItem)
         split.splitView.autosaveName = "EdmundFolderSidebar"
         split.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 600)
         super.init(window: window)

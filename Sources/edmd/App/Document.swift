@@ -360,7 +360,12 @@ class Document: NSDocument, HeadingNavigable {
         inspectorItem.isCollapsed = true
         let split = EditorSplitViewController()
         editorSplit = split
-        split.addSplitViewItem(NSSplitViewItem(viewController: editorPane))
+        // The titlebar line is the format bar's top border. In a full-size
+        // window each split item draws its own, and `.automatic` draws it only
+        // once content scrolls under the toolbar, which the editor never does.
+        let editorItem = NSSplitViewItem(viewController: editorPane)
+        editorItem.titlebarSeparatorStyle = .line
+        split.addSplitViewItem(editorItem)
         split.addSplitViewItem(inspectorItem)
         // Open/closed and width carry over to the next window and launch.
         split.splitView.autosaveName = "EdmundInspector"

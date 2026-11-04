@@ -29,4 +29,17 @@ import AppKit
         let tabs = try #require(inspector.subviews.first { $0 is NSStackView })
         #expect(tabs.convert(tabs.bounds, to: nil).maxY <= below + 0.5)
     }
+
+    /// The titlebar line is the format bar's top border. Each split item
+    /// draws its own in a full-size window, and `.automatic` leaves it off
+    /// until content scrolls under the toolbar, which the editor never does.
+    @Test("The editor and inspector items draw the titlebar line")
+    func titlebarLine() throws {
+        let doc = Document()
+        doc.makeWindowControllers()
+        let window = try #require(doc.windowControllers.first?.window)
+        defer { window.close() }
+        let split = try #require(window.contentViewController as? NSSplitViewController)
+        #expect(split.splitViewItems.map(\.titlebarSeparatorStyle) == [.line, .line])
+    }
 }
