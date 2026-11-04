@@ -81,7 +81,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
     override func loadView() {
         outlineView.style = .sourceList
-        // Clear, over `BackgroundView`'s window grey: the inspector is one
+        // Clear, over `BackgroundView`'s grey: the inspector is one
         // colour from the titlebar strip down, as Xcode's and CotEditor's
         // are. A fill here, even the same `windowBackgroundColor`, measured
         // 40 against the strip's 50 in dark mode (246 against 236 in light).
@@ -115,7 +115,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
         // The view runs full height, under the toolbar (the window has
         // `.fullSizeContentView`), so the tabs hang below the toolbar and the
-        // window grey shows through the titlebar above them — the colour
+        // inspector grey shows through the titlebar above them — the colour
         // change at the inspector's edge. By `toolbarInset`, not the safe
         // area, which misses the toolbar inside a split item on macOS 14.
         let root = BackgroundView()
@@ -491,13 +491,21 @@ private final class InspectorOutlineView: NSOutlineView {
     }
 }
 
-/// The inspector's one background: window grey from the titlebar strip down,
+/// The inspector's one background (`color`) from the titlebar strip down,
 /// behind the tabs and both panes, which draw none of their own — CotEditor's
 /// inspector is a single colour top to bottom.
 private final class BackgroundView: NSView {
+    /// Window grey in dark mode; in light, a step lighter (#F6F6F6 against
+    /// the window's #ECECEC), between the toolbar and the editor's white.
+    static let color = NSColor(name: "InspectorBackground") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
+            ? NSColor(srgbRed: 246 / 255, green: 246 / 255, blue: 246 / 255, alpha: 1)
+            : .windowBackgroundColor
+    }
+
     override var isOpaque: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
+        Self.color.setFill()
         dirtyRect.fill()
     }
 }
