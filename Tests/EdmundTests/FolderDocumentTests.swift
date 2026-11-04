@@ -175,18 +175,28 @@ struct FolderDocumentTests {
         #expect(abs(sidebarTop - content.bounds.height) < 1)
     }
 
-    /// An inspector-behaviour item would cut the toolbar short above it in
-    /// this full-size-content window; a plain one leaves it whole.
-    @Test("A folder window's inspector is a plain split item that still toggles")
-    func inspectorPlainItem() throws {
+    /// An inspector-behaviour item, as in a document window: it runs full
+    /// height, its divider tracked through the toolbar, and still toggles.
+    @Test("A folder window's inspector runs full height and toggles")
+    func inspectorFullHeight() throws {
         let url = try makeFolder(["a.md": "# A"])
         let folder = try openFolder(url)
         defer { folder.windowController.window?.close() }
         folder.open(url.appendingPathComponent("a.md"))
         let a = try #require(folder.current)
-        #expect(a.inspectorItem.behavior == .default)
+        #expect(a.inspectorItem.behavior == .inspector)
 
         let window = try #require(folder.windowController.window)
+        a.inspectorItem.isCollapsed = false
+        window.layoutIfNeeded()
+        let content = try #require(window.contentView)
+        let inspector = a.inspector.view
+        #expect(abs(inspector.convert(inspector.bounds, to: nil).maxY - content.bounds.height) < 1)
+        let tabs = try #require(inspector.subviews.first { $0 is NSStackView })
+        #expect(tabs.convert(tabs.bounds, to: nil).maxY <= window.contentLayoutRect.maxY + 0.5)
+        #expect(window.toolbar?.items.contains { $0 is NSTrackingSeparatorToolbarItem
+            && $0.itemIdentifier == Document.folderInspectorSeparatorID } == true)
+
         let start = a.inspectorItem.isCollapsed
         // The toolbar's info button, from the editor up the chain.
         #expect(window.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleInspector(_:)),

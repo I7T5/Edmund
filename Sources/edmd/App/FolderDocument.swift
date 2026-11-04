@@ -375,7 +375,9 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     func setContent(_ pane: NSViewController, toolbar: NSToolbar) {
         guard pane !== content.child else { return }
-        content.show(pane)
+        // Full height: the file's editor pane holds itself below the toolbar,
+        // and its inspector runs up into the strip, as in a document window.
+        content.show(pane, belowToolbar: false)
         window?.toolbar = toolbar
     }
 
@@ -503,10 +505,13 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
 final class BelowToolbarController: NSViewController {
     private(set) var child: NSViewController?
     private var top: NSLayoutConstraint?
+    /// False for a child that handles the toolbar itself (a file's pane).
+    private var insetsChild = true
 
     override func loadView() { view = NSView() }
 
-    func show(_ controller: NSViewController) {
+    func show(_ controller: NSViewController, belowToolbar: Bool = true) {
+        insetsChild = belowToolbar
         child?.view.removeFromSuperview()
         child?.removeFromParent()
         addChild(controller)
@@ -524,7 +529,7 @@ final class BelowToolbarController: NSViewController {
         child = controller
     }
 
-    private var toolbarInset: CGFloat { view.toolbarInset }
+    private var toolbarInset: CGFloat { insetsChild ? view.toolbarInset : 0 }
 
     /// Follows the toolbar as it shows, hides or changes size.
     override func viewDidLayout() {
