@@ -251,7 +251,11 @@ for rec in scripts/recordings/*.rec; do
         if [ ! -x "$RUN/humantype" ] && ! swiftc -O "$HUMANTYPE" -o "$RUN/humantype" 2>/dev/null; then
             echo "      no humantype at $HUMANTYPE: typing at a steady pace"
         else
-            humanize() { "$RUN/humantype" expand --seed "${tseed:-1}" --wpm "${twpm:-90}" --builtin 80; }
+            # ReproScript waits 80 ms after a `type` key and 20 ms after every
+            # line, the `sleep` humantype puts before each key included: 120 ms.
+            # At --builtin 80 each key ran 40 ms late, which flattened a 34 ms
+            # roll and a 200 ms word gap into one even ~75 ms step.
+            humanize() { "$RUN/humantype" expand --seed "${tseed:-1}" --wpm "${twpm:-90}" --builtin 120; }
         fi
     fi
     for mode in ${SHOTS_MODES:-$(header "$rec" modes)}; do
