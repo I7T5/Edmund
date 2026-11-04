@@ -181,12 +181,27 @@ struct FolderDocumentTests {
         let content = try #require(window.contentView)
         let scroll = try #require(folder.current?.editor.enclosingScrollView)
         window.layoutIfNeeded()
-        let editorTop = scroll.convert(scroll.bounds, to: content).maxY
+        let firstTop = scroll.convert(scroll.bounds, to: content).maxY
+        // Settle, and log both: CI's macOS 14 runner has measured this a
+        // toolbar height low (496 of 600) while macOS 15 never has; the log
+        // says whether one layout pass was just too early.
+        var editorTop = firstTop
+        for _ in 0..<20 {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            window.layoutIfNeeded()
+            let top = scroll.convert(scroll.bounds, to: content).maxY
+            if top == editorTop { break }
+            editorTop = top
+        }
         let sidebarTop = folder.windowController.fileBrowser.view.convert(
             folder.windowController.fileBrowser.view.bounds, to: content).maxY
         #expect(content.safeAreaInsets.top > 0)
-        let report = "editorTop=\(editorTop) height=\(content.bounds.height) safeTop=\(content.safeAreaInsets.top) layoutTop=\(window.contentLayoutRect.maxY)\n" + chain(from: scroll, to: content)
-        #expect(abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1, Comment(rawValue: report))
+        let expected = content.bounds.height - content.safeAreaInsets.top
+        print("editorBelowToolbar first=\(firstTop) settled=\(editorTop) expected=\(expected) " +
+              "showFormatBar=\(AppSettings.showFormatBar) showToolbar=\(AppSettings.showToolbar) " +
+              "toolbarVisible=\(window.toolbar?.isVisible as Any)")
+        #expect(abs(editorTop - expected) < 1)
+        if abs(editorTop - expected) >= 1 { print(chain(from: scroll, to: content)) }
         #expect(abs(sidebarTop - content.bounds.height) < 1)
     }
 
