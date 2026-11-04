@@ -157,6 +157,20 @@ struct FolderDocumentTests {
         #expect(item.title == (start ? "Show Sidebar" : "Hide Sidebar"))
     }
 
+    /// Each view from `view` up to `root`: type, frame in window space, safe
+    /// area top — for a failure that only reproduces on CI's macOS 14.
+    private func chain(from view: NSView, to root: NSView) -> String {
+        var lines: [String] = []
+        var v: NSView? = view
+        while let cur = v, cur !== root.superview {
+            let f = cur.convert(cur.bounds, to: nil)
+            lines.append("\(type(of: cur)) y=\(f.minY)..\(f.maxY) safeTop=\(cur.safeAreaInsets.top) " +
+                         "constraints(top)=\(cur.superview?.constraints.filter { ($0.firstItem as? NSView) === cur && $0.firstAttribute == .top }.map { "\($0.relation.rawValue)c\($0.constant)p\($0.priority.rawValue)" } ?? [])")
+            v = cur.superview
+        }
+        return lines.joined(separator: "\n")
+    }
+
     @Test("The editor sits below the toolbar while the sidebar runs full height")
     func editorBelowToolbar() throws {
         let url = try makeFolder(["a.md": "# A"])
@@ -171,8 +185,8 @@ struct FolderDocumentTests {
         let sidebarTop = folder.windowController.fileBrowser.view.convert(
             folder.windowController.fileBrowser.view.bounds, to: content).maxY
         #expect(content.safeAreaInsets.top > 0)
-        #expect(abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1,
-                "editorTop=\(editorTop) height=\(content.bounds.height) safeTop=\(content.safeAreaInsets.top) layoutTop=\(window.contentLayoutRect.maxY) inspectorCollapsed=\(folder.current?.inspectorItem.isCollapsed as Any)")
+        let report = "editorTop=\(editorTop) height=\(content.bounds.height) safeTop=\(content.safeAreaInsets.top) layoutTop=\(window.contentLayoutRect.maxY)\n" + chain(from: scroll, to: content)
+        #expect(abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1, Comment(rawValue: report))
         #expect(abs(sidebarTop - content.bounds.height) < 1)
     }
 
