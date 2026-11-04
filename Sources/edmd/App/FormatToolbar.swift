@@ -70,7 +70,7 @@ final class FormatToolbar: NSObject {
             return item
         case Self.image:
             return menuItem(id, label: "Image", toolTip: "Insert an image", symbol: "photo.on.rectangle",
-                            menu: imagePopupMenu())
+                            menu: Self.imagePopupMenu())
         case Self.checklist:
             return actionItem(id, label: "Checklist", toolTip: "Insert a checklist", symbol: "checklist",
                               action: #selector(EditorTextView.formatChecklist(_:)))
@@ -428,7 +428,7 @@ final class FormatToolbar: NSObject {
     /// Attach File… and the device import work today; Photos… is visible but
     /// disabled, so the finished shape of the feature is legible without
     /// pretending the piece exists. See `ImageSource`.
-    func imagePopupMenu() -> NSMenu {
+    static func imagePopupMenu() -> NSMenu {
         let menu = NSMenu(title: "Image")
         for source in ImageSource.allCases {
             if source == .device {

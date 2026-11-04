@@ -750,8 +750,7 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
 @MainActor @Suite struct ImageAndLinkMenuTests {
 
     @Test func imageMenuOffersEverySource() {
-        let (bar, doc) = toolbar()
-        let menu = bar.imagePopupMenu()
+        let menu = FormatToolbar.imagePopupMenu()
         #expect(titles(menu) == ["Attach File…", "Photos…", "-", "Import from iPhone or iPad"])
 
         let attach = menu.items.first { $0.title == "Attach File…" }
@@ -766,7 +765,23 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
         let photos = menu.items.first { $0.title == "Photos…" }
         #expect(photos?.action == nil)
         #expect(photos?.isEnabled == false)
-        _ = doc
+    }
+
+    /// The format bar ends with Table, then the Image pulldown built from the
+    /// toolbar's own menu.
+    @Test func formatBarEndsWithTableThenImage() {
+        func controls(in view: NSView) -> [NSButton] {
+            view.subviews.flatMap { sub -> [NSButton] in
+                if sub is FormatBarButton || sub is FormatBarPopUpButton { return [sub as! NSButton] }
+                return controls(in: sub)
+            }
+        }
+        let tail = controls(in: FormatBarView(frame: .zero)).suffix(2)
+        #expect(tail.first?.action == #selector(EditorTextView.formatTable(_:)))
+        let image = tail.last as? FormatBarPopUpButton
+        #expect(image?.menu?.items.contains {
+            $0.action == #selector(EditorTextView.formatAttachImage(_:))
+        } == true)
     }
 
     @Test func onlyPhotosSourceIsUnavailable() {

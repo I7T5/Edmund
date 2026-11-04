@@ -7,7 +7,7 @@ import EdmundCore
 /// modelled on Apple Mail's format bar. A dumb view: every control's action is
 /// a nil-target `EditorTextView` `format…` action, so a click routes through
 /// the responder chain to the focused editor exactly like a Format-menu item.
-/// The two pulldowns are `NSPopUpButton`s in `.pullDown` mode whose menu items
+/// The pulldowns are `NSPopUpButton`s in `.pullDown` mode whose menu items
 /// have a nil target and their own action — selecting one sends the action up
 /// the responder chain *with the `NSMenuItem` as sender*, which is what
 /// `formatHeading` (reads `tag`) and `formatCallout` (reads `representedObject`)
@@ -150,6 +150,15 @@ final class FormatBarView: ChromeBarView {
                 makePullDown(symbol: "quote.bubble", title: "Alert / Callout",
                              menu: FormatMenu.calloutMenu(),
                              action: #selector(EditorTextView.formatCallout(_:))),
+            ]),
+            // Last because these insert content rather than restyle the
+            // selection; Table before Image, as in the window toolbar.
+            makeGroup([
+                makeButton(symbol: "tablecells", title: "Table",
+                           action: #selector(EditorTextView.formatTable(_:))),
+                makePullDown(symbol: "photo.on.rectangle", title: "Image",
+                             menu: FormatToolbar.imagePopupMenu(),
+                             action: #selector(EditorTextView.formatAttachImage(_:))),
             ]),
         ]
 
