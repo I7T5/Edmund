@@ -89,9 +89,6 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         filterField.target = self
         filterField.action = #selector(filterChanged(_:))
         filterField.setAccessibilityLabel("File browser filter")
-        // Small, to fit the footer, which is the status bar's height.
-        filterField.controlSize = .small
-        filterField.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
         // The filter glyph, not the magnifier: this narrows the list in view
         // rather than searching (Finder's and Xcode's sidebar filters). Set
         // after any `controlSize` change, which resets the cell's images.
@@ -126,9 +123,11 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         let bar = NSStackView(views: [addButton, filterField])
         bar.orientation = .horizontal
         bar.alignment = .centerY
-        // CotEditor's side insets. The bar is the status bar's height
-        // (pinned below), so their top lines meet across the window.
-        bar.edgeInsets = NSEdgeInsets(top: 0, left: 7, bottom: 0, right: 7)
+        // CotEditor's field and side insets; less above and below than its 6pt,
+        // so the field tops the status bar beside it by 2.5pt, as CotEditor's
+        // tops its own (measured: its status bar is 24pt to Edmund's 22pt).
+        bar.edgeInsets = NSEdgeInsets(top: 3.5, left: 7, bottom: 3.5, right: 7)
+        bar.setHuggingPriority(.required, for: .vertical)
         bar.translatesAutoresizingMaskIntoConstraints = false
         footer.addSubview(bar)
         footerSeparator.boxType = .separator
@@ -146,10 +145,10 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
             footer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             footer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            footer.heightAnchor.constraint(equalToConstant: Document.statusBarHeight),
-            bar.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
+            bar.topAnchor.constraint(equalTo: footer.topAnchor),
             bar.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
             bar.trailingAnchor.constraint(equalTo: footer.trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: footer.bottomAnchor),
             footerSeparator.topAnchor.constraint(equalTo: footer.topAnchor),
             footerSeparator.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
             footerSeparator.trailingAnchor.constraint(equalTo: footer.trailingAnchor),

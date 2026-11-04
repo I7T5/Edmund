@@ -24,9 +24,6 @@ class Document: NSDocument, HeadingNavigable {
     /// A file's toolbar in a folder window: the usual items after the
     /// sidebar's toggle. Its own identifier, so the two layouts are saved apart.
     static let folderToolbarID = "FolderToolbar1"
-    /// The status bar along the editor's bottom; a folder window's sidebar
-    /// footer takes the same height so their top lines meet.
-    static let statusBarHeight: CGFloat = 22
 
     /// Builds and owns the formatting toolbar items (see `FormatToolbar`).
     private var formatToolbar: FormatToolbar!
@@ -291,7 +288,7 @@ class Document: NSDocument, HeadingNavigable {
     /// The editor pane (text, status, find and format bars) beside the
     /// inspector, as a split view controller sized to `contentBounds`.
     func makeEditorPane(bounds contentBounds: NSRect) -> NSSplitViewController {
-        let statusBarHeight = Self.statusBarHeight
+        let statusBarHeight: CGFloat = 22
 
         // The text view fills the editor pane; the status bar floats over its
         // bottom edge, revealed on hover.
