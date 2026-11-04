@@ -694,6 +694,14 @@ enum ReproScript {
                     case "commit": window?.makeFirstResponder(outline)
                     case "cancel":
                         (window?.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+                    case "statusbar":
+                        // Shows the hover-revealed status bar, to compare the
+                        // footer's top line with its.
+                        @MainActor func reveal(_ view: NSView) {
+                            if view is StatusBarView { view.alphaValue = 1 }
+                            for subview in view.subviews { reveal(subview) }
+                        }
+                        if let content = window?.contentView { reveal(content) }
                     case "duplicate": row(name).map(browser.duplicate)
                     case "trash": row(name).map(browser.trash)
                     default: report("repro folderaction: unknown \(arg)"); return
