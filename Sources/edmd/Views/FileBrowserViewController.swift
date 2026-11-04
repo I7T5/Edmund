@@ -602,10 +602,7 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
 
     private func makeContextMenu() -> NSMenu {
         let menu = NSMenu()
-        // CotEditor's order: make, change, then reveal.
-        menu.addItem(withTitle: "New File", action: #selector(newFile(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "New Folder", action: #selector(newFolder(_:)), keyEquivalent: "")
-        menu.addItem(.separator())
+        // Change, then reveal. New File and New Folder live in the + menu only.
         menu.addItem(withTitle: "Rename", action: #selector(renameItem(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Duplicate", action: #selector(duplicateItem(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Move to Trash", action: #selector(trashItem(_:)), keyEquivalent: "")
