@@ -602,17 +602,29 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
 
     private func makeContextMenu() -> NSMenu {
         let menu = NSMenu()
-        // Change, then reveal. New File and New Folder live in the + menu only.
-        menu.addItem(withTitle: "Rename", action: #selector(renameItem(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Duplicate", action: #selector(duplicateItem(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Move to Trash", action: #selector(trashItem(_:)), keyEquivalent: "")
-        menu.addItem(.separator())
+        // CotEditor's order, less its New File and New Folder (the + menu's)
+        // and plus Rename (CotEditor renames only by clicking the name).
         menu.addItem(withTitle: "Show in Finder", action: #selector(showInFinder(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Open in New Window", action: #selector(openInNewWindow(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Move to Trash", action: #selector(trashItem(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Duplicate", action: #selector(duplicateItem(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Rename", action: #selector(renameItem(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Share…", action: #selector(shareItem(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Show Hidden Files", action: #selector(toggleHiddenFiles(_:)), keyEquivalent: "")
         for item in menu.items { item.target = self }
         return menu
+    }
+
+    /// The system share picker for the clicked row's file, beside the row.
+    @objc private func shareItem(_ sender: Any?) {
+        guard let item = clickedItem else { return }
+        let row = outlineView.row(forItem: item)
+        NSSharingServicePicker(items: [item.url])
+            .show(relativeTo: outlineView.rect(ofRow: row), of: outlineView, preferredEdge: .maxX)
     }
 
     @objc private func showInFinder(_ sender: Any?) {
@@ -652,7 +664,8 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
             guard let item = clickedItem, item.isEditable else { return false }
             let open = NSDocumentController.shared.document(for: item.url) as? Document
             return !(open?.folder != nil && open?.isDocumentEdited == true)
-        case #selector(showInFinder(_:)), #selector(renameItem(_:)), #selector(duplicateItem(_:)):
+        case #selector(showInFinder(_:)), #selector(renameItem(_:)), #selector(duplicateItem(_:)),
+             #selector(shareItem(_:)):
             return item(for: menuItem) != nil
         case #selector(trashItem(_:)):
             guard let item = item(for: menuItem) else { return false }
