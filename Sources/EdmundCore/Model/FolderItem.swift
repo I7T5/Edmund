@@ -80,6 +80,104 @@ public final class FolderItem {
         return candidate
     }
 
+    // MARK: - File operations
+    //
+    // Coordinated, so an open document (a file presenter) follows its file to
+    // the new name or place, or learns it went to the Trash, without code here.
+
+    public enum OperationError: LocalizedError, Equatable {
+        case invalidName(String)
+        case exists(String)
+        case intoItself(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .invalidName(let name): "“\(name)” can’t be used as a name."
+            case .exists(let name): "An item named “\(name)” already exists in this location."
+            case .intoItself(let name): "“\(name)” can’t be moved into itself."
+            }
+        }
+    }
+
+    /// Renames `url` within its folder and returns the new URL. A name that is
+    /// empty, holds a slash or colon, or starts with a dot (it would vanish
+    /// behind Show Hidden Files) is refused, as is one already taken.
+    public static func rename(_ url: URL, to name: String) throws -> URL {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !name.contains("/"), !name.contains(":"), !name.hasPrefix(".") else {
+            throw OperationError.invalidName(name)
+        }
+        guard name != url.lastPathComponent else { return url }
+        let target = url.deletingLastPathComponent().appendingPathComponent(name)
+        // A change of case only is the same file on a case-insensitive volume.
+        let caseOnly = name.lowercased() == url.lastPathComponent.lowercased()
+        guard caseOnly || !FileManager.default.fileExists(atPath: target.path) else {
+            throw OperationError.exists(name)
+        }
+        try coordinatedMove(url, to: target)
+        return target
+    }
+
+    /// Moves `url` into `folder`, keeping its name, and returns the new URL.
+    public static func move(_ url: URL, into folder: URL) throws -> URL {
+        let source = url.standardizedFileURL.path
+        let destination = folder.standardizedFileURL.path
+        guard destination != source, !destination.hasPrefix(source + "/") else {
+            throw OperationError.intoItself(url.lastPathComponent)
+        }
+        let target = folder.appendingPathComponent(url.lastPathComponent)
+        guard target.standardizedFileURL != url.standardizedFileURL else { return url }
+        guard !FileManager.default.fileExists(atPath: target.path) else {
+            throw OperationError.exists(url.lastPathComponent)
+        }
+        try coordinatedMove(url, to: target)
+        return target
+    }
+
+    /// Copies `url` beside itself under Finder's name for a copy ("a copy.md",
+    /// then "a copy 2.md"; "docs copy" for a folder) and returns the copy.
+    public static func duplicate(_ url: URL) throws -> URL {
+        let isFolder = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+        let ext = isFolder ? "" : url.pathExtension
+        let stem = isFolder ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
+        let copy = freeURL(in: url.deletingLastPathComponent(), base: "\(stem) copy", extension: ext)
+        try FileManager.default.copyItem(at: url, to: copy)
+        return copy
+    }
+
+    /// Moves `url` to the Trash and returns where it went there.
+    @discardableResult
+    public static func trash(_ url: URL) throws -> URL? {
+        var coordinationError: NSError?
+        var trashError: Error?
+        var trashed: NSURL?
+        NSFileCoordinator(filePresenter: nil).coordinate(
+            writingItemAt: url, options: .forDeleting, error: &coordinationError
+        ) { url in
+            do { try FileManager.default.trashItem(at: url, resultingItemURL: &trashed) } catch { trashError = error }
+        }
+        if let error = coordinationError ?? trashError { throw error }
+        return trashed as URL?
+    }
+
+    private static func coordinatedMove(_ source: URL, to target: URL) throws {
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordinationError: NSError?
+        var moveError: Error?
+        coordinator.coordinate(writingItemAt: source, options: .forMoving,
+                               writingItemAt: target, options: .forReplacing,
+                               error: &coordinationError) { source, target in
+            do {
+                coordinator.item(at: source, willMoveTo: target)
+                try FileManager.default.moveItem(at: source, to: target)
+                coordinator.item(at: source, didMoveTo: target)
+            } catch {
+                moveError = error
+            }
+        }
+        if let error = coordinationError ?? moveError { throw error }
+    }
+
     /// The loaded item for `url`, if it sits in an already-read part of the tree.
     /// Symlinks are resolved on both sides: FSEvents reports real paths
     /// (/private/var/…) for a folder opened through a link (/var/…).
