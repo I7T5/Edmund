@@ -55,7 +55,25 @@ final class FormatBarView: ChromeBarView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        wantsLayer = true
+        refreshBacking()
         buildUI()
+    }
+
+    /// The bar overlaps the editor, which scrolls under it, and its
+    /// `.withinWindow` material blurred that text through. An opaque fill on
+    /// the bar's own layer is what the material samples instead, so the bar
+    /// keeps its chrome colour and its key/inactive dimming but shows nothing
+    /// of the document.
+    private func refreshBacking() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshBacking()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
