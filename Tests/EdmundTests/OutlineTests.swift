@@ -184,4 +184,45 @@ import AppKit
         #expect(!outline.isItemExpanded(inspector.roots[0]))
         #expect(outline.isItemExpanded(inspector.roots[1]))
     }
+
+    /// Headings are the outline's top level, with no section row above them;
+    /// an empty document shows one placeholder row.
+    @Test func headingsAreTopLevelRows() {
+        let inspector = InspectorViewController()
+        _ = inspector.view
+        let outline = inspector.outlineView
+        #expect(outline.numberOfRows == 1)
+        #expect(outline.item(atRow: 0) is String)
+
+        inspector.setHeadings([OutlineHeading(level: 1, title: "A", range: NSRange())])
+        #expect(outline.numberOfRows == 1)
+        #expect(outline.level(forRow: 0) == 0)
+        #expect(outline.item(atRow: 0) as? OutlineNode === inspector.roots[0])
+    }
+
+    /// The Info pane shows the metrics; a tab switches panes and the choice
+    /// is kept for the next window.
+    @Test func infoTabShowsTheMetrics() {
+        let key = AppSettings.Key.inspectorPane
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(saved, forKey: key) }
+        UserDefaults.standard.removeObject(forKey: key)
+
+        let inspector = InspectorViewController()
+        _ = inspector.view
+        #expect(inspector.pane == .outline)
+        inspector.setMetrics(words: 3, characters: 12, location: 5, line: 2, lineEnding: "CRLF")
+        #expect(inspector.infoValues.map(\.value) == ["3", "12", "5", "2", "CRLF"])
+
+        inspector.selectPane(.info)
+        #expect(inspector.outlineView.enclosingScrollView?.isHidden == true)
+        #expect(InspectorViewController().pane == .info)
+    }
+
+    /// Info's glyph is the plain document, filled only while selected.
+    @Test func selectedInfoTabIsFilled() {
+        #expect(InspectorViewController.Pane.info.symbol(selected: false) == "doc")
+        #expect(InspectorViewController.Pane.info.symbol(selected: true) == "doc.fill")
+        #expect(NSImage(systemSymbolName: "doc.fill", accessibilityDescription: nil) != nil)
+    }
 }

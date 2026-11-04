@@ -524,18 +524,24 @@ final class BelowToolbarController: NSViewController {
         child = controller
     }
 
-    /// How far the toolbar (and title bar) reach down into this view.
-    private var toolbarInset: CGFloat {
-        guard let window = view.window else { return 0 }
-        let topInWindow = view.convert(view.bounds, to: nil).maxY
-        return max(0, topInWindow - window.contentLayoutRect.maxY)
-    }
+    private var toolbarInset: CGFloat { view.toolbarInset }
 
     /// Follows the toolbar as it shows, hides or changes size.
     override func viewDidLayout() {
         super.viewDidLayout()
         let inset = toolbarInset
         if let top, top.constant != inset { top.constant = inset }
+    }
+}
+
+extension NSView {
+    /// How far the toolbar (and title bar) reach down into this view, by the
+    /// window's `contentLayoutRect` — see `BelowToolbarController` for why
+    /// not the safe area.
+    var toolbarInset: CGFloat {
+        guard let window else { return 0 }
+        let topInWindow = convert(bounds, to: nil).maxY
+        return max(0, topInWindow - window.contentLayoutRect.maxY)
     }
 }
 
