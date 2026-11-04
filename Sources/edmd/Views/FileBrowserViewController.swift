@@ -82,6 +82,9 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
             name: NSView.boundsDidChangeNotification, object: scroll.contentView)
 
         filterField.placeholderString = "Filter"
+        // The small control font in a regular field, as CotEditor's measures
+        // ("Filter" 51 × 17 px at 2x, ours at the 13pt default 59 × 20).
+        filterField.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
         filterField.sendsSearchStringImmediately = false
         filterField.sendsWholeSearchString = false
         filterField.focusRingType = .none
