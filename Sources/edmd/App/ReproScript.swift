@@ -642,6 +642,60 @@ enum ReproScript {
                     }
                     report("repro folderfilter '\(arg)' rows=\(rows)")
                 }
+            case "folderpoint":
+                // Where <arg> ("add", or "row:<name>") sits in the showing
+                // file's editor coordinates: the point `realclick` takes, so a
+                // real click can land on the sidebar.
+                scheduleFolder(after: delay) { folder in
+                    let browser = folder.windowController.fileBrowser
+                    guard let editor = folder.current?.editor else { report("repro folderpoint: no file showing"); return }
+                    var target: (view: NSView, rect: NSRect)?
+                    if arg == "add" {
+                        target = (browser.addButton, browser.addButton.bounds)
+                    } else if arg.hasPrefix("row:"), let row = (0..<browser.outlineView.numberOfRows).first(where: {
+                        (browser.outlineView.item(atRow: $0) as? FolderItem)?.name == String(arg.dropFirst(4))
+                    }) {
+                        target = (browser.outlineView, browser.outlineView.rect(ofRow: row))
+                    }
+                    guard let target else { report("repro folderpoint: no \(arg)"); return }
+                    let r = target.view.convert(target.rect, to: editor)
+                    report("repro folderpoint \(arg) at=\(Int(r.midX)),\(Int(r.midY))")
+                }
+            case "realkey":
+                // "realkey down|up|return|escape|cmd-delete|text:<chars>" — REAL
+                // keyboard events at the HID tap, so an open menu, a field
+                // editor or the sidebar's keyDown gets them as from the keyboard.
+                // Refuses unless this app is active with a key window: the HID
+                // tap types into whatever app is in front.
+                schedule(after: delay) { _ in
+                    guard NSApp.isActive else {
+                        report("repro realkey ABORTED: not the active app"); return
+                    }
+                    let keys: [String: (CGKeyCode, CGEventFlags)] = [
+                        "down": (125, []), "up": (126, []), "return": (36, []),
+                        "escape": (53, []), "cmd-delete": (51, .maskCommand),
+                    ]
+                    let text = arg.hasPrefix("text:") ? String(arg.dropFirst(5)) : nil
+                    guard text != nil || keys[arg] != nil else { report("repro realkey: unknown \(arg)"); return }
+                    let key = keys[arg]
+                    DispatchQueue.global(qos: .userInteractive).async {
+                        func post(_ code: CGKeyCode, _ flags: CGEventFlags, _ chars: String?) {
+                            for down in [true, false] {
+                                let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
+                                e?.flags = flags
+                                if let chars {
+                                    let units = Array(chars.utf16)
+                                    e?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                                }
+                                e?.post(tap: .cghidEventTap)
+                                usleep(20_000)
+                            }
+                        }
+                        if let text { for ch in text { post(0, [], String(ch)) } }
+                        else if let key { post(key.0, key.1, nil) }
+                    }
+                    report("repro realkey \(arg)")
+                }
             case "clickrow":
                 scheduleDoc(after: delay) { _ in
                     guard let row = findInPopover({ ($0 as? FormatPopoverRow)?.item.title == arg })

@@ -20,6 +20,7 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
     let filterField = NSSearchField()
     /// Items the filter shows, or nil when it is empty and everything shows.
     private(set) var filtered: Set<ObjectIdentifier>?
+    private(set) lazy var addButton = makeAddButton()
     private var showsHidden: Bool { AppSettings.folderShowsHiddenFiles }
 
     init(root: FolderItem) {
@@ -110,7 +111,7 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         footer.material = .sidebar
         footer.blendingMode = .behindWindow
         footer.translatesAutoresizingMaskIntoConstraints = false
-        let bar = NSStackView(views: [makeAddButton(), filterField])
+        let bar = NSStackView(views: [addButton, filterField])
         bar.orientation = .horizontal
         bar.alignment = .centerY
         // CotEditor's footer insets.
@@ -198,8 +199,10 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         // Text only, like the app's other menus.
         menu.addItem(withTitle: "New File", action: #selector(newFile(_:)), keyEquivalent: "").target = self
         menu.addItem(withTitle: "New Folder", action: #selector(newFolder(_:)), keyEquivalent: "").target = self
-        // Above the button, as CotEditor's (the button's view is not flipped).
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.maxY + 4), in: sender)
+        // Above the button, as CotEditor's. The point is the menu's top-left
+        // in the button's flipped coordinates: a menu height above its top
+        // (`bounds.maxY` is its bottom edge, which opened the menu below it).
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -menu.size.height - 4), in: sender)
     }
 
     @objc func newFile(_ sender: Any?) {
