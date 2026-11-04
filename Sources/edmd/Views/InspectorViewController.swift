@@ -104,7 +104,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         infoPane = makeInfoPane()
 
         let tabs = NSStackView(views: Pane.allCases.map(makeTabButton))
-        tabs.spacing = 6
+        tabs.spacing = 14
         // The format bar's hairline, so the two strips read as one across
         // the split when the format bar is showing.
         let separator = HairlineView()
@@ -166,7 +166,6 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             // Accent for the selected tab, as CotEditor's and Xcode's
             // inspector tabs; a borderless button draws no on-state of its own.
             button.contentTintColor = p == pane ? .controlAccentColor : .secondaryLabelColor
-            button.needsDisplay = true
         }
     }
 
@@ -176,15 +175,13 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     }
 
     private func makeTabButton(_ pane: Pane) -> NSButton {
-        let button = TabButton(image: Self.tabImage(pane, selected: false), target: self,
-                               action: #selector(tabClicked(_:)))
+        let button = NSButton(image: Self.tabImage(pane, selected: false), target: self,
+                              action: #selector(tabClicked(_:)))
         button.isBordered = false
-        // The format bar's 12pt glyph, in a wider button than its 22×18 so
-        // the selected fill keeps clear of the glyph's edges.
+        // The format bar's control footprint (22×18) and glyph size.
         button.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 28),
-            // 4pt clear of the strip's edges above and below.
+            button.widthAnchor.constraint(equalToConstant: 22),
             button.heightAnchor.constraint(equalToConstant: 18),
         ])
         button.setButtonType(.toggle)
@@ -201,8 +198,8 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))!
     }
 
-    /// Front matter (when the document has any), Text Settings, then Count,
-    /// CotEditor's sections and order: names right-aligned in the secondary
+    /// Front matter (when the document has any), Count, then Text Settings
+    /// (CotEditor's section name): names right-aligned in the secondary
     /// colour against their values, each section its own grid.
     private func makeInfoPane() -> NSView {
         // The last field, the line ending, is a text setting, not a count.
@@ -217,13 +214,13 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         frontMatterHeader.isHidden = true
         frontMatterGrid.isHidden = true
         let stack = NSStackView(views: [frontMatterHeader, frontMatterGrid,
-                                        Self.sectionHeader("Text Settings"), textGrid,
-                                        Self.sectionHeader("Count"), countGrid])
+                                        Self.sectionHeader("Count"), countGrid,
+                                        Self.sectionHeader("Text Settings"), textGrid])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
         stack.setCustomSpacing(16, after: frontMatterGrid)
-        stack.setCustomSpacing(16, after: textGrid)
+        stack.setCustomSpacing(16, after: countGrid)
         stack.translatesAutoresizingMaskIntoConstraints = false
         // Scrolls, as the outline does: long front matter or a short window
         // would otherwise clip the Count rows with no way to reach them.
@@ -497,19 +494,4 @@ private final class HairlineView: NSView {
 /// Top-down layout for the Info pane's scrolled content.
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
-}
-
-/// An inspector tab. The selected one sits on a faint rounded fill, a cue
-/// beside the accent tint that does not rely on colour — Outline's glyph has
-/// no filled variant to carry it.
-private final class TabButton: NSButton {
-    override func draw(_ dirtyRect: NSRect) {
-        if state == .on {
-            // Label colour at low alpha: a soft wash in both appearances,
-            // where quaternary label read as a hard grey block.
-            NSColor.labelColor.withAlphaComponent(0.08).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
-        }
-        super.draw(dirtyRect)
-    }
 }
