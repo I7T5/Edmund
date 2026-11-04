@@ -261,7 +261,10 @@ enum ReproScript {
                     // identical, but avoids the input-context fragility that a
                     // long scripted replay hits when programmatic selections and
                     // synthetic key events interleave.
-                    schedule(after: delay) { $0.insertText(s, replacementRange: NSRange(location: NSNotFound, length: 0)) }
+                    schedule(after: delay) {
+                        $0.insertText(s, replacementRange: NSRange(location: NSNotFound, length: 0))
+                        $0.window?.displayIfNeeded()
+                    }
                     delay += 0.08
                 }
             case "backspace":
