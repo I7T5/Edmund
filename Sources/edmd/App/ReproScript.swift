@@ -666,7 +666,9 @@ enum ReproScript {
                 // can't be used: "new-file", "new-folder", "select:<name>",
                 // "rename:<name>" (starts the inline edit), "type:<text>" (into
                 // the field being edited), "commit", "cancel",
-                // "duplicate:<name>", "trash:<name>". Reports the rows after.
+                // "duplicate:<name>", "trash:<name>", "statusbar" (reveals the
+                // hover-hidden status bar). Reports the rows after, less the
+                // test folder's note-* filler files, to keep the line short.
                 scheduleFolder(after: delay) { folder in
                     let browser = folder.windowController.fileBrowser
                     let outline = browser.outlineView
@@ -715,8 +717,8 @@ enum ReproScript {
                 // "realkey down|up|return|escape|cmd-delete|text:<chars>" — REAL
                 // keyboard events at the HID tap, so an open menu, a field
                 // editor or the sidebar's keyDown gets them as from the keyboard.
-                // Refuses unless this app is active with a key window: the HID
-                // tap types into whatever app is in front.
+                // Refuses unless this app is active: the HID tap types into
+                // whatever app is in front.
                 schedule(after: delay) { _ in
                     guard NSApp.isActive else {
                         report("repro realkey ABORTED: not the active app"); return
