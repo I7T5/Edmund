@@ -120,6 +120,26 @@ final class FolderDocument: NSDocument {
         updateEditedState()
     }
 
+    /// Whether a file open here at or under `url` has unsaved changes: Move
+    /// to Trash is refused for it, so the changes can't go with the file.
+    func hasUnsavedFile(under url: URL) -> Bool {
+        files.contains { $0.isDocumentEdited && Self.contains(url, $0.fileURL) }
+    }
+
+    /// Closes the files open here at or under `url`, which is going to the
+    /// Trash. The showing one gives its place to the placeholder (`release`).
+    func closeFiles(under url: URL) {
+        for document in files where Self.contains(url, document.fileURL) {
+            if document === current { release(document) } else { document.close() }
+        }
+    }
+
+    private static func contains(_ url: URL, _ file: URL?) -> Bool {
+        guard let file = file?.standardizedFileURL.path else { return false }
+        let path = url.standardizedFileURL.path
+        return file == path || file.hasPrefix(path + "/")
+    }
+
     /// Closes `document` here so it can open in a window of its own. The
     /// showing file gives its place back to the placeholder first: closing it
     /// while it owns the window controller would close the window.
@@ -344,6 +364,7 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
         window.folder = folder
 
         fileBrowser.onOpen = { [unowned folder] url in folder.open(url) }
+        fileBrowser.folder = folder
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
