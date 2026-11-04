@@ -1258,6 +1258,7 @@ enum ReproScript {
                             let text = "\(error)"
                             await MainActor.run { report("repro \(cmd) error \(text)") }
                         }
+                        await output.finish()
                         let frames = output.frames, ok = output.written
                         await MainActor.run {
                             report("repro \(cmd) done frames=\(frames) written=\(ok) dir=\(dir)")
@@ -1607,28 +1608,53 @@ enum ReproScript {
 }
 
 /// Writes every frame a burst stream delivers as a PNG named by its index and
-/// the process-uptime ms at delivery — the clock the caret trace uses.
+/// the process-uptime ms it was captured at — the clock the caret trace uses.
+///
+/// A Retina PNG takes ~70 ms to encode. Done in the handler, it held the
+/// stream to ~14 fps (typing filmed in steps) and stamped each frame late, so
+/// the handler only copies the frame out of the stream's pool and the PNGs
+/// encode in parallel; `finish` waits for them.
 private final class BurstOutput: NSObject, SCStreamOutput, @unchecked Sendable {
     private let dir: String
     private let lock = NSLock()
+    private let encoding = DispatchGroup()
+    private let encoder = DispatchQueue(label: "repro.burst.encode", attributes: .concurrent)
     private(set) var frames = 0
     private(set) var written = 0
 
     init(dir: String) { self.dir = dir }
 
+    /// Returns once every delivered frame is on disk.
+    func finish() async {
+        await withCheckedContinuation { done in encoding.notify(queue: .global()) { done.resume() } }
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
                 of type: SCStreamOutputType) {
         guard type == .screen, let buffer = sampleBuffer.imageBuffer else { return }
-        let ms = EditorTextView.debugMs()
-        lock.lock(); let n = frames; frames += 1; lock.unlock()
+        // The capture time, on the host clock `systemUptime` also reads.
+        let ms = Int(CMTimeGetSeconds(sampleBuffer.presentationTimeStamp) * 1000)
         var image: CGImage?
         VTCreateCGImageFromCVPixelBuffer(buffer, options: nil, imageOut: &image)
+        // Drawn into memory of our own: the stream reuses its buffer.
         guard let cg = image,
-              let dest = CGImageDestinationCreateWithURL(
-                URL(fileURLWithPath: "\(dir)/\(String(format: "%04d", n))-\(ms).png") as CFURL,
-                "public.png" as CFString, 1, nil) else { return }
-        CGImageDestinationAddImage(dest, cg, nil)
-        if CGImageDestinationFinalize(dest) { lock.lock(); written += 1; lock.unlock() }
+              let ctx = CGContext(data: nil, width: cg.width, height: cg.height, bitsPerComponent: 8,
+                                  bytesPerRow: 0, space: cg.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                      | CGBitmapInfo.byteOrder32Little.rawValue) else { return }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        guard let copy = ctx.makeImage() else { return }
+        lock.lock(); let n = frames; frames += 1; lock.unlock()
+        let url = URL(fileURLWithPath: "\(dir)/\(String(format: "%04d", n))-\(ms).png")
+        let frame = Frame(image: copy)
+        encoder.async(group: encoding) { [self] in
+            guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else { return }
+            CGImageDestinationAddImage(dest, frame.image, nil)
+            if CGImageDestinationFinalize(dest) { lock.lock(); written += 1; lock.unlock() }
+        }
     }
+
+    /// A finished, immutable image, safe to hand to the encoder queue.
+    private struct Frame: @unchecked Sendable { let image: CGImage }
 }
 #endif
