@@ -28,6 +28,12 @@ final class FormatBarView: ChromeBarView {
     /// shorter than the buttons, the way Mail draws it.
     private static let dividerHeight: CGFloat = 13
 
+    /// One tint for every glyph on the bar. Left to AppKit, a borderless
+    /// button's template draws at secondary-label grey while a pulldown's item-0
+    /// image and arrow draw near full label colour, so the pulldowns read
+    /// heavier than the buttons beside them.
+    private static let glyphTint: NSColor = .secondaryLabelColor
+
     /// One bar control and everything needed to keep it in sync.
     ///
     /// `item` is a private, unregistered menu item carrying the control's
@@ -233,6 +239,7 @@ final class FormatBarView: ChromeBarView {
         button.bezelStyle = .accessoryBarAction
         button.isBordered = false
         button.imagePosition = .imageOnly
+        button.contentTintColor = Self.glyphTint
         // Borderless sheds the bezel's padding, collapsing the intrinsic size to
         // the bare glyph; pin the footprint to match the old bordered buttons —
         // same hit area, no border.
@@ -254,6 +261,7 @@ final class FormatBarView: ChromeBarView {
         pop.menu = menu
         pop.bezelStyle = .accessoryBarAction
         pop.isBordered = false
+        pop.contentTintColor = Self.glyphTint
         pop.refusesFirstResponder = true
         pop.setAccessibilityLabel(title)
         pop.toolTip = title
