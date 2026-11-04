@@ -64,9 +64,9 @@ resize and on `NSWindow.didChangeScreenNotification`. Consumer path lives in
 `EditorTextView+ContentWidth.swift`.
 
 **Window sizing trap:** persistence must round-trip the **frame** size, not the
-`contentView.bounds` size — reapplying content size grows the window by the
-title-bar + toolbar height on every reopen, and heights below `minSize` get
-silently rejected. Save `window.frame.size`, reapply with `window.setFrame(_:)`
+`contentView.bounds` size — before `.fullSizeContentView`, reapplying content
+size grew the window by the title-bar + toolbar height on every reopen, and
+heights below `minSize` still get silently rejected. Save `window.frame.size`, reapply with `window.setFrame(_:)`
 **after the toolbar is installed**. (Note: the key on disk is
 `settings.window.lastHeight` — code, not the `lastWindowSize` some docs say.)
 The origin is saved too and restored only if `AppSettings.reachableFrame` finds

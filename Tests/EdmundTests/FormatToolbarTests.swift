@@ -15,7 +15,7 @@ import AppKit
 }
 
 /// Items AppKit vends itself, which `FormatToolbar.makeItem` never sees.
-private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace]
+private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace, .inspectorTrackingSeparator]
 
 /// Titles of a menu's real items, separators rendered as "-".
 @MainActor private func titles(_ menu: NSMenu) -> [String] {
@@ -26,10 +26,10 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
 
     private let viewMode = NSToolbarItem.Identifier("viewMode")
 
-    /// View mode then the inspector button, on the right.
+    /// View mode on the right, then the inspector button past its tracking separator.
     @Test func defaultOrderMatchesTheSpec() {
         let ids = FormatToolbar.defaultIdentifiers(viewMode: viewMode)
-        #expect(ids == [.flexibleSpace, viewMode, FormatToolbar.inspector])
+        #expect(ids == [.flexibleSpace, viewMode, .inspectorTrackingSeparator, .flexibleSpace, FormatToolbar.inspector])
     }
 
     /// The point sizes are per symbol precisely so the drawn glyphs match; a

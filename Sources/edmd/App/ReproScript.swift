@@ -56,8 +56,10 @@ import ScreenCaptureKit
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   inspector         toggle the inspector from the first responder, as the
 ///                     toolbar button and View menu item reach it
-///   outline           log the inspector's width and rows (depth, expanded, text)
+///   outline           log the inspector's width, rows (depth, expanded, text),
+///                     Info name=value pairs and the selected pane
 ///   outlineclick <t>  click the inspector's outline row titled <t>
+///   inspectortab <p>  show the inspector's outline or info pane
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
 ///   handlemenu row|column  open a table handle's menu via its real hit test
@@ -586,14 +588,24 @@ enum ReproScript {
                         let item = view.item(atRow: row)
                         let text: String
                         switch item {
-                        case let s as InspectorViewController.Section: text = s.title
                         case let n as OutlineNode: text = n.heading.title
-                        case let r as InspectorViewController.InfoRow: text = "\(r.name)=\(r.value)"
                         default: text = "\(item ?? "nil")"
                         }
                         report("repro outline \(view.level(forRow: row)) " +
                                "expanded=\(view.isItemExpanded(item)) \(text)")
                     }
+                    for (name, value) in doc.inspector.infoValues {
+                        report("repro outline info \(name)=\(value)")
+                    }
+                    report("repro outline pane=\(doc.inspector.pane.rawValue)")
+                }
+            case "inspectortab":
+                scheduleDoc(after: delay) { doc in
+                    guard let pane = InspectorViewController.Pane(rawValue: arg) else {
+                        report("repro inspectortab: no pane \(arg)"); return
+                    }
+                    doc.inspector.selectPane(pane)
+                    report("repro inspectortab \(arg)")
                 }
             case "outlineclick":
                 scheduleDoc(after: delay) { doc in

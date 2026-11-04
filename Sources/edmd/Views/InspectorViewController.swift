@@ -3,31 +3,33 @@ import EdmundCore
 
 // MARK: - Inspector
 
-/// The window's right-hand inspector: the document's heading outline, then an
-/// Info section repeating the status bar's fields. One source-list
-/// `NSOutlineView` whose two sections are group rows, so AppKit supplies their
-/// hover Show/Hide; every heading with sub-headings gets its own disclosure
-/// triangle. Everything opens expanded, except that a long outline opens
-/// folded to its top two levels.
+/// The window's right-hand inspector, CotEditor's layout: a row of icon tabs
+/// under the toolbar, then the selected pane. Outline is the document's
+/// heading tree in a source-list `NSOutlineView`, every heading with
+/// sub-headings getting its own disclosure triangle; it opens expanded, except
+/// that a long outline opens folded to its top two levels. Info repeats the
+/// status bar's fields as a name/value grid.
 @MainActor
 final class InspectorViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
-    /// A section's group row. Kept for the controller's lifetime, so its
-    /// expanded state survives every reload of its children.
-    final class Section {
-        let title: String
-        init(_ title: String) { self.title = title }
+    /// In tab order: Info first, as CotEditor's file tab. Outline is still
+    /// the default pane until the user picks another (`AppSettings.inspectorPane`).
+    enum Pane: String, CaseIterable {
+        case info, outline
+
+        /// Filled when selected, Xcode's inspector-tab convention. Info is
+        /// the plain `doc` rather than the toolbar's `info.circle`, which
+        /// already means "the inspector" one row up. `list.bullet.indent` has
+        /// no filled variant.
+        func symbol(selected: Bool) -> String {
+            switch self {
+            case .outline: return "list.bullet.indent"
+            case .info:    return selected ? "doc.fill" : "doc"
+            }
+        }
+        var title: String { self == .outline ? "Outline" : "Info" }
     }
 
-    /// An Info row: a field name and its value.
-    final class InfoRow {
-        let name: String
-        var value: String
-        init(_ name: String, _ value: String) { self.name = name; self.value = value }
-    }
-
-    let outlineSection = Section("Outline")
-    let infoSection = Section("Info")
     private static let noHeadings = "No Headings"
 
     /// Called with the clicked heading's index in the document's heading list.
@@ -56,11 +58,22 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     static let maxInPlaceRetitles = 50
     private var hasAppliedDefaultFold = false
 
-    private(set) var infoRows = [InfoRow("Words", "0"), InfoRow("Characters", "0"),
-                                 InfoRow("Location", "0"), InfoRow("Line", "1"),
-                                 InfoRow("Line Ending", "LF")]
+    private static let infoNames = ["Words", "Characters", "Location", "Line", "Line Ending"]
+    private let infoFields = ["0", "0", "0", "1", "LF"].map { NSTextField(labelWithString: $0) }
+    /// The Info pane's rows, front matter first, for ReproScript and tests.
+    var infoValues: [(name: String, value: String)] {
+        frontMatter.map { ($0.key, $0.value) }
+            + zip(Self.infoNames, infoFields.map(\.stringValue)).map { ($0, $1) }
+    }
+    private var frontMatter: [(key: String, value: String)] = []
+    private let frontMatterHeader = InspectorViewController.sectionHeader("Front Matter")
+    private let frontMatterGrid = NSGridView()
 
     let outlineView: NSOutlineView = InspectorOutlineView()
+    private let outlineScroll = NSScrollView()
+    private var infoPane: NSView!
+    private var tabButtons: [Pane: NSButton] = [:]
+    private(set) var pane = Pane(rawValue: AppSettings.inspectorPane) ?? .outline
 
     override func loadView() {
         outlineView.style = .sourceList
@@ -71,7 +84,6 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         // installs the material's clear background.
         outlineView.backgroundColor = .windowBackgroundColor
         outlineView.headerView = nil
-        outlineView.floatsGroupRows = false
         let column = NSTableColumn(identifier: .init("main"))
         outlineView.addTableColumn(column)
         outlineView.outlineTableColumn = column
@@ -82,21 +94,166 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         outlineView.target = self
         outlineView.action = #selector(rowClicked(_:))
 
-        let scroll = NSScrollView()
-        scroll.documentView = outlineView
-        scroll.hasVerticalScroller = true
+        outlineScroll.documentView = outlineView
+        outlineScroll.hasVerticalScroller = true
         // With "always show scroll bars" a legacy scroller otherwise keeps
         // its empty track down the inspector's edge when nothing scrolls.
-        scroll.autohidesScrollers = true
-        scroll.backgroundColor = .windowBackgroundColor
-        view = scroll
+        outlineScroll.autohidesScrollers = true
+        outlineScroll.backgroundColor = .windowBackgroundColor
+
+        infoPane = makeInfoPane()
+
+        let tabs = NSStackView(views: Pane.allCases.map(makeTabButton))
+        tabs.spacing = 14
+        // The format bar's hairline, so the two strips read as one across
+        // the split when the format bar is showing.
+        let separator = HairlineView()
+
+        // The view runs full height, under the toolbar (the window has
+        // `.fullSizeContentView`), so the tabs hang from the safe area and the
+        // window grey shows through the titlebar above them — the colour
+        // change at the inspector's edge.
+        let root = BackgroundView()
+        for view in [tabs, separator, outlineScroll, infoPane!] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            // The format bar's height, its hairline on the same bottom edge;
+            // centred in the strip the way the format bar centres on its
+            // `interior` (below the toolbar separator, above the hairline).
+            separator.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor,
+                                           constant: FormatBarView.barHeight - ChromeBarView.hairlineHeight),
+            separator.heightAnchor.constraint(equalToConstant: ChromeBarView.hairlineHeight),
+            separator.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            tabs.centerYAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor,
+                                          constant: (FormatBarView.barHeight + 1 - ChromeBarView.hairlineHeight) / 2),
+            tabs.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+        ])
+        for content in [outlineScroll, infoPane!] {
+            NSLayoutConstraint.activate([
+                content.topAnchor.constraint(equalTo: separator.bottomAnchor),
+                content.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+                content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+                content.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            ])
+        }
+        view = root
+        showPane(pane)
 
         outlineView.reloadData()
         isReloading = true
-        outlineView.expandItem(outlineSection)
-        outlineView.expandItem(infoSection)
         for root in roots { expand(root) }
         isReloading = false
+    }
+
+    // MARK: - Panes
+
+    /// Shows `pane` and remembers it for every window and the next launch.
+    func selectPane(_ pane: Pane) {
+        self.pane = pane
+        AppSettings.inspectorPane = pane.rawValue
+        if isViewLoaded { showPane(pane) }
+    }
+
+    private func showPane(_ pane: Pane) {
+        outlineScroll.isHidden = pane != .outline
+        infoPane.isHidden = pane != .info
+        for (p, button) in tabButtons {
+            button.state = p == pane ? .on : .off
+            button.image = Self.tabImage(p, selected: p == pane)
+            // Accent for the selected tab, as CotEditor's and Xcode's
+            // inspector tabs; a borderless button draws no on-state of its own.
+            button.contentTintColor = p == pane ? .controlAccentColor : .secondaryLabelColor
+            button.needsDisplay = true
+        }
+    }
+
+    @objc private func tabClicked(_ sender: NSButton) {
+        guard let pane = tabButtons.first(where: { $0.value === sender })?.key else { return }
+        selectPane(pane)
+    }
+
+    private func makeTabButton(_ pane: Pane) -> NSButton {
+        let button = TabButton(image: Self.tabImage(pane, selected: false), target: self,
+                               action: #selector(tabClicked(_:)))
+        button.isBordered = false
+        // The format bar's control footprint (22×18) and glyph size.
+        button.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 22),
+            button.heightAnchor.constraint(equalToConstant: 18),
+        ])
+        button.setButtonType(.toggle)
+        button.toolTip = pane.title
+        button.setAccessibilityLabel(pane.title)
+        // One choice of two, announced as such rather than as two toggles.
+        button.setAccessibilityRole(.radioButton)
+        tabButtons[pane] = button
+        return button
+    }
+
+    private static func tabImage(_ pane: Pane, selected: Bool) -> NSImage {
+        NSImage(systemSymbolName: pane.symbol(selected: selected), accessibilityDescription: pane.title)!
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))!
+    }
+
+    /// Front matter (when the document has any), then Count: names
+    /// right-aligned in the secondary colour against their values, CotEditor's
+    /// sections.
+    private func makeInfoPane() -> NSView {
+        let countGrid = Self.grid(zip(Self.infoNames, infoFields).map { ($0, $1) })
+        countGrid.column(at: 0).xPlacement = .trailing
+        for grid in [frontMatterGrid, countGrid] {
+            grid.rowSpacing = 6
+            grid.columnSpacing = 8
+        }
+        frontMatterHeader.isHidden = true
+        frontMatterGrid.isHidden = true
+        let stack = NSStackView(views: [frontMatterHeader, frontMatterGrid,
+                                        Self.sectionHeader("Count"), countGrid])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.setCustomSpacing(16, after: frontMatterGrid)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        // Scrolls, as the outline does: long front matter or a short window
+        // would otherwise clip the Count rows with no way to reach them.
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(stack)
+        let scroll = NSScrollView()
+        scroll.documentView = document
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.backgroundColor = .windowBackgroundColor
+        let clip = scroll.contentView
+        NSLayoutConstraint.activate([
+            document.topAnchor.constraint(equalTo: clip.topAnchor),
+            document.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            document.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 12),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -16),
+        ])
+        return scroll
+    }
+
+    private static func sectionHeader(_ title: String) -> NSTextField {
+        let header = NSTextField(labelWithString: title)
+        header.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        header.textColor = .secondaryLabelColor
+        return header
+    }
+
+    private static func grid(_ rows: [(String, NSTextField)]) -> NSGridView {
+        NSGridView(views: rows.map { name, value in
+            let label = NSTextField(labelWithString: name)
+            label.textColor = .secondaryLabelColor
+            return [label, value]
+        })
     }
 
     // MARK: - Updates
@@ -142,20 +299,41 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         }
         guard isViewLoaded else { return }
         isReloading = true
-        outlineView.reloadItem(outlineSection, reloadChildren: true)
+        outlineView.reloadData()
         for root in roots { expand(root) }
         isReloading = false
     }
 
     func setMetrics(words: Int, characters: Int, location: Int, line: Int, lineEnding: String) {
         let values = ["\(words)", "\(characters)", "\(location)", "\(line)", lineEnding]
-        // Only the rows that changed — a caret move changes two of five — and
-        // never the section: reloading its title on every caret move
-        // re-created it, and it flashed a different grey each time.
-        let changed = zip(infoRows, values).filter { $0.value != $1 }
-        for (row, value) in changed { row.value = value }
-        guard isViewLoaded else { return }
-        for (row, _) in changed { outlineView.reloadItem(row) }
+        // Only the fields that changed — a caret move changes two of five.
+        for (field, value) in zip(infoFields, values) where field.stringValue != value {
+            field.stringValue = value
+        }
+    }
+
+    /// Rebuilds the Front Matter rows; a no-op while the pairs are unchanged,
+    /// which is every edit outside the front matter.
+    func setFrontMatter(_ pairs: [(key: String, value: String)]) {
+        guard !pairs.elementsEqual(frontMatter, by: { $0 == $1 }) else { return }
+        frontMatter = pairs
+        while frontMatterGrid.numberOfRows > 0 { frontMatterGrid.removeRow(at: 0) }
+        for (key, value) in pairs {
+            let name = NSTextField(labelWithString: key)
+            name.textColor = .secondaryLabelColor
+            name.lineBreakMode = .byTruncatingTail
+            let field = NSTextField(labelWithString: value)
+            // One line, truncated: a long list or description would
+            // otherwise widen the grid past the inspector.
+            field.lineBreakMode = .byTruncatingTail
+            field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            field.toolTip = value
+            frontMatterGrid.addRow(with: [name, field])
+        }
+        // Empty, the grid has no columns to place.
+        if frontMatterGrid.numberOfColumns > 0 { frontMatterGrid.column(at: 0).xPlacement = .trailing }
+        frontMatterHeader.isHidden = pairs.isEmpty
+        frontMatterGrid.isHidden = pairs.isEmpty
     }
 
     nonisolated private static func key(_ heading: OutlineHeading) -> String { "\(heading.level)|\(heading.title)" }
@@ -189,10 +367,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         switch item {
-        case nil:                      return 2
-        case let s as Section where s === outlineSection:
-                                       return max(roots.count, 1)
-        case is Section:               return infoRows.count
+        case nil:                      return max(roots.count, 1)
         case let node as OutlineNode:  return node.children.count
         default:                       return 0
         }
@@ -200,41 +375,30 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         switch item {
-        case nil:                      return index == 0 ? outlineSection : infoSection
-        case let s as Section where s === outlineSection:
-                                       return roots.isEmpty ? Self.noHeadings : roots[index]
-        case is Section:               return infoRows[index]
+        case nil:                      return roots.isEmpty ? Self.noHeadings : roots[index]
         case let node as OutlineNode:  return node.children[index]
         default:                       return ""
         }
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        item is Section || ((item as? OutlineNode)?.children.isEmpty == false)
+        (item as? OutlineNode)?.children.isEmpty == false
     }
 
     // MARK: - Delegate
 
-    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool { item is Section }
-
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool { item is OutlineNode }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        switch item {
-        case let section as Section:
-            return sectionCell(section.title)
-        case let node as OutlineNode:
+        if let node = item as? OutlineNode {
             // Secondary label colour, like the Info names: full label colour read
             // too stark for a column of navigation.
             let cell = textCell(node.heading.title.isEmpty ? " " : node.heading.title, id: "heading",
                                 color: .secondaryLabelColor)
             cell.toolTip = node.heading.title
             return cell
-        case let row as InfoRow:
-            return infoCell(row)
-        default:
-            return textCell(Self.noHeadings, id: "empty", color: .secondaryLabelColor)
         }
+        return textCell(Self.noHeadings, id: "empty", color: .secondaryLabelColor)
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
@@ -272,61 +436,10 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         ])
         return cell
     }
-
-    /// A section title: small and bold, in the secondary colour CotEditor's
-    /// and Xcode's inspectors title their sections in.
-    ///
-    /// The label is deliberately not the cell's `textField`. A source list
-    /// restyles the label in that outlet — tertiary colour, semibold, some
-    /// time after the cell is created and only in a window on screen — which
-    /// set the two titles in different greys and made one re-created by a
-    /// reload flash dark before fading. Overriding the label's setters did not
-    /// stop it; leaving the outlet empty does.
-    private func sectionCell(_ title: String) -> NSTableCellView {
-        let identifier = NSUserInterfaceItemIdentifier("group")
-        if let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView,
-           let label = cell.subviews.first as? NSTextField {
-            label.stringValue = title
-            return cell
-        }
-        let cell = NSTableCellView()
-        cell.identifier = identifier
-        let label = NSTextField(labelWithString: title)
-        label.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
-        label.textColor = .secondaryLabelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
-            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-        ])
-        return cell
-    }
-
-    /// Name on the left in the secondary colour, value right-aligned — the
-    /// status bar's label/value pairing, laid out as a list.
-    private func infoCell(_ row: InfoRow) -> NSTableCellView {
-        let cell = textCell(row.name, id: "info", color: .secondaryLabelColor)
-        let value: NSTextField
-        if let existing = cell.subviews.compactMap({ $0 as? NSTextField }).first(where: { $0 !== cell.textField }) {
-            value = existing
-        } else {
-            value = NSTextField(labelWithString: "")
-            value.alignment = .right
-            value.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(value)
-            NSLayoutConstraint.activate([
-                value.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
-                value.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            ])
-        }
-        value.stringValue = row.value
-        return cell
-    }
 }
 
 /// Draws its disclosure chevrons at the weight of the secondary label colour,
-/// alongside the section titles, instead of the full label colour AppKit
+/// alongside the heading titles, instead of the full label colour AppKit
 /// gives them. Faded rather than tinted: the disclosure button's cell ignores
 /// `contentTintColor` (set, template image, still drawn in label colour), and
 /// secondary label is label colour at about half opacity anyway. Not faded
@@ -351,5 +464,41 @@ private final class InspectorOutlineView: NSOutlineView {
             return
         }
         super.keyDown(with: event)
+    }
+}
+
+/// Window grey behind the tabs and up through the titlebar.
+private final class BackgroundView: NSView {
+    override var isOpaque: Bool { true }
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        dirtyRect.fill()
+    }
+}
+
+/// A one-pixel separator-coloured line, the format bar's bottom hairline.
+private final class HairlineView: NSView {
+    override var isOpaque: Bool { false }
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.separatorColor.setFill()
+        bounds.fill()
+    }
+}
+
+/// Top-down layout for the Info pane's scrolled content.
+private final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+/// An inspector tab. The selected one sits on a faint rounded fill, a cue
+/// beside the accent tint that does not rely on colour — Outline's glyph has
+/// no filled variant to carry it.
+private final class TabButton: NSButton {
+    override func draw(_ dirtyRect: NSRect) {
+        if state == .on {
+            NSColor.quaternaryLabelColor.setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+        }
+        super.draw(dirtyRect)
     }
 }

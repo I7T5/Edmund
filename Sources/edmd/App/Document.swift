@@ -126,21 +126,24 @@ class Document: NSDocument, HeadingNavigable {
     override func makeWindowControllers() {
         // Default content size for first launch. Any saved size is applied as a
         // full window frame at the end of setup (below), once the toolbar is in
-        // place — so the frame round-trips exactly and doesn't drift by the
-        // title bar + toolbar height each time.
+        // place, so it round-trips exactly with what windowDidResize saves.
         //
-        // Sized so the *window* lands on a canonical 800x600: the height is the
-        // content area, and the title bar + unified toolbar add 80pt on top.
-        // The width also leaves the reading column (12cm / 5in physical, ~605pt
-        // on a 14" display) balanced margins rather than being arbitrary.
+        // Sized so the window lands on a canonical 800x600. With
+        // `.fullSizeContentView` the content rect is the whole window,
+        // title bar and toolbar included. The width also leaves the reading
+        // column (12cm / 5in physical, ~605pt on a 14" display) balanced
+        // margins rather than being arbitrary.
         let windowWidth: CGFloat = 800
-        let windowHeight: CGFloat = 520
+        let windowHeight: CGFloat = 600
         let savedOrigin = AppSettings.lastWindowOrigin
         let savedSize = AppSettings.lastWindowSize
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            // Full-size content so the inspector can run up under the toolbar,
+            // as CotEditor's does; the editor pane's content is pinned below the
+            // toolbar (see the split below).
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -211,14 +214,15 @@ class Document: NSDocument, HeadingNavigable {
         //
         // The identifier is versioned: `autosavesConfiguration` persists the item
         // layout per identifier, and a saved set wins over any new defaults.
-        // MainToolbar3 is what makes the inspector button appear for existing
-        // users; it also discards any layout they customized under MainToolbar2.
+        // MainToolbar4 is what gives existing users the inspector tracking
+        // separator; it also discards any layout they customized under
+        // MainToolbar3.
         formatToolbar = FormatToolbar(document: self)
-        let toolbar = NSToolbar(identifier: "MainToolbar3")
+        let toolbar = NSToolbar(identifier: "MainToolbar4")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
-        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar3"
+        toolbar.autosavesConfiguration = true   // persists layout per "MainToolbar4"
         // Flexible space alone does not centre the group: measured on a 1500pt
         // window, the leading one absorbed all 1077pt of slack and the trailing
         // one got nothing. This is the API that actually centres.
@@ -259,8 +263,20 @@ class Document: NSDocument, HeadingNavigable {
         // inspector item is what `toggleInspector(_:)` — the toolbar's info
         // button — collapses and expands. Sized before it becomes the
         // content view controller, which otherwise resizes the window to fit it.
+        // With `.fullSizeContentView` the pane runs up under the toolbar like
+        // the inspector (a split item's `allowsFullHeightLayout = false` did
+        // not stop it, measured), so the container hangs from the safe area:
+        // the text, top bars and Read view keep starting below the toolbar.
         let editorPane = NSViewController()
-        editorPane.view = containerView
+        editorPane.view = NSView(frame: contentBounds)
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        editorPane.view.addSubview(containerView)
+        NSLayoutConstraint.activate([
+            containerView.topAnchor.constraint(equalTo: editorPane.view.safeAreaLayoutGuide.topAnchor),
+            containerView.leadingAnchor.constraint(equalTo: editorPane.view.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: editorPane.view.trailingAnchor),
+            containerView.bottomAnchor.constraint(equalTo: editorPane.view.bottomAnchor),
+        ])
         inspector = InspectorViewController()
         inspector.onSelectHeading = { [weak self] in self?.goToHeading(at: $0) }
         // Opening width, CotEditor's inspector's (Xcode's is 260pt). Unset, the
@@ -386,7 +402,7 @@ class Document: NSDocument, HeadingNavigable {
     @objc private func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         // Save the full frame size; it's restored verbatim via setFrame on the
-        // next window, so the size round-trips exactly (no title-bar/toolbar drift).
+        // next window, so the size round-trips exactly (frame in == frame out).
         saveWindowFrame(window)
     }
 
@@ -495,6 +511,7 @@ class Document: NSDocument, HeadingNavigable {
         let work = DispatchWorkItem { [weak self] in
             guard let self, let editor = self.editor else { return }
             self.inspector.setHeadings(editor.outlineHeadings)
+            self.inspector.setFrontMatter(editor.frontMatterPairs)
         }
         if immediately {
             work.perform()

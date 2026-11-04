@@ -137,6 +137,7 @@ enum AppSettings {
         static let showToolbar         = "settings.edit.showToolbar"
         static let showFormatBar       = "settings.edit.showFormatBar"
         static let autoHideToolbar     = "settings.edit.autoHideToolbar"
+        static let inspectorPane       = "settings.edit.inspectorPane"
         static let showInvisibles      = "settings.edit.showInvisibles"
         // Parked with the rest of the Always mode (see `showInvisibles` below):
         // static let invisiblesMode  = "settings.edit.invisiblesMode"
@@ -642,6 +643,13 @@ enum AppSettings {
     static var autoHideToolbar: Bool {
         get { boolDefaultTrue(Key.autoHideToolbar) }
         set { UserDefaults.standard.set(newValue, forKey: Key.autoHideToolbar) }
+    }
+
+    /// The inspector's selected pane ("outline" or "info"), shared by every
+    /// window and kept across launches.
+    static var inspectorPane: String {
+        get { UserDefaults.standard.string(forKey: Key.inspectorPane) ?? "outline" }
+        set { UserDefaults.standard.set(newValue, forKey: Key.inspectorPane) }
     }
 
     /// Whether document windows show the format bar across the top of the
