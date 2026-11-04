@@ -606,19 +606,18 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
 
     private func makeContextMenu() -> NSMenu {
         let menu = NSMenu()
-        // Taking the file elsewhere (opening first, as the commoner), then
-        // changing it, with Move to Trash alone between dividers: the one
-        // destructive command, kept a slip away from Rename and Duplicate.
-        // Duplicate and Share both hand out a copy. No Open in New Tab: a
-        // folder window takes no tabs, its sidebar being what switches files.
+        // Finder's order: taking the file elsewhere (opening first, as the
+        // commoner), Move to Trash alone between dividers, then Rename and
+        // Duplicate, then Share. No Open in New Tab: a folder window takes no
+        // tabs, its sidebar being what switches files.
         menu.addItem(withTitle: "Open in New Window", action: #selector(openInNewWindow(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Show in Finder", action: #selector(showInFinder(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Rename", action: #selector(renameItem(_:)), keyEquivalent: "")
-        menu.addItem(.separator())
         menu.addItem(withTitle: "Move to Trash", action: #selector(trashItem(_:)), keyEquivalent: "")
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Rename", action: #selector(renameItem(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Duplicate", action: #selector(duplicateItem(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Share…", action: #selector(shareItem(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Show Hidden Files", action: #selector(toggleHiddenFiles(_:)), keyEquivalent: "")
