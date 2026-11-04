@@ -495,11 +495,11 @@ private final class InspectorOutlineView: NSOutlineView {
 /// behind the tabs and both panes, which draw none of their own — CotEditor's
 /// inspector is a single colour top to bottom.
 private final class BackgroundView: NSView {
-    /// Window grey in dark mode; in light, a step lighter (#F6F6F6 against
+    /// Window grey in dark mode; in light, a step lighter (#F2F2F2 against
     /// the window's #ECECEC), between the toolbar and the editor's white.
     static let color = NSColor(name: "InspectorBackground") { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
-            ? NSColor(srgbRed: 246 / 255, green: 246 / 255, blue: 246 / 255, alpha: 1)
+            ? NSColor(srgbRed: 242 / 255, green: 242 / 255, blue: 242 / 255, alpha: 1)
             : .windowBackgroundColor
     }
 
