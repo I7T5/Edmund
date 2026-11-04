@@ -171,7 +171,8 @@ struct FolderDocumentTests {
         let sidebarTop = folder.windowController.fileBrowser.view.convert(
             folder.windowController.fileBrowser.view.bounds, to: content).maxY
         #expect(content.safeAreaInsets.top > 0)
-        #expect(abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1)
+        #expect(abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1,
+                "editorTop=\(editorTop) height=\(content.bounds.height) safeTop=\(content.safeAreaInsets.top) layoutTop=\(window.contentLayoutRect.maxY) inspectorCollapsed=\(folder.current?.inspectorItem.isCollapsed as Any)")
         #expect(abs(sidebarTop - content.bounds.height) < 1)
     }
 
