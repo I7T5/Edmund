@@ -75,18 +75,19 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     private var infoPane: NSView!
     private var tabButtons: [Pane: NSButton] = [:]
     private(set) var pane = Pane(rawValue: AppSettings.inspectorPane) ?? .outline
-    /// The strip's top: the toolbar's height in a document window, where the
-    /// inspector runs up behind it; 0 in a folder window, where it doesn't.
-    private var stripTop: NSLayoutConstraint!
+    /// The strip's top: below the toolbar, where the inspector runs up
+    /// behind it (both window types). See `NSView.belowToolbar`.
+    private var stripTop: [NSLayoutConstraint] = []
+    private let strip = NSLayoutGuide()
 
     override func loadView() {
         outlineView.style = .sourceList
-        // Opaque window grey, as Xcode's and CotEditor's inspectors, rather
-        // than the source list's translucent material: an inspector is not a
-        // sidebar, and in dark mode the grey sits back where the text
-        // background's near-black stood out. Set after `style`, which
-        // installs the material's clear background.
-        outlineView.backgroundColor = .windowBackgroundColor
+        // Clear, over `BackgroundView`'s grey: the inspector is one
+        // colour from the titlebar strip down, as Xcode's and CotEditor's
+        // are. A fill here, even the same `windowBackgroundColor`, measured
+        // 40 against the strip's 50 in dark mode (246 against 236 in light).
+        // Set after `style`, which installs the source list's material.
+        outlineView.backgroundColor = .clear
         outlineView.headerView = nil
         let column = NSTableColumn(identifier: .init("main"))
         outlineView.addTableColumn(column)
@@ -103,7 +104,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         // With "always show scroll bars" a legacy scroller otherwise keeps
         // its empty track down the inspector's edge when nothing scrolls.
         outlineScroll.autohidesScrollers = true
-        outlineScroll.backgroundColor = .windowBackgroundColor
+        outlineScroll.drawsBackground = false
 
         infoPane = makeInfoPane()
 
@@ -115,14 +116,12 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
         // The view runs full height, under the toolbar (the window has
         // `.fullSizeContentView`), so the tabs hang below the toolbar and the
-        // window grey shows through the titlebar above them — the colour
-        // change at the inspector's edge. By `toolbarInset`, not the safe
-        // area, which misses the toolbar inside a split item on macOS 14.
+        // inspector grey shows through the titlebar above them — the colour
+        // change at the inspector's edge (`NSView.belowToolbar`).
         let root = BackgroundView()
-        // An empty guide marking the strip's top, moved by `viewDidLayout`.
-        let strip = NSLayoutGuide()
+        root.onWindow = { [weak self] in self?.pinStrip() }
+        // An empty guide marking the strip's top, pinned by `pinStrip`.
         root.addLayoutGuide(strip)
-        stripTop = strip.topAnchor.constraint(equalTo: root.topAnchor)
         for view in [tabs, separator, outlineScroll, infoPane!] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
@@ -131,7 +130,6 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             // The format bar's height, its hairline on the same bottom edge;
             // centred in the strip the way the format bar centres on its
             // `interior` (below the toolbar separator, above the hairline).
-            stripTop,
             separator.topAnchor.constraint(equalTo: strip.topAnchor,
                                            constant: FormatBarView.barHeight - ChromeBarView.hairlineHeight),
             separator.heightAnchor.constraint(equalToConstant: ChromeBarView.hairlineHeight),
@@ -150,6 +148,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             ])
         }
         view = root
+        pinStrip()
         showPane(pane)
 
         outlineView.reloadData()
@@ -158,11 +157,10 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         isReloading = false
     }
 
-    /// Follows the toolbar as it shows, hides or changes size.
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        let inset = view.toolbarInset
-        if stripTop.constant != inset { stripTop.constant = inset }
+    private func pinStrip() {
+        NSLayoutConstraint.deactivate(stripTop)
+        stripTop = view.belowToolbar(strip.topAnchor)
+        NSLayoutConstraint.activate(stripTop)
     }
 
     // MARK: - Panes
@@ -248,7 +246,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         scroll.documentView = document
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        scroll.backgroundColor = .windowBackgroundColor
+        scroll.drawsBackground = false
         let clip = scroll.contentView
         NSLayoutConstraint.activate([
             document.topAnchor.constraint(equalTo: clip.topAnchor),
@@ -491,11 +489,23 @@ private final class InspectorOutlineView: NSOutlineView {
     }
 }
 
-/// Window grey behind the tabs and up through the titlebar.
-private final class BackgroundView: NSView {
+/// The inspector's one background (`color`) from the titlebar strip down,
+/// behind the tabs and both panes, which draw none of their own — CotEditor's
+/// inspector is a single colour top to bottom.
+private final class BackgroundView: WindowObservingView {
+    /// Window grey in dark mode; in light, a step lighter (#F2F2F2 against
+    /// the window's #ECECEC), between the toolbar and the editor's white.
+    /// Increase Contrast keeps the system colour, as the window around it does.
+    static let color = NSColor(name: "InspectorBackground") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua,
+                                    .accessibilityHighContrastDarkAqua]) == .aqua
+            ? NSColor(srgbRed: 242 / 255, green: 242 / 255, blue: 242 / 255, alpha: 1)
+            : .windowBackgroundColor
+    }
+
     override var isOpaque: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
+        Self.color.setFill()
         dirtyRect.fill()
     }
 }

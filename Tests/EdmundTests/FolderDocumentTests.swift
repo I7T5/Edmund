@@ -157,6 +157,20 @@ struct FolderDocumentTests {
         #expect(item.title == (start ? "Show Sidebar" : "Hide Sidebar"))
     }
 
+    /// Each view from `view` up to `root`: type, frame in window space, safe
+    /// area top — for a failure that only reproduces on CI's macOS 14.
+    private func chain(from view: NSView, to root: NSView) -> String {
+        var lines: [String] = []
+        var v: NSView? = view
+        while let cur = v, cur !== root.superview {
+            let f = cur.convert(cur.bounds, to: nil)
+            lines.append("\(type(of: cur)) y=\(f.minY)..\(f.maxY) safeTop=\(cur.safeAreaInsets.top) " +
+                         "constraints(top)=\(cur.superview?.constraints.filter { ($0.firstItem as? NSView) === cur && $0.firstAttribute == .top }.map { "\($0.relation.rawValue)c\($0.constant)p\($0.priority.rawValue)" } ?? [])")
+            v = cur.superview
+        }
+        return lines.joined(separator: "\n")
+    }
+
     @Test("The editor sits below the toolbar while the sidebar runs full height")
     func editorBelowToolbar() throws {
         let url = try makeFolder(["a.md": "# A"])
@@ -171,22 +185,37 @@ struct FolderDocumentTests {
         let sidebarTop = folder.windowController.fileBrowser.view.convert(
             folder.windowController.fileBrowser.view.bounds, to: content).maxY
         #expect(content.safeAreaInsets.top > 0)
-        #expect(abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1)
+        let report = "editorTop=\(editorTop) height=\(content.bounds.height) safeTop=\(content.safeAreaInsets.top) layoutTop=\(window.contentLayoutRect.maxY)\n" + chain(from: scroll, to: content)
+        #expect(abs(editorTop - (content.bounds.height - content.safeAreaInsets.top)) < 1, Comment(rawValue: report))
         #expect(abs(sidebarTop - content.bounds.height) < 1)
     }
 
-    /// An inspector-behaviour item would cut the toolbar short above it in
-    /// this full-size-content window; a plain one leaves it whole.
-    @Test("A folder window's inspector is a plain split item that still toggles")
-    func inspectorPlainItem() throws {
+    /// An inspector-behaviour item, as in a document window: it runs full
+    /// height, its divider tracked through the toolbar, and still toggles.
+    @Test("A folder window's inspector runs full height and toggles")
+    func inspectorFullHeight() throws {
         let url = try makeFolder(["a.md": "# A"])
         let folder = try openFolder(url)
         defer { folder.windowController.window?.close() }
         folder.open(url.appendingPathComponent("a.md"))
         let a = try #require(folder.current)
-        #expect(a.inspectorItem.behavior == .default)
+        #expect(a.inspectorItem.behavior == .inspector)
 
         let window = try #require(folder.windowController.window)
+        a.inspectorItem.isCollapsed = false
+        window.layoutIfNeeded()
+        let content = try #require(window.contentView)
+        let inspector = a.inspector.view
+        #expect(abs(inspector.convert(inspector.bounds, to: nil).maxY - content.bounds.height) < 1)
+        let tabs = try #require(inspector.subviews.first { $0 is NSStackView })
+        // Within the strip under the toolbar, not merely somewhere below it:
+        // on macOS 14 a stale inset once put things a toolbar height lower.
+        let tabsTop = tabs.convert(tabs.bounds, to: nil).maxY
+        #expect(tabsTop <= window.contentLayoutRect.maxY + 0.5 && tabsTop >= window.contentLayoutRect.maxY - FormatBarView.barHeight,
+                "tabsTop=\(tabsTop) toolbarBottom=\(window.contentLayoutRect.maxY)")
+        #expect(window.toolbar?.items.contains { $0 is NSTrackingSeparatorToolbarItem
+            && $0.itemIdentifier == Document.folderInspectorSeparatorID } == true)
+
         let start = a.inspectorItem.isCollapsed
         // The toolbar's info button, from the editor up the chain.
         #expect(window.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleInspector(_:)),
