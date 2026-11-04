@@ -111,6 +111,63 @@ struct FolderItemTests {
         #expect(cut.isEmpty)
     }
 
+    @Test("Rename moves the file and refuses taken, empty, slashed or hidden names")
+    func renaming() throws {
+        let url = try makeTree()
+        let renamed = try FolderItem.rename(url.appendingPathComponent("b.md"), to: "c.md")
+        #expect(renamed.lastPathComponent == "c.md")
+        #expect(FileManager.default.fileExists(atPath: renamed.path))
+        #expect(!FileManager.default.fileExists(atPath: url.appendingPathComponent("b.md").path))
+        for bad in ["", " ", "a/b.md", "x:y", ".secret"] {
+            #expect(throws: FolderItem.OperationError.invalidName(bad.trimmingCharacters(in: .whitespaces))) {
+                try FolderItem.rename(renamed, to: bad)
+            }
+        }
+        #expect(throws: FolderItem.OperationError.exists("a2.md")) {
+            try FolderItem.rename(renamed, to: "a2.md")
+        }
+        // Same name: nothing to do.
+        #expect(try FolderItem.rename(renamed, to: "c.md") == renamed)
+    }
+
+    @Test("Move puts an item in another folder, never into itself or a folder inside it")
+    func moving() throws {
+        let url = try makeTree()
+        let docs = url.appendingPathComponent("docs")
+        let moved = try FolderItem.move(url.appendingPathComponent("b.md"), into: docs)
+        #expect(moved.path == docs.appendingPathComponent("b.md").path)
+        #expect(FileManager.default.fileExists(atPath: moved.path))
+        #expect(throws: FolderItem.OperationError.intoItself("docs")) {
+            try FolderItem.move(docs, into: docs.appendingPathComponent("notes"))
+        }
+        #expect(throws: FolderItem.OperationError.intoItself("docs")) { try FolderItem.move(docs, into: docs) }
+        try Data().write(to: url.appendingPathComponent("guide.md"))
+        #expect(throws: FolderItem.OperationError.exists("guide.md")) {
+            try FolderItem.move(url.appendingPathComponent("guide.md"), into: docs)
+        }
+    }
+
+    @Test("Duplicate names copies as Finder does")
+    func duplicating() throws {
+        let url = try makeTree()
+        let file = url.appendingPathComponent("b.md")
+        #expect(try FolderItem.duplicate(file).lastPathComponent == "b copy.md")
+        #expect(try FolderItem.duplicate(file).lastPathComponent == "b copy 2.md")
+        let folderCopy = try FolderItem.duplicate(url.appendingPathComponent("docs"))
+        #expect(folderCopy.lastPathComponent == "docs copy")
+        #expect(FileManager.default.fileExists(atPath: folderCopy.appendingPathComponent("notes/deep.md").path))
+    }
+
+    @Test("Trash moves the item out of the folder")
+    func trashing() throws {
+        let url = try makeTree()
+        let file = url.appendingPathComponent("b.md")
+        let trashed = try FolderItem.trash(file)
+        defer { if let trashed { try? FileManager.default.removeItem(at: trashed) } }   // keep the real Trash clean
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(trashed.map { FileManager.default.fileExists(atPath: $0.path) } == true)
+    }
+
     @Test("New items take the first free name, numbered as Finder numbers them")
     func freeNames() throws {
         let url = try makeTree()

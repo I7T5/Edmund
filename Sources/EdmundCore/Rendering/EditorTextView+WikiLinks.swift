@@ -182,6 +182,14 @@ extension EditorTextView {
         }
     }
 
+    /// The front matter's top-level pairs, for the inspector's Info pane.
+    /// Front matter is only ever the first block, so this is O(1) in the
+    /// document and O(front matter) in the parse.
+    public var frontMatterPairs: [(key: String, value: String)] {
+        guard let first = blocks.first, case .frontMatter = first.kind else { return [] }
+        return FrontMatter.pairs(in: first.content)
+    }
+
     /// Brings `range`'s block into view. In Edit/Source the editor selects the
     /// block (a visible highlight) and scrolls to it; in Read mode the editor is
     /// hidden, so it scrolls the web view instead — mapping the block's source

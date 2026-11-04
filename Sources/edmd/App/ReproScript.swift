@@ -58,8 +58,10 @@ import VideoToolbox
 ///   clicktoolbar <id> click a toolbar item by identifier (real target/action)
 ///   inspector         toggle the inspector from the first responder, as the
 ///                     toolbar button and View menu item reach it
-///   outline           log the inspector's width and rows (depth, expanded, text)
+///   outline           log the inspector's width, rows (depth, expanded, text),
+///                     Info name=value pairs and the selected pane
 ///   outlineclick <t>  click the inspector's outline row titled <t>
+///   inspectortab <p>  show the inspector's outline or info pane
 ///   clickrow <title>  press a format-popover row by its title
 ///   clickicon <id>    press a format-popover icon button by its style id
 ///   handlemenu row|column  open a table handle's menu via its real hit test
@@ -593,14 +595,24 @@ enum ReproScript {
                         let item = view.item(atRow: row)
                         let text: String
                         switch item {
-                        case let s as InspectorViewController.Section: text = s.title
                         case let n as OutlineNode: text = n.heading.title
-                        case let r as InspectorViewController.InfoRow: text = "\(r.name)=\(r.value)"
                         default: text = "\(item ?? "nil")"
                         }
                         report("repro outline \(view.level(forRow: row)) " +
                                "expanded=\(view.isItemExpanded(item)) \(text)")
                     }
+                    for (name, value) in doc.inspector.infoValues {
+                        report("repro outline info \(name)=\(value)")
+                    }
+                    report("repro outline pane=\(doc.inspector.pane.rawValue)")
+                }
+            case "inspectortab":
+                scheduleDoc(after: delay) { doc in
+                    guard let pane = InspectorViewController.Pane(rawValue: arg) else {
+                        report("repro inspectortab: no pane \(arg)"); return
+                    }
+                    doc.inspector.selectPane(pane)
+                    report("repro inspectortab \(arg)")
                 }
             case "outlineclick":
                 scheduleDoc(after: delay) { doc in
@@ -648,6 +660,112 @@ enum ReproScript {
                         (browser.outlineView.item(atRow: $0) as? FolderItem)?.name
                     }
                     report("repro folderfilter '\(arg)' rows=\(rows)")
+                }
+            case "folderpoint":
+                // Where <arg> ("add", or "row:<name>") sits in the showing
+                // file's editor coordinates: the point `realclick` takes, so a
+                // real click can land on the sidebar.
+                scheduleFolder(after: delay) { folder in
+                    let browser = folder.windowController.fileBrowser
+                    guard let editor = folder.current?.editor else { report("repro folderpoint: no file showing"); return }
+                    var target: (view: NSView, rect: NSRect)?
+                    if arg == "add" {
+                        target = (browser.addButton, browser.addButton.bounds)
+                    } else if arg.hasPrefix("row:"), let row = (0..<browser.outlineView.numberOfRows).first(where: {
+                        (browser.outlineView.item(atRow: $0) as? FolderItem)?.name == String(arg.dropFirst(4))
+                    }) {
+                        target = (browser.outlineView, browser.outlineView.rect(ofRow: row))
+                    }
+                    guard let target else { report("repro folderpoint: no \(arg)"); return }
+                    let r = target.view.convert(target.rect, to: editor)
+                    report("repro folderpoint \(arg) at=\(Int(r.midX)),\(Int(r.midY))")
+                }
+            case "folderaction":
+                // In-process sidebar commands, for runs where real events
+                // can't be used: "new-file", "new-folder", "select:<name>",
+                // "rename:<name>" (starts the inline edit), "type:<text>" (into
+                // the field being edited), "commit", "cancel",
+                // "duplicate:<name>", "trash:<name>", "statusbar" (reveals the
+                // hover-hidden status bar). Reports the rows after, less the
+                // test folder's note-* filler files, to keep the line short.
+                scheduleFolder(after: delay) { folder in
+                    let browser = folder.windowController.fileBrowser
+                    let outline = browser.outlineView
+                    @MainActor func row(_ name: String) -> FolderItem? {
+                        for index in 0..<outline.numberOfRows {
+                            if let item = outline.item(atRow: index) as? FolderItem, item.name == name { return item }
+                        }
+                        return nil
+                    }
+                    let (op, name) = arg.firstIndex(of: ":").map {
+                        (String(arg[..<$0]), String(arg[arg.index(after: $0)...]))
+                    } ?? (arg, "")
+                    let window = folder.windowController.window
+                    switch op {
+                    case "new-file": browser.newFile(nil)
+                    case "new-folder": browser.newFolder(nil)
+                    case "select":
+                        if let item = row(name) {
+                            outline.selectRowIndexes([outline.row(forItem: item)], byExtendingSelection: false)
+                        }
+                    case "rename": row(name).map(browser.beginRename)
+                    case "type":
+                        let editor = window?.firstResponder as? NSTextView
+                        editor?.insertText(name, replacementRange: editor?.selectedRange() ?? NSRange())
+                    case "commit": window?.makeFirstResponder(outline)
+                    case "cancel":
+                        (window?.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+                    case "statusbar":
+                        // Shows the hover-revealed status bar, to compare the
+                        // footer's top line with its.
+                        @MainActor func reveal(_ view: NSView) {
+                            if view is StatusBarView { view.alphaValue = 1 }
+                            for subview in view.subviews { reveal(subview) }
+                        }
+                        if let content = window?.contentView { reveal(content) }
+                    case "duplicate": row(name).map(browser.duplicate)
+                    case "trash": row(name).map(browser.trash)
+                    default: report("repro folderaction: unknown \(arg)"); return
+                    }
+                    let rows = (0..<outline.numberOfRows).compactMap { (outline.item(atRow: $0) as? FolderItem)?.name }
+                    let selected = (outline.item(atRow: outline.selectedRow) as? FolderItem)?.name ?? "-"
+                    report("repro folderaction \(arg) current=\(folder.current?.displayName ?? "nil") " +
+                           "selected=\(selected) rows=\(rows.filter { !$0.hasPrefix("note-") })")
+                }
+            case "realkey":
+                // "realkey down|up|return|escape|cmd-delete|text:<chars>" — REAL
+                // keyboard events at the HID tap, so an open menu, a field
+                // editor or the sidebar's keyDown gets them as from the keyboard.
+                // Refuses unless this app is active: the HID tap types into
+                // whatever app is in front.
+                schedule(after: delay) { _ in
+                    guard NSApp.isActive else {
+                        report("repro realkey ABORTED: not the active app"); return
+                    }
+                    let keys: [String: (CGKeyCode, CGEventFlags)] = [
+                        "down": (125, []), "up": (126, []), "return": (36, []),
+                        "escape": (53, []), "cmd-delete": (51, .maskCommand),
+                    ]
+                    let text = arg.hasPrefix("text:") ? String(arg.dropFirst(5)) : nil
+                    guard text != nil || keys[arg] != nil else { report("repro realkey: unknown \(arg)"); return }
+                    let key = keys[arg]
+                    DispatchQueue.global(qos: .userInteractive).async {
+                        func post(_ code: CGKeyCode, _ flags: CGEventFlags, _ chars: String?) {
+                            for down in [true, false] {
+                                let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
+                                e?.flags = flags
+                                if let chars {
+                                    let units = Array(chars.utf16)
+                                    e?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                                }
+                                e?.post(tap: .cghidEventTap)
+                                usleep(20_000)
+                            }
+                        }
+                        if let text { for ch in text { post(0, [], String(ch)) } }
+                        else if let key { post(key.0, key.1, nil) }
+                    }
+                    report("repro realkey \(arg)")
                 }
             case "clickrow":
                 scheduleDoc(after: delay) { _ in

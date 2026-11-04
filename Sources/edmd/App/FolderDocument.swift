@@ -120,6 +120,26 @@ final class FolderDocument: NSDocument {
         updateEditedState()
     }
 
+    /// Whether a file open here at or under `url` has unsaved changes: Move
+    /// to Trash is refused for it, so the changes can't go with the file.
+    func hasUnsavedFile(under url: URL) -> Bool {
+        files.contains { $0.isDocumentEdited && Self.contains(url, $0.fileURL) }
+    }
+
+    /// Closes the files open here at or under `url`, which is going to the
+    /// Trash. The showing one gives its place to the placeholder (`release`).
+    func closeFiles(under url: URL) {
+        for document in files where Self.contains(url, document.fileURL) {
+            if document === current { release(document) } else { document.close() }
+        }
+    }
+
+    private static func contains(_ url: URL, _ file: URL?) -> Bool {
+        guard let file = file?.standardizedFileURL.path else { return false }
+        let path = url.standardizedFileURL.path
+        return file == path || file.hasPrefix(path + "/")
+    }
+
     /// Closes `document` here so it can open in a window of its own. The
     /// showing file gives its place back to the placeholder first: closing it
     /// while it owns the window controller would close the window.
@@ -258,9 +278,6 @@ final class FolderDocument: NSDocument {
             changed.append(item === root ? nil : item)
         }
         if !changed.isEmpty { windowController.fileBrowser.reload(changed) }
-        // A reload drops the outline's selection, and saving the showing file
-        // is itself a change on disk.
-        windowController.fileBrowser.select(current?.fileURL)
     }
 
     /// Reached twice when the window closes with no file chosen: once from
@@ -344,6 +361,7 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
         window.folder = folder
 
         fileBrowser.onOpen = { [unowned folder] url in folder.open(url) }
+        fileBrowser.folder = folder
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -506,18 +524,24 @@ final class BelowToolbarController: NSViewController {
         child = controller
     }
 
-    /// How far the toolbar (and title bar) reach down into this view.
-    private var toolbarInset: CGFloat {
-        guard let window = view.window else { return 0 }
-        let topInWindow = view.convert(view.bounds, to: nil).maxY
-        return max(0, topInWindow - window.contentLayoutRect.maxY)
-    }
+    private var toolbarInset: CGFloat { view.toolbarInset }
 
     /// Follows the toolbar as it shows, hides or changes size.
     override func viewDidLayout() {
         super.viewDidLayout()
         let inset = toolbarInset
         if let top, top.constant != inset { top.constant = inset }
+    }
+}
+
+extension NSView {
+    /// How far the toolbar (and title bar) reach down into this view, by the
+    /// window's `contentLayoutRect` — see `BelowToolbarController` for why
+    /// not the safe area.
+    var toolbarInset: CGFloat {
+        guard let window else { return 0 }
+        let topInWindow = convert(bounds, to: nil).maxY
+        return max(0, topInWindow - window.contentLayoutRect.maxY)
     }
 }
 

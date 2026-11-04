@@ -176,6 +176,10 @@ build/EdmundDbg.app/Contents/MacOS/edmd "$DOC.md" \
 | `bypassdelete <needle>` | simulate the drag-move source deletion: select range, `shouldChangeText` + storage mutation, **no `didChangeText`** |
 | `assertcaret <needle>` | log `repro assertcaret PASS/FAIL sel=… want=…` iff caret sits exactly before `<needle>` |
 | `logsel` | log selection, rawSource length, doc count |
+| `inspector` | toggle the inspector through the responder chain, as the toolbar button does; logs the View menu title |
+| `outline` | log the inspector's width, outline rows, Info name=value pairs and the selected pane |
+| `outlineclick <title>` | go to the outline heading titled `<title>` |
+| `inspectortab <info\|outline>` | show that inspector pane |
 
 Round-6 minimal repro (the worked example): the deciding output was **`logsel`
 321 (broken) → 290 (fixed)**, every run, window not even visible.

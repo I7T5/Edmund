@@ -10,9 +10,11 @@ import EdmundCore
 // to be upheld. Commands come from `FormatMenu`'s tables so a command defined
 // once shows up in the menu bar, in Settings ▸ Key Bindings, and here.
 //
-// Default order (misc/plans/prompts/format-bar.md):
-//   Format ▾ · Checklist · Table · Image ▾ · Link · (spacer) · View mode · Share
-//   · Inspector
+// Default order (`defaultIdentifiers`):
+//   (spacer) · View mode │ (spacer) · Inspector
+// where │ is the inspector tracking separator. Format ▾ · Checklist · Table ·
+// Image ▾ · Link (centred when present) and Share are offered in Customize
+// Toolbar but not placed by default.
 //
 // `FormatToolbar` is an object rather than an enum because it has to *own* the
 // icon-row buttons' action targets, which `NSControl.target` only holds weakly.
@@ -39,15 +41,18 @@ final class FormatToolbar: NSObject {
     static let centeredIdentifiers: Set<NSToolbarItem.Identifier> =
         [format, checklist, table, image, link]
 
-    /// The view-mode and inspector buttons, right-aligned. The formatting
-    /// group stays *allowed*, so it can be dragged in from Customize Toolbar,
-    /// but the default bar has no formatting items.
+    /// The view-mode button right-aligned, then the inspector button past the
+    /// separator that tracks the inspector's edge, so it sits over the
+    /// full-height inspector as in CotEditor. The formatting group stays
+    /// *allowed*, so it can be dragged in from Customize Toolbar, but the
+    /// default bar has no formatting items.
     static func defaultIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, viewMode, inspector]
+        [.flexibleSpace, viewMode, .inspectorTrackingSeparator, .flexibleSpace, inspector]
     }
 
     static func allowedIdentifiers(viewMode: NSToolbarItem.Identifier) -> [NSToolbarItem.Identifier] {
-        [format, checklist, table, image, link, share, viewMode, inspector, .space, .flexibleSpace]
+        [format, checklist, table, image, link, share, viewMode, .inspectorTrackingSeparator, inspector,
+         .space, .flexibleSpace]
     }
 
     /// Builds one of the formatting items, or nil if `id` isn't ours (the
@@ -420,13 +425,20 @@ final class FormatToolbar: NSObject {
 
     // MARK: - Image popup
 
-    /// Attach File… works today; the remaining sources are visible but disabled,
-    /// so the finished shape of the feature is legible without pretending the
-    /// pieces exist. See `ImageSource`.
+    /// Attach File… and the device import work today; Photos… is visible but
+    /// disabled, so the finished shape of the feature is legible without
+    /// pretending the piece exists. See `ImageSource`.
     func imagePopupMenu() -> NSMenu {
         let menu = NSMenu(title: "Image")
         for source in ImageSource.allCases {
-            if source == .camera { menu.addItem(.separator()) }
+            if source == .device {
+                // AppKit owns this item: it swaps in the device submenus.
+                let item = NSMenuItem(title: source.title, action: nil, keyEquivalent: "")
+                item.identifier = NSMenuItem.importFromDeviceIdentifier
+                menu.addItem(.separator())
+                menu.addItem(item)
+                continue
+            }
             let item = NSMenuItem(title: source.title,
                                   action: #selector(EditorTextView.formatAttachImage(_:)),
                                   keyEquivalent: "")
@@ -555,21 +567,21 @@ final class FormatMenuToolbarItem: NSMenuToolbarItem {
     }
 }
 
-/// Where an attached image comes from. Only `.file` is wired up; the rest are
-/// the extension points for Photos and Continuity Camera, which need a PhotoKit
-/// dependency, an `NSPhotoLibraryUsageDescription`, and `NSServicesMenuRequestor`
-/// plumbing respectively.
+/// Where an attached image comes from. `.photos` is a placeholder: it needs a
+/// PhotoKit dependency and an `NSPhotoLibraryUsageDescription`. `.device` is
+/// Continuity Camera — AppKit fills the item with each nearby iPhone or iPad's
+/// Take Photo / Scan Documents / Add Sketch, and the editor reads the result
+/// back (EditorTextView+ImageAttachments).
 enum ImageSource: CaseIterable {
-    case file, photos, camera, scan
+    case file, photos, device
 
     var title: String {
         switch self {
         case .file:   return "Attach File…"
         case .photos: return "Photos…"
-        case .camera: return "Take Photo"
-        case .scan:   return "Scan Documents"
+        case .device: return "Import from iPhone or iPad"
         }
     }
 
-    var isAvailable: Bool { self == .file }
+    var isAvailable: Bool { self != .photos }
 }
