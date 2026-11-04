@@ -1,0 +1,59 @@
+# blank: The Wardrobe.md
+# window: 920,520
+# modes: light
+# length: 24500
+# appstore: yes
+# loop: yes
+# typing: human 1 300
+# cuts: 1
+# expect: Wardrobe
+# alt: A tour of Edmund: a heading, a sentence with bold and italic, a table filled in with Tab, a pasted image, then Read mode.
+# The App Store preview and the site's tour: one take from a blank page,
+# each beat rendering as it is typed — heading, a line with bold and italic,
+# a table from Format ▸ Table filled in with Tab, a pasted picture and its
+# alt text — then ⌘E to Read mode (the one cut), held, and the encoder fades
+# back to the blank page so it loops.
+zoom in
+# --- record ---
+sleep 1300
+type # The Wardrobe
+enter
+enter
+sleep 700
+type Lucy found a **wardrobe** full of coats, and *snow*.
+enter
+enter
+sleep 700
+action formatTable:
+sleep 500
+select Header 1
+type Pevensie
+tab
+type Title
+tab
+type Gift
+tab
+type Peter
+tab
+type High King
+tab
+type sword
+tab
+type Lucy
+tab
+type the Valiant
+tab
+type cordial
+sleep 600
+caretend
+enter
+sleep 300
+pasteimage {root}/misc/marketing/screenshot-docs/turkish-delight.jpg
+sleep 600
+type Turkish delight|220
+sleep 500
+enter
+sleep 1400
+save
+sleep 200
+viewmode

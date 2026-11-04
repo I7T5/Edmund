@@ -3,6 +3,7 @@ import AppKit
 import EdmundCore
 import WebKit
 import ScreenCaptureKit
+import VideoToolbox
 
 /// In-process repro driver: `-debug.reproScript <path>` replays a keystroke
 /// script against the front document through the real AppKit key-event path
@@ -12,6 +13,7 @@ import ScreenCaptureKit
 /// Accessibility permission. Commands, one per line:
 ///   sleep <ms>        wait before the next command
 ///   caret <needle>    place the caret before the first occurrence of <needle>
+///   caretafter <needle>  … after it (typing at a line's end, on camera)
 ///   select <needle>   select the first occurrence of <needle>
 ///   hoveroff <n>      hover the glyph at offset n (reveals margin chrome)
 ///   hovercopy <n>     put the pointer on the copy button of the code block at n
@@ -68,6 +70,10 @@ import ScreenCaptureKit
 ///   draghandle row|column <points> [ms]  drag the caret's row or column pill
 ///                     that far along its axis, in real time (for recordings)
 ///   cellmenu <needle>  right-click menu for the cell holding <needle>
+///   action <selector>  send a menu command (`action formatTable:`)
+///   pasteimage <file>  paste that image as ⌘V would; the clipboard is restored
+///   record <ms>,<dir>  film the window, shadow included, for <ms> ms to
+///                     dir/NNNN-<uptime ms>.png (scripts/recordings.sh)
 ///   selectcells r0,c0,r1,c1  select that block of table cells
 ///   ime <text>        compose <text> as marked text (NSTextInputClient)
 ///   imecommit [text]  commit the composition as <text> (empty: as marked)
@@ -104,14 +110,15 @@ enum ReproScript {
             switch cmd {
             case "sleep":
                 delay += (Double(arg) ?? 0) / 1000
-            case "caret":
+            case "caret", "caretafter":
+                let after = cmd == "caretafter"
                 schedule(after: delay) { editor in
                     let r = (editor.rawSource as NSString).range(of: arg)
                     guard r.location != NSNotFound else {
-                        verdict("caret", false, "needle not found: \(arg)")
+                        verdict(cmd, false, "needle not found: \(arg)")
                         return
                     }
-                    editor.setSelectedRange(NSRange(location: r.location, length: 0))
+                    editor.setSelectedRange(NSRange(location: after ? NSMaxRange(r) : r.location, length: 0))
                 }
             case "select":
                 schedule(after: delay) { editor in
@@ -1170,7 +1177,7 @@ enum ReproScript {
                 schedule(after: delay) { editor in
                     report("repro indicators " + editor.debugInsertionIndicators())
                 }
-            case "burst":
+            case "burst", "record":
                 // "burst ms,interval,dir" — capture ONLY the document window
                 // (a ScreenCaptureKit stream filtered to this window id; nothing
                 // else on screen is included) for `ms` ms, at most one frame per
@@ -1178,30 +1185,65 @@ enum ReproScript {
                 // a frame whenever the window repaints, so a single-frame paint
                 // a still screenshot cannot catch lands as its own file. Needs
                 // Screen Recording for the bundle.
+                // "record ms,dir" — the same at up to 60 fps, with the window's
+                // shadow on a transparent background, like `screencapture -l`:
+                // frames for scripts/recordings.sh. The stream sees the window
+                // even while another covers it.
+                let recording = cmd == "record"
                 schedule(after: delay) { editor in
-                    let parts = arg.split(separator: ",", maxSplits: 2).map(String.init)
-                    guard parts.count == 3, let total = Double(parts[0]),
-                          let interval = Double(parts[1]), let window = editor.window else {
-                        report("repro burst: want ms,interval,dir"); return
+                    let parts = arg.split(separator: ",", maxSplits: recording ? 1 : 2).map(String.init)
+                    guard parts.count == (recording ? 2 : 3), let total = Double(parts[0]),
+                          let interval = recording ? 16 : Double(parts[1]), let window = editor.window else {
+                        report(recording ? "repro record: want ms,dir" : "repro burst: want ms,interval,dir")
+                        return
                     }
-                    let dir = parts[2]
+                    let dir = parts[parts.count - 1]
                     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
                     let wid = CGWindowID(window.windowNumber)
                     let scale = window.backingScaleFactor
-                    report("repro burst started wid=\(wid)")
+                    report("repro \(cmd) started wid=\(wid)")
                     Task.detached(priority: .userInitiated) {
                         let output = BurstOutput(dir: dir)
                         do {
+                            // All windows, not just on-screen ones: a window
+                            // `front` is moving between screens or Spaces drops
+                            // out of the on-screen list, sometimes for seconds.
                             let content = try await SCShareableContent.excludingDesktopWindows(
-                                false, onScreenWindowsOnly: true)
+                                false, onScreenWindowsOnly: !recording)
                             guard let target = content.windows.first(where: { $0.windowID == wid }) else {
                                 throw NSError(domain: "repro", code: 1,
                                               userInfo: [NSLocalizedDescriptionKey: "window \(wid) not shareable"])
                             }
-                            let filter = SCContentFilter(desktopIndependentWindow: target)
+                            var filter = SCContentFilter(desktopIndependentWindow: target)
                             let config = SCStreamConfiguration()
                             config.width = Int(target.frame.width * scale)
                             config.height = Int(target.frame.height * scale)
+                            if recording {
+                                // Not a window or app filter: those badge the
+                                // window's title bar with macOS's "being shared"
+                                // pill, over the traffic lights. The display
+                                // minus every other app (this one's popovers
+                                // and menus stay), cropped to the window and its
+                                // shadow (56 pt at the sides, 38 above, 74 below:
+                                // `screencapture -l`'s margins). The shadow comes
+                                // out over opaque black (shouldBeOpaque, a clear
+                                // background and VideoToolbox's conversion don't
+                                // change that); recordings.sh takes it from a still.
+                                let me = ProcessInfo.processInfo.processIdentifier
+                                guard let display = content.displays.first(where: { $0.frame.intersects(target.frame) }) else {
+                                    throw NSError(domain: "repro", code: 2,
+                                                  userInfo: [NSLocalizedDescriptionKey: "no display to film"])
+                                }
+                                filter = SCContentFilter(display: display,
+                                                         excludingApplications: content.applications.filter { $0.processID != me },
+                                                         exceptingWindows: [])
+                                let rect = CGRect(x: target.frame.minX - display.frame.minX - 56,
+                                                  y: target.frame.minY - display.frame.minY - 38,
+                                                  width: target.frame.width + 112, height: target.frame.height + 112)
+                                config.sourceRect = rect
+                                config.width = Int(rect.width * scale)
+                                config.height = Int(rect.height * scale)
+                            }
                             config.showsCursor = false
                             config.captureResolution = .best
                             config.minimumFrameInterval = CMTime(value: CMTimeValue(max(1, interval)), timescale: 1000)
@@ -1214,11 +1256,11 @@ enum ReproScript {
                             try await stream.stopCapture()
                         } catch {
                             let text = "\(error)"
-                            await MainActor.run { report("repro burst error \(text)") }
+                            await MainActor.run { report("repro \(cmd) error \(text)") }
                         }
                         let frames = output.frames, ok = output.written
                         await MainActor.run {
-                            report("repro burst done frames=\(frames) written=\(ok) dir=\(dir)")
+                            report("repro \(cmd) done frames=\(frames) written=\(ok) dir=\(dir)")
                         }
                     }
                 }
@@ -1303,6 +1345,38 @@ enum ReproScript {
             case "save":
                 // Clears "Edited" from the title after `type`, for screenshots.
                 scheduleDoc(after: delay) { doc in doc.save(nil) }
+            case "action":
+                // "action formatTable:" — a menu command by selector, up the
+                // responder chain from the editor, as its menu item sends it
+                // when the editor has focus (sendAction(to: nil) would start
+                // from whichever window is key, maybe not this one).
+                schedule(after: delay) { editor in
+                    verdict("action", editor.tryToPerform(NSSelectorFromString(arg), with: nil), arg)
+                }
+            case "pasteimage":
+                // "pasteimage <file>" — Edit ▸ Paste with that image on the
+                // clipboard. The clipboard is the user's: what was on it goes
+                // back a second later, once the paste has read it.
+                schedule(after: delay) { editor in
+                    guard let image = NSImage(contentsOfFile: arg) else {
+                        verdict("pasteimage", false, "no image at \(arg)"); return
+                    }
+                    let board = NSPasteboard.general
+                    let saved = (board.pasteboardItems ?? []).map { item in
+                        item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+                    }
+                    board.clearContents()
+                    board.writeObjects([image])
+                    editor.paste(nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        board.clearContents()
+                        board.writeObjects(saved.map { pairs in
+                            let item = NSPasteboardItem()
+                            for (type, data) in pairs { item.setData(data, forType: type) }
+                            return item
+                        })
+                    }
+                }
             case "undo":
                 schedule(after: delay) { editor in editor.undo(nil) }
             case "redo":
@@ -1536,7 +1610,6 @@ enum ReproScript {
 /// the process-uptime ms at delivery — the clock the caret trace uses.
 private final class BurstOutput: NSObject, SCStreamOutput, @unchecked Sendable {
     private let dir: String
-    private let context = CIContext()
     private let lock = NSLock()
     private(set) var frames = 0
     private(set) var written = 0
@@ -1548,8 +1621,9 @@ private final class BurstOutput: NSObject, SCStreamOutput, @unchecked Sendable {
         guard type == .screen, let buffer = sampleBuffer.imageBuffer else { return }
         let ms = EditorTextView.debugMs()
         lock.lock(); let n = frames; frames += 1; lock.unlock()
-        let image = CIImage(cvPixelBuffer: buffer)
-        guard let cg = context.createCGImage(image, from: image.extent),
+        var image: CGImage?
+        VTCreateCGImageFromCVPixelBuffer(buffer, options: nil, imageOut: &image)
+        guard let cg = image,
               let dest = CGImageDestinationCreateWithURL(
                 URL(fileURLWithPath: "\(dir)/\(String(format: "%04d", n))-\(ms).png") as CFURL,
                 "public.png" as CFString, 1, nil) else { return }
