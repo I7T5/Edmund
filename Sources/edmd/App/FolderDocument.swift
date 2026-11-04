@@ -309,8 +309,9 @@ private final class CloseReview: NSObject {
 ///
 /// The content runs full height, so the sidebar's translucent material
 /// reaches up behind the toolbar, as in Finder and Mail. The other side
-/// (`BelowToolbarController`) keeps the editor below the toolbar, where its
-/// status, find and format bars are laid out to be.
+/// (`BelowToolbarController`) keeps the placeholder below the toolbar; a
+/// file's pane runs full height and holds its editor below the toolbar
+/// itself, so its inspector can run up into the strip, as in a document window.
 final class FolderWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
                                     NSMenuItemValidation {
 
@@ -500,8 +501,10 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 }
 
-/// The content side of a folder window: shows one view controller at a time,
-/// pinned below the toolbar though its own view runs up behind it.
+/// Shows one view controller at a time, pinned below the toolbar though its
+/// own view runs up behind it, unless shown with `belowToolbar: false` (a
+/// child that handles the toolbar itself). The content side of a folder
+/// window, and a document's editor pane.
 ///
 /// By the window's `contentLayoutRect`, not this view's safe area: inside a
 /// split item on macOS 14 the safe area never took the toolbar's inset, so

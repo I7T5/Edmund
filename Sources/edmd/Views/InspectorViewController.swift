@@ -75,8 +75,8 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     private var infoPane: NSView!
     private var tabButtons: [Pane: NSButton] = [:]
     private(set) var pane = Pane(rawValue: AppSettings.inspectorPane) ?? .outline
-    /// The strip's top: the toolbar's height in a document window, where the
-    /// inspector runs up behind it; 0 in a folder window, where it doesn't.
+    /// The strip's top: the toolbar's height, where the inspector runs up
+    /// behind it (both window types).
     private var stripTop: NSLayoutConstraint!
 
     override func loadView() {
@@ -497,8 +497,10 @@ private final class InspectorOutlineView: NSOutlineView {
 private final class BackgroundView: NSView {
     /// Window grey in dark mode; in light, a step lighter (#F2F2F2 against
     /// the window's #ECECEC), between the toolbar and the editor's white.
+    /// Increase Contrast keeps the system colour, as the window around it does.
     static let color = NSColor(name: "InspectorBackground") { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
+        appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua,
+                                    .accessibilityHighContrastDarkAqua]) == .aqua
             ? NSColor(srgbRed: 242 / 255, green: 242 / 255, blue: 242 / 255, alpha: 1)
             : .windowBackgroundColor
     }

@@ -334,8 +334,7 @@ class Document: NSDocument, HeadingNavigable {
         // not stop it, measured), so the container is held below the toolbar:
         // the text, top bars and Read view keep starting there. By
         // `BelowToolbarController`, not the safe area, which misses the
-        // toolbar inside a split item on macOS 14. In a folder window the
-        // pane is already below the toolbar and the inset is 0.
+        // toolbar inside a split item on macOS 14.
         let editorPane = BelowToolbarController()
         editorPane.view.frame = contentBounds
         let container = NSViewController()
