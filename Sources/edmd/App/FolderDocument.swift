@@ -512,11 +512,15 @@ final class FolderWindowController: NSWindowController, NSWindowDelegate, NSTool
 /// macOS 15 was fine).
 final class BelowToolbarController: NSViewController {
     private(set) var child: NSViewController?
-    private var top: NSLayoutConstraint?
+    private var top: [NSLayoutConstraint] = []
     /// False for a child that handles the toolbar itself (a file's pane).
     private var insetsChild = true
 
-    override func loadView() { view = NSView() }
+    override func loadView() {
+        let view = WindowObservingView()
+        view.onWindow = { [weak self] in self?.pinTop() }
+        self.view = view
+    }
 
     func show(_ controller: NSViewController, belowToolbar: Bool = true) {
         insetsChild = belowToolbar
@@ -526,35 +530,50 @@ final class BelowToolbarController: NSViewController {
         let shown = controller.view
         shown.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(shown)
-        let top = shown.topAnchor.constraint(equalTo: view.topAnchor, constant: toolbarInset)
         NSLayoutConstraint.activate([
-            top,
             shown.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             shown.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             shown.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        self.top = top
         child = controller
+        pinTop()
     }
 
-    private var toolbarInset: CGFloat { insetsChild ? view.toolbarInset : 0 }
+    private func pinTop() {
+        guard let shown = child?.view else { return }
+        NSLayoutConstraint.deactivate(top)
+        top = insetsChild ? view.belowToolbar(shown.topAnchor)
+                          : [shown.topAnchor.constraint(equalTo: view.topAnchor)]
+        NSLayoutConstraint.activate(top)
+    }
+}
 
-    /// Follows the toolbar as it shows, hides or changes size.
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        let inset = toolbarInset
-        if let top, top.constant != inset { top.constant = inset }
+/// Calls `onWindow` when it joins a window: `NSView.belowToolbar` needs the
+/// window's layout guide, and `viewWillAppear` fires only once a window shows.
+class WindowObservingView: NSView {
+    var onWindow: (() -> Void)?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { onWindow?() }
     }
 }
 
 extension NSView {
-    /// How far the toolbar (and title bar) reach down into this view, by the
-    /// window's `contentLayoutRect` — see `BelowToolbarController` for why
-    /// not the safe area.
-    var toolbarInset: CGFloat {
-        guard let window else { return 0 }
-        let topInWindow = convert(bounds, to: nil).maxY
-        return max(0, topInWindow - window.contentLayoutRect.maxY)
+    /// Constraints holding `anchor` at this view's top or at the bottom of
+    /// the toolbar, whichever is lower: the window's `contentLayoutGuide`, not
+    /// this view's safe area, which misses the toolbar inside a split item on
+    /// macOS 14 (CI's runner). Constraints rather than a measured inset: on
+    /// macOS 14 AppKit can itself move a nested split item below the toolbar,
+    /// and a move runs no layout pass to correct an inset measured before it
+    /// (the editor landed two toolbar heights down). Re-pin once the view is
+    /// in a window; before that there is no guide.
+    func belowToolbar(_ anchor: NSLayoutYAxisAnchor) -> [NSLayoutConstraint] {
+        let atTop = anchor.constraint(equalTo: topAnchor)
+        guard let guide = window?.contentLayoutGuide as? NSLayoutGuide else { return [atTop] }
+        atTop.priority = .defaultLow
+        return [atTop,
+                anchor.constraint(greaterThanOrEqualTo: topAnchor),
+                anchor.constraint(greaterThanOrEqualTo: guide.topAnchor)]
     }
 }
 

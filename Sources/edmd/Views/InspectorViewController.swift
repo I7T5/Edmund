@@ -75,9 +75,10 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     private var infoPane: NSView!
     private var tabButtons: [Pane: NSButton] = [:]
     private(set) var pane = Pane(rawValue: AppSettings.inspectorPane) ?? .outline
-    /// The strip's top: the toolbar's height, where the inspector runs up
-    /// behind it (both window types).
-    private var stripTop: NSLayoutConstraint!
+    /// The strip's top: below the toolbar, where the inspector runs up
+    /// behind it (both window types). See `NSView.belowToolbar`.
+    private var stripTop: [NSLayoutConstraint] = []
+    private let strip = NSLayoutGuide()
 
     override func loadView() {
         outlineView.style = .sourceList
@@ -116,13 +117,11 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         // The view runs full height, under the toolbar (the window has
         // `.fullSizeContentView`), so the tabs hang below the toolbar and the
         // inspector grey shows through the titlebar above them — the colour
-        // change at the inspector's edge. By `toolbarInset`, not the safe
-        // area, which misses the toolbar inside a split item on macOS 14.
+        // change at the inspector's edge (`NSView.belowToolbar`).
         let root = BackgroundView()
-        // An empty guide marking the strip's top, moved by `viewDidLayout`.
-        let strip = NSLayoutGuide()
+        root.onWindow = { [weak self] in self?.pinStrip() }
+        // An empty guide marking the strip's top, pinned by `pinStrip`.
         root.addLayoutGuide(strip)
-        stripTop = strip.topAnchor.constraint(equalTo: root.topAnchor)
         for view in [tabs, separator, outlineScroll, infoPane!] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
@@ -131,7 +130,6 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             // The format bar's height, its hairline on the same bottom edge;
             // centred in the strip the way the format bar centres on its
             // `interior` (below the toolbar separator, above the hairline).
-            stripTop,
             separator.topAnchor.constraint(equalTo: strip.topAnchor,
                                            constant: FormatBarView.barHeight - ChromeBarView.hairlineHeight),
             separator.heightAnchor.constraint(equalToConstant: ChromeBarView.hairlineHeight),
@@ -150,6 +148,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             ])
         }
         view = root
+        pinStrip()
         showPane(pane)
 
         outlineView.reloadData()
@@ -158,11 +157,10 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         isReloading = false
     }
 
-    /// Follows the toolbar as it shows, hides or changes size.
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        let inset = view.toolbarInset
-        if stripTop.constant != inset { stripTop.constant = inset }
+    private func pinStrip() {
+        NSLayoutConstraint.deactivate(stripTop)
+        stripTop = view.belowToolbar(strip.topAnchor)
+        NSLayoutConstraint.activate(stripTop)
     }
 
     // MARK: - Panes
@@ -494,7 +492,7 @@ private final class InspectorOutlineView: NSOutlineView {
 /// The inspector's one background (`color`) from the titlebar strip down,
 /// behind the tabs and both panes, which draw none of their own — CotEditor's
 /// inspector is a single colour top to bottom.
-private final class BackgroundView: NSView {
+private final class BackgroundView: WindowObservingView {
     /// Window grey in dark mode; in light, a step lighter (#F2F2F2 against
     /// the window's #ECECEC), between the toolbar and the editor's white.
     /// Increase Contrast keeps the system colour, as the window around it does.
