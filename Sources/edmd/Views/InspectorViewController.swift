@@ -81,12 +81,12 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
 
     override func loadView() {
         outlineView.style = .sourceList
-        // Opaque window grey, as Xcode's and CotEditor's inspectors, rather
-        // than the source list's translucent material: an inspector is not a
-        // sidebar, and in dark mode the grey sits back where the text
-        // background's near-black stood out. Set after `style`, which
-        // installs the material's clear background.
-        outlineView.backgroundColor = .windowBackgroundColor
+        // Clear, over `BackgroundView`'s window grey: the inspector is one
+        // colour from the titlebar strip down, as Xcode's and CotEditor's
+        // are. A fill here, even the same `windowBackgroundColor`, measured
+        // 40 against the strip's 50 in dark mode (246 against 236 in light).
+        // Set after `style`, which installs the source list's material.
+        outlineView.backgroundColor = .clear
         outlineView.headerView = nil
         let column = NSTableColumn(identifier: .init("main"))
         outlineView.addTableColumn(column)
@@ -103,7 +103,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         // With "always show scroll bars" a legacy scroller otherwise keeps
         // its empty track down the inspector's edge when nothing scrolls.
         outlineScroll.autohidesScrollers = true
-        outlineScroll.backgroundColor = .windowBackgroundColor
+        outlineScroll.drawsBackground = false
 
         infoPane = makeInfoPane()
 
@@ -248,7 +248,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         scroll.documentView = document
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        scroll.backgroundColor = .windowBackgroundColor
+        scroll.drawsBackground = false
         let clip = scroll.contentView
         NSLayoutConstraint.activate([
             document.topAnchor.constraint(equalTo: clip.topAnchor),
@@ -491,7 +491,9 @@ private final class InspectorOutlineView: NSOutlineView {
     }
 }
 
-/// Window grey behind the tabs and up through the titlebar.
+/// The inspector's one background: window grey from the titlebar strip down,
+/// behind the tabs and both panes, which draw none of their own — CotEditor's
+/// inspector is a single colour top to bottom.
 private final class BackgroundView: NSView {
     override var isOpaque: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
