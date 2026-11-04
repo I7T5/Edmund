@@ -44,21 +44,4 @@ import AppKit
         inspector.setFrontMatter([])
         #expect(inspector.infoValues.first?.name == "Words")
     }
-
-    /// Front Matter and Count are one grid, so their name columns line up;
-    /// replacing or clearing the pairs leaves Count's rows alone.
-    @Test func sectionsShareOneGrid() {
-        let inspector = InspectorViewController()
-        _ = inspector.view
-        #expect(inspector.infoGrid.numberOfColumns == 2)
-        #expect(inspector.infoGrid.numberOfRows == 6)   // Count title + 5 fields
-        inspector.setFrontMatter([("title", "Doc"), ("tags", "a, b")])
-        #expect(inspector.infoGrid.numberOfRows == 9)
-        inspector.setFrontMatter([("title", "Doc")])
-        #expect(inspector.infoGrid.numberOfRows == 8)
-        inspector.setFrontMatter([])
-        #expect(inspector.infoGrid.numberOfRows == 6)
-        #expect(inspector.infoValues.map(\.name) ==
-                ["Words", "Characters", "Location", "Line", "Line Ending"])
-    }
 }

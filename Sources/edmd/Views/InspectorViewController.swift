@@ -66,12 +66,8 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             + zip(Self.infoNames, infoFields.map(\.stringValue)).map { ($0, $1) }
     }
     private var frontMatter: [(key: String, value: String)] = []
-    /// Front Matter and Count share one grid, so their names right-align on
-    /// one edge and their values start on one column. Rebuilt whole when the
-    /// front matter changes: a row holding a merged cell (a section title)
-    /// cannot be removed.
-    private(set) var infoGrid = NSGridView()
-    private let infoDocument = FlippedView()
+    private let frontMatterHeader = InspectorViewController.sectionHeader("Front Matter")
+    private let frontMatterGrid = NSGridView()
 
     let outlineView: NSOutlineView = InspectorOutlineView()
     private let outlineScroll = NSScrollView()
@@ -108,7 +104,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         infoPane = makeInfoPane()
 
         let tabs = NSStackView(views: Pane.allCases.map(makeTabButton))
-        tabs.spacing = 14
+        tabs.spacing = 6
         // The format bar's hairline, so the two strips read as one across
         // the split when the format bar is showing.
         let separator = HairlineView()
@@ -183,10 +179,12 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         let button = TabButton(image: Self.tabImage(pane, selected: false), target: self,
                                action: #selector(tabClicked(_:)))
         button.isBordered = false
-        // The format bar's control footprint (22×18) and glyph size.
+        // The format bar's 12pt glyph, in a wider button than its 22×18 so
+        // the selected fill keeps clear of the glyph's edges.
         button.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 22),
+            button.widthAnchor.constraint(equalToConstant: 28),
+            // 4pt clear of the strip's edges above and below.
             button.heightAnchor.constraint(equalToConstant: 18),
         ])
         button.setButtonType(.toggle)
@@ -203,83 +201,66 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))!
     }
 
-    /// Front matter (when the document has any), then Count: names
-    /// right-aligned in the secondary colour against their values, CotEditor's
-    /// sections.
+    /// Front matter (when the document has any), Text Settings, then Count,
+    /// CotEditor's sections and order: names right-aligned in the secondary
+    /// colour against their values, each section its own grid.
     private func makeInfoPane() -> NSView {
-        rebuildInfoGrid()
+        // The last field, the line ending, is a text setting, not a count.
+        let rows = zip(Self.infoNames, infoFields).map { ($0, $1) }
+        let textGrid = Self.grid(Array(rows.suffix(1)))
+        let countGrid = Self.grid(Array(rows.dropLast()))
+        for grid in [textGrid, countGrid] { grid.column(at: 0).xPlacement = .trailing }
+        for grid in [frontMatterGrid, textGrid, countGrid] {
+            grid.rowSpacing = 6
+            grid.columnSpacing = 8
+        }
+        frontMatterHeader.isHidden = true
+        frontMatterGrid.isHidden = true
+        let stack = NSStackView(views: [frontMatterHeader, frontMatterGrid,
+                                        Self.sectionHeader("Text Settings"), textGrid,
+                                        Self.sectionHeader("Count"), countGrid])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.setCustomSpacing(16, after: frontMatterGrid)
+        stack.setCustomSpacing(16, after: textGrid)
+        stack.translatesAutoresizingMaskIntoConstraints = false
         // Scrolls, as the outline does: long front matter or a short window
         // would otherwise clip the Count rows with no way to reach them.
-        infoDocument.translatesAutoresizingMaskIntoConstraints = false
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(stack)
         let scroll = NSScrollView()
-        scroll.documentView = infoDocument
+        scroll.documentView = document
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.backgroundColor = .windowBackgroundColor
         let clip = scroll.contentView
         NSLayoutConstraint.activate([
-            infoDocument.topAnchor.constraint(equalTo: clip.topAnchor),
-            infoDocument.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
-            infoDocument.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            document.topAnchor.constraint(equalTo: clip.topAnchor),
+            document.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            document.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 12),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -16),
         ])
         return scroll
     }
 
-    private func rebuildInfoGrid() {
-        infoGrid.removeFromSuperview()
-        infoGrid = NSGridView()
-        infoGrid.rowSpacing = 6
-        infoGrid.columnSpacing = 8
-        if !frontMatter.isEmpty {
-            addSection("Front Matter", frontMatter.map { key, value in
-                let field = NSTextField(labelWithString: value)
-                // One line, truncated: a long list or description would
-                // otherwise widen the grid past the inspector.
-                field.lineBreakMode = .byTruncatingTail
-                field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-                field.toolTip = value
-                return (key, field)
-            }, at: 0)
-        }
-        let countRow = infoGrid.numberOfRows
-        addSection("Count", zip(Self.infoNames, infoFields).map { ($0, $1) }, at: countRow)
-        // A section gap above Count when Front Matter sits over it.
-        if countRow > 0 { infoGrid.row(at: countRow).topPadding = 10 }
-        infoGrid.column(at: 0).xPlacement = .trailing
-        // `column(at:)` placement is set after the rows, so the titles'
-        // own leading placement has to be re-asserted.
-        for row in 0..<infoGrid.numberOfRows where infoGrid.row(at: row).bottomPadding == 2 {
-            infoGrid.row(at: row).cell(at: 0).xPlacement = .leading
-        }
-        infoGrid.translatesAutoresizingMaskIntoConstraints = false
-        infoDocument.addSubview(infoGrid)
-        NSLayoutConstraint.activate([
-            infoGrid.topAnchor.constraint(equalTo: infoDocument.topAnchor, constant: 12),
-            infoGrid.bottomAnchor.constraint(equalTo: infoDocument.bottomAnchor, constant: -12),
-            infoGrid.leadingAnchor.constraint(equalTo: infoDocument.leadingAnchor, constant: 16),
-            infoGrid.trailingAnchor.constraint(lessThanOrEqualTo: infoDocument.trailingAnchor, constant: -16),
-        ])
-    }
-
-    /// Inserts a titled section at `row`: the title across both columns, left
-    /// edge, then a name/value row per pair. Returns the rows it added.
-    @discardableResult
-    private func addSection(_ title: String, _ rows: [(String, NSTextField)], at row: Int) -> Int {
+    private static func sectionHeader(_ title: String) -> NSTextField {
         let header = NSTextField(labelWithString: title)
         header.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
         header.textColor = .secondaryLabelColor
-        infoGrid.insertRow(at: row, with: [header, NSGridCell.emptyContentView])
-        let headerRow = infoGrid.row(at: row)
-        headerRow.mergeCells(in: NSRange(location: 0, length: 2))
-        headerRow.cell(at: 0).xPlacement = .leading
-        headerRow.bottomPadding = 2
-        for (i, (name, value)) in rows.enumerated() {
+        return header
+    }
+
+    private static func grid(_ rows: [(String, NSTextField)]) -> NSGridView {
+        NSGridView(views: rows.map { name, value in
             let label = NSTextField(labelWithString: name)
             label.textColor = .secondaryLabelColor
-            label.lineBreakMode = .byTruncatingTail
-            infoGrid.insertRow(at: row + 1 + i, with: [label, value])
-        }
-        return rows.count + 1
+            return [label, value]
+        })
     }
 
     // MARK: - Updates
@@ -343,7 +324,25 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     func setFrontMatter(_ pairs: [(key: String, value: String)]) {
         guard !pairs.elementsEqual(frontMatter, by: { $0 == $1 }) else { return }
         frontMatter = pairs
-        if isViewLoaded { rebuildInfoGrid() }
+        while frontMatterGrid.numberOfRows > 0 { frontMatterGrid.removeRow(at: 0) }
+        for (key, value) in pairs {
+            let name = NSTextField(labelWithString: key)
+            name.textColor = .secondaryLabelColor
+            let field = NSTextField(labelWithString: value)
+            // One line, truncated: a long list or description would
+            // otherwise widen the grid past the inspector.
+            field.lineBreakMode = .byTruncatingTail
+            // Just above the stack's own hugging (`.defaultLow`): at a tie
+            // Auto Layout truncated values that had room.
+            field.setContentCompressionResistancePriority(.init(NSLayoutConstraint.Priority.defaultLow.rawValue + 1),
+                                                          for: .horizontal)
+            field.toolTip = value
+            frontMatterGrid.addRow(with: [name, field])
+        }
+        // Empty, the grid has no columns to place.
+        if frontMatterGrid.numberOfColumns > 0 { frontMatterGrid.column(at: 0).xPlacement = .trailing }
+        frontMatterHeader.isHidden = pairs.isEmpty
+        frontMatterGrid.isHidden = pairs.isEmpty
     }
 
     nonisolated private static func key(_ heading: OutlineHeading) -> String { "\(heading.level)|\(heading.title)" }
@@ -506,8 +505,10 @@ private final class FlippedView: NSView {
 private final class TabButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         if state == .on {
-            NSColor.quaternaryLabelColor.setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+            // Label colour at low alpha: a soft wash in both appearances,
+            // where quaternary label read as a hard grey block.
+            NSColor.labelColor.withAlphaComponent(0.08).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
         }
         super.draw(dirtyRect)
     }
