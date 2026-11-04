@@ -325,18 +325,16 @@ class Document: NSDocument, HeadingNavigable {
         // content view controller, which otherwise resizes the window to fit it.
         // With `.fullSizeContentView` the pane runs up under the toolbar like
         // the inspector (a split item's `allowsFullHeightLayout = false` did
-        // not stop it, measured), so the container hangs from the safe area:
-        // the text, top bars and Read view keep starting below the toolbar.
-        let editorPane = NSViewController()
-        editorPane.view = NSView(frame: contentBounds)
-        containerView.translatesAutoresizingMaskIntoConstraints = false
-        editorPane.view.addSubview(containerView)
-        NSLayoutConstraint.activate([
-            containerView.topAnchor.constraint(equalTo: editorPane.view.safeAreaLayoutGuide.topAnchor),
-            containerView.leadingAnchor.constraint(equalTo: editorPane.view.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: editorPane.view.trailingAnchor),
-            containerView.bottomAnchor.constraint(equalTo: editorPane.view.bottomAnchor),
-        ])
+        // not stop it, measured), so the container is held below the toolbar:
+        // the text, top bars and Read view keep starting there. By
+        // `BelowToolbarController`, not the safe area, which misses the
+        // toolbar inside a split item on macOS 14. In a folder window the
+        // pane is already below the toolbar and the inset is 0.
+        let editorPane = BelowToolbarController()
+        editorPane.view.frame = contentBounds
+        let container = NSViewController()
+        container.view = containerView
+        editorPane.show(container)
         inspector = InspectorViewController()
         inspector.onSelectHeading = { [weak self] in self?.goToHeading(at: $0) }
         // Opening width, CotEditor's inspector's (Xcode's is 260pt). Unset, the
@@ -1492,16 +1490,19 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        var ids = FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID)
-        // A folder window shows the file below its toolbar, so the inspector
-        // is not full height there and the window's split (sidebar + file)
-        // has no inspector item for the separator to track.
-        if toolbar.identifier == Self.folderToolbarID { ids.removeAll { $0 == .inspectorTrackingSeparator } }
-        return sidebarItems(toolbar) + ids
+        sidebarItems(toolbar) + withoutFolderSeparator(toolbar, FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID))
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        sidebarItems(toolbar) + FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID)
+        sidebarItems(toolbar) + withoutFolderSeparator(toolbar, FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID))
+    }
+
+    /// A folder window shows the file below its toolbar, so the inspector is
+    /// not full height there and the window's split (sidebar + file) has no
+    /// inspector item for the separator to track: neither placed nor offered.
+    private func withoutFolderSeparator(_ toolbar: NSToolbar,
+                                        _ ids: [NSToolbarItem.Identifier]) -> [NSToolbarItem.Identifier] {
+        toolbar.identifier == Self.folderToolbarID ? ids.filter { $0 != .inspectorTrackingSeparator } : ids
     }
 
     private func sidebarItems(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

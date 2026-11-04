@@ -7,8 +7,9 @@ import EdmundCore
 /// under the toolbar, then the selected pane. Outline is the document's
 /// heading tree in a source-list `NSOutlineView`, every heading with
 /// sub-headings getting its own disclosure triangle; it opens expanded, except
-/// that a long outline opens folded to its top two levels. Info repeats the
-/// status bar's fields as a name/value grid.
+/// that a long outline opens folded to its top two levels. Info shows the
+/// document's front matter, if any, then Count and Text Settings (the status
+/// bar's fields), each section its own name/value grid.
 @MainActor
 final class InspectorViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
@@ -74,6 +75,9 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
     private var infoPane: NSView!
     private var tabButtons: [Pane: NSButton] = [:]
     private(set) var pane = Pane(rawValue: AppSettings.inspectorPane) ?? .outline
+    /// The strip's top: the toolbar's height in a document window, where the
+    /// inspector runs up behind it; 0 in a folder window, where it doesn't.
+    private var stripTop: NSLayoutConstraint!
 
     override func loadView() {
         outlineView.style = .sourceList
@@ -110,10 +114,15 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         let separator = HairlineView()
 
         // The view runs full height, under the toolbar (the window has
-        // `.fullSizeContentView`), so the tabs hang from the safe area and the
+        // `.fullSizeContentView`), so the tabs hang below the toolbar and the
         // window grey shows through the titlebar above them — the colour
-        // change at the inspector's edge.
+        // change at the inspector's edge. By `toolbarInset`, not the safe
+        // area, which misses the toolbar inside a split item on macOS 14.
         let root = BackgroundView()
+        // An empty guide marking the strip's top, moved by `viewDidLayout`.
+        let strip = NSLayoutGuide()
+        root.addLayoutGuide(strip)
+        stripTop = strip.topAnchor.constraint(equalTo: root.topAnchor)
         for view in [tabs, separator, outlineScroll, infoPane!] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
@@ -122,12 +131,13 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
             // The format bar's height, its hairline on the same bottom edge;
             // centred in the strip the way the format bar centres on its
             // `interior` (below the toolbar separator, above the hairline).
-            separator.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor,
+            stripTop,
+            separator.topAnchor.constraint(equalTo: strip.topAnchor,
                                            constant: FormatBarView.barHeight - ChromeBarView.hairlineHeight),
             separator.heightAnchor.constraint(equalToConstant: ChromeBarView.hairlineHeight),
             separator.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            tabs.centerYAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor,
+            tabs.centerYAnchor.constraint(equalTo: strip.topAnchor,
                                           constant: (FormatBarView.barHeight + 1 - ChromeBarView.hairlineHeight) / 2),
             tabs.centerXAnchor.constraint(equalTo: root.centerXAnchor),
         ])
@@ -146,6 +156,13 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         isReloading = true
         for root in roots { expand(root) }
         isReloading = false
+    }
+
+    /// Follows the toolbar as it shows, hides or changes size.
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let inset = view.toolbarInset
+        if stripTop.constant != inset { stripTop.constant = inset }
     }
 
     // MARK: - Panes
@@ -325,6 +342,7 @@ final class InspectorViewController: NSViewController, NSOutlineViewDataSource, 
         for (key, value) in pairs {
             let name = NSTextField(labelWithString: key)
             name.textColor = .secondaryLabelColor
+            name.toolTip = key   // a key wider than the inspector is clipped
             let field = NSTextField(labelWithString: value)
             // One line, truncated: a long list or description would
             // otherwise widen the grid past the inspector.

@@ -75,6 +75,8 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
         #expect(main.contains(.inspectorTrackingSeparator))
         #expect(!folder.contains(.inspectorTrackingSeparator))
         #expect(folder.contains(.sidebarTrackingSeparator))
+        #expect(!doc.toolbarAllowedItemIdentifiers(NSToolbar(identifier: Document.folderToolbarID))
+            .contains(.inspectorTrackingSeparator))
     }
 
     @Test func everyDefaultItemIsAlsoAllowed() {
