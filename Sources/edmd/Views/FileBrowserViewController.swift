@@ -15,11 +15,14 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
     let root: FolderItem
     /// Called with a clicked file the editor can open.
     var onOpen: ((URL) -> Void)?
+    /// The folder window's document: which files are open, for Move to Trash.
+    weak var folder: FolderDocument?
 
-    let outlineView = NSOutlineView()
+    let outlineView = FileOutlineView()
     let filterField = NSSearchField()
     /// Items the filter shows, or nil when it is empty and everything shows.
     private(set) var filtered: Set<ObjectIdentifier>?
+    private(set) lazy var addButton = makeAddButton()
     private var showsHidden: Bool { AppSettings.folderShowsHiddenFiles }
 
     init(root: FolderItem) {
@@ -60,6 +63,13 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         outlineView.doubleAction = #selector(rowDoubleClicked(_:))
         outlineView.menu = makeContextMenu()
         outlineView.setAccessibilityLabel("Files")
+        outlineView.onRename = { [unowned self] in selectedItem.map(beginRename) }
+        outlineView.onTrash = { [unowned self] in selectedItem.map(trash) }
+        // Rows drag to another folder here (a move) or out to the Finder (a
+        // copy); files dragged in from the Finder are copied in.
+        outlineView.registerForDraggedTypes([.fileURL])
+        outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
+        outlineView.setDraggingSourceOperationMask(.copy, forLocal: false)
 
         scroll.documentView = outlineView
         scroll.hasVerticalScroller = true
@@ -72,6 +82,9 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
             name: NSView.boundsDidChangeNotification, object: scroll.contentView)
 
         filterField.placeholderString = "Filter"
+        // The small control font in a regular field, as CotEditor's measures
+        // ("Filter" 51 × 17 px at 2x, ours at the 13pt default 59 × 20).
+        filterField.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
         filterField.sendsSearchStringImmediately = false
         filterField.sendsWholeSearchString = false
         filterField.focusRingType = .none
@@ -110,11 +123,15 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         footer.material = .sidebar
         footer.blendingMode = .behindWindow
         footer.translatesAutoresizingMaskIntoConstraints = false
-        let bar = NSStackView(views: [makeAddButton(), filterField])
+        let bar = NSStackView(views: [addButton, filterField])
         bar.orientation = .horizontal
         bar.alignment = .centerY
-        // CotEditor's footer insets.
-        bar.edgeInsets = NSEdgeInsets(top: 6, left: 7, bottom: 6, right: 7)
+        // Measured off CotEditor's window, not its code: the + 10.5pt in, the
+        // field from 31pt to 6pt short of the divider, and the field's top
+        // 2.5pt above the status bar's line (its status bar is 24pt to
+        // Edmund's 22pt, hence less above and below than its 6pt).
+        bar.edgeInsets = NSEdgeInsets(top: 3.5, left: 9, bottom: 3.5, right: 5)
+        bar.spacing = 7.5
         bar.setHuggingPriority(.required, for: .vertical)
         bar.translatesAutoresizingMaskIntoConstraints = false
         footer.addSubview(bar)
@@ -198,25 +215,26 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         // Text only, like the app's other menus.
         menu.addItem(withTitle: "New File", action: #selector(newFile(_:)), keyEquivalent: "").target = self
         menu.addItem(withTitle: "New Folder", action: #selector(newFolder(_:)), keyEquivalent: "").target = self
-        // Above the button, as CotEditor's (the button's view is not flipped).
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.maxY + 4), in: sender)
+        // Above the button, as CotEditor's. The point is the menu's top-left
+        // in the button's flipped coordinates: a menu height above its top
+        // (`bounds.maxY` is its bottom edge, which opened the menu below it).
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -menu.size.height - 4), in: sender)
     }
 
     @objc func newFile(_ sender: Any?) {
-        create(named: "Untitled", extension: "md", isFolder: false)
+        create(named: "Untitled", extension: "md", isFolder: false, near: item(for: sender))
     }
 
     @objc func newFolder(_ sender: Any?) {
-        create(named: "untitled folder", extension: "", isFolder: true)
+        create(named: "untitled folder", extension: "", isFolder: true, near: item(for: sender))
     }
 
-    /// Creates the file or folder in the selected folder, the folder of the
-    /// selected file, or the top folder, under the first free name Finder
+    /// Creates the file or folder in `item` if it is a folder, beside it if
+    /// it is a file, or in the top folder, under the first free name Finder
     /// would give it ("Untitled 2.md"). A new file opens; a new folder is
     /// selected.
-    private func create(named base: String, extension ext: String, isFolder: Bool) {
-        let selected = outlineView.selectedRow >= 0 ? outlineView.item(atRow: outlineView.selectedRow) as? FolderItem : nil
-        let parent = selected.map { $0.isDirectory ? $0 : ($0.parent ?? root) } ?? root
+    private func create(named base: String, extension ext: String, isFolder: Bool, near item: FolderItem?) {
+        let parent = item.map { $0.isDirectory ? $0 : ($0.parent ?? root) } ?? root
         let url = FolderItem.freeURL(in: parent.url, base: base, extension: ext)
         do {
             if isFolder {
@@ -228,11 +246,201 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
             presentError(error)
             return
         }
-        // Now, rather than when FSEvents reports it a moment later.
-        parent.reload()
-        reload([parent === root ? nil : parent])
-        if parent !== root { outlineView.expandItem(parent) }
-        if isFolder { select(url) } else { onOpen?(url) }
+        listChanged(in: [parent], select: isFolder ? url : nil)
+        if !isFolder { onOpen?(url) }
+    }
+
+    /// The row a command acts on: the clicked one for the context menu, the
+    /// selected one for the + menu and the keys.
+    private func item(for sender: Any?) -> FolderItem? {
+        if let menuItem = sender as? NSMenuItem, menuItem.menu === outlineView.menu { return clickedItem }
+        return selectedItem
+    }
+
+    private var selectedItem: FolderItem? {
+        outlineView.selectedRow >= 0 ? outlineView.item(atRow: outlineView.selectedRow) as? FolderItem : nil
+    }
+
+    /// Re-lists `folders` now, rather than when FSEvents reports the change
+    /// a moment later, and selects `url`.
+    private func listChanged(in folders: [FolderItem], select url: URL?) {
+        for folder in folders { folder.reload() }
+        reload(folders.map { $0 === root ? nil : $0 })
+        for folder in folders where folder !== root { outlineView.expandItem(folder) }
+        if let url { select(url) }
+    }
+
+    // MARK: - Rename, duplicate, trash
+
+    @objc func renameItem(_ sender: Any?) { item(for: sender).map(beginRename) }
+    @objc func duplicateItem(_ sender: Any?) { item(for: sender).map(duplicate) }
+    @objc func trashItem(_ sender: Any?) { item(for: sender).map(trash) }
+
+    /// The row being renamed, while its name is being edited.
+    private var renaming: FolderItem?
+
+    /// Edits the row's name in place, as Finder does: the name without its
+    /// extension is selected, Return keeps the change, Escape drops it.
+    func beginRename(_ item: FolderItem) {
+        let row = outlineView.row(forItem: item)
+        guard row >= 0, let field = (outlineView.view(atColumn: 0, row: row, makeIfNecessary: true)
+                                      as? NSTableCellView)?.textField else { return }
+        outlineView.selectRowIndexes([row], byExtendingSelection: false)
+        renaming = item
+        field.isEditable = true
+        field.drawsBackground = true
+        field.backgroundColor = .textBackgroundColor
+        field.delegate = self
+        guard view.window?.makeFirstResponder(field) == true, let editor = field.currentEditor() else { return }
+        let stem = item.isDirectory ? item.name : (item.name as NSString).deletingPathExtension
+        editor.selectedRange = NSRange(location: 0, length: (stem as NSString).length)
+    }
+
+    private func endRename(_ field: NSTextField, keeping: Bool) {
+        guard let item = renaming else { return }
+        renaming = nil   // first: giving up first responder ends editing again
+        let name = field.stringValue
+        // Before restoring the old name: ending the edit writes the field
+        // editor's text back into the field.
+        view.window?.makeFirstResponder(outlineView)
+        field.isEditable = false
+        field.drawsBackground = false
+        field.stringValue = item.name
+        guard keeping else { return }
+        // Once the outline has finished ending the edit: reloading it from
+        // inside its own end-editing raised "NSTableView data re-entrancy"
+        // in a live window (rows animating), though never headless.
+        let source = item.url   // a URL, not the item: the closure must be Sendable
+        performFileOperation(reloading: [source.deletingLastPathComponent()]) {
+            let url = try FolderItem.rename(source, to: name)
+            return url == source ? nil : url
+        }
+    }
+
+    /// Runs `work` off the main thread, then reloads `folders` and selects
+    /// what it returns, back on main. A big copy, or a coordinated move kept
+    /// waiting by the open document it moves, would otherwise stall the
+    /// window. Takes and gives URLs only, so the work is Sendable.
+    private func performFileOperation(reloading folders: [URL],
+                                      _ work: @escaping @Sendable () throws -> URL?) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result { try work() }
+            // RunLoop, not DispatchQueue.main: tests drain the run loop.
+            RunLoop.main.perform { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let url):
+                        let items = folders.map { self.root.item(at: $0) ?? self.root }
+                        self.listChanged(in: items, select: url)
+                    case .failure(let error):
+                        self.presentError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField, field !== filterField else { return }
+        endRename(field, keeping: true)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard selector == #selector(cancelOperation(_:)), control !== filterField,
+              let field = control as? NSTextField, renaming != nil else { return false }
+        endRename(field, keeping: false)
+        return true
+    }
+
+    /// Copies the item beside itself ("Notes copy.md") and selects the copy.
+    func duplicate(_ item: FolderItem) {
+        let url = item.url
+        performFileOperation(reloading: [url.deletingLastPathComponent()]) { try FolderItem.duplicate(url) }
+    }
+
+    /// Moves the item to the Trash, closing any file of it open here first.
+    /// Refused while such a file has unsaved changes (the menu item is
+    /// disabled then; the key beeps), so no edit goes with it.
+    func trash(_ item: FolderItem) {
+        guard item !== root, folder?.hasUnsavedFile(under: item.url) != true else { NSSound.beep(); return }
+        let row = outlineView.row(forItem: item)
+        folder?.closeFiles(under: item.url)
+        do {
+            try FolderItem.trash(item.url)
+        } catch {
+            presentError(error)
+            return
+        }
+        listChanged(in: [item.parent ?? root], select: nil)
+        // The selection moves to the row that took the trashed one's place.
+        let next = min(row, outlineView.numberOfRows - 1)
+        if next >= 0 { outlineView.selectRowIndexes([next], byExtendingSelection: false) }
+    }
+
+    // MARK: - Drag and drop
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        // Not while a name is being edited: a drag in the field selects text.
+        guard let item = item as? FolderItem, renaming == nil else { return nil }
+        return item.url as NSURL
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo,
+                     proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        let urls = droppedURLs(info)
+        guard !urls.isEmpty else { return [] }
+        // Onto a folder, whichever row the pointer is over: a file's own folder.
+        let target = dropFolder(for: item)
+        outlineView.setDropItem(target === root ? nil : target, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        let local = info.draggingSource as AnyObject? === outlineView
+        guard !local else {
+            let destination = target.url.standardizedFileURL.path
+            let pointless = urls.contains { url in
+                let source = url.standardizedFileURL.path
+                return url.deletingLastPathComponent().standardizedFileURL.path == destination
+                    || destination == source || destination.hasPrefix(source + "/")
+            }
+            return pointless ? [] : .move
+        }
+        return .copy
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo,
+                     item: Any?, childIndex index: Int) -> Bool {
+        let target = dropFolder(for: item).url
+        let local = info.draggingSource as AnyObject? === outlineView
+        let urls = droppedURLs(info)
+        guard !urls.isEmpty else { return false }
+        // The sources' folders too: a move empties them.
+        let folders = [target] + (local ? urls.map { $0.deletingLastPathComponent() } : [])
+        performFileOperation(reloading: folders) {
+            var last: URL?
+            for url in urls {
+                if local {
+                    last = try FolderItem.move(url, into: target)
+                } else {
+                    let copy = target.appendingPathComponent(url.lastPathComponent)
+                    guard !FileManager.default.fileExists(atPath: copy.path) else {
+                        throw FolderItem.OperationError.exists(url.lastPathComponent)
+                    }
+                    try FileManager.default.copyItem(at: url, to: copy)
+                    last = copy
+                }
+            }
+            return last
+        }
+        return true
+    }
+
+    private func droppedURLs(_ info: NSDraggingInfo) -> [URL] {
+        info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                            options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
+    private func dropFolder(for item: Any?) -> FolderItem {
+        guard let item = item as? FolderItem else { return root }
+        return item.isDirectory ? item : (item.parent ?? root)
     }
 
     // MARK: - Updates
@@ -242,12 +450,16 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
     /// whole tree, which a checkout touching hundreds of folders would repeat.
     func reload(_ items: [FolderItem?]) {
         guard isViewLoaded else { return }
+        // A reload drops the outline's selection: keep the row that was
+        // selected (a new copy, say), else the showing file's.
+        let kept = selectedItem?.url ?? folder?.current?.fileURL
         rows = [:]
         if filtered != nil {
             applyFilter()
         } else {
             for item in items { outlineView.reloadItem(item, reloadChildren: true) }
         }
+        select(kept)
     }
 
     /// Reveals and selects `url`'s row, expanding the folders above it.
@@ -408,12 +620,31 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
 
     private func makeContextMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Show in Finder", action: #selector(showInFinder(_:)), keyEquivalent: "")
+        // Finder's order: taking the file elsewhere (opening first, as the
+        // commoner), Move to Trash alone between dividers, then Rename and
+        // Duplicate, then Share. No Open in New Tab: a folder window takes no
+        // tabs, its sidebar being what switches files.
         menu.addItem(withTitle: "Open in New Window", action: #selector(openInNewWindow(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Show in Finder", action: #selector(showInFinder(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Move to Trash", action: #selector(trashItem(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Rename", action: #selector(renameItem(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Duplicate", action: #selector(duplicateItem(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Share…", action: #selector(shareItem(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Show Hidden Files", action: #selector(toggleHiddenFiles(_:)), keyEquivalent: "")
         for item in menu.items { item.target = self }
         return menu
+    }
+
+    /// The system share picker for the clicked row's file, beside the row.
+    @objc private func shareItem(_ sender: Any?) {
+        guard let item = clickedItem else { return }
+        let row = outlineView.row(forItem: item)
+        NSSharingServicePicker(items: [item.url])
+            .show(relativeTo: outlineView.rect(ofRow: row), of: outlineView, preferredEdge: .maxX)
     }
 
     @objc private func showInFinder(_ sender: Any?) {
@@ -453,10 +684,30 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
             guard let item = clickedItem, item.isEditable else { return false }
             let open = NSDocumentController.shared.document(for: item.url) as? Document
             return !(open?.folder != nil && open?.isDocumentEdited == true)
-        case #selector(showInFinder(_:)):
-            return clickedItem != nil
+        case #selector(showInFinder(_:)), #selector(renameItem(_:)), #selector(duplicateItem(_:)),
+             #selector(shareItem(_:)):
+            return item(for: menuItem) != nil
+        case #selector(trashItem(_:)):
+            guard let item = item(for: menuItem) else { return false }
+            return folder?.hasUnsavedFile(under: item.url) != true
         default:
             return true
+        }
+    }
+}
+
+/// The sidebar's list, with Finder's keys: Return renames the selected row,
+/// Command-Delete moves it to the Trash.
+final class FileOutlineView: NSOutlineView {
+    var onRename: (() -> Void)?
+    var onTrash: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        switch (event.keyCode, modifiers) {
+        case (36, []), (76, []): onRename?()        // Return, keypad Enter
+        case (51, [.command]): onTrash?()            // Command-Delete
+        default: super.keyDown(with: event)
         }
     }
 }

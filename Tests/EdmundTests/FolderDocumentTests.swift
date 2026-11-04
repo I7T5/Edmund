@@ -299,6 +299,124 @@ struct FolderDocumentTests {
         #expect(selected?.name == "untitled folder")
     }
 
+    // MARK: - File operations
+
+    private func row(_ browser: FileBrowserViewController, _ name: String) -> FolderItem? {
+        (0..<browser.outlineView.numberOfRows).lazy
+            .compactMap { browser.outlineView.item(atRow: $0) as? FolderItem }
+            .first { $0.name == name }
+    }
+
+    private func key(_ code: UInt16, _ chars: String, _ flags: NSEvent.ModifierFlags = [],
+                     in window: NSWindow) -> NSEvent {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+                         windowNumber: window.windowNumber, context: nil, characters: chars,
+                         charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+    }
+
+    /// Deletes a trashed test file from the real Trash.
+    private func emptyFromTrash(_ name: String) {
+        let trash = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first
+        if let item = trash?.appendingPathComponent(name) { try? FileManager.default.removeItem(at: item) }
+    }
+
+    @Test("Return renames the row in place; the open file follows it, and the subtitle too")
+    func renameInPlace() throws {
+        let url = try makeFolder(["a.md": "# A"])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        let window = try #require(folder.windowController.window)
+        let browser = folder.windowController.fileBrowser
+        folder.open(url.appendingPathComponent("a.md"))
+        let a = try #require(folder.current)
+
+        browser.outlineView.keyDown(with: key(36, "\r", in: window))
+        let editor = try #require(window.firstResponder as? NSTextView)
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 1))   // "a", not ".md"
+        editor.insertText("renamed", replacementRange: editor.selectedRange())
+        window.makeFirstResponder(browser.outlineView)   // ends the edit, as Return does
+
+        let renamed = url.appendingPathComponent("renamed.md")
+        settle { a.fileURL?.lastPathComponent == "renamed.md" }   // the rename runs after the edit ends
+        #expect(FileManager.default.fileExists(atPath: renamed.path))
+        #expect(a.fileURL?.lastPathComponent == "renamed.md")
+        #expect(window.subtitle == "renamed.md")
+        #expect(row(browser, "renamed.md") != nil)
+    }
+
+    @Test("Escape leaves the name as it was")
+    func renameCancelled() throws {
+        let url = try makeFolder(["a.md": ""])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        let window = try #require(folder.windowController.window)
+        let browser = folder.windowController.fileBrowser
+        _ = browser.view
+        let item = try #require(row(browser, "a.md"))
+
+        browser.beginRename(item)
+        let editor = try #require(window.firstResponder as? NSTextView)
+        editor.insertText("zzz", replacementRange: editor.selectedRange())
+        editor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+
+        #expect(FileManager.default.fileExists(atPath: url.appendingPathComponent("a.md").path))
+        #expect(!FileManager.default.fileExists(atPath: url.appendingPathComponent("zzz.md").path))
+        let cell = browser.outlineView.view(atColumn: 0, row: browser.outlineView.row(forItem: item),
+                                            makeIfNecessary: false) as? NSTableCellView
+        #expect(cell?.textField?.stringValue == "a.md")
+        #expect(window.firstResponder === browser.outlineView)
+    }
+
+    @Test("Duplicate copies the row beside itself and selects the copy")
+    func duplicateRow() throws {
+        let url = try makeFolder(["a.md": "text"])
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        let browser = folder.windowController.fileBrowser
+        _ = browser.view
+        browser.duplicate(try #require(row(browser, "a.md")))
+        let copy = url.appendingPathComponent("a copy.md")
+        var selected: FolderItem? { browser.outlineView.item(atRow: browser.outlineView.selectedRow) as? FolderItem }
+        settle { selected?.name == "a copy.md" }   // the copy runs off the main thread
+        #expect((try? String(contentsOf: copy, encoding: .utf8)) == "text")
+        #expect(selected?.name == "a copy.md")
+        // FSEvents reports the copy a moment later; the selection stays on it.
+        folder.directoriesDidChange([url])
+        #expect(selected?.name == "a copy.md")
+    }
+
+    @Test("Command-Delete trashes the showing file and closes it; not one with unsaved changes")
+    func trashRows() throws {
+        let clean = "trash-\(UUID().uuidString).md"
+        let edited = "keep-\(UUID().uuidString).md"
+        let url = try makeFolder([clean: "", edited: ""])
+        defer { emptyFromTrash(clean); emptyFromTrash(edited) }
+        let folder = try openFolder(url)
+        defer { folder.windowController.window?.close() }
+        let window = try #require(folder.windowController.window)
+        let browser = folder.windowController.fileBrowser
+
+        folder.open(url.appendingPathComponent(edited))
+        folder.current?.updateChangeCount(.changeDone)
+        let editedItem = try #require(row(browser, edited))
+        browser.trash(editedItem)   // refused: a beep, nothing moves
+        #expect(FileManager.default.fileExists(atPath: url.appendingPathComponent(edited).path))
+        let menuItem = NSMenuItem(title: "Move to Trash", action: #selector(FileBrowserViewController.trashItem(_:)),
+                                  keyEquivalent: "")
+        browser.outlineView.selectRowIndexes([browser.outlineView.row(forItem: editedItem)], byExtendingSelection: false)
+        #expect(!browser.validateMenuItem(menuItem))
+
+        folder.open(url.appendingPathComponent(clean))
+        let shown = try #require(folder.current)
+        browser.outlineView.selectRowIndexes([browser.outlineView.row(forItem: try #require(row(browser, clean)))],
+                                             byExtendingSelection: false)
+        browser.outlineView.keyDown(with: key(51, "\u{7F}", .command, in: window))
+        #expect(!FileManager.default.fileExists(atPath: url.appendingPathComponent(clean).path))
+        #expect(!folder.files.contains { $0 === shown })
+        #expect(folder.current == nil)
+        #expect(row(browser, clean) == nil)
+    }
+
     @Test("The filter lists matches and the folders above them")
     func filtering() throws {
         let url = try makeFolder(["a.md": "", "b.md": ""])
