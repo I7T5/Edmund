@@ -123,10 +123,12 @@ final class FileBrowserViewController: NSViewController, NSOutlineViewDataSource
         let bar = NSStackView(views: [addButton, filterField])
         bar.orientation = .horizontal
         bar.alignment = .centerY
-        // CotEditor's field and side insets; less above and below than its 6pt,
-        // so the field tops the status bar beside it by 2.5pt, as CotEditor's
-        // tops its own (measured: its status bar is 24pt to Edmund's 22pt).
-        bar.edgeInsets = NSEdgeInsets(top: 3.5, left: 7, bottom: 3.5, right: 7)
+        // Measured off CotEditor's window, not its code: the + 10.5pt in, the
+        // field from 31pt to 6pt short of the divider, and the field's top
+        // 2.5pt above the status bar's line (its status bar is 24pt to
+        // Edmund's 22pt, hence less above and below than its 6pt).
+        bar.edgeInsets = NSEdgeInsets(top: 3.5, left: 9, bottom: 3.5, right: 5)
+        bar.spacing = 7.5
         bar.setHuggingPriority(.required, for: .vertical)
         bar.translatesAutoresizingMaskIntoConstraints = false
         footer.addSubview(bar)
