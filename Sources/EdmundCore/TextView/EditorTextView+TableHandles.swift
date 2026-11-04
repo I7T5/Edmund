@@ -1678,6 +1678,9 @@ extension EditorTextView {
     /// Every table row's decoration flags beside the fragment they are drawn
     /// against, so a missing grid line can be read off as a number: whether the
     /// row asked for a bottom border at all, and where that border would land.
+    /// `ruleAt` is the raw frame's bottom; `drawH` and `dx` are what the row is
+    /// drawn with, which differ only for the last row at the document's end
+    /// (the absorbed empty line).
     public func debugTableRules() -> String {
         guard let tlm = textLayoutManager, let storage = textStorage else { return "no layout" }
         var out: [String] = []
@@ -1702,6 +1705,14 @@ extension EditorTextView {
                     let frame = fragment.layoutFragmentFrame
                     geometry = "y=\(frame.minY) h=\(frame.height)"
                         + " ruleAt=\(frame.minY + frame.height)"
+                    if let decorated = fragment as? DecoratedTextLayoutFragment {
+                        geometry += " drawH=\(decorated.tableRowDrawHeight)"
+                            + " dx=\(decorated.decorationTextOffsetX)"
+                    }
+                    geometry += " lines=" + fragment.textLineFragments.map {
+                        "[\($0.characterRange.length) y=\($0.typographicBounds.minY)"
+                            + " h=\($0.typographicBounds.height)]"
+                    }.joined()
                 }
                 out.append("  line \(line) \(flags) \(geometry)")
                 line += 1

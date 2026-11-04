@@ -260,7 +260,7 @@ final class FontSettings: NSObject, ObservableObject {
     var isDefault: Bool { theme == .default }
 
     private func applyToDocuments(_ theme: EditorTheme) {
-        for case let document as Document in NSDocumentController.shared.documents {
+        for document in Document.restylableDocuments {
             document.editor?.applyTheme(theme)
             // Reflect the theme change live in an open Read view too.
             document.refreshReadView(immediately: true)

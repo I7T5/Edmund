@@ -208,7 +208,7 @@ struct EditSettingsView: View {
     /// Strict line breaks changes Read-mode output, so re-render every open
     /// document (Read mode reads `AppSettings.strictLineBreaks` on render).
     private func refreshReadViews() {
-        for case let document as Document in NSDocumentController.shared.documents {
+        for document in Document.restylableDocuments {
             document.refreshReadView(immediately: true)
         }
     }

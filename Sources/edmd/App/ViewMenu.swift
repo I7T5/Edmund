@@ -69,6 +69,13 @@ enum ViewMenu {
         viewMenu.addItem(MenuCommand(id: "view.toggleInspector", group: "View",
                                      title: "Show Inspector",
                                      action: #selector(Document.toggleInspectorShown(_:))).makeItem())
+        // A folder window's file browser: enabled only there (the action is
+        // the folder window controller's) and retitled Show/Hide by it.
+        // ⌃⌘S, the system's shortcut for it.
+        viewMenu.addItem(MenuCommand(id: "view.toggleSidebar", group: "View",
+                                     title: "Show Sidebar",
+                                     action: #selector(FolderWindowController.toggleFolderSidebar(_:)),
+                                     shortcut: Shortcut(key: "s", modifiers: [.control, .command])).makeItem())
         viewMenu.addItem(.separator())
 
         // The status bar, as a pair like the toolbar's above: Show/Hide

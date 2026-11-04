@@ -218,7 +218,7 @@ struct SyntaxSettingsView: View {
     /// Read view so the change takes effect immediately.
     private func applyFeatures() {
         let features = AppSettings.markdownFeatures
-        for case let document as Document in NSDocumentController.shared.documents {
+        for document in Document.restylableDocuments {
             document.editor?.markdownFeatures = features
             document.refreshFormatBar()
             document.refreshReadView(immediately: true)
@@ -228,7 +228,7 @@ struct SyntaxSettingsView: View {
     /// Re-styles every open document's code blocks (Edit + Read) after the
     /// default language or the installed definitions changed.
     private func refreshCodeBlocks() {
-        for case let document as Document in NSDocumentController.shared.documents {
+        for document in Document.restylableDocuments {
             document.editor?.rerenderStyles()
             document.refreshReadView(immediately: true)
         }

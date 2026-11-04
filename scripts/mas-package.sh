@@ -51,6 +51,14 @@ sign() {
 echo "Signing for the App Store (${SIGN_ID})..."
 sign "$APP/Contents/PlugIns/EdmundQuickLook.appex" com.i7t5.edmund.quicklook Resources/QuickLook.entitlements
 sign "$APP/Contents/PlugIns/EdmundThumbnail.appex" com.i7t5.edmund.thumbnail Resources/Thumbnail.entitlements
+# The folder Quick Action needs its own App ID and profile. Until one exists,
+# leave it out of the App Store build rather than fail the whole package.
+if [ -f "$PROFILES/com.i7t5.edmund.openfolder.provisionprofile" ]; then
+    sign "$APP/Contents/PlugIns/EdmundOpenFolder.appex" com.i7t5.edmund.openfolder Resources/OpenFolder.entitlements
+else
+    echo "Warning: no profile for com.i7t5.edmund.openfolder; leaving the Open in Edmund action out." >&2
+    rm -rf "$APP/Contents/PlugIns/EdmundOpenFolder.appex"
+fi
 sign "$APP" com.i7t5.edmund Resources/Edmund.entitlements
 codesign --verify --strict --deep "$APP"
 

@@ -425,13 +425,20 @@ final class FormatToolbar: NSObject {
 
     // MARK: - Image popup
 
-    /// Attach File… works today; the remaining sources are visible but disabled,
-    /// so the finished shape of the feature is legible without pretending the
-    /// pieces exist. See `ImageSource`.
+    /// Attach File… and the device import work today; Photos… is visible but
+    /// disabled, so the finished shape of the feature is legible without
+    /// pretending the piece exists. See `ImageSource`.
     func imagePopupMenu() -> NSMenu {
         let menu = NSMenu(title: "Image")
         for source in ImageSource.allCases {
-            if source == .camera { menu.addItem(.separator()) }
+            if source == .device {
+                // AppKit owns this item: it swaps in the device submenus.
+                let item = NSMenuItem(title: source.title, action: nil, keyEquivalent: "")
+                item.identifier = NSMenuItem.importFromDeviceIdentifier
+                menu.addItem(.separator())
+                menu.addItem(item)
+                continue
+            }
             let item = NSMenuItem(title: source.title,
                                   action: #selector(EditorTextView.formatAttachImage(_:)),
                                   keyEquivalent: "")
@@ -560,21 +567,21 @@ final class FormatMenuToolbarItem: NSMenuToolbarItem {
     }
 }
 
-/// Where an attached image comes from. Only `.file` is wired up; the rest are
-/// the extension points for Photos and Continuity Camera, which need a PhotoKit
-/// dependency, an `NSPhotoLibraryUsageDescription`, and `NSServicesMenuRequestor`
-/// plumbing respectively.
+/// Where an attached image comes from. `.photos` is a placeholder: it needs a
+/// PhotoKit dependency and an `NSPhotoLibraryUsageDescription`. `.device` is
+/// Continuity Camera — AppKit fills the item with each nearby iPhone or iPad's
+/// Take Photo / Scan Documents / Add Sketch, and the editor reads the result
+/// back (EditorTextView+ImageAttachments).
 enum ImageSource: CaseIterable {
-    case file, photos, camera, scan
+    case file, photos, device
 
     var title: String {
         switch self {
         case .file:   return "Attach File…"
         case .photos: return "Photos…"
-        case .camera: return "Take Photo"
-        case .scan:   return "Scan Documents"
+        case .device: return "Import from iPhone or iPad"
         }
     }
 
-    var isAvailable: Bool { self == .file }
+    var isAvailable: Bool { self != .photos }
 }

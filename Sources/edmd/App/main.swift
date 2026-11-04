@@ -230,7 +230,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @MainActor @objc func openDocumentManually(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
+        // A folder opens as a folder window (FolderDocument).
+        panel.canChooseDirectories = true
         panel.canChooseFiles = true
 
         let complete: (NSApplication.ModalResponse) -> Void = { response in

@@ -38,13 +38,18 @@ struct RenderCacheInvalidationTests {
         #expect(try overlayHeight() == original)
     }
 
+    /// `size` pixels at 72 dpi, from an explicit bitmap: `lockFocus` would
+    /// save 2× pixels on a Retina Mac, and images are sized by their pixels.
     private func writePNG(_ url: URL, size: NSSize) throws {
-        let image = NSImage(size: size)
-        image.lockFocus()
+        let rep = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         NSColor.systemBlue.setFill()
         NSRect(origin: .zero, size: size).fill()
-        image.unlockFocus()
-        let rep = try #require(NSBitmapImageRep(data: image.tiffRepresentation!))
+        NSGraphicsContext.restoreGraphicsState()
         let data = try #require(rep.representation(using: .png, properties: [:]))
         try data.write(to: url)
     }

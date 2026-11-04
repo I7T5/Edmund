@@ -174,6 +174,32 @@ struct ImageAttachmentTests {
         #expect(e.rawSource == "![](notes.assets/\(files[0]))")
     }
 
+    // MARK: - Continuity Camera
+
+    @Test func validRequestorAcceptsBitmapsOnlyWhenEditable() throws {
+        let (e, _) = editorIn(dir: try makeTempDir())
+        #expect(e.validRequestor(forSendType: nil, returnType: .png) as? EditorTextView === e)
+        #expect(e.validRequestor(forSendType: nil, returnType: .tiff) as? EditorTextView === e)
+        e.isEditable = false
+        #expect(e.validRequestor(forSendType: nil, returnType: .png) == nil)
+    }
+
+    @Test func readSelectionAttachesDeviceImage() throws {
+        let dir = try makeTempDir()
+        let (e, _) = editorIn(dir: dir)
+        let pboard = NSPasteboard(name: .init("EdmundTests.\(UUID().uuidString)"))
+        defer { pboard.releaseGlobally() }
+        pboard.clearContents()
+        pboard.setData(tinyPNG(), forType: .png)
+
+        #expect(e.readSelection(from: pboard))
+
+        let files = try FileManager.default.contentsOfDirectory(
+            atPath: try #require(e.assetsDirectoryURL()).path)
+        #expect(files.count == 1)
+        #expect(e.rawSource == "![](notes.assets/\(files[0]))")
+    }
+
     // MARK: - Unsaved document
 
     @Test func attachWithoutFileURLAndNoHookIsRefused() throws {

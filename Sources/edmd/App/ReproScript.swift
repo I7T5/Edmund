@@ -618,6 +618,148 @@ enum ReproScript {
                     report("repro outlineclick \(arg) index=\(node.index)")
                     doc.inspector.onSelectHeading?(node.index)
                 }
+            case "folderopen":
+                // A folder window's sidebar click on <arg>, a path relative to
+                // the folder. Later commands then drive the file it shows.
+                scheduleFolder(after: delay) { folder in
+                    guard let root = folder.fileURL else { return }
+                    folder.open(root.appendingPathComponent(arg))
+                    report("repro folderopen \(arg) current=\(folder.current?.displayName ?? "nil") " +
+                           "open=\(folder.files.count) edited=\(folder.files.filter(\.isDocumentEdited).count)")
+                }
+            case "foldersidebar":
+                // Moves the sidebar's divider to <arg> points, as a drag does,
+                // and reports the outline column's width against the list's.
+                scheduleFolder(after: delay) { folder in
+                    folder.windowController.reproSetSidebarWidth(CGFloat(Double(arg) ?? 220))
+                    let browser = folder.windowController.fileBrowser
+                    browser.view.layoutSubtreeIfNeeded()
+                    let column = browser.outlineView.tableColumns.first?.width ?? 0
+                    let list = browser.outlineView.enclosingScrollView?.contentView.frame.width ?? 0
+                    let outline = browser.outlineView
+                    let cell = outline.numberOfRows > 0 ? outline.view(atColumn: 0, row: 0, makeIfNecessary: false) : nil
+                    let cellMaxX = cell.map { $0.convert($0.bounds, to: outline).maxX } ?? 0
+                    report("repro foldersidebar \(arg) column=\(column) list=\(list) " +
+                           "outline=\(outline.frame.width) cellMaxX=\(cellMaxX) spacing=\(outline.intercellSpacing.width)")
+                }
+            case "folderfilter":
+                // Types <arg> into the sidebar's filter (empty: clears it) and
+                // lists the rows it leaves.
+                scheduleFolder(after: delay) { folder in
+                    let browser = folder.windowController.fileBrowser
+                    browser.filterField.stringValue = arg
+                    browser.filterChanged(nil)
+                    let rows = (0..<browser.outlineView.numberOfRows).compactMap {
+                        (browser.outlineView.item(atRow: $0) as? FolderItem)?.name
+                    }
+                    report("repro folderfilter '\(arg)' rows=\(rows)")
+                }
+            case "folderpoint":
+                // Where <arg> ("add", or "row:<name>") sits in the showing
+                // file's editor coordinates: the point `realclick` takes, so a
+                // real click can land on the sidebar.
+                scheduleFolder(after: delay) { folder in
+                    let browser = folder.windowController.fileBrowser
+                    guard let editor = folder.current?.editor else { report("repro folderpoint: no file showing"); return }
+                    var target: (view: NSView, rect: NSRect)?
+                    if arg == "add" {
+                        target = (browser.addButton, browser.addButton.bounds)
+                    } else if arg.hasPrefix("row:"), let row = (0..<browser.outlineView.numberOfRows).first(where: {
+                        (browser.outlineView.item(atRow: $0) as? FolderItem)?.name == String(arg.dropFirst(4))
+                    }) {
+                        target = (browser.outlineView, browser.outlineView.rect(ofRow: row))
+                    }
+                    guard let target else { report("repro folderpoint: no \(arg)"); return }
+                    let r = target.view.convert(target.rect, to: editor)
+                    report("repro folderpoint \(arg) at=\(Int(r.midX)),\(Int(r.midY))")
+                }
+            case "folderaction":
+                // In-process sidebar commands, for runs where real events
+                // can't be used: "new-file", "new-folder", "select:<name>",
+                // "rename:<name>" (starts the inline edit), "type:<text>" (into
+                // the field being edited), "commit", "cancel",
+                // "duplicate:<name>", "trash:<name>", "statusbar" (reveals the
+                // hover-hidden status bar). Reports the rows after, less the
+                // test folder's note-* filler files, to keep the line short.
+                scheduleFolder(after: delay) { folder in
+                    let browser = folder.windowController.fileBrowser
+                    let outline = browser.outlineView
+                    @MainActor func row(_ name: String) -> FolderItem? {
+                        for index in 0..<outline.numberOfRows {
+                            if let item = outline.item(atRow: index) as? FolderItem, item.name == name { return item }
+                        }
+                        return nil
+                    }
+                    let (op, name) = arg.firstIndex(of: ":").map {
+                        (String(arg[..<$0]), String(arg[arg.index(after: $0)...]))
+                    } ?? (arg, "")
+                    let window = folder.windowController.window
+                    switch op {
+                    case "new-file": browser.newFile(nil)
+                    case "new-folder": browser.newFolder(nil)
+                    case "select":
+                        if let item = row(name) {
+                            outline.selectRowIndexes([outline.row(forItem: item)], byExtendingSelection: false)
+                        }
+                    case "rename": row(name).map(browser.beginRename)
+                    case "type":
+                        let editor = window?.firstResponder as? NSTextView
+                        editor?.insertText(name, replacementRange: editor?.selectedRange() ?? NSRange())
+                    case "commit": window?.makeFirstResponder(outline)
+                    case "cancel":
+                        (window?.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+                    case "statusbar":
+                        // Shows the hover-revealed status bar, to compare the
+                        // footer's top line with its.
+                        @MainActor func reveal(_ view: NSView) {
+                            if view is StatusBarView { view.alphaValue = 1 }
+                            for subview in view.subviews { reveal(subview) }
+                        }
+                        if let content = window?.contentView { reveal(content) }
+                    case "duplicate": row(name).map(browser.duplicate)
+                    case "trash": row(name).map(browser.trash)
+                    default: report("repro folderaction: unknown \(arg)"); return
+                    }
+                    let rows = (0..<outline.numberOfRows).compactMap { (outline.item(atRow: $0) as? FolderItem)?.name }
+                    let selected = (outline.item(atRow: outline.selectedRow) as? FolderItem)?.name ?? "-"
+                    report("repro folderaction \(arg) current=\(folder.current?.displayName ?? "nil") " +
+                           "selected=\(selected) rows=\(rows.filter { !$0.hasPrefix("note-") })")
+                }
+            case "realkey":
+                // "realkey down|up|return|escape|cmd-delete|text:<chars>" — REAL
+                // keyboard events at the HID tap, so an open menu, a field
+                // editor or the sidebar's keyDown gets them as from the keyboard.
+                // Refuses unless this app is active: the HID tap types into
+                // whatever app is in front.
+                schedule(after: delay) { _ in
+                    guard NSApp.isActive else {
+                        report("repro realkey ABORTED: not the active app"); return
+                    }
+                    let keys: [String: (CGKeyCode, CGEventFlags)] = [
+                        "down": (125, []), "up": (126, []), "return": (36, []),
+                        "escape": (53, []), "cmd-delete": (51, .maskCommand),
+                    ]
+                    let text = arg.hasPrefix("text:") ? String(arg.dropFirst(5)) : nil
+                    guard text != nil || keys[arg] != nil else { report("repro realkey: unknown \(arg)"); return }
+                    let key = keys[arg]
+                    DispatchQueue.global(qos: .userInteractive).async {
+                        func post(_ code: CGKeyCode, _ flags: CGEventFlags, _ chars: String?) {
+                            for down in [true, false] {
+                                let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
+                                e?.flags = flags
+                                if let chars {
+                                    let units = Array(chars.utf16)
+                                    e?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                                }
+                                e?.post(tap: .cghidEventTap)
+                                usleep(20_000)
+                            }
+                        }
+                        if let text { for ch in text { post(0, [], String(ch)) } }
+                        else if let key { post(key.0, key.1, nil) }
+                    }
+                    report("repro realkey \(arg)")
+                }
             case "clickrow":
                 scheduleDoc(after: delay) { _ in
                     guard let row = findInPopover({ ($0 as? FormatPopoverRow)?.item.title == arg })
@@ -1276,7 +1418,7 @@ enum ReproScript {
     private static func scheduleDoc(after: TimeInterval,
                                     _ body: @escaping @MainActor (Document) -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + after) {
-            guard let doc = NSDocumentController.shared.documents.first as? Document else {
+            guard let doc = scriptDocument else {
                 report("repro: no document yet"); return
             }
             body(doc)
@@ -1350,9 +1492,28 @@ enum ReproScript {
     private static func schedule(after: TimeInterval,
                                  _ body: @escaping @MainActor (EditorTextView) -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + after) {
-            guard let doc = NSDocumentController.shared.documents.first as? Document,
-                  let editor = doc.editor else { return }
+            guard let doc = scriptDocument, let editor = doc.editor else { return }
             body(editor)
+        }
+    }
+
+    /// The document the script drives: the first one open, or, for a folder
+    /// window, the file it is showing.
+    private static var scriptDocument: Document? {
+        switch NSDocumentController.shared.documents.first {
+        case let doc as Document: doc
+        case let folder as FolderDocument: folder.current
+        default: nil
+        }
+    }
+
+    private static func scheduleFolder(after: TimeInterval,
+                                       _ body: @escaping @MainActor (FolderDocument) -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + after) {
+            guard let folder = NSDocumentController.shared.documents.first as? FolderDocument else {
+                report("repro: no folder window"); return
+            }
+            body(folder)
         }
     }
 

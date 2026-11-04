@@ -66,6 +66,17 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
         #expect(!FormatToolbar.centeredIdentifiers.contains(FormatToolbar.share))
     }
 
+    /// A folder window's file pane sits below the toolbar, so its inspector
+    /// is not full height and there is no split edge to track.
+    @Test func folderToolbarHasNoInspectorSeparator() {
+        let doc = Document()
+        let main = doc.toolbarDefaultItemIdentifiers(NSToolbar(identifier: "MainToolbar4"))
+        let folder = doc.toolbarDefaultItemIdentifiers(NSToolbar(identifier: Document.folderToolbarID))
+        #expect(main.contains(.inspectorTrackingSeparator))
+        #expect(!folder.contains(.inspectorTrackingSeparator))
+        #expect(folder.contains(.sidebarTrackingSeparator))
+    }
+
     @Test func everyDefaultItemIsAlsoAllowed() {
         let allowed = Set(FormatToolbar.allowedIdentifiers(viewMode: viewMode))
         for id in FormatToolbar.defaultIdentifiers(viewMode: viewMode) {
@@ -737,23 +748,28 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
 
 @MainActor @Suite struct ImageAndLinkMenuTests {
 
-    @Test func imageMenuOffersEverySourceWithOnlyFileEnabled() {
+    @Test func imageMenuOffersEverySource() {
         let (bar, doc) = toolbar()
         let menu = bar.imagePopupMenu()
-        #expect(titles(menu) == ["Attach File…", "Photos…", "-", "Take Photo", "Scan Documents"])
+        #expect(titles(menu) == ["Attach File…", "Photos…", "-", "Import from iPhone or iPad"])
 
         let attach = menu.items.first { $0.title == "Attach File…" }
         #expect(attach?.action == #selector(EditorTextView.formatAttachImage(_:)))
 
-        // Placeholders must not dispatch even if AppKit enables them.
-        for item in menu.items where !item.isSeparatorItem && item.title != "Attach File…" {
-            #expect(item.action == nil, "\(item.title) is a placeholder but has an action")
-        }
+        // The device item is AppKit's to fill; it needs the identifier, not an action.
+        let device = menu.items.last
+        #expect(device?.identifier == NSMenuItem.importFromDeviceIdentifier)
+        #expect(device?.action == nil)
+
+        // The Photos placeholder must not dispatch even if AppKit enables it.
+        let photos = menu.items.first { $0.title == "Photos…" }
+        #expect(photos?.action == nil)
+        #expect(photos?.isEnabled == false)
         _ = doc
     }
 
-    @Test func onlyFileSourceIsAvailable() {
-        #expect(ImageSource.allCases.filter(\.isAvailable) == [.file])
+    @Test func onlyPhotosSourceIsUnavailable() {
+        #expect(ImageSource.allCases.filter { !$0.isAvailable } == [.photos])
     }
 
 }
