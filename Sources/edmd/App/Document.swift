@@ -295,6 +295,17 @@ class Document: NSDocument, HeadingNavigable {
         return toolbar
     }
 
+    /// Pins `view` to every edge of `container`.
+    private static func pin(_ view: NSView, to container: NSView) {
+        view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: container.topAnchor),
+            view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+    }
+
     /// The editor pane (text, status, find and format bars) beside the
     /// inspector, as a split view controller sized to `contentBounds`.
     func makeEditorPane(bounds contentBounds: NSRect) -> NSSplitViewController {
@@ -303,7 +314,6 @@ class Document: NSDocument, HeadingNavigable {
         // The text view fills the editor pane; the status bar floats over its
         // bottom edge, revealed on hover.
         scrollView = NSScrollView(frame: contentBounds)
-        scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
@@ -323,6 +333,10 @@ class Document: NSDocument, HeadingNavigable {
         containerView = NSView(frame: contentBounds)
         containerView.autoresizesSubviews = true
         containerView.addSubview(scrollView)
+        // Edges by constraints, not autoresizing: on macOS 14, resizing the
+        // container during a folder window's setup left an autoresized scroll
+        // view the right height but a toolbar height too low.
+        Self.pin(scrollView, to: containerView)
         containerView.addSubview(statusBar)   // overlay, on top of the text
 
         // The editor pane and the inspector, as AppKit's own split: its
@@ -934,13 +948,12 @@ class Document: NSDocument, HeadingNavigable {
 
             let read = readView ?? {
                 let v = ReadModeWebView()
-                v.frame = scrollView.frame
-                v.autoresizingMask = [.width, .height]
                 // Background preparation can span several frames. Keep the
                 // editor visible until WebKit finishes the first page.
                 v.isHidden = true
                 // Below the floating status bar so counts stay visible.
                 containerView.addSubview(v, positioned: .below, relativeTo: statusBar)
+                Self.pin(v, to: containerView)   // constraints, not autoresizing; see makeEditorPane
                 // Route internal navigation through the editor's link resolver
                 // (which resolves against this document's directory and opens via
                 // NSDocumentController) instead of navigating the webview.
