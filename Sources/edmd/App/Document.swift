@@ -333,10 +333,9 @@ class Document: NSDocument, HeadingNavigable {
         containerView = NSView(frame: contentBounds)
         containerView.autoresizesSubviews = true
         containerView.addSubview(scrollView)
-        // Edges by constraints, not autoresizing: on macOS 14 the container's
-        // resizes during a folder window's setup left an autoresized scroll
-        // view the right height but a toolbar height low (CI, y −52…496 in a
-        // 0…548 container).
+        // Edges by constraints, not autoresizing: on macOS 14, resizing the
+        // container during a folder window's setup left an autoresized scroll
+        // view the right height but a toolbar height too low.
         Self.pin(scrollView, to: containerView)
         containerView.addSubview(statusBar)   // overlay, on top of the text
 
@@ -954,7 +953,7 @@ class Document: NSDocument, HeadingNavigable {
                 v.isHidden = true
                 // Below the floating status bar so counts stay visible.
                 containerView.addSubview(v, positioned: .below, relativeTo: statusBar)
-                Self.pin(v, to: containerView)   // as the scroll view (see there)
+                Self.pin(v, to: containerView)   // constraints, not autoresizing; see makeEditorPane
                 // Route internal navigation through the editor's link resolver
                 // (which resolves against this document's directory and opens via
                 // NSDocumentController) instead of navigating the webview.

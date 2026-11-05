@@ -182,9 +182,10 @@ struct FolderDocumentTests {
         let scroll = try #require(folder.current?.editor.enclosingScrollView)
         window.layoutIfNeeded()
         let firstTop = scroll.convert(scroll.bounds, to: content).maxY
-        // Settle, and log both: CI's macOS 14 runner has measured this a
-        // toolbar height low (496 of 600) while macOS 15 never has; the log
-        // says whether one layout pass was just too early.
+        // Settle and log both: on macOS 14 an autoresized scroll view once
+        // measured a toolbar height low even after layout settled
+        // (first=settled=496, expected 548). The settle loop rules out an
+        // early read.
         var editorTop = firstTop
         for _ in 0..<20 {
             RunLoop.main.run(until: Date().addingTimeInterval(0.02))

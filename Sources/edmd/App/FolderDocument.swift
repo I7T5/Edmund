@@ -564,9 +564,8 @@ extension NSView {
     /// this view's safe area, which misses the toolbar inside a split item on
     /// macOS 14 (CI's runner). Constraints rather than a measured inset: on
     /// macOS 14 AppKit can itself move a nested split item below the toolbar,
-    /// and a move runs no layout pass to correct an inset measured before it
-    /// (the editor landed two toolbar heights down). Re-pin once the view is
-    /// in a window; before that there is no guide.
+    /// and a move runs no layout pass to correct an inset measured before it.
+    /// Re-pin once the view is in a window; before that there is no guide.
     func belowToolbar(_ anchor: NSLayoutYAxisAnchor) -> [NSLayoutConstraint] {
         let atTop = anchor.constraint(equalTo: topAnchor)
         guard let guide = window?.contentLayoutGuide as? NSLayoutGuide else { return [atTop] }
