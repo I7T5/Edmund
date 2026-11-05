@@ -1,20 +1,21 @@
 # blank: The Wardrobe.md
 # window: 920,520
 # modes: light
-# length: 28000
+# length: 22500
 # appstore: yes
 # loop: yes
-# typing: human 1 300
+# typing: human 1 145
 # cuts: 2
 # expect: Wardrobe
-# poster: 23000
+# poster: 18500
 # alt: A tour of Edmund: a heading, a sentence with bold and italic, a table filled in with Tab, a pasted image, Read mode, then back to a blank page.
 # The App Store preview and the site's tour: one take from a blank page,
 # each beat rendering as it is typed — heading, a line with bold and italic,
 # a table from Format ▸ Table filled in with Tab, a pasted picture and its
 # alt text — then ⌘E to Read mode (a cut), held, ⌘E back (the other cut),
-# Select All and Delete: it ends on the blank page it began with, so it loops.
-# The poster is Read mode.
+# and Select All, held, and the encoder fades it into the blank page it began
+# with, so it loops. Not Delete: Edmund refuses a deletion that touches a
+# table's pipes, even one spanning the whole table. The poster is Read mode.
 zoom in
 # --- record ---
 sleep 1300
@@ -31,19 +32,9 @@ sleep 500
 select Header 1
 type Pevensie
 tab
-type Title
-tab
 type Gift
 tab
-type Peter
-tab
-type High King
-tab
-type sword
-tab
 type Lucy
-tab
-type the Valiant
 tab
 type cordial
 sleep 600
@@ -59,11 +50,7 @@ sleep 1400
 save
 sleep 200
 viewmode
-sleep 2500
+sleep 2000
 viewmode
 sleep 700
 action selectAll:
-sleep 700
-backspace 1
-sleep 400
-save
