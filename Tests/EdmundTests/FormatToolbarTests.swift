@@ -66,17 +66,16 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
         #expect(!FormatToolbar.centeredIdentifiers.contains(FormatToolbar.share))
     }
 
-    /// A folder window's file pane sits below the toolbar, so its inspector
-    /// is not full height and there is no split edge to track.
-    @Test func folderToolbarHasNoInspectorSeparator() {
+    /// A folder window's divider is ours, bound to the file's split; AppKit's
+    /// would follow the folder's sidebar split instead.
+    @Test func folderToolbarUsesItsOwnInspectorSeparator() {
         let doc = Document()
         let main = doc.toolbarDefaultItemIdentifiers(NSToolbar(identifier: "MainToolbar4"))
         let folder = doc.toolbarDefaultItemIdentifiers(NSToolbar(identifier: Document.folderToolbarID))
         #expect(main.contains(.inspectorTrackingSeparator))
         #expect(!folder.contains(.inspectorTrackingSeparator))
+        #expect(folder.contains(Document.folderInspectorSeparatorID))
         #expect(folder.contains(.sidebarTrackingSeparator))
-        #expect(!doc.toolbarAllowedItemIdentifiers(NSToolbar(identifier: Document.folderToolbarID))
-            .contains(.inspectorTrackingSeparator))
     }
 
     @Test func everyDefaultItemIsAlsoAllowed() {

@@ -24,6 +24,12 @@ class Document: NSDocument, HeadingNavigable {
     /// A file's toolbar in a folder window: the usual items after the
     /// sidebar's toggle. Its own identifier, so the two layouts are saved apart.
     static let folderToolbarID = "FolderToolbar1"
+    /// The folder toolbar's inspector divider. AppKit's own
+    /// `.inspectorTrackingSeparator` follows the window's split, which in a
+    /// folder window is sidebar + file; this one follows the file's split.
+    static let folderInspectorSeparatorID = NSToolbarItem.Identifier("folderInspectorSeparator")
+    /// The editor/inspector split, for the folder toolbar's divider to track.
+    private weak var editorSplit: NSSplitViewController?
 
     /// Builds and owns the formatting toolbar items (see `FormatToolbar`).
     private var formatToolbar: FormatToolbar!
@@ -289,6 +295,17 @@ class Document: NSDocument, HeadingNavigable {
         return toolbar
     }
 
+    /// Pins `view` to every edge of `container`.
+    private static func pin(_ view: NSView, to container: NSView) {
+        view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: container.topAnchor),
+            view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+    }
+
     /// The editor pane (text, status, find and format bars) beside the
     /// inspector, as a split view controller sized to `contentBounds`.
     func makeEditorPane(bounds contentBounds: NSRect) -> NSSplitViewController {
@@ -297,7 +314,6 @@ class Document: NSDocument, HeadingNavigable {
         // The text view fills the editor pane; the status bar floats over its
         // bottom edge, revealed on hover.
         scrollView = NSScrollView(frame: contentBounds)
-        scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
@@ -317,6 +333,10 @@ class Document: NSDocument, HeadingNavigable {
         containerView = NSView(frame: contentBounds)
         containerView.autoresizesSubviews = true
         containerView.addSubview(scrollView)
+        // Edges by constraints, not autoresizing: on macOS 14, resizing the
+        // container during a folder window's setup left an autoresized scroll
+        // view the right height but a toolbar height too low.
+        Self.pin(scrollView, to: containerView)
         containerView.addSubview(statusBar)   // overlay, on top of the text
 
         // The editor pane and the inspector, as AppKit's own split: its
@@ -328,8 +348,7 @@ class Document: NSDocument, HeadingNavigable {
         // not stop it, measured), so the container is held below the toolbar:
         // the text, top bars and Read view keep starting there. By
         // `BelowToolbarController`, not the safe area, which misses the
-        // toolbar inside a split item on macOS 14. In a folder window the
-        // pane is already below the toolbar and the inset is 0.
+        // toolbar inside a split item on macOS 14.
         let editorPane = BelowToolbarController()
         editorPane.view.frame = contentBounds
         let container = NSViewController()
@@ -341,17 +360,25 @@ class Document: NSDocument, HeadingNavigable {
         // split falls back to the minimum; a width the user drags to is saved
         // by the autosave below and wins over this.
         inspector.view.setFrameSize(NSSize(width: 200, height: contentBounds.height))
-        // In a folder window, a plain item: see EditorSplitViewController.
-        inspectorItem = folder == nil
-            ? NSSplitViewItem(inspectorWithViewController: inspector)
-            : NSSplitViewItem(viewController: inspector)
+        // An inspector-behaviour item in a folder window too: AppKit then cuts
+        // the toolbar at its edge and the inspector runs up into the strip,
+        // as in a document window (the folder shows file panes full height).
+        inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
+        // The titlebar line runs over the inspector, as in CotEditor. A folder
+        // window's `.automatic` style otherwise leaves it off, as over a sidebar.
+        inspectorItem.titlebarSeparatorStyle = .line
         inspectorItem.canCollapse = true
         inspectorItem.minimumThickness = 180
         inspectorItem.maximumThickness = 360
         inspectorItem.isCollapsed = true
         let split = EditorSplitViewController()
-        if folder != nil { split.plainInspector = inspectorItem }
-        split.addSplitViewItem(NSSplitViewItem(viewController: editorPane))
+        editorSplit = split
+        // The titlebar line is the format bar's top border. In a full-size
+        // window each split item draws its own, and `.automatic` draws it only
+        // once content scrolls under the toolbar, which the editor never does.
+        let editorItem = NSSplitViewItem(viewController: editorPane)
+        editorItem.titlebarSeparatorStyle = .line
+        split.addSplitViewItem(editorItem)
         split.addSplitViewItem(inspectorItem)
         // Open/closed and width carry over to the next window and launch.
         split.splitView.autosaveName = "EdmundInspector"
@@ -921,13 +948,12 @@ class Document: NSDocument, HeadingNavigable {
 
             let read = readView ?? {
                 let v = ReadModeWebView()
-                v.frame = scrollView.frame
-                v.autoresizingMask = [.width, .height]
                 // Background preparation can span several frames. Keep the
                 // editor visible until WebKit finishes the first page.
                 v.isHidden = true
                 // Below the floating status bar so counts stay visible.
                 containerView.addSubview(v, positioned: .below, relativeTo: statusBar)
+                Self.pin(v, to: containerView)   // constraints, not autoresizing; see makeEditorPane
                 // Route internal navigation through the editor's link resolver
                 // (which resolves against this document's directory and opens via
                 // NSDocumentController) instead of navigating the webview.
@@ -1490,19 +1516,19 @@ class Document: NSDocument, HeadingNavigable {
 
 extension Document: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        sidebarItems(toolbar) + withoutFolderSeparator(toolbar, FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID))
+        sidebarItems(toolbar) + withFolderSeparator(toolbar, FormatToolbar.defaultIdentifiers(viewMode: Self.viewModeItemID))
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        sidebarItems(toolbar) + withoutFolderSeparator(toolbar, FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID))
+        sidebarItems(toolbar) + withFolderSeparator(toolbar, FormatToolbar.allowedIdentifiers(viewMode: Self.viewModeItemID))
     }
 
-    /// A folder window shows the file below its toolbar, so the inspector is
-    /// not full height there and the window's split (sidebar + file) has no
-    /// inspector item for the separator to track: neither placed nor offered.
-    private func withoutFolderSeparator(_ toolbar: NSToolbar,
-                                        _ ids: [NSToolbarItem.Identifier]) -> [NSToolbarItem.Identifier] {
-        toolbar.identifier == Self.folderToolbarID ? ids.filter { $0 != .inspectorTrackingSeparator } : ids
+    /// In a folder window the divider is ours, bound to the file's split (see
+    /// `folderInspectorSeparatorID`).
+    private func withFolderSeparator(_ toolbar: NSToolbar,
+                                     _ ids: [NSToolbarItem.Identifier]) -> [NSToolbarItem.Identifier] {
+        guard toolbar.identifier == Self.folderToolbarID else { return ids }
+        return ids.map { $0 == .inspectorTrackingSeparator ? Self.folderInspectorSeparatorID : $0 }
     }
 
     private func sidebarItems(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -1512,6 +1538,10 @@ extension Document: NSToolbarDelegate {
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if itemIdentifier == Self.folderInspectorSeparatorID, let editorSplit {
+            return NSTrackingSeparatorToolbarItem(identifier: itemIdentifier,
+                                                  splitView: editorSplit.splitView, dividerIndex: 0)
+        }
         // Everything but the view-mode toggle belongs to FormatToolbar.
         guard itemIdentifier == Self.viewModeItemID else {
             return formatToolbar.makeItem(itemIdentifier)
@@ -1538,32 +1568,11 @@ extension Document: NSToolbarDelegate {
 ///
 /// In a folder window it sits inside the folder's split, first in the
 /// responder chain, so it declines `toggleSidebar:` (it has no sidebar) to
-/// let the action reach the folder's. And there its inspector is a plain
-/// item (`plainInspector`), toggled here: in a full-size-content window an
-/// inspector-*behaviour* item makes AppKit cut the toolbar short at its
-/// edge and leave a blank strip above it, where a document window's toolbar
-/// runs the full width.
+/// let the action reach the folder's.
 final class EditorSplitViewController: NSSplitViewController {
-    var plainInspector: NSSplitViewItem?
-
     override func responds(to selector: Selector!) -> Bool {
         if selector == #selector(toggleSidebar(_:)) { return false }
-        // AppKit answers no for `toggleInspector:` without an inspector-
-        // behaviour item, so a plain one has to claim it. Responder-chain
-        // lookups run on the main thread.
-        if selector == #selector(toggleInspector(_:)),
-           MainActor.assumeIsolated({ plainInspector != nil }) { return true }
         return super.responds(to: selector)
-    }
-
-    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
-        if item.action == #selector(toggleInspector(_:)), plainInspector != nil { return true }
-        return super.validateUserInterfaceItem(item)
-    }
-
-    override func toggleInspector(_ sender: Any?) {
-        guard let plainInspector else { super.toggleInspector(sender); return }
-        plainInspector.animator().isCollapsed.toggle()
     }
 }
 
