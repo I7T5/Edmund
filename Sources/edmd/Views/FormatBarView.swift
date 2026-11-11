@@ -55,25 +55,7 @@ final class FormatBarView: ChromeBarView, NSMenuDelegate {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
-        refreshBacking()
         buildUI()
-    }
-
-    /// The bar overlaps the editor, which scrolls under it, and its
-    /// `.withinWindow` material blurred that text through. An opaque fill on
-    /// the bar's own layer is what the material samples instead, so the bar
-    /// keeps its chrome colour and its key/inactive dimming but shows nothing
-    /// of the document.
-    private func refreshBacking() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
-        }
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        refreshBacking()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -90,8 +72,8 @@ final class FormatBarView: ChromeBarView, NSMenuDelegate {
     /// selection currently sits. Runs on every selection change and every edit,
     /// so it stays a delimiter scan of the selected lines and nothing more.
     ///
-    /// The pulldowns and Thematic Break never light: their selectors are not
-    /// ones `activeFormattingActions()` reports, so this needs no special case.
+    /// The pulldowns and Table never light: their selectors are not ones
+    /// `activeFormattingActions()` reports, so this needs no special case.
     func refreshActiveState(editor: EditorTextView) {
         #if DEBUG
         // Chips can't be driven by a pointer from a headless harness, so this
@@ -235,8 +217,8 @@ final class FormatBarView: ChromeBarView, NSMenuDelegate {
 
     /// When the groups don't fit, whole groups move from the trailing end into
     /// the `»` menu, as `NSToolbar` does with its items. Trailing goes first:
-    /// Table and Image are also in the window toolbar and the Format menu, and
-    /// the inline styles at the leading end are the most used.
+    /// Table and Image are also in the window toolbar, and the inline styles at
+    /// the leading end are the most used.
     private func updateOverflow() {
         let available = bounds.width - 2 * Self.edgeMargin
         func width(_ count: Int, overflow: Bool) -> CGFloat {
@@ -274,7 +256,7 @@ final class FormatBarView: ChromeBarView, NSMenuDelegate {
         pop.contentTintColor = Self.glyphTint
         pop.refusesFirstResponder = true
         pop.setAccessibilityLabel("More Formatting")
-        pop.toolTip = "More formatting"
+        pop.toolTip = "More Formatting"
         pop.heightAnchor.constraint(equalToConstant: Self.controlHeight).isActive = true
         pop.isHidden = true
         return pop

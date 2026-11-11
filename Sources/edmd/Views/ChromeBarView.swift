@@ -3,8 +3,8 @@ import AppKit
 // MARK: - Shared chrome bar base
 
 /// A top bar that reads as window chrome: the titlebar material the toolbar
-/// uses, plus a hairline along the bottom edge matching the toolbar separator.
-/// Shared by the find bar and the format bar.
+/// uses over an opaque fill, plus a hairline along the bottom edge matching the
+/// toolbar separator. Shared by the find bar and the format bar.
 class ChromeBarView: NSVisualEffectView {
 
     /// The hairline along the bottom edge, matching the toolbar's separator so
@@ -52,9 +52,15 @@ class ChromeBarView: NSVisualEffectView {
         // Follows the window, so the bar dims with the toolbar when the window
         // stops being key. `.active` pinned it bright on inactive windows.
         state = .followsWindowActiveState
+        // Both bars overlap the editor, which scrolls under them, and the
+        // `.withinWindow` material blurred that text through. An opaque fill on
+        // the bar's own layer is what the material samples instead, so the bar
+        // keeps its chrome colour and its key/inactive dimming but shows nothing
+        // of the document. Set in `refreshColors`.
+        wantsLayer = true
 
         bottomBorder.wantsLayer = true
-        bottomBorder.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        refreshColors()
         bottomBorder.translatesAutoresizingMaskIntoConstraints = false
         addSubview(bottomBorder)
         NSLayoutConstraint.activate([
@@ -66,11 +72,16 @@ class ChromeBarView: NSVisualEffectView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Keeps the hairline's colour correct across a light/dark switch — a
-    /// `cgColor` snapshot doesn't follow the appearance on its own.
+    /// Keeps the hairline and the opaque fill correct across a light/dark
+    /// switch — a `cgColor` snapshot doesn't follow the appearance on its own.
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        refreshColors()
+    }
+
+    private func refreshColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
             bottomBorder.layer?.backgroundColor = NSColor.separatorColor.cgColor
         }
     }
