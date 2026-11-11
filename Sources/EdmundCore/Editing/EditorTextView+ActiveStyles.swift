@@ -151,9 +151,9 @@ extension EditorTextView {
 
     // MARK: - Pulldown state
     //
-    // The two pulldowns each apply one of a set of mutually exclusive things, so
-    // their state is the member currently in effect rather than a yes/no — a
-    // checkmark in the menu, not a chip on the button.
+    // The Heading and Callout pulldowns each apply one of a set of mutually
+    // exclusive things, so their state is the member currently in effect rather
+    // than a yes/no — a checkmark in the menu, not a chip on the button.
 
     /// The heading level shared by every non-empty selected line: 0 for body
     /// text, 1–6 for `#`…`######`. Nil when the lines disagree, matching
