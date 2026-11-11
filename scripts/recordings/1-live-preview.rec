@@ -1,0 +1,25 @@
+# doc: misc/marketing/screenshot-docs/Edmund.md
+# window: 820,560
+# modes: light
+# length: 10500
+# appstore: yes
+# expect: Live preview, bold, italic, code
+# alt: Typing in Edmund: a heading, bold, italic and code render as they are typed.
+# Live preview: Markdown renders as you type, the marks showing only on the
+# line being typed. New text goes above the callout so the whole document
+# stays in view.
+zoom in
+caret > [!note]
+# --- record ---
+sleep 700
+type ## Live preview
+sleep 250
+enter
+enter
+sleep 250
+type Type **bold**, *italic* and `code`: it renders as you go.
+sleep 300
+enter
+enter
+sleep 200
+save
