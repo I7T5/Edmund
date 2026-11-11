@@ -776,12 +776,42 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
                 return controls(in: sub)
             }
         }
-        let tail = controls(in: FormatBarView(frame: .zero)).suffix(2)
+        let bar = FormatBarView(frame: .zero)
+        let tail = controls(in: bar).filter { $0 !== bar.overflowButton }.suffix(2)
         #expect(tail.first?.action == #selector(EditorTextView.formatTable(_:)))
         let image = tail.last as? FormatBarPopUpButton
         #expect(image?.menu?.items.contains {
             $0.action == #selector(EditorTextView.formatAttachImage(_:))
         } == true)
+    }
+
+    /// Too narrow for every group: trailing groups move, whole, into `»`.
+    @Test func narrowFormatBarOverflowsTrailingGroups() throws {
+        let bar = FormatBarView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
+        bar.layoutSubtreeIfNeeded()
+        let visible = bar.visibleGroupCount
+        #expect(visible > 0 && visible < bar.groups.count)
+        #expect(bar.groups.enumerated().allSatisfy { $0.element.isHidden == ($0.offset >= visible) })
+        #expect(!bar.overflowButton.isHidden)
+
+        let menu = try #require(bar.overflowButton.menu)
+        bar.menuNeedsUpdate(menu)
+        #expect(menu.items.contains { $0.action == #selector(EditorTextView.formatTable(_:)) })
+        let image = menu.items.first { $0.title == "Image" }
+        #expect(image?.submenu?.items.contains {
+            $0.action == #selector(EditorTextView.formatAttachImage(_:))
+        } == true)
+        // The first group never overflows here, and nothing still on the bar is
+        // also in the menu.
+        #expect(!menu.items.contains { $0.action == #selector(EditorTextView.formatThematicBreak(_:)) })
+    }
+
+    @Test func wideFormatBarShowsEveryGroup() {
+        let bar = FormatBarView(frame: NSRect(x: 0, y: 0, width: 1400, height: 28))
+        bar.layoutSubtreeIfNeeded()
+        #expect(bar.visibleGroupCount == bar.groups.count)
+        #expect(bar.groups.allSatisfy { !$0.isHidden })
+        #expect(bar.overflowButton.isHidden)
     }
 
     @Test func onlyPhotosSourceIsUnavailable() {

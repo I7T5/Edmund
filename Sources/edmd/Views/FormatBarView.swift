@@ -12,7 +12,7 @@ import EdmundCore
 /// the responder chain *with the `NSMenuItem` as sender*, which is what
 /// `formatHeading` (reads `tag`) and `formatCallout` (reads `representedObject`)
 /// need.
-final class FormatBarView: ChromeBarView {
+final class FormatBarView: ChromeBarView, NSMenuDelegate {
 
     /// The bar's fixed height. The accessory-bar buttons sit smaller than the
     /// strip; `preferredHeight` drives the editor's top inset.
@@ -186,21 +186,126 @@ final class FormatBarView: ChromeBarView {
             ]),
         ]
 
+        self.groups = groups
+        overflowButton = makeOverflowButton()
+
         let stack = NSStackView()
         stack.orientation = .horizontal
         stack.alignment = .centerY
-        for (i, group) in groups.enumerated() {
+        // A hidden group is detached (the default) and takes its spacing with
+        // it, so the gap after the last visible group is the one before `»`.
+        for group in groups {
             stack.addArrangedSubview(group)
-            if i < groups.count - 1 { stack.setCustomSpacing(14, after: group) }
+            stack.setCustomSpacing(Self.groupSpacing, after: group)
         }
+        stack.addArrangedSubview(overflowButton)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
-        // Centred, so a narrow window clips the same reachable band on both
-        // sides rather than shoving the leading controls off-screen.
+        // Centred whether or not anything overflows: `updateOverflow` keeps the
+        // stack narrower than the bar, so centring never clips a control.
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+    }
+
+    // MARK: - Overflow
+
+    /// Gap between groups, and between the last visible group and `»`.
+    private static let groupSpacing: CGFloat = 14
+    /// Space kept clear at each end of the bar.
+    private static let edgeMargin: CGFloat = 8
+
+    /// The control groups, leading to trailing.
+    private(set) var groups: [NSStackView] = []
+    /// `»`, shown when some groups don't fit. Its menu is rebuilt each time it
+    /// opens (`menuNeedsUpdate`).
+    private(set) var overflowButton: FormatBarPopUpButton!
+    /// How many groups, from the leading end, are on the bar.
+    private(set) var visibleGroupCount = Int.max
+
+    /// Measured once: nothing on the bar changes size.
+    private lazy var groupWidths: [CGFloat] = groups.map(\.fittingSize.width)
+    private lazy var overflowWidth: CGFloat = overflowButton.fittingSize.width
+
+    override func layout() {
+        super.layout()
+        updateOverflow()
+    }
+
+    /// When the groups don't fit, whole groups move from the trailing end into
+    /// the `»` menu, as `NSToolbar` does with its items. Trailing goes first:
+    /// Table and Image are also in the window toolbar and the Format menu, and
+    /// the inline styles at the leading end are the most used.
+    private func updateOverflow() {
+        let available = bounds.width - 2 * Self.edgeMargin
+        func width(_ count: Int, overflow: Bool) -> CGFloat {
+            let shown = groupWidths.prefix(count).reduce(0, +)
+                + Self.groupSpacing * CGFloat(max(count - 1, 0))
+            guard overflow else { return shown }
+            return shown + (count > 0 ? Self.groupSpacing : 0) + overflowWidth
+        }
+        var count = groups.count
+        if width(count, overflow: false) > available {
+            count -= 1
+            while count > 0, width(count, overflow: true) > available { count -= 1 }
+        }
+        guard count != visibleGroupCount else { return }
+        visibleGroupCount = count
+        for (i, group) in groups.enumerated() { group.isHidden = i >= count }
+        overflowButton.isHidden = count == groups.count
+    }
+
+    private func makeOverflowButton() -> FormatBarPopUpButton {
+        let pop = FormatBarPopUpButton(frame: .zero, pullsDown: true)
+        let menu = NSMenu(title: "More")
+        menu.delegate = self
+        // See `makePullDown`: a pull-down shows its icon through a hidden item 0.
+        let display = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        display.image = Self.symbol("chevron.right.2", desc: "More")
+        display.isHidden = true
+        menu.addItem(display)
+        pop.menu = menu
+        pop.bezelStyle = .accessoryBarAction
+        pop.isBordered = false
+        // `»` already says "more"; an arrow beside it read as `»▾`. NSToolbar's
+        // overflow shows the chevron alone.
+        (pop.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        pop.contentTintColor = Self.glyphTint
+        pop.refusesFirstResponder = true
+        pop.setAccessibilityLabel("More Formatting")
+        pop.toolTip = "More formatting"
+        pop.heightAnchor.constraint(equalToConstant: Self.controlHeight).isActive = true
+        pop.isHidden = true
+        return pop
+    }
+
+    /// The hidden groups as menu items, in bar order, a separator between
+    /// groups. A button becomes an item, ticked when its chip is lit; a pulldown
+    /// becomes a submenu of copies of its own items, carrying the heading and
+    /// callout ticks `refreshPullDownState` set. Nil targets throughout, so the
+    /// items validate and dispatch through the responder chain like the bar.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        while menu.items.count > 1 { menu.removeItem(at: 1) }
+        for group in groups.dropFirst(min(visibleGroupCount, groups.count)) {
+            if menu.items.count > 1 { menu.addItem(.separator()) }
+            for view in group.arrangedSubviews {
+                if let pop = view as? FormatBarPopUpButton, let source = pop.menu {
+                    let item = NSMenuItem(title: pop.toolTip ?? "", action: nil, keyEquivalent: "")
+                    let submenu = NSMenu(title: item.title)
+                    for member in source.items where !member.isHidden {
+                        if let copy = member.copy() as? NSMenuItem { submenu.addItem(copy) }
+                    }
+                    item.submenu = submenu
+                    menu.addItem(item)
+                } else if let button = view as? FormatBarButton {
+                    let item = NSMenuItem(title: button.toolTip ?? "", action: button.action,
+                                          keyEquivalent: "")
+                    item.state = button.chip.isActive ? .on : .off
+                    menu.addItem(item)
+                }
+            }
+        }
     }
 
     /// One control group: the buttons run together with a hairline between each
