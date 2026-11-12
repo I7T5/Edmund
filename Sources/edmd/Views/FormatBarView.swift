@@ -200,9 +200,10 @@ final class FormatBarView: ChromeBarView, NSMenuDelegate {
 
     /// The control groups, leading to trailing.
     private(set) var groups: [NSStackView] = []
-    /// `»`, shown when some groups don't fit. Its menu is rebuilt each time it
-    /// opens (`menuNeedsUpdate`).
-    private(set) var overflowButton: FormatBarPopUpButton!
+    /// `»`, shown when some groups don't fit. A plain bar button that pops up
+    /// `overflowMenu`, which is rebuilt each time it opens (`menuNeedsUpdate`).
+    private(set) var overflowButton: FormatBarButton!
+    private(set) var overflowMenu = NSMenu(title: "More Formatting")
     /// How many groups, from the leading end, are on the bar.
     private(set) var visibleGroupCount = Int.max
 
@@ -238,28 +239,35 @@ final class FormatBarView: ChromeBarView, NSMenuDelegate {
         overflowButton.isHidden = count == groups.count
     }
 
-    private func makeOverflowButton() -> FormatBarPopUpButton {
-        let pop = FormatBarPopUpButton(frame: .zero, pullsDown: true)
-        let menu = NSMenu(title: "More")
-        menu.delegate = self
-        // See `makePullDown`: a pull-down shows its icon through a hidden item 0.
-        let display = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        display.image = Self.symbol("chevron.right.2", desc: "More")
-        display.isHidden = true
-        menu.addItem(display)
-        pop.menu = menu
-        pop.bezelStyle = .accessoryBarAction
-        pop.isBordered = false
-        // `»` already says "more"; an arrow beside it read as `»▾`. NSToolbar's
-        // overflow shows the chevron alone.
-        (pop.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-        pop.contentTintColor = Self.glyphTint
-        pop.refusesFirstResponder = true
-        pop.setAccessibilityLabel("More Formatting")
-        pop.toolTip = "More Formatting"
-        pop.heightAnchor.constraint(equalToConstant: Self.controlHeight).isActive = true
-        pop.isHidden = true
-        return pop
+    /// A plain bar button rather than a pull-down: `NSPopUpButtonCell` keeps a
+    /// leading inset for a title even with no arrow, so its glyph sat 9.5pt from
+    /// the left edge of the hover chip and 4.5pt from the right. A plain button
+    /// centres it like every other control (6.0 / 6.5), and shows no `▾` —
+    /// `»` already says "more", as NSToolbar's overflow does.
+    private func makeOverflowButton() -> FormatBarButton {
+        overflowMenu.delegate = self
+        let button = FormatBarButton(image: Self.symbol("chevron.right.2", desc: "More Formatting")
+                                         ?? NSImage(),
+                                     target: self, action: #selector(showOverflowMenu(_:)))
+        button.bezelStyle = .accessoryBarAction
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.contentTintColor = Self.glyphTint
+        button.widthAnchor.constraint(equalToConstant: Self.controlWidth).isActive = true
+        button.heightAnchor.constraint(equalToConstant: Self.controlHeight).isActive = true
+        button.refusesFirstResponder = true
+        button.setAccessibilityRole(.menuButton)
+        button.setAccessibilityLabel("More Formatting")
+        button.toolTip = "More Formatting"
+        button.isHidden = true
+        return button
+    }
+
+    /// Opens below the button with left edges aligned, where a pull-down opens.
+    /// The items have nil targets, so they dispatch to the focused editor.
+    @objc private func showOverflowMenu(_ sender: NSButton) {
+        let y = sender.isFlipped ? sender.bounds.maxY : sender.bounds.minY
+        overflowMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: y), in: sender)
     }
 
     /// The hidden groups as menu items, in bar order, a separator between
@@ -268,9 +276,9 @@ final class FormatBarView: ChromeBarView, NSMenuDelegate {
     /// callout ticks `refreshPullDownState` set. Nil targets throughout, so the
     /// items validate and dispatch through the responder chain like the bar.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        while menu.items.count > 1 { menu.removeItem(at: 1) }
+        menu.removeAllItems()
         for group in groups.dropFirst(min(visibleGroupCount, groups.count)) {
-            if menu.items.count > 1 { menu.addItem(.separator()) }
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
             for view in group.arrangedSubviews {
                 if let pop = view as? FormatBarPopUpButton, let source = pop.menu {
                     let item = NSMenuItem(title: pop.toolTip ?? "", action: nil, keyEquivalent: "")

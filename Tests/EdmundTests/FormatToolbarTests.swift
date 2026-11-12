@@ -786,7 +786,7 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
     }
 
     /// Too narrow for every group: trailing groups move, whole, into `»`.
-    @Test func narrowFormatBarOverflowsTrailingGroups() throws {
+    @Test func narrowFormatBarOverflowsTrailingGroups() {
         let bar = FormatBarView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
         bar.layoutSubtreeIfNeeded()
         let visible = bar.visibleGroupCount
@@ -794,7 +794,7 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
         #expect(bar.groups.enumerated().allSatisfy { $0.element.isHidden == ($0.offset >= visible) })
         #expect(!bar.overflowButton.isHidden)
 
-        let menu = try #require(bar.overflowButton.menu)
+        let menu = bar.overflowMenu
         bar.menuNeedsUpdate(menu)
         #expect(menu.items.contains { $0.action == #selector(EditorTextView.formatTable(_:)) })
         let image = menu.items.first { $0.title == "Image" }
