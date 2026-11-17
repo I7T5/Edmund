@@ -598,8 +598,9 @@ Notable subsystems:
 
 ### Build, signing & packaging
 
-- **Build with the compiler CI builds with.** CI is macos-14 + `latest-stable`
-  Xcode, which is **Swift 6.0.3** (Xcode 16.2). Since 2026-08-10 the local CLI
+- **Build with the compiler CI builds with.** CI is macos-15 with Xcode pinned
+  to 16.2, which is **Swift 6.0.3** (macos-14, retired 2026-11-02, got it from
+  `latest-stable`). Since 2026-08-10 the local CLI
   matches it: the `TOOLCHAINS` export in `~/.zshrc` is commented out, so
   `swift --version` reports 6.0.3 and a green local `swift test` means what it
   says. The swift.org 6.3.3 toolchain is still installed for one-offs
@@ -1422,7 +1423,7 @@ trick, update this section.
 How a release happens, plus the non-obvious things that broke shipping 0.1.0.
 
 **Flow (tag-triggered).** Push a `vX.Y.Z` tag →
-`.github/workflows/release.yml` (`macos-14`): build the `.app`
+`.github/workflows/release.yml` (`macos-15`, Xcode 16.2): build the `.app`
 (`build-app.sh`) → DMG (npm `create-dmg`) → EdDSA-sign the DMG →
 `gh release create` (notes = the matching `docs/CHANGELOG.md` section, extracted
 by `awk`) → commit the new `<item>` into `appcast.xml` on `main`.
