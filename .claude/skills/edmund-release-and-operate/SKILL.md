@@ -54,7 +54,7 @@ Ship via a tag; CI does the rest. In order:
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
 5. CI (`.github/workflows/release.yml`, trigger `push: tags: 'v*'`, runner
-   `macos-14`, job `release` / "Build & publish") runs the steps below.
+   `macos-15`, Xcode 16.2, job `release` / "Build & publish") runs the steps below.
 6. Afterwards, verify per §4 post-flight.
 
 ### release.yml step anatomy (actual step names)

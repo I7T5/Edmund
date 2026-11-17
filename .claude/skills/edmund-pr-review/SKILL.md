@@ -111,9 +111,9 @@ Find the one claim the merge rests on, and try to break it.
 - A **performance claim**: check what regime it was measured in (§2.2) and
   whether a committed baseline backs the number.
 - A **"tests pass" claim**: run `swift test` yourself on the PR head, in a
-  scratch worktree. Note the toolchain — CI pins `runs-on: macos-14` in
-  `.github/workflows/ci.yml`, which caps the Xcode version and therefore the
-  Swift version, so a contributor on newer Xcode is not running what CI runs.
+  scratch worktree. Note the toolchain — CI pins Xcode 16.2 (Swift 6.0.3) on
+  `macos-15` in `.github/workflows/ci.yml`, so a contributor on newer Xcode
+  is not running what CI runs.
 - **Known flakes** are not regressions. `Body text uses textColor`
   (`AppearanceIntegrationTests`) fails under some local appearance conditions
   on both `main` and any branch. Before blaming a PR for a failure, run the
