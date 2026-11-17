@@ -24,12 +24,19 @@ swift test --filter Callout # one suite
 ./scripts/build-app.sh --variant mas     # Mac App Store: sandboxed, no Sparkle, no SU* keys (still ad-hoc signed)
 ./scripts/screenshots.sh [names|--failed|--compose-only]  # App Store / README / site shots from scripts/screenshots/*.shot into misc/screenshots/<version>/; local only
 ./scripts/screenshots-publish.sh         # approved shots → docs/assets/screenshots, site, README list; archives the old set
+./scripts/recordings.sh [names|--failed|--compose-only]   # README / site / App Store preview clips from scripts/recordings/*.rec into misc/recordings/<version>/; local only
+./scripts/review-recording.sh [Edmund.app]                # the App Review recording: you perform launch → quit, it films and rates
 ```
 
 `screenshots.sh` builds `build/EdmundShots.app` with its own bundle id
 (`com.i7t5.edmund.shots`), so it starts from factory settings and never
 touches the real app's preferences. `/screenshots` describes the take →
-review one shot at a time → publish loop.
+review one shot at a time → publish loop. `recordings.sh` does the same with
+`build/EdmundRecordings.app` (`com.i7t5.edmund.recordings`), signed with the
+Apple Development identity: the app films its own window (ReproScript
+`record`, ScreenCaptureKit), which needs a Screen Recording grant, and only a
+stable signature keeps that grant across rebuilds. `/recordings` describes the
+film → rate → refine loop.
 
 Run the app for visual checks (gotchas in §8):
 ```bash
