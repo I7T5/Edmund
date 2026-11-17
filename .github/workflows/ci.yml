@@ -17,7 +17,10 @@ concurrency:
 jobs:
   test:
     name: test
-    runs-on: macos-14
+    # macos-14 was retired in November 2026: jobs on it are cancelled before
+    # they start ("The configuration 'macos-14-arm64-us-default' is not
+    # supported"), which left the required `test` check failing on every PR.
+    runs-on: macos-15
     # The suite runs in ~2 minutes. A test that blocks the main thread (a modal
     # alert with nobody to dismiss it, say) otherwise sits until the 6-hour
     # ceiling — billed at the 10x macOS rate the whole way.
@@ -49,10 +52,13 @@ jobs:
         run: echo "No Swift, package or resource changes — skipping swift tests."
 
       # Package.swift declares swift-tools-version 6.0, which needs Xcode 16+.
+      # Pinned to 16.2 (Swift 6.0.3), the compiler the local CLI matches
+      # (ARCHITECTURE §8): `latest-stable` on macos-15 would move CI to a newer
+      # Swift whose new warnings fail the zero-warnings gate below.
       - uses: maxim-lobanov/setup-xcode@v1
         if: steps.filter.outputs.code == 'true'
         with:
-          xcode-version: latest-stable
+          xcode-version: '16.2'
 
       - name: Swift version
         if: steps.filter.outputs.code == 'true'

@@ -164,7 +164,7 @@ geometry numbers but **cannot** confirm the pixels are right.
 - A `fix/flaky-math-test` branch exists in history — math rendering has shown
   timing flakiness; if a math test flakes, check that branch's approach before
   inventing a new one (verify: `git log --oneline --all -- '*Math*'`).
-- CI: `.github/workflows/ci.yml` on `macos-14`, latest-stable Xcode, SPM cache
+- CI: `.github/workflows/ci.yml` on `macos-15`, Xcode 16.2, SPM cache
   keyed on `Package.resolved`, `concurrency: cancel-in-progress` (private-repo
   macOS minutes bill 10×). CI runs the same `swift test`, then fails on any
   compiler warning in `Sources/` or `Tests/` (`No warnings` step).

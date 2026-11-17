@@ -208,9 +208,10 @@ Other run gotchas:
 
 ## 7. CI environment
 
-`.github/workflows/ci.yml` (verified 2026-07-05): runs `swift test` on
-`macos-14` with `latest-stable` Xcode (Swift 6.0 needs Xcode 16+), triggered
-on PRs and pushes to `main`.
+`.github/workflows/ci.yml` (verified 2026-11-17): runs `swift test` on
+`macos-15` with Xcode pinned to 16.2 (Swift 6.0.3; 6.0 needs Xcode 16+),
+triggered on PRs and pushes to `main`. GitHub retired `macos-14` in November
+2026.
 
 - **Zero warnings**: the `Test` step tees `swift test` to `test.log`
   (`shell: bash`, so `pipefail` keeps a failing run red), and the

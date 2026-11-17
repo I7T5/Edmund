@@ -8,7 +8,8 @@ on:
 jobs:
   release:
     name: Build & publish
-    runs-on: macos-14
+    # macos-14 was retired in November 2026; see ci.yml.
+    runs-on: macos-15
     permissions:
       contents: write  # create releases and commit appcast
     steps:
@@ -21,9 +22,11 @@ jobs:
           # blocked by the required `test` status check.
           token: ${{ secrets.RELEASE_TOKEN }}
 
+      # The same Xcode as CI, so a release builds with the compiler the suite
+      # passed on; see ci.yml.
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: '16.2'
 
       - name: Cache .build
         uses: actions/cache@v5

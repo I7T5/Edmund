@@ -54,7 +54,7 @@ Ship via a tag; CI does the rest. In order:
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
 5. CI (`.github/workflows/release.yml`, trigger `push: tags: 'v*'`, runner
-   `macos-14`, job `release` / "Build & publish") runs the steps below.
+   `macos-15`, job `release` / "Build & publish") runs the steps below.
 6. Afterwards, verify per §4 post-flight.
 
 ### release.yml step anatomy (actual step names)
@@ -62,7 +62,7 @@ Ship via a tag; CI does the rest. In order:
 | Step | What it does | Sharp edge |
 |---|---|---|
 | `actions/checkout@v5` | `fetch-depth: 0`, `token: ${{ secrets.RELEASE_TOKEN }}` | The PAT must be on **this** step — see §3.4 |
-| `maxim-lobanov/setup-xcode@v1` | latest-stable Xcode | |
+| `maxim-lobanov/setup-xcode@v1` | Xcode 16.2, pinned to match CI | |
 | **Cache .build** | SPM cache keyed on `Package.resolved` | |
 | **Build app bundle** | `./scripts/build-app.sh` — release build, bundle assembly, Sparkle embed, **bundle sealing** | §3.2 |
 | `actions/setup-node@v4` | pins Node 20 | create-dmg 8.x needs Node ≥ 20 |
