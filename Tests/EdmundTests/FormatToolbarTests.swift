@@ -750,8 +750,7 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
 @MainActor @Suite struct ImageAndLinkMenuTests {
 
     @Test func imageMenuOffersEverySource() {
-        let (bar, doc) = toolbar()
-        let menu = bar.imagePopupMenu()
+        let menu = FormatToolbar.imagePopupMenu()
         #expect(titles(menu) == ["Attach File…", "Photos…", "-", "Import from iPhone or iPad"])
 
         let attach = menu.items.first { $0.title == "Attach File…" }
@@ -766,7 +765,53 @@ private let appKitItems: Set<NSToolbarItem.Identifier> = [.space, .flexibleSpace
         let photos = menu.items.first { $0.title == "Photos…" }
         #expect(photos?.action == nil)
         #expect(photos?.isEnabled == false)
-        _ = doc
+    }
+
+    /// The format bar ends with Table, then the Image pulldown built from the
+    /// toolbar's own menu.
+    @Test func formatBarEndsWithTableThenImage() {
+        func controls(in view: NSView) -> [NSButton] {
+            view.subviews.flatMap { sub -> [NSButton] in
+                if sub is FormatBarButton || sub is FormatBarPopUpButton { return [sub as! NSButton] }
+                return controls(in: sub)
+            }
+        }
+        let bar = FormatBarView(frame: .zero)
+        let tail = controls(in: bar).filter { $0 !== bar.overflowButton }.suffix(2)
+        #expect(tail.first?.action == #selector(EditorTextView.formatTable(_:)))
+        let image = tail.last as? FormatBarPopUpButton
+        #expect(image?.menu?.items.contains {
+            $0.action == #selector(EditorTextView.formatAttachImage(_:))
+        } == true)
+    }
+
+    /// Too narrow for every group: trailing groups move, whole, into `»`.
+    @Test func narrowFormatBarOverflowsTrailingGroups() throws {
+        let bar = FormatBarView(frame: NSRect(x: 0, y: 0, width: 300, height: 28))
+        bar.layoutSubtreeIfNeeded()
+        let visible = bar.visibleGroupCount
+        #expect(visible > 0 && visible < bar.groups.count)
+        #expect(bar.groups.enumerated().allSatisfy { $0.element.isHidden == ($0.offset >= visible) })
+        #expect(!bar.overflowButton.isHidden)
+
+        let menu = try #require(bar.overflowButton.menu)
+        bar.menuNeedsUpdate(menu)
+        #expect(menu.items.contains { $0.action == #selector(EditorTextView.formatTable(_:)) })
+        let image = menu.items.first { $0.title == "Image" }
+        #expect(image?.submenu?.items.contains {
+            $0.action == #selector(EditorTextView.formatAttachImage(_:))
+        } == true)
+        // The first group never overflows here, and nothing still on the bar is
+        // also in the menu.
+        #expect(!menu.items.contains { $0.action == #selector(EditorTextView.formatThematicBreak(_:)) })
+    }
+
+    @Test func wideFormatBarShowsEveryGroup() {
+        let bar = FormatBarView(frame: NSRect(x: 0, y: 0, width: 1400, height: 28))
+        bar.layoutSubtreeIfNeeded()
+        #expect(bar.visibleGroupCount == bar.groups.count)
+        #expect(bar.groups.allSatisfy { !$0.isHidden })
+        #expect(bar.overflowButton.isHidden)
     }
 
     @Test func onlyPhotosSourceIsUnavailable() {

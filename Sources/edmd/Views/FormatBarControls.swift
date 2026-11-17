@@ -186,8 +186,9 @@ final class FormatBarButton: NSButton {
     }
 }
 
-/// A format-bar pulldown (heading, callout). Hover only — a pulldown applies
-/// several different things, so there is no single state for it to be in.
+/// A format-bar pulldown (heading, callout, image). Hover only — a pulldown
+/// applies several different things, so there is no single state for it to be
+/// in.
 final class FormatBarPopUpButton: NSPopUpButton {
     private(set) lazy var chip = BarControlChip(host: self)
 
