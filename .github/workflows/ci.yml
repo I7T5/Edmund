@@ -17,7 +17,10 @@ concurrency:
 jobs:
   test:
     name: test
-    runs-on: macos-14
+    # macos-14 was retired 2026-11-02. Xcode is pinned to 16.2 (Swift 6.0.3),
+    # what macos-14's latest-stable gave: the local toolchain matches it, and a
+    # newer Swift's new warnings would fail the zero-warnings gate unannounced.
+    runs-on: macos-15
     # The suite runs in ~2 minutes. A test that blocks the main thread (a modal
     # alert with nobody to dismiss it, say) otherwise sits until the 6-hour
     # ceiling — billed at the 10x macOS rate the whole way.
@@ -52,7 +55,7 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         if: steps.filter.outputs.code == 'true'
         with:
-          xcode-version: latest-stable
+          xcode-version: '16.2'
 
       - name: Swift version
         if: steps.filter.outputs.code == 'true'
